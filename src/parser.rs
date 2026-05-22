@@ -85,6 +85,7 @@ fn parse_legacy(command: &str) -> Option<&'static str> {
         "list-crates" => Some("list-crates"),
         "proof" => Some("proof"),
         "contracts" => Some("contracts"),
+        "assure" => Some("assure"),
         _ => None,
     }
 }

@@ -114,6 +114,11 @@ pub(crate) enum Commands {
         #[arg(long)]
         check: bool,
     },
+    #[command(name = "assure")]
+    Assure {
+        #[command(subcommand)]
+        command: AssureCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -174,6 +179,31 @@ pub(crate) enum ProofCommands {
         timeout: u64,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum AssureCommands {
+    #[command(name = "contract-lint")]
+    ContractLint {
+        #[arg(long, default_value = xtask::assure::tenant_access::PILOT_BEAD)]
+        bead: String,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(name = "oracle-check")]
+    OracleCheck {
+        #[arg(long, default_value = xtask::assure::tenant_access::PILOT_BEAD)]
+        bead: String,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(name = "path-check")]
+    PathCheck {
+        #[arg(long, default_value = xtask::assure::tenant_access::PILOT_BEAD)]
+        bead: String,
         #[arg(long)]
         json: bool,
     },

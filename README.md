@@ -4,7 +4,7 @@ Developer tooling for the velvet-ballistics workspace.
 
 ## Assurance Compiler (assurec)
 
-xtask ships an **assurance compiler** that enforces deterministic hard gates across all Rust artifacts — zero hallucination, zero unwrap, typed expressions, and railway programming.
+xtask ships an **assurance compiler** that starts as a narrow deterministic TenantAccess-v1 pilot: typed finite decision tables, trusted oracle provenance, path totality/overlap checking, claim ceilings, and CI/Moon evidence rules.
 
 See [docs/assurance-compiler-prd.md](docs/assurance-compiler-prd.md) for the full design doc.
 

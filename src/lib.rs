@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod assure;
 pub mod contracts;
 pub mod evidence;
 pub mod evidence_gate;

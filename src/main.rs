@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 
 use ai_profile::{cmd_ai_deep, cmd_ai_fast, cmd_ai_release};
-use cli::{Cli, Commands, ProofCommands};
+use cli::{AssureCommands, Cli, Commands, ProofCommands};
 use contracts::cmd_contracts;
 use shell::write_stdout;
 use ui_overlap::cmd_ui_overlap_check;
@@ -83,6 +83,71 @@ fn run_legacy_cli(cli: Cli) -> anyhow::Result<()> {
         } => cmd_list_crates(&workspace_root, include, exclude, json),
         Commands::Proof { command } => cmd_proof(&workspace_root, command),
         Commands::Contracts { dir, json, check } => cmd_contracts(&dir, json, check),
+        Commands::Assure { command } => cmd_assure(command),
+    }
+}
+
+fn cmd_assure(command: AssureCommands) -> anyhow::Result<()> {
+    match command {
+        AssureCommands::ContractLint { bead, json } => cmd_assure_contract_lint(&bead, json),
+        AssureCommands::OracleCheck { bead, json } => cmd_assure_oracle_check(&bead, json),
+        AssureCommands::PathCheck { bead, json } => cmd_assure_path_check(&bead, json),
+    }
+}
+
+fn cmd_assure_contract_lint(bead: &str, json: bool) -> anyhow::Result<()> {
+    ensure_tenant_access_v1_bead(bead)?;
+    let ceiling = xtask::assure::tenant_access::claim_ceiling()?;
+    let payload = serde_json::json!({
+        "gate": "contract-lint",
+        "status": "pass",
+        "bead": bead,
+        "scope": "tenant_access_given_jwt_verified_v1",
+        "claim_ceiling": ceiling,
+        "non_v1_features": ["flux", "verus", "tla_plus", "dylint", "mir", "red_queen", "manual_qa"]
+    });
+    write_assure_payload(json, &payload)
+}
+
+fn cmd_assure_oracle_check(bead: &str, json: bool) -> anyhow::Result<()> {
+    ensure_tenant_access_v1_bead(bead)?;
+    let oracles = xtask::assure::tenant_access::oracle_records()?;
+    let report = xtask::assure::oracle::check_oracles(&oracles);
+    write_assure_payload(json, &report)?;
+    if report.is_pass() {
+        Ok(())
+    } else {
+        anyhow::bail!("assure oracle-check failed for {bead}")
+    }
+}
+
+fn cmd_assure_path_check(bead: &str, json: bool) -> anyhow::Result<()> {
+    ensure_tenant_access_v1_bead(bead)?;
+    let report = xtask::assure::tenant_access::path_check_report()?;
+    write_assure_payload(json, &report)?;
+    if report.is_pass() {
+        Ok(())
+    } else {
+        anyhow::bail!("assure path-check failed for {bead}")
+    }
+}
+
+fn ensure_tenant_access_v1_bead(bead: &str) -> anyhow::Result<()> {
+    if bead == xtask::assure::tenant_access::PILOT_BEAD {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "assure v1 only supports bead {}; requested {bead}",
+            xtask::assure::tenant_access::PILOT_BEAD
+        )
+    }
+}
+
+fn write_assure_payload<T: serde::Serialize>(json: bool, payload: &T) -> anyhow::Result<()> {
+    if json {
+        write_stdout(format_args!("{}", serde_json::to_string_pretty(payload)?))
+    } else {
+        write_stdout(format_args!("{}", serde_json::to_string(payload)?))
     }
 }
 

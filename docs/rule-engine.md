@@ -112,3 +112,17 @@ assurec enforces a zero-unwrap policy across ALL Rust artifacts without exceptio
 - Default behavior must be contract-declared and named
 
 See [assurance-compiler-prd.md](assurance-compiler-prd.md) for the full policy.
+
+## Deterministic Assurance Commands
+
+V1 hard gates are mechanical compiler checks only. Adversarial review tools may propose repairs or oracle records, but they are not truth gates until their output is converted into typed checkable artifacts.
+
+Required command shape:
+
+| Command | Gate |
+|---------|------|
+| `cargo xtask assure contract-lint --bead <id>` | deterministic contract/schema lint |
+| `cargo xtask assure oracle-check --bead <id>` | oracle provenance and replay eligibility |
+| `cargo xtask assure path-check --bead <id>` | finite totality, overlap, reachability, oracle-to-path mapping |
+
+Do not use `contract-attack` as a landing gate in v1. It is advisory only.
