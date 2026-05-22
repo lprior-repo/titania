@@ -569,6 +569,8 @@ v1 is ready only when these malicious attempts fail deterministically in CI:
 
 ## Current Implementation Slice
 
+See [assurance-v1-status.md](assurance-v1-status.md) for the current scaffold status and accepted hostile-review findings.
+
 The first checked-in slice establishes:
 
 - typed finite expression/data model scaffolding in `src/assure/model.rs`

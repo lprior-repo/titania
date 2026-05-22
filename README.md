@@ -8,6 +8,8 @@ xtask ships an **assurance compiler** that starts as a narrow deterministic Tena
 
 See [docs/assurance-compiler-prd.md](docs/assurance-compiler-prd.md) for the full design doc.
 
+See [docs/assurance-v1-status.md](docs/assurance-v1-status.md) for the current implementation status and accepted hostile-review findings.
+
 ## What it does
 
 xtask is the automation and quality-gate runner for velvet-ballistics. It provides deterministic, scriptable commands that orchestrate the development workflow:
