@@ -279,6 +279,7 @@ Curated allowlist via `cargo deny` + clippy `disallowed_methods`/`disallowed_typ
 | Errors | `thiserror` (core), `anyhow` (shell) | `Result<T, String>` in core |
 | Parsing | `winnow`, `nom`, `lexical-core` | — |
 | Hashing | `blake3`, `crc32fast` | `chrono::Local`, raw `rand::random()` |
+| Database (ledger) | `rusqlite` (bundled) | — |
 
 ### 6.8 Test & Mutation Evidence
 
@@ -359,6 +360,58 @@ An attestation's Evidence encodes `scope`. Deploy-gate REQUIRES `scope = Full`. 
 ### 8.4 Canonical serialization
 
 Canonical JSON (sorted keys, no whitespace), sorted findings (by lane, rule_id, location), normalized paths (workspace-relative, forward-slash), scrubbed volatile fields (durations stripped from evidence digests), fixed locale (C/POSIX), fixed timezone (UTC).
+
+### 8.5 Audit Ledger (SQLite, append-only, hash-chained — non-repudiation)
+
+Ed25519 does the signing. SQLite does the **history**. The AI cannot forge a signature, but without a persistent record it can run the gate 46 times, get CodeReject every time, and tell you "it passed." Individual JSON files can be deleted or swapped. The ledger fixes this: every gate run, certificate, and policy change is recorded in a tamper-evident, hash-chained, queryable database.
+
+**Schema:**
+
+```sql
+CREATE TABLE ledger (
+    seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_hash  TEXT NOT NULL,    -- blake3(canonical(entry_data) || prev_hash)
+    prev_hash   TEXT NOT NULL,    -- hash-chain: links to previous entry
+    entry_type  TEXT NOT NULL,    -- 'gate_run' | 'attestation' | 'policy_change' | 'mutation_baseline' | 'revocation'
+    issued_utc  TEXT NOT NULL,
+    entry_data  TEXT NOT NULL,    -- canonical JSON payload
+    signature   TEXT              -- Ed25519 signature (for attestation entries only)
+);
+
+CREATE INDEX idx_type ON ledger(entry_type);
+CREATE INDEX idx_source ON ledger(entry_data);  -- for source_digest queries
+```
+
+**Hash-chain integrity:** each `entry_hash = blake3(canonical(entry_data) || prev_hash)`. Tampering with ANY past entry breaks ALL subsequent `prev_hash` links. The chain is verifiable from genesis to the latest entry in a single pass. A broken chain = tampering detected.
+
+**What each entry type records:**
+
+| Entry type | Payload | Who writes |
+|---|---|---|
+| `gate_run` | scope, verdict type (Pass/CodeReject/GateReject/...), finding count, evidence digest, per-lane outcome digests | verifier (local, AI-accessible) |
+| `attestation` | full Attestation struct + Evidence digest | **signer only** (CI, trusted) |
+| `policy_change` | old policy_digest, new policy_digest, diff classification, CODEOWNER approver | signer |
+| `mutation_baseline` | surviving mutants, owners, reasons, expiry | signer (after policy-PR approval) |
+| `revocation` | revoked key_id, reason, revoked_at | signer |
+
+**Two ledgers, two trust levels:**
+- **Local ledger** (verifier environment): records every `gate_run`. The AI writes entries here. Useful for the repair loop ("what failed last time?") and local debugging. NOT trusted for non-repudiation (the AI controls this environment and could delete the file).
+- **CI ledger** (signer environment): the AUTHORITATIVE record. Records every `attestation`, `policy_change`, `mutation_baseline`, `revocation`. This is what auditors and the deploy-gate check. The AI has NO write access here.
+
+**How this prevents AI lying:**
+1. The AI runs locally, gets CodeReject 46 times — each appends to the local ledger. If you inspect the local ledger, you see the history. If the AI deleted it, the absence is itself suspicious.
+2. The AI CANNOT produce a CI-ledger entry without actually passing in CI and the signer issuing an attestation. The CI ledger's hash-chain + Ed25519 signatures make forged entries detectable.
+3. The deploy-gate checks: does the CI ledger contain a valid `attestation` entry whose evidence digest matches the current artifact? Is the chain intact from genesis to that entry? Is the signing key not revoked?
+4. You can query: `SELECT * FROM ledger WHERE entry_type = 'gate_run' ORDER BY seq DESC LIMIT 50` — see exactly what happened.
+
+**Tamper detection:**
+- `xtask ledger verify` — walks the chain from seq 1 to latest, recomputes every `entry_hash`, detects any break.
+- Broken chain = the ledger was tampered with after the fact.
+- Missing CI ledger = no deployable attestation history = deploy-gate rejects.
+
+**Storage:** `rusqlite` crate (safe wrapper, no unsafe in user code, `bundled` feature compiles SQLite from source — no system dependency). WAL mode for crash safety. The CI ledger file is a trust artifact protected alongside the signing key.
+
+**What the ledger does NOT do:** it does NOT replace Ed25519 signing. It does NOT hold the signing key (the key lives in KMS/HSM). It does NOT execute code. It is a tamper-evident record, not a trust oracle.
 
 ---
 
@@ -617,6 +670,7 @@ Single Cargo workspace (decomposer refines):
 - `xtask-sandbox` — sandbox: network-off, readonly source, frozen PATH, fixed env, cgroup caps.
 - `xtask-evidence` — canonical serialization, `Evidence` computation, `LaneEvidence`.
 - `xtask-signer` — `Attestation` signing/verification, Ed25519, canonical pre-sign payload, key_id, revocation.
+- `xtask-ledger` — SQLite audit ledger: append-only hash-chained entries, chain verification, query API (`rusqlite` bundled).
 - `xtask-bypass` — bypass-surface scans: allow-attribute, cfg-attr, tool-wrapper, source-escape.
 - `xtask-output` — report JSON schema (versioned), `doctor` diagnostics.
 
@@ -629,9 +683,16 @@ All first-party crates pass their own gate (dogfooded).
 ```
 xtask gate [--input <crate|diff>] [--scope edit|prepush|full] [--emit json] [--out <path>]
     Run scoped lanes. Emit report JSON + exit code. Emit evidence on Pass.
+    Every run appends a gate_run entry to the local ledger.
 
 xtask verify-attestation <attestation.json> [--require-signature] [--require-scope full]
-    Deploy-gate: recompute digests, verify signature, check freshness.
+    Deploy-gate: recompute digests, verify signature, check freshness, check CI ledger chain.
+
+xtask ledger verify
+    Walk the hash-chain from genesis to latest. Detect any tampering.
+
+xtask ledger query [--type <type>] [--limit <n>] [--source-digest <digest>]
+    Query the audit ledger. See what actually happened.
 
 xtask doctor [--scope <scope>]
     Report required tools for the CURRENT scope/policy. Fail-closed.
