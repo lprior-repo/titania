@@ -1,0 +1,10 @@
+/home/lewis/src/xtask/target/debug/deps/xtask_lanes-ef6654638dbe65aa.d: crates/xtask-lanes/src/lib.rs crates/xtask-lanes/src/registry.rs Cargo.toml
+
+/home/lewis/src/xtask/target/debug/deps/libxtask_lanes-ef6654638dbe65aa.rmeta: crates/xtask-lanes/src/lib.rs crates/xtask-lanes/src/registry.rs Cargo.toml
+
+crates/xtask-lanes/src/lib.rs:
+crates/xtask-lanes/src/registry.rs:
+Cargo.toml:
+
+# env-dep:CLIPPY_ARGS=-D__CLIPPY_HACKERY__warnings__CLIPPY_HACKERY__
+# env-dep:CLIPPY_CONF_DIR
