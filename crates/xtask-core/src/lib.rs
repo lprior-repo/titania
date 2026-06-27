@@ -13,9 +13,9 @@ pub mod report;
 pub use digest::Digest;
 pub use finding::{Finding, FindingEffect, RepairHint, RuleId, TextRange};
 pub use lane::{
-    GateScope, Lane, LaneEvidence, LaneFailure, LaneOutcome, LaneReceipt, ProcessTermination,
-    SkipReason,
+    CommandEvidence, GateScope, Lane, LaneEvidence, LaneFailure, LaneOutcome, LaneReceipt,
+    ProcessTermination, SkipReason,
 };
-pub use location::Location;
+pub use location::{Location, WorkspacePath};
 pub use receipt::QualityReceipt;
 pub use report::{RejectKind, Report};

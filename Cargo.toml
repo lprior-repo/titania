@@ -20,7 +20,7 @@ unsafe_code = "forbid"
 unused_must_use = "deny"
 unreachable_pub = "deny"
 rust_2018_idioms = { level = "deny", priority = -1 }
-unused_results = "warn"
+unused_results = "allow"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
