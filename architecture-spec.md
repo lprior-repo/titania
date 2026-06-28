@@ -1,34 +1,44 @@
-# Architecture Spec: Xtask — The Deterministic Rust Quality Gate
+# Architecture Spec: Titania-Check — The Deterministic Rust Quality Gate (HISTORICAL)
 
-> Status: ARCHITECTURE SPEC v6.0 — security machinery cut, quality ratchet
-> Next step: build.
+> **⚠️ FULLY SUPERSEDED — DO NOT USE FOR ANY DEFINITION**
+>
+> This is the v6.0 historical spec. All type definitions, lane configurations,
+> rule catalogs, and policy details have been superseded by:
+>
+> - [`v1-spec.md`](./v1-spec.md) — the authoritative v1 contract (all types defined inline)
+> - [`VISION.md`](./VISION.md) — the grand vision and toolchain map
+>
+> This document is retained for historical context only. If any definition here
+> conflicts with v1-spec.md, **v1-spec.md wins**. Do not implement from this document.
+>
+> Original status (historical): v6.0 — security machinery cut, quality ratchet
 
 ---
 
 ## 0. Product Sentence
 
 ```
-Xtask is a deterministic Rust quality gate for AI-authored code. It runs a
+Titania is a deterministic Rust quality gate for AI-authored code. It runs a
 pinned local/CI toolchain over real Rust crates and emits a structured report
 that tells the AI exactly what to fix. It enforces a strict checked-in Rust
 quality policy: formatting, compilation, lint zero-tolerance, panic-surface
 discipline, unsafe restrictions, functional-style structural rules, dependency
 hygiene, feature-matrix compilation, tests, and mutation-resistance.
 
-Xtask is not a security boundary. It should not be run on untrusted repositories.
+Titania is not a security boundary. It should not be run on untrusted repositories.
 It does not prove correctness. It makes low-discipline Rust noisy, visible, and
 hard to accidentally accept.
 ```
 
-Xtask is a quality ratchet. It makes AI-authored Rust obey a strict, mechanical house style and gives the AI typed repair instructions until the code becomes boring, explicit, checked, and harder to break accidentally.
+Titania is a quality ratchet. It makes AI-authored Rust obey a strict, mechanical house style and gives the AI typed repair instructions until the code becomes boring, explicit, checked, and harder to break accidentally.
 
 ---
 
 ## 1. Quality Model
 
-Xtask assumes the code author is an AI or human contributor who may be careless, inconsistent, or inclined to take shortcuts. Xtask is designed to produce deterministic, machine-readable feedback that drives repair loops.
+Titania assumes the code author is an AI or human contributor who may be careless, inconsistent, or inclined to take shortcuts. Titania is designed to produce deterministic, machine-readable feedback that drives repair loops.
 
-Xtask is NOT a sandbox, not a malware defense, not a secure build system, and not a deployment trust root. It runs Cargo and other developer tools, which may execute repository code. Therefore Xtask should only be run on repositories the user is willing to build locally or in CI.
+Titania is NOT a sandbox, not a malware defense, not a secure build system, and not a deployment trust root. It runs Cargo and other developer tools, which may execute repository code. Therefore Titania should only be run on repositories the user is willing to build locally or in CI.
 
 The goal is code quality enforcement, not hostile-code containment.
 
@@ -36,12 +46,12 @@ The goal is code quality enforcement, not hostile-code containment.
 
 ## 2. Non-Goals
 
-- **NO Xtask-specific authoring macros or DSL.** Ordinary Rust macros (`thiserror`, `serde`/`clap` derives, `assert!` in tests) are allowed through policy.
+- **NO Titania-specific authoring macros or DSL.** Ordinary Rust macros (`thiserror`, `serde`/`clap` derives, `assert!` in tests) are allowed through policy.
 - **NO LLM inside the gate.** The AI is external; it consumes the report JSON.
 - **NO security boundary.** No sandbox, no signing, no deploy-gate, no provenance, no artifact trust.
 - **NO formal verification or proofs in v1.**
 - **NO bypass flag.** The only escape is a policy-PR.
-- **NO claim of omniscience.** Xtask certifies conformance to a pinned policy; it does not prove correctness.
+- **NO claim of omniscience.** Titania certifies conformance to a pinned policy; it does not prove correctness.
 
 ---
 
@@ -232,7 +242,7 @@ pub struct LaneReceipt {
 pub enum GateScope { Edit, Prepush, Full, Release }
 ```
 
-No signature. No `expires_at`. No `signing_key_id`. No deploy semantics. If CI wants to enforce, CI runs `xtask gate --scope full` and checks exit code.
+No signature. No `expires_at`. No `signing_key_id`. No deploy semantics. If CI wants to enforce, CI runs `titania gate --scope full` and checks exit code.
 
 ---
 
@@ -350,7 +360,7 @@ v1: **zero first-party `unsafe`** (`forbid`). Dependency unsafe measured (geiger
 - `rust-toolchain.toml` with version-pinned channel (`1.x.y` explicit or `nightly-YYYY-MM-DD`).
 - **Do NOT invoke rustup shims.** Resolve absolute `cargo`/`rustc` binaries from the trusted toolchain dir.
 - **`CARGO_HOME`** set to a controlled, read-only, digest-bound directory. **`RUSTUP_HOME`** same.
-- **Reject parent-directory cargo configs.** Cargo searches parent dirs and `$CARGO_HOME/config.toml`. Xtask runs from canonical workspace root.
+- **Reject parent-directory cargo configs.** Cargo searches parent dirs and `$CARGO_HOME/config.toml`. Titania runs from canonical workspace root.
 - `.cargo/config` (extensionless, legacy) AND `.cargo/config.toml` both checked.
 - `RUSTFLAGS`, `CARGO_ENCODED_RUSTFLAGS`, `RUSTC_WRAPPER`, `RUSTC_WORKSPACE_WRAPPER` scanned, frozen.
 - `RUSTC_BOOTSTRAP` = violation.
@@ -358,12 +368,12 @@ v1: **zero first-party `unsafe`** (`forbid`). Dependency unsafe measured (geiger
 
 ### 6.7 Allowed library policy (profile-scoped, not universal)
 
-The approved/banned crate table is a **named policy profile** (`strict-ai`), in `.xtask/profiles/strict-ai/policy.toml`. Core Xtask supports crate allowlists; the default profile is opinionated. Not "arbitrary Rust" — "Rust written for a very opinionated profile."
+The approved/banned crate table is a **named policy profile** (`strict-ai`), in `.titania/profiles/strict-ai/policy.toml`. Core Titania supports crate allowlists; the default profile is opinionated. Not "arbitrary Rust" — "Rust written for a very opinionated profile."
 
 ### 6.8 Test & Mutation Evidence
 
 - `cargo test --workspace --frozen -- --test-threads=1` for deterministic harness configuration.
-- Xtask runs tests in a deterministic harness configuration where practical: single-threaded, fixed env, policy-declared seeds for known frameworks. Xtask does NOT prove tests are deterministic.
+- Titania runs tests in a deterministic harness configuration where practical: single-threaded, fixed env, policy-declared seeds for known frameworks. Titania does NOT prove tests are deterministic.
 - `TEST_NONDETERMINISTIC` emitted only for explicit known cases: missing declared proptest seed, forbidden raw random source in tests, test thread count > 1.
 - Property tests (proptest/quickcheck) treated as ordinary deterministic tests unless policy declares specific seed/corpus inputs.
 - `cargo mutants` runs in full scope, rejects surviving non-baselined mutants.
@@ -444,7 +454,7 @@ All suppressions/exceptions must be in checked-in policy files with owner, reaso
 
 **Gate-control surface** (all require CODEOWNER + previous-policy evaluation):
 ```
-.xtask/**  .moon/**  .github/workflows/**  Cargo.toml [workspace.lints]
+.titania/**  .moon/**  .github/workflows/**  Cargo.toml [workspace.lints]
 rust-toolchain*  .cargo/**  clippy.toml  rustfmt.toml  deny.toml
 ```
 
@@ -475,7 +485,7 @@ rust-toolchain*  .cargo/**  clippy.toml  rustfmt.toml  deny.toml
 | `full` | prepush + `cargo-mutants` |
 | `release` | full + (artifact build uses `cargo build`) |
 
-Optional in tests (Xtask v1 doesn't know about them unless via `cargo test`): `proptest`, `quickcheck`, `insta`, `rstest`.
+Optional in tests (Titania v1 doesn't know about them unless via `cargo test`): `proptest`, `quickcheck`, `insta`, `rstest`.
 
 All pinned. `doctor` reports available vs **trusted** (expected version, actual version, resolved path, source of installation, policy-required?).
 
@@ -486,20 +496,20 @@ All pinned. `doctor` reports available vs **trusted** (expected version, actual 
 ```yaml
 # .moon/tasks/all.yml
 gate-edit:
-  command: 'xtask gate --scope edit --emit json'
+  command: 'titania gate --scope edit --emit json'
   toolchains: [rust]
   options: { runInCI: true }
-  inputs: ['@globs(sources)', '.xtask/**', 'Cargo.toml', 'Cargo.lock', '**/Cargo.toml',
+  inputs: ['@globs(sources)', '.titania/**', 'Cargo.toml', 'Cargo.lock', '**/Cargo.toml',
            '.cargo/**', 'rustfmt.toml', 'clippy.toml', 'rust-toolchain.toml']
 
 gate-full:
-  command: 'xtask gate --scope full --emit json'
+  command: 'titania gate --scope full --emit json'
   toolchains: [rust]
   options: { runInCI: true }
-  inputs: ['@globs(sources)', '.xtask/**', 'Cargo.toml', 'Cargo.lock', '**/Cargo.toml',
+  inputs: ['@globs(sources)', '.titania/**', 'Cargo.toml', 'Cargo.lock', '**/Cargo.toml',
            '.cargo/**', 'rustfmt.toml', 'clippy.toml', 'deny.toml', 'supply-chain/**',
-           'rust-toolchain.toml', '.cargo/mutants.toml', '.xtask/mutants-baseline.json',
-           '.xtask/advisory-db-snapshot/', '.xtask/feature-matrix.toml']
+           'rust-toolchain.toml', '.cargo/mutants.toml', '.titania/mutants-baseline.json',
+           '.titania/advisory-db-snapshot/', '.titania/feature-matrix.toml']
 ```
 
 CI requires `gate-full` exit code 0 before merge. Moon's source-lint zero-tolerance (`-W clippy::all`) reinforces Layer 2.
@@ -509,13 +519,13 @@ CI requires `gate-full` exit code 0 before merge. Moon's source-lint zero-tolera
 ## 13. Component / Module Map
 
 Single Cargo workspace:
-- `xtask-bin` — CLI (clap). Subcommands: `gate`, `doctor`, `explain`.
-- `xtask-core` — domain types: `Report`, `Finding`, `RepairHint`, `Location`, `LaneOutcome`, `SkipReason`, `LaneFailure`, `LaneEvidence`, `QualityReceipt`, `GateScope`, `FindingEffect`.
-- `xtask-policy` — policy loading, validation, `strict-ai` profile, `policy_digest`.
-- `xtask-lanes` — lane runners: `fmt`, `rustc`, `clippy`, `semgrep`, `assert_build_scan`, `test`, `supply`, `feature`, `mutants`, `build`.
-- `xtask-bypass` — policy consistency checks (parser-backed `#[allow]` scan, etc.).
-- `xtask-output` — report JSON schema (versioned), `doctor` diagnostics, `explain` rule catalog.
-- `xtask-ledger` — (optional, post-v1) SQLite audit ledger.
+- `titania-bin` — CLI (clap). Subcommands: `gate`, `doctor`, `explain`.
+- `titania-core` — domain types: `Report`, `Finding`, `RepairHint`, `Location`, `LaneOutcome`, `SkipReason`, `LaneFailure`, `LaneEvidence`, `QualityReceipt`, `GateScope`, `FindingEffect`.
+- `titania-policy` — policy loading, validation, `strict-ai` profile, `policy_digest`.
+- `titania-lanes` — lane runners: `fmt`, `rustc`, `clippy`, `semgrep`, `assert_build_scan`, `test`, `supply`, `feature`, `mutants`, `build`.
+- `titania-bypass` — policy consistency checks (parser-backed `#[allow]` scan, etc.).
+- `titania-output` — report JSON schema (versioned), `doctor` diagnostics, `explain` rule catalog.
+- `titania-ledger` — (optional, post-v1) SQLite audit ledger.
 
 All first-party crates pass their own gate (dogfooded).
 
@@ -524,13 +534,13 @@ All first-party crates pass their own gate (dogfooded).
 ## 14. CLI Surface
 
 ```
-xtask gate [--scope edit|prepush|full|release] [--emit json] [--out <path>]
+titania gate [--scope edit|prepush|full|release] [--emit json] [--out <path>]
     Run scoped quality lanes. Emit report JSON + quality receipt on pass.
 
-xtask doctor [--scope <scope>]
+titania doctor [--scope <scope>]
     Report required tools, versions, resolved paths, and policy health for the scope.
 
-xtask explain <rule-id>
+titania explain <rule-id>
     Explain a rule and show examples of accepted repairs.
 ```
 
@@ -538,18 +548,18 @@ Exit codes: `0` Pass, `1` Reject, `2` PolicyError, `3` InputError, `>=4` interna
 
 ---
 
-## 15. Definition of Done — Xtask v1
+## 15. Definition of Done — Titania v1
 
-1. `xtask gate --scope edit` runs fmt, cargo check, production-source Clippy, Semgrep structural rules, suppression scans, and production panic/assert scans.
-2. `xtask gate --scope prepush` adds cargo test, supply-chain checks, and feature-matrix compilation.
-3. `xtask gate --scope full` adds cargo-mutants with a checked-in mutation baseline.
+1. `titania gate --scope edit` runs fmt, cargo check, production-source Clippy, Semgrep structural rules, suppression scans, and production panic/assert scans.
+2. `titania gate --scope prepush` adds cargo test, supply-chain checks, and feature-matrix compilation.
+3. `titania gate --scope full` adds cargo-mutants with a checked-in mutation baseline.
 4. The report schema is stable, versioned, machine-readable, and separates code findings from gate/tool failures.
 5. The default `strict-ai` policy forbids first-party unsafe, unwrap/expect, panic macros, unchecked indexing, unchecked arithmetic, unapproved lint suppressions, imperative loops, excessive nesting, and core `Result<T, String>`.
 6. Tests compile and pass but are not production-style-gated unless policy opts in.
 7. All policy exceptions live in checked-in policy files with owner, reason, and expiry.
-8. `xtask doctor --scope <scope>` reports the exact tools required for that scope and verifies pinned versions/paths.
-9. Xtask's own repository passes `xtask gate --scope full`.
-10. Killer demo: AI writes Rust with a `for` loop and `.unwrap()`; `xtask gate --scope edit` rejects with typed `FUNC_LOOPS_*` and `HOLZMAN_PANIC_UNWRAP` findings; AI repairs; the gate passes and emits a quality receipt.
+8. `titania doctor --scope <scope>` reports the exact tools required for that scope and verifies pinned versions/paths.
+9. Titania's own repository passes `titania gate --scope full`.
+10. Killer demo: AI writes Rust with a `for` loop and `.unwrap()`; `titania gate --scope edit` rejects with typed `FUNC_LOOPS_*` and `HOLZMAN_PANIC_UNWRAP` findings; AI repairs; the gate passes and emits a quality receipt.
 
 ---
 
