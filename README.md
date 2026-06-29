@@ -1,22 +1,75 @@
 # Titania
 
-**The Rust QA fairy for AI-generated code.**
-
-*Typed evidence, strict policy, fewer AI faceplants.*
-
----
+**The Rust QA fairy for AI-assisted code.**
 
 > AI writes code fast. Titania makes it prove it didn't hallucinate the basics.
 
-The goal is not to make AI "smarter" by prompting harder. The goal is to make
-bad AI output **mechanically obvious**. Every panic surface, every unwrap on
-a happy-path lie, every unchecked index, every stringly-typed error becomes a
-typed finding with an exact file:line and a deterministic policy citation.
+Typed evidence. Strict policy. Fewer AI faceplants.
+
+---
+
+Titania is a **Moonrepo-powered** Rust QA gate that runs locally and in CI.
+It shells out to proven tools (`cargo`, `clippy`, `ast-grep`, `dylint`,
+`cargo-deny`), normalizes failures into typed findings, and emits
+reproducible receipts — so humans and AI agents repair code against
+deterministic feedback instead of vague log soup.
+
+## What Titania Is
+
+A **deterministic CLI and CI/CD gate first**. Agents and IDEs can invoke
+it, but Titania itself is not a background copilot.
+
+The goal is not to make AI "smarter" by prompting harder. The goal is to
+make bad AI output **mechanically obvious** — every panic surface, every
+`unwrap()` on a happy-path lie, every unchecked index, every stringly-typed
+error becomes a typed finding with an exact file:line and a deterministic
+policy citation.
 
 No prompt magic. No "the linter didn't complain." Just structured evidence
 your team can review, gate on, and accumulate over time.
 
----
+## What Titania Is Not
+
+- **Not a linter.** It's an aggregator over `clippy`, `ast-grep`, `dylint`,
+  and `ripgrep`, with typed findings and policy enforcement. The lints
+  live upstream; Titania owns the opinion layer and the evidence shape.
+- **Not configurable.** `strict-ai` is the policy. Opt out per-line with
+  owner + reason + expiry, not by negotiating config.
+- **Not a background agent.** It does not watch your IDE, your files, or
+  your prompts. It runs on demand and emits a typed artifact you can
+  review, gate on, and accumulate. A future `titania watch` is sugar, not
+  v1 core.
+- **Not a CI replacement.** It runs **inside** Moon, which is the
+  orchestrator. CI systems (GitHub Actions, GitLab CI, Buildkite) call
+  Moon, which calls `titania`.
+- **Not a YAML pipeline.** It replaces bash-in-YAML with typed Rust
+  lanes that emit structured JSON, run in a DAG, and cache by content
+  hash.
+
+## Quick Start
+
+```bash
+# Initialize a workspace (writes .titania/ config + Moon task wiring)
+titania init
+
+# Verify the install
+titania doctor
+
+# Edit-time feedback (~seconds, the inner loop)
+titania ci --scope edit
+
+# Pre-push gate (~minutes, the PR expectation)
+titania ci --scope prepush
+
+# Full evidence sweep (~tens of minutes, on PR)
+titania ci --scope full
+
+# Diagnose a finding
+titania explain vb-fmt-0012
+```
+
+Git hooks and CI call the same binary with the same scope. The
+`prepush` scope is what your CI runs. `full` is what runs on PRs.
 
 ## What Titania Catches
 
@@ -24,7 +77,7 @@ The boring, high-leverage things LLMs get wrong in Rust:
 
 | LLM tell-tale | How Titania catches it |
 |---|---|
-| `unwrap()` / `expect()` in production paths | `panic-surface` lane: ripgrep with parser prefilter, blocks production `assert!` / `unreachable!` / `panic!` / `todo!` / `unimplemented!` |
+| `unwrap()` / `expect()` in production paths | `panic-scan` lane: ripgrep with parser prefilter, blocks production `assert!` / `unreachable!` / `panic!` / `todo!` / `unimplemented!` |
 | Unchecked indexing (`x[i]`, `&s[0..n]`) | `clippy::indexing_slicing` + `clippy::string_slice` denied at source level |
 | `Result<T, String>` (stringly-typed errors) | Domain policy rejects; only `thiserror`-typed errors allowed |
 | Lossy `as` casts and arithmetic side effects | `clippy::as_conversions` + `clippy::arithmetic_side_effects` denied |
@@ -38,21 +91,13 @@ The boring, high-leverage things LLMs get wrong in Rust:
 Every finding is a typed `Report → Finding → { file, line, rule, severity }`
 record, not a stdout line. Aggregable, diffable, gateable.
 
----
+## The Doctrine: `strict-ai`
 
-## The Core Promise
+Titania is **opinionated, not configurable**. The `strict-ai` policy is
+the default and only profile. There is no `titania.toml` to negotiate.
+You don't write your own rules; you opt in to the opinion.
 
-Titania is **opinionated, not configurable**. The `strict-ai` policy is the
-default and only profile. There is no `titania.toml` to negotiate. You don't
-write your own rules; you opt in to the opinion.
-
-> If you don't want strict Rust, don't use titania-check.
-
-This is the entire philosophy. Default to the strictest interpretation; let
-projects opt out per-line with owner + reason + expiry, not by rewriting the
-tool.
-
-### What strict-ai enforces
+> If you don't want strict Rust, don't use Titania.
 
 - No `unwrap` / `expect` / `panic` / `todo` / `unimplemented` in production
 - No first-party `unsafe` (workspace `forbid(unsafe_code)`)
@@ -67,46 +112,15 @@ tool.
 `strict-critical-rust` (medical / aerospace profile) is a **future direction
 for v3.0+**, not specified yet.
 
----
+## How It Runs (Moon, Not YAML)
 
-## How It Runs
+Titania lives inside **[Moonrepo](https://moonrepo.dev)** — the polyglot
+build-system and task orchestrator, not the celestial body. We are not
+invoking moonbeams; we are using a deterministic build graph to make QA
+evidence reproducible, cacheable, and reviewable.
 
-**Titania is a CLI tool that lives inside Moon.** Not a background agent,
-not an IDE plugin, not a SaaS. You run it as a Moon task and the result
-becomes a typed artifact in `.titania/out/`.
-
-**Moon** here means [moonrepo](https://moonrepo.dev) — the polyglot
-build-system / task orchestrator, not the celestial body. We're not invoking
-moonbeams; we're using a deterministic build graph to make QA evidence
-reproducible, cacheable, and reviewable.
-
-```bash
-# One-shot quality gate (matches PR/MR expectations)
-titania-check run --scope prepush
-
-# Edit-time feedback (~seconds, the inner loop)
-titania-check run --scope edit
-
-# Release-time receipt (full evidence, ~minutes)
-titania-check run --scope release
-
-# Diagnose a finding
-titania-check explain vb-fmt-0012
-
-# Verify your install
-titania-check doctor
-```
-
-Under the hood, every scope runs a fixed set of typed **lanes**:
-`fmt`, `compile`, `clippy`, `test`, `panic-scan`, `policy-scan`, `ast-grep`,
-`dylint`, `cargo-deny`. Each lane emits `.titania/out/<scope>/<lane>.json`.
-The aggregator assembles them into a `Report` and a `QualityReceipt` with
-four digests (source, lock, policy, toolchain) — a reproducer for "the
-exact code, the exact toolchain, the exact policy that produced green."
-
----
-
-## Why Moon (not bash-in-YAML)
+**Moon** runs the DAG. **Titania** owns the Rust policy, typed findings,
+and evidence receipts.
 
 Rust CI in 2026 is still mostly:
 
@@ -146,8 +160,6 @@ The aggregator walks the DAG, collects findings, hashes them, and writes
 the receipt. A `moon ci` rerun is byte-identical to a previous green
 because the input hash is in the receipt.
 
----
-
 ## Verification Batches
 
 Titania is structured so that **batches of evidence** accumulate over
@@ -157,7 +169,7 @@ later versions add deeper layers without breaking earlier ones.
 | Scope | Stages | Time | When |
 |---|---|---|---|
 | `edit` (v1) | shape, style, structure, architecture imports | seconds | every save |
-| `prepush` (v1) | + tests, supply chain | minutes | before push |
+| `prepush` (v1) | + tests, supply chain | minutes | before push / in CI |
 | `release` (v1) | + reproducible build | tens of minutes | on tag |
 | `full` (v1.5) | + Kani, cargo-mutants, coverage, API drift, MSRV | tens of minutes | on PR |
 | `deep` (v2.5) | + Miri, sanitizers, cargo-fuzz, Verus, Loom | hours | nightly / merge |
@@ -166,50 +178,67 @@ later versions add deeper layers without breaking earlier ones.
 sequenced for later releases; they require stable, scoped evidence
 contracts before they can ship as gates.
 
----
+## FAQ
 
-## What Titania Is Not
+### Is Titania a CLI, CI tool, or background agent?
 
-- **Not a linter.** It's an aggregator over `clippy`, `ast-grep`, `dylint`,
-  and ripgrep, with typed findings and policy enforcement. The lints live
-  upstream; we own the opinion layer and the evidence shape.
-- **Not configurable.** `strict-ai` is the policy. Opt out per-line with
-  owner + reason + expiry, not by negotiating config.
-- **Not a background agent.** It does not watch your IDE, your files, or
-  your prompts. It runs on demand as a Moon task and emits a typed
-  artifact you can review, gate on, and accumulate.
-- **Not a CI replacement.** It runs **inside** Moon, which is the
-  orchestrator. CI systems (GitHub Actions, GitLab CI, Buildkite) call
-  Moon, which calls `titania-check run`.
-- **Not a YAML pipeline.** It replaces bash-in-YAML with typed Rust
-  lanes that emit structured JSON, run in a DAG, and cache by content
-  hash.
+Titania is a **CLI-first QA gate** that runs locally and in CI.
 
----
+Developers and AI agents run it directly before commits. CI runs the
+same gate remotely. Titania does not need to watch your editor or act
+as a background copilot to be useful. The core value is **deterministic
+feedback**: same policy, same Moon task graph, same typed findings, same
+evidence receipts.
+
+Background watching may come later (`titania watch`), but v1 is explicit,
+reproducible, and scriptable.
+
+### Why Moonrepo and not "just Cargo"?
+
+Cargo runs builds. Moonrepo runs a **typed task graph** with content
+hashing, remote caching, and DAG-aware parallel execution. Titania
+needs:
+
+- Reproducible receipts (the input hash must be in the output).
+- Affected-only execution (only re-run the lanes the change touched).
+- A single execution surface for local + CI (same code path, same result).
+
+Cargo aliases can't do any of that. Moon can.
+
+### Why not just `cargo clippy -- -D warnings`?
+
+You can. Titania is what you get when you want **typed, evidence-bearing,
+policy-cited** failures instead of exit codes, and you want the same
+gate to run locally, in pre-commit, in pre-push, in CI, and in your
+AI agent's tool harness.
+
+### Is Titania for individual developers or teams?
+
+Both. Individual devs use `titania ci --scope edit` in the inner loop.
+Teams use `--scope prepush` in CI and `--scope full` on PRs. The same
+binary, the same policy, the same receipts.
 
 ## Install
 
 ```bash
 # Coming with v1.0 release.
-cargo install titania-check
+cargo install titania
 
 # Or with cargo-binstall (faster, prebuilt binaries).
-cargo binstall titania-check
+cargo binstall titania
 ```
 
 For pre-v1 development, see [`v1-spec.md`](./v1-spec.md) for the buildable
 contract and `cargo generate titania/template` for workspace adoption.
 
----
-
 ## Crate Layout
 
 ```
-titania-check    CLI entrypoint, subcommand dispatch
+titania          CLI binary (init, doctor, ci, explain)
 titania-core     Domain types: Report, Finding, Lane, Receipt, primitives
 titania-policy   strict-ai policy loading, validation, digest, exceptions
 titania-lanes    Lane runner implementations
-titania-dylint   dylint library (loaded by clippy driver)
+titania-dylint   dylint library (loaded by clippy driver, type-aware context)
 titania-output   Report JSON serialization, doctor, explain
 titania-aggregate Reads lane outputs, assembles Report, computes Receipt
 ```
@@ -218,16 +247,12 @@ titania-aggregate Reads lane outputs, assembles Report, computes Receipt
 runs inside the clippy driver and adds type-aware context to the
 `ast-grep` findings. The other crates are normal `rlib`s.
 
----
-
 ## Companion Docs
 
 - [`VISION.md`](./VISION.md) — the grand ambition: JPL Power of Ten +
   Haskell + Gleam, expressed as Rust.
 - [`v1-spec.md`](./v1-spec.md) — the concrete, buildable v1 contract.
 - [`AGENTS.md`](./AGENTS.md) — agent workflow and skill routing.
-
----
 
 ## License
 
