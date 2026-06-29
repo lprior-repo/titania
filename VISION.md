@@ -358,7 +358,7 @@ Release:     cargo-auditable, cargo-cyclonedx, Syft, Grype, OSV-Scanner,
    Kani + Verus + Miri + Loom + cargo-fuzz.
 6. Architecture drift is mechanically impossible.
 7. Safety-critical Rust teams adopt `strict-critical-rust` (post-v3.0).
-8. Moon ecosystem recognizes titania-check as the Rust policy layer.
+8. Moon ecosystem recognizes Titania as the Rust policy layer.
 
 ---
 
@@ -371,8 +371,6 @@ Release:     cargo-auditable, cargo-cyclonedx, Syft, Grype, OSV-Scanner,
 
 ### Companion documents
 - [`v1-spec.md`](./v1-spec.md) — the concrete, buildable v1 contract
-- [`architecture-spec.md`](./architecture-spec.md) — v6.0 historical spec
-  (FULLY SUPERSEDED — do not use for any definition)
 
 ### Key tools
 - [Moon](https://moonrepo.dev/) · [ast-grep](https://ast-grep.github.io/) ·

@@ -4,8 +4,8 @@
 > Companion: [`VISION.md`](./VISION.md) (the grand ambition)
 >
 > This document is the implementation contract. Every type is defined here.
-> No dependency on `architecture-spec.md` for any definition. If a type is
-> referenced, it is defined in §9 or §10.
+> If a type, file format, lane, rule, or public behavior is referenced, this
+> document must define it directly.
 
 ---
 
@@ -1192,11 +1192,164 @@ process and communicates via dylint's own types.
 
 ---
 
-## 18. References
+## 18. FAQ / Public Positioning
+
+### What is Titania?
+
+Titania is the highly opinionated Rust QA fairy for AI-assisted development.
+It runs locally and in CI, shells out to proven Rust tools, and turns their
+results into typed findings, repair hints, policy digests, and reproducible
+evidence receipts.
+
+The public promise is simple: AI can write Rust fast; Titania makes it prove it
+did not hallucinate the basics.
+
+### Is Titania an AI tool?
+
+Yes, but not a chatbot.
+
+Titania is AI infrastructure. It gives humans and AI coding agents the same
+deterministic local feedback loop: run the Moon-powered QA gate, receive stable
+machine-readable failures, repair against rule IDs, and prove the final state
+with a receipt.
+
+The goal is not to prompt the model harder. The goal is to make bad AI output
+mechanically obvious before it leaves the laptop.
+
+### Why Moon CI/CD?
+
+Because Titania is not trying to become a second-rate build system.
+
+Moon is open source, runs locally, is written in Rust, and already provides the
+hard CI/CD substrate: task graphs, dependency ordering, caching, affected-file
+detection, workspace awareness, local/CI parity, and reporting hooks. Titania
+uses Moon as the execution engine so Titania can focus on strict Rust QA policy,
+typed findings, exception handling, receipts, and hallucination-resistant
+automation.
+
+Moon runs the DAG. Titania brings the wand, the rulebook, and the axe.
+
+### Why not build a custom DAG engine?
+
+Because that is not Titania's unique value in v1.
+
+A custom DAG engine would force Titania to own scheduling, parallelism,
+cancellation, cache invalidation, output restoration, affected-file detection,
+cross-platform process handling, logs, artifacts, and CI annotations. Moon
+already fights that war. Titania v1 is better if it is excellent on top of one
+strong CI/CD substrate instead of mediocre across five homegrown abstractions.
+
+### What if I do not like Moon?
+
+Then Titania v1 is probably not for you.
+
+Moon is the v1 orchestration substrate. Titania may expose an internal seam for
+future CI engines, but the public v1 contract is Moon-powered on purpose.
+
+### Why these coding rules?
+
+Because Titania is opinionated on purpose.
+
+The default policy targets codebases where reliability, reviewability,
+AI-assisted development, and mechanical QA matter more than personal style
+preferences. That means strict linting, fewer escape hatches, typed errors,
+explicit failure modes, limited panic surfaces, source-shape rules, architecture
+boundaries, and structured evidence.
+
+### Can teams change the rules?
+
+Yes, but changes must be explicit.
+
+Titania ships one strict default policy. Teams may declare policy overrides and
+exceptions, but Titania records those files, includes them in `policy_digest`,
+and makes weakened policy visible in the receipt. If a team weakens the rules,
+the evidence must prove that the rules were weakened.
+
+### Why run locally?
+
+Because waiting for remote CI to discover obvious failure is slow, noisy, and
+expensive.
+
+Titania treats the developer laptop as the first CI/CD layer. The same Moon
+tasks should run locally and remotely, minimizing local/remote drift by making
+Moon config, tool versions, policy files, and receipts explicit.
+
+### Why not just GitHub Actions?
+
+GitHub Actions is an execution environment. It is not a Rust QA policy, not a
+typed finding model, not a local-first evidence system, and not a deterministic
+repair loop for AI agents.
+
+Titania can run inside GitHub Actions, but GitHub Actions is not the source of
+truth. Moon and Titania define the quality contract; GitHub Actions merely hosts
+it.
+
+### Why not just clippy, cargo-deny, cargo-nextest, ast-grep, and friends?
+
+Titania does not replace those tools. It weaponizes them together.
+
+The value is one opinionated policy, one Moon DAG, one normalized report, one
+exception model, one receipt, and one public contract for humans and AI agents
+to repair against.
+
+### Why shell out to libraries and tools instead of reimplementing everything?
+
+Because the more proven tools Titania can compose safely, the better.
+
+Titania should spend its complexity budget on typed domain modeling, process
+evidence, policy digesting, finding normalization, and Moon integration — not on
+rewriting cargo-deny, cargo-nextest, clippy, rustfmt, or a task scheduler.
+
+### What does Titania catch?
+
+Titania v1 targets common AI-generated and rushed-human Rust failures:
+
+- unwrap/expect/panic happy-path lies
+- unchecked indexing and unchecked arithmetic
+- sloppy error modeling such as `Result<T, String>` in core code
+- imperative source shapes where typed workflows are expected
+- lint suppressions and policy bypasses
+- architecture boundary violations
+- formatting, compile, clippy, test, build, and supply-chain failures
+- non-reproducible local-vs-CI behavior
+
+### Is Titania security tooling?
+
+Titania is QA and evidence tooling, not a security boundary.
+
+It can run supply-chain checks, unsafe-code checks, policy scans, and strict
+lint gates, but it does not sandbox malicious code. Cargo commands may execute
+repository build scripts and tests. Titania improves quality evidence; it does
+not make untrusted code safe to run.
+
+### Is Titania only for AI-generated code?
+
+No.
+
+Titania is useful for human-written Rust too. AI just makes the need obvious:
+hallucinated code exploits weak CI boundaries brutally. Titania gives both
+humans and agents a stricter boundary with typed failures and receipts.
+
+### What is "verification sprinkles"?
+
+It is the playful wrapper around the serious mechanism.
+
+The fairy dust is Moon tasks, clippy, cargo-deny, ast-grep, dylint,
+panic-scan, policy-scan, typed JSON, policy digests, and evidence receipts.
+Cute wrapper. Sharp teeth.
+
+### What is explicitly not promised by v1?
+
+v1 does not prove functional correctness, whole-program panic-freedom,
+memory-safety beyond Rust's normal guarantees, malicious-code containment, or
+safety certification. Those require later verification batches and, for
+regulated domains, an external IV&V lifecycle.
+
+---
+
+## 19. References
 
 - [`VISION.md`](./VISION.md) — the grand ambition
-- [`architecture-spec.md`](./architecture-spec.md) — v6.0 historical spec
-  (FULLY SUPERSEDED by this document — do not use for any definition)
 - Moon v2 skill — `.agents/skills/moon-v2/SKILL.md`
 - Holzman Rust skill — `.agents/skills/holzman-rust/SKILL.md`
 - Functional Rust skill — `.agents/skills/functional-rust/SKILL.md`
