@@ -6,6 +6,10 @@
 
 Typed evidence. Strict policy. Fewer AI faceplants.
 
+For the product thesis behind the Rust-only scope, see
+[`WHY_RUST_ONLY.md`](./WHY_RUST_ONLY.md): **AI made code cheap. Rust makes it
+cheaper to trust.**
+
 ---
 
 Titania is a **Moonrepo-powered** Rust QA gate that runs locally and in CI.

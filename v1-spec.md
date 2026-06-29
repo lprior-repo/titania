@@ -16,6 +16,13 @@ Titania-check is the typed Rust quality layer for Moon CI/CD. It enforces the
 reproducible `QualityReceipt`. Distribution is a single binary plus a
 co-located dylint library, orchestrated by Moon's task graph.
 
+Titania is Rust tooling only. It judges Rust/Cargo workspaces and Rust-focused
+Moon pipelines; it is not a polyglot QA framework. That constraint is a product
+feature: Rust gives AI-assisted development a hard compiler, strict ownership
+model, rich lint ecosystem, typed errors, newtype discipline, and a path to
+deeper verification through Kani, Flux, Verus, Miri, Loom, fuzzing, and related
+tools.
+
 **Binary name:** `titania-check`
 **Config directory:** `.titania/`
 **Crate prefix:** `titania-*`
@@ -35,6 +42,7 @@ functional correctness (v2.5). These are the verification batches — see
 ### In scope for v1
 
 - Moon CI/CD as orchestration substrate (required dependency)
+- Rust/Cargo workspaces as the only judged source domain
 - Single binary `titania-check` (CLI + lane runners + aggregator + doctor + explain)
 - Co-located dylint dynamic library for type-aware lint scans
 - ast-grep embedded as Rust dependency for structural rules
@@ -60,6 +68,7 @@ See §14 for the full deferred roadmap. Summary:
 - Anti-circular meta-policy enforcement
 - Init wizard (use `cargo generate` template)
 - Multiple policy profiles (`strict-critical-rust` is future direction, not specified)
+- Non-Rust language policy engines or polyglot CI quality gates
 - Persistent Receipt ledger
 
 ---
@@ -1215,6 +1224,79 @@ with a receipt.
 
 The goal is not to prompt the model harder. The goal is to make bad AI output
 mechanically obvious before it leaves the laptop.
+
+### Why Rust only?
+
+See [`WHY_RUST_ONLY.md`](./WHY_RUST_ONLY.md) for the full product argument.
+
+Because Titania is built around one opinion: if teams are going to push AI code
+hard, Rust is the best place to extract useful speed without accepting the usual
+quality collapse.
+
+Titania is intentionally not polyglot. Polyglot QA sounds broad, but it usually
+collapses into the lowest common denominator: lint some files, run some tests,
+parse some logs, and hope the dynamic/runtime failures are caught later. Titania
+chooses depth over breadth. It targets one language where the compiler, package
+manager, linter ecosystem, type system, and verification tools can be composed
+into a much sharper local gate.
+
+Rust is uniquely useful for AI-assisted coding because the language turns many
+AI mistakes into concrete, repairable failures:
+
+- the compiler rejects ownership, borrowing, lifetime, trait, exhaustiveness,
+  and type errors before code runs
+- `Result` and `Option` make failure paths explicit instead of relying on
+  unchecked exceptions, nulls, or ambient runtime behavior
+- `Send`, `Sync`, lifetimes, and ownership rules expose concurrency and aliasing
+  mistakes that agents frequently gloss over in looser languages
+- enums, pattern matching, and exhaustive state modeling make workflow gaps
+  visible to humans and machines
+- newtypes, typestates, and domain-specific constructors let teams make illegal
+  states unrepresentable instead of asking reviewers to remember every rule
+- clippy gives agents a dense stream of idiomatic, machine-actionable feedback
+- rustfmt removes formatting bikeshedding from both humans and agents
+- cargo metadata gives a uniform workspace/package graph to inspect
+- cargo-deny, cargo-audit, cargo-vet, cargo-geiger, cargo-machete, and related
+  tools give supply-chain and dependency checks a coherent substrate
+- cargo-nextest, Miri, Loom, sanitizers, fuzzing, and property tests give Rust a
+  broad testing/analysis ladder beyond normal unit tests
+- Kani, Flux, Verus, and related tools provide a credible path from lint gates
+  toward actual proof obligations on the same language
+
+That combination matters for AI. LLMs are good at producing plausible code;
+they are much weaker at knowing whether the code's hidden assumptions are valid.
+Rust gives Titania more surfaces where hidden assumptions become explicit:
+
+- a panic becomes a rule ID, not a surprise runtime faceplant
+- an unchecked index becomes a clippy finding, not a latent production bug
+- a missing error variant becomes a domain-model review issue
+- a sloppy stringly-typed ID becomes a newtype obligation
+- a bypass attribute becomes policy evidence, not invisible reviewer debt
+- an architectural import leak becomes a deterministic finding
+- a dependency or license issue becomes a typed supply-chain failure
+
+This is the shift-left thesis: AI supplies speed; Rust supplies friction in the
+right places; Titania packages that friction into a local, deterministic QA
+loop. The goal is not to make writing Rust effortless. The goal is to make AI
+write better Rust by forcing it through a language and toolchain that refuse to
+accept many common hallucinations.
+
+Rust also has enough reach to justify focusing deeply. Teams can use it for
+CLIs, backend services, web frontends through WASM/native UI frameworks,
+embedded systems, data infrastructure, developer tools, low-level systems, and
+performance-critical libraries. A Rust-only QA gate is therefore not a toy niche;
+it can cover a large part of a serious software stack while preserving one
+coherent quality model.
+
+Titania is not saying every team must rewrite everything in Rust. It is saying
+that when a team chooses Rust for AI-assisted development, Titania can be much
+more rigorous than a generic language-agnostic CI wrapper because it can lean on
+Rust-specific semantics, Cargo metadata, clippy diagnostics, Rust verification
+tools, and type-driven design.
+
+Titania may run inside many CI hosts, and it may coexist with non-Rust systems,
+but the code it judges is Rust. That boundary keeps the product honest, sharp,
+and mechanically enforceable.
 
 ### Why Moon CI/CD?
 
