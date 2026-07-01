@@ -215,6 +215,17 @@ fn run_diffs_and_emit(
 }
 
 fn main() -> std::process::ExitCode {
+    // Stage 4 Pattern D: validate every RULE_* literal at startup.
+    if let Err((index, error)) = titania_core::RuleId::validate_many(&[
+        RULE_CARGO_MISSING,
+        RULE_METADATA,
+        RULE_PUBLIC_API_DIFF,
+        RULE_PUBLIC_API_TOOL,
+        RULE_TARGET,
+    ]) {
+        eprintln!("[check-public-api-diff] invalid rule id at index {index}: {error}");
+        return exit(LaneExit::Failure);
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if usage_requested(&args) {
         emit_usage();
