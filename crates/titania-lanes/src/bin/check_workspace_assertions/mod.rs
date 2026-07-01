@@ -17,6 +17,19 @@ const FORBIDDEN_FEATURE_NAMES: &[&str] =
     &["json", "serde-json", "generated", "maxperf", "velvet-ballistics", "velvet_ballistics"];
 
 pub(crate) fn main_exit() -> std::process::ExitCode {
+    // Stage 4 Pattern D: validate every RULE_* literal at startup.
+    if let Err((index, error)) = titania_core::RuleId::validate_many(&[
+        RULE_INVALID_INVOCATION,
+        RULE_MEMBERS,
+        RULE_CRATE_NAME,
+        RULE_FORBIDDEN_FEATURE,
+        RULE_FORBIDDEN_DEP,
+        RULE_GENERATED_BOUNDARY,
+        RULE_UNREADABLE,
+    ]) {
+        eprintln!("[check-workspace-assertions] invalid rule id at index {index}: {error}");
+        return exit(LaneExit::Failure);
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         eprintln!(
