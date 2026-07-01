@@ -43,7 +43,7 @@ const REJECTED_LITERALS: &[&str] = &[
     "named_flag(args, \"--skip-confirmation\")",
 ];
 
-pub(crate) fn main_exit() -> ExitCode {
+pub fn main_exit() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(error) => {
@@ -56,7 +56,7 @@ pub(crate) fn main_exit() -> ExitCode {
     if report.is_clean() { exit(LaneExit::Clean) } else { exit(LaneExit::Violations) }
 }
 
-pub(crate) fn run(target: &TargetProject) -> LaneReport {
+pub fn run(target: &TargetProject) -> LaneReport {
     let mut report = LaneReport::new();
     let cli_root = CLI_SRC.in_target(target);
     if !cli_root.exists() {

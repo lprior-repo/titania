@@ -19,7 +19,7 @@ struct LedgerState {
     pending_line: u32,
 }
 
-pub(crate) fn per_extern_pass(root: &Path, report: &mut LaneReport) {
+pub fn per_extern_pass(root: &Path, report: &mut LaneReport) {
     let verif_dir = root.join("verification/verus");
     let Ok(read) = std::fs::read_dir(&verif_dir) else {
         return;

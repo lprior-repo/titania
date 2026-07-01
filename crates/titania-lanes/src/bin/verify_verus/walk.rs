@@ -3,11 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) fn walk_rs_lines<F: FnMut(&str, &str, u32)>(
-    root: &Path,
-    display_root: &Path,
-    mut visit: F,
-) {
+pub fn walk_rs_lines<F: FnMut(&str, &str, u32)>(root: &Path, display_root: &Path, mut visit: F) {
     let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = fs::read_dir(&dir) else { continue };

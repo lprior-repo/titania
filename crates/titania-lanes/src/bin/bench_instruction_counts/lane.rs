@@ -24,7 +24,7 @@ enum BenchPlan {
     NotApplicable(String),
 }
 
-pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
+pub fn main_exit(args: Vec<String>) -> ExitCode {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         eprintln!("{USAGE}");
         return exit(LaneExit::Clean);
@@ -156,7 +156,7 @@ fn requested_benches(args: Vec<String>) -> Result<Vec<String>, String> {
     } else {
         args
     };
-    if requested.iter().any(|bench| bench.is_empty()) {
+    if requested.iter().any(std::string::String::is_empty) {
         Err("empty benchmark name is not allowed".to_owned())
     } else {
         Ok(requested)

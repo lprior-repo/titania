@@ -72,7 +72,7 @@ enum LaneInput {
 
 impl From<io::Error> for LaneError {
     fn from(err: io::Error) -> Self {
-        LaneError::Failure(format!("io error: {err}"))
+        Self::Failure(format!("io error: {err}"))
     }
 }
 

@@ -1,13 +1,13 @@
 use std::{fs, io, path::Path};
 
-pub(crate) struct SummaryStatus<'a> {
+pub struct SummaryStatus<'a> {
     pub(crate) target_failures: &'a [String],
     pub(crate) forbidden_count: usize,
     pub(crate) external_marker_count: usize,
     pub(crate) external_markers_waived: bool,
 }
 
-pub(crate) fn write_summary_header(path: &Path, target_count: usize) -> io::Result<()> {
+pub fn write_summary_header(path: &Path, target_count: usize) -> io::Result<()> {
     let evidence = match path.parent() {
         Some(parent) => parent.display().to_string(),
         None => ".".to_owned(),
@@ -16,11 +16,11 @@ pub(crate) fn write_summary_header(path: &Path, target_count: usize) -> io::Resu
     fs::write(path, body)
 }
 
-pub(crate) fn append_not_applicable(path: &Path, reason: &str) -> io::Result<()> {
+pub fn append_not_applicable(path: &Path, reason: &str) -> io::Result<()> {
     append(path, &format!("VERUS_REGISTRY_NOT_APPLICABLE {reason}\n"))
 }
 
-pub(crate) fn append_summary_status(path: &Path, status: SummaryStatus<'_>) -> io::Result<()> {
+pub fn append_summary_status(path: &Path, status: SummaryStatus<'_>) -> io::Result<()> {
     let mut existing = read_existing(path)?;
     append_target_status(&mut existing, status.target_failures);
     append_forbidden_status(&mut existing, status.forbidden_count);
@@ -37,7 +37,7 @@ pub(crate) fn append_summary_status(path: &Path, status: SummaryStatus<'_>) -> i
     fs::write(path, existing)
 }
 
-pub(crate) fn write_external_marker_inventory(
+pub fn write_external_marker_inventory(
     evidence_dir: &Path,
     file_name: &str,
     lines: &[String],
@@ -93,7 +93,7 @@ fn append_external_status(existing: &mut String, external_marker_count: usize, w
     }
 }
 
-fn registry_ok(status: &SummaryStatus<'_>) -> bool {
+const fn registry_ok(status: &SummaryStatus<'_>) -> bool {
     status.target_failures.is_empty()
         && status.forbidden_count == 0
         && (status.external_marker_count == 0 || status.external_markers_waived)

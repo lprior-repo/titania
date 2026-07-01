@@ -13,7 +13,7 @@ enum LaneOutcome {
     NotApplicable(String),
 }
 
-pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
+pub fn main_exit(args: Vec<String>) -> ExitCode {
     if let Some(code) = usage_exit(&args) {
         return code;
     }

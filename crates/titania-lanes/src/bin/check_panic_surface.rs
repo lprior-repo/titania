@@ -13,7 +13,7 @@
 //!    `lifecycle_tests/`, `kani*.rs`, `models/loom/**`, `proofs/**`, etc.
 //! 2. **Production path filter** — only lines outside `#[cfg(test)]`,
 //!    `#[cfg(kani)]`, and `#[kani::proof]` blocks count.
-//! 3. **Comment skip** — lines whose payload (after the file:line prefix)
+//! 3. **Comment skip** — lines whose payload (after the <file:line> prefix)
 //!    starts with `//` are not violations (matches `rg` post-filter).
 //! 4. **Pattern** — `(^|[^A-Za-z0-9_])(assert!|assert_eq!|assert_ne!|unreachable!)`
 //!
@@ -277,7 +277,7 @@ fn first_panic_macro(line: &str) -> Option<&'static str> {
     })
 }
 
-fn is_word_byte(b: u8) -> bool {
+const fn is_word_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 

@@ -1,19 +1,19 @@
 use std::path::Path;
 
 #[derive(Debug)]
-pub(crate) enum ClaimClass {
+pub enum ClaimClass {
     Master,
     Claim,
     Skip,
 }
 
 #[derive(Debug)]
-pub(crate) struct Claim {
+pub struct Claim {
     pub(crate) klass: ClaimClass,
     pub(crate) range: String,
 }
 
-pub(crate) fn parse_claims(text: &str) -> Vec<Claim> {
+pub fn parse_claims(text: &str) -> Vec<Claim> {
     let mut out: Vec<Claim> = Vec::new();
     let mut master_emitted = false;
     let mut drift_pending = false;
@@ -34,11 +34,7 @@ pub(crate) fn parse_claims(text: &str) -> Vec<Claim> {
     out
 }
 
-pub(crate) fn resolve_range(
-    range: &str,
-    master_dir: &str,
-    root: &Path,
-) -> (String, usize, usize, bool) {
+pub fn resolve_range(range: &str, master_dir: &str, root: &Path) -> (String, usize, usize, bool) {
     let (path_part, range_part) = range.split_once(':').map_or((range, ""), |parts| parts);
     let resolved_path = if path_part.contains('/') || master_dir.is_empty() || master_dir == "." {
         path_part.to_string()

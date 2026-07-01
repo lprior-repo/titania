@@ -5,7 +5,7 @@ use titania_lanes::{CommandIn, LaneExit};
 
 use super::LocalLane;
 
-pub(super) fn run_local_lane(target: &TargetProject, lane: LocalLane) -> LaneExit {
+pub fn run_local_lane(target: &TargetProject, lane: LocalLane) -> LaneExit {
     let binary = match sibling_binary(lane.binary_name()) {
         Ok(binary) => binary,
         Err(error) => {
@@ -47,24 +47,24 @@ fn binary_status(target: &TargetProject, binary: PathBuf) -> LaneExit {
     command_status(&mut cmd)
 }
 
-pub(super) fn run_clippy_vb_compile(target: &TargetProject) -> LaneExit {
+pub fn run_clippy_vb_compile(target: &TargetProject) -> LaneExit {
     cargo_status(
         target,
         &["clippy", "-p", "vb_compile", "--lib", "--", "-D", "warnings", "-A", "unsafe_code"],
     )
 }
 
-pub(super) fn run_test(target: &TargetProject, group: &str) -> LaneExit {
+pub fn run_test(target: &TargetProject, group: &str) -> LaneExit {
     let args = vec!["test", "-p", "vb_compile", "--lib", group, "--", "--nocapture"];
     cargo_status(target, &args)
 }
 
-pub(super) fn run_kani(target: &TargetProject, harness: &str) -> LaneExit {
+pub fn run_kani(target: &TargetProject, harness: &str) -> LaneExit {
     let args = vec!["kani", "--package", "vb_compile", "--harness", harness, "--quiet"];
     cargo_status(target, &args)
 }
 
-pub(super) fn run_kani_default_unwind(target: &TargetProject, harness: &str) -> LaneExit {
+pub fn run_kani_default_unwind(target: &TargetProject, harness: &str) -> LaneExit {
     let args = vec![
         "kani",
         "--package",
@@ -78,7 +78,7 @@ pub(super) fn run_kani_default_unwind(target: &TargetProject, harness: &str) -> 
     cargo_status(target, &args)
 }
 
-pub(super) fn cargo_capture(
+pub fn cargo_capture(
     target: &TargetProject,
     args: &[&str],
 ) -> Result<titania_lanes::CommandOutput, String> {

@@ -1,14 +1,14 @@
 use std::{iter::Peekable, str::Chars};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum LineKind {
+pub enum LineKind {
     NonCode,
     Signature,
     Expression,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct SourceLine {
+pub struct SourceLine {
     code: String,
     kind: LineKind,
 }
@@ -83,7 +83,7 @@ impl StripState {
         true
     }
 
-    fn consume_string(&mut self, ch: char) -> bool {
+    const fn consume_string(&mut self, ch: char) -> bool {
         if !self.in_string {
             return false;
         }

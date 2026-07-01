@@ -1,4 +1,4 @@
-//! Rejects 'parallel' / 'aggregate' inside STEP_PRIMITIVES + ALLOWED_STEP_FIELDS constants.
+//! Rejects 'parallel' / 'aggregate' inside `STEP_PRIMITIVES` + `ALLOWED_STEP_FIELDS` constants.
 //!
 //! Rust re-implementation of the bash lane in
 //! `velvet-ballistics/scripts/verify-no-legacy-primitives.sh`. Run via

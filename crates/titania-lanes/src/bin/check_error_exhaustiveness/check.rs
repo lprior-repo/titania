@@ -8,7 +8,7 @@ use crate::{
     parser::{collect_qualified_refs, extract_enum_variants, find_function_body},
 };
 
-pub(super) fn run(target: &TargetProject, report: &mut LaneReport) {
+pub fn run(target: &TargetProject, report: &mut LaneReport) {
     CHECKS.iter().for_each(|check| run_check(target, check, report));
 }
 
@@ -80,12 +80,11 @@ fn oracle_body(target: &TargetProject, oracle: &Oracle, report: &mut LaneReport)
         push(report, oracle.path.as_str(), format!("oracle {} file not readable", oracle.function));
         return None;
     };
-    match find_function_body(&text, oracle.function) {
-        Some(body) => Some(body),
-        None => {
-            push(report, oracle.path.as_str(), format!("function {} not found", oracle.function));
-            None
-        }
+    if let Some(body) = find_function_body(&text, oracle.function) {
+        Some(body)
+    } else {
+        push(report, oracle.path.as_str(), format!("function {} not found", oracle.function));
+        None
     }
 }
 

@@ -174,7 +174,7 @@ fn collect_accumulated_line(
     buf.push(' ');
     buf.push_str(trimmed);
     push_closed_feature(collector.first_line_of_attr, buf, out);
-    if buf.find(")]").is_some() {
+    if buf.contains(")]") {
         collector.accumulating = None;
     }
     true

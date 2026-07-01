@@ -46,10 +46,10 @@ enum LaneOutcome {
 
 impl LaneOutcome {
     #[must_use]
-    fn to_lane_exit(&self) -> LaneExit {
+    const fn to_lane_exit(&self) -> LaneExit {
         match self {
-            LaneOutcome::NotApplicable(_) => LaneExit::NotApplicable,
-            LaneOutcome::Child(code) => *code,
+            Self::NotApplicable(_) => LaneExit::NotApplicable,
+            Self::Child(code) => *code,
         }
     }
 }
@@ -63,7 +63,7 @@ fn parse_lane_input(args: Vec<String>) -> LaneInput {
     }
 }
 
-fn status_to_lane(code: Option<i32>) -> LaneExit {
+const fn status_to_lane(code: Option<i32>) -> LaneExit {
     match code {
         Some(0) => LaneExit::Clean,
         Some(2) => LaneExit::Usage,

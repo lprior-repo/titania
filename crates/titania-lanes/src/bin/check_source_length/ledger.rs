@@ -7,7 +7,7 @@ use crate::{
     paths::{is_excluded_source_path, tracked_set},
 };
 
-pub(crate) fn load_ledger(root: &Path, report: &mut LaneReport) -> Vec<String> {
+pub fn load_ledger(root: &Path, report: &mut LaneReport) -> Vec<String> {
     let path = root.join(LEDGER_PATH);
     if !path.is_file() {
         eprintln!("Info: source-length exceptions ledger absent; using empty exceptions");

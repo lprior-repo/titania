@@ -9,7 +9,7 @@ const SPLIT_MODULES: &[&str] = &[
     "mod_compile_lowering.rs",
 ];
 
-pub(crate) fn check_compile_split_sources(root: &Path, report: &mut LaneReport) {
+pub fn check_compile_split_sources(root: &Path, report: &mut LaneReport) {
     let compile_dir = root.join("crates/vb_compile/src");
     if !compile_dir.is_dir() {
         eprintln!("NotApplicable: legacy compile split directory absent");

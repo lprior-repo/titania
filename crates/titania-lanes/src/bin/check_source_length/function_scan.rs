@@ -13,7 +13,7 @@ enum ScanState {
     Inside { start_line: u32, count: usize, depth: i32 },
 }
 
-pub(crate) fn check_file(root: &Path, file: &Path, report: &mut LaneReport) {
+pub fn check_file(root: &Path, file: &Path, report: &mut LaneReport) {
     let Ok(text) = std::fs::read_to_string(file) else {
         return;
     };

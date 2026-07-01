@@ -1,4 +1,4 @@
-//! Identifier-diff verifier for verification/verus/production_inner mirrors + BINDING LEDGERs.
+//! Identifier-diff verifier for `verification/verus/production_inner` mirrors + BINDING LEDGERs.
 //!
 //! Rust re-implementation of the bash lane in
 //! `velvet-ballistics/scripts/check-production-inner-drift.sh`. Run via

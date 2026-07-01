@@ -52,7 +52,7 @@ impl SourceLine {
 
     /// True if the line was entirely comments or string contents.
     #[must_use]
-    pub fn is_non_code(&self) -> bool {
+    pub const fn is_non_code(&self) -> bool {
         matches!(self, Self::NonCode)
     }
 
@@ -117,7 +117,7 @@ impl<'a> SourceLineParser<'a> {
         true
     }
 
-    fn consume_string(&mut self, ch: char) -> bool {
+    const fn consume_string(&mut self, ch: char) -> bool {
         if !self.in_string {
             return false;
         }
@@ -136,7 +136,7 @@ impl<'a> SourceLineParser<'a> {
     }
 
     fn starts_block_comment(&mut self, ch: char) -> bool {
-        if ch != '/' || !self.chars.peek().is_some_and(|next| *next == '*') {
+        if ch != '/' || self.chars.peek().is_none_or(|next| *next != '*') {
             return false;
         }
         let _star = self.chars.next();

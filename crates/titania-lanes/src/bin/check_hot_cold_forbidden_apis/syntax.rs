@@ -1,15 +1,15 @@
 use std::{iter::Peekable, str::Chars};
 
-pub(super) fn compact(line: &str) -> String {
+pub fn compact(line: &str) -> String {
     line.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-pub(super) fn remove_spaces(line: &str) -> String {
+pub fn remove_spaces(line: &str) -> String {
     line.chars().filter(|ch| !ch.is_whitespace()).collect()
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ApiSourceLine {
+pub struct ApiSourceLine {
     code: String,
 }
 
@@ -46,7 +46,7 @@ impl StripState {
         true
     }
 
-    fn consume_string(&mut self, ch: char) -> bool {
+    const fn consume_string(&mut self, ch: char) -> bool {
         if !self.in_string {
             return false;
         }

@@ -96,7 +96,7 @@ impl LineNo {
 }
 
 #[must_use]
-pub fn line_diff(start: usize, end: usize) -> usize {
+pub const fn line_diff(start: usize, end: usize) -> usize {
     end.saturating_sub(start)
 }
 

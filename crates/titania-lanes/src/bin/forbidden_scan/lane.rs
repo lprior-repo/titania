@@ -19,7 +19,7 @@ use titania_lanes::{
 const DEFAULT_FORBIDDEN: &[&str] =
     &["panic!", "unwrap", "expect", "todo!", "unimplemented!", "dbg!"];
 const FORBIDDEN_FLAG: &str = "--forbidden=";
-pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
+pub fn main_exit(args: Vec<String>) -> ExitCode {
     let forbidden = match parse_forbidden(&args) {
         Ok(set) => set,
         Err(message) => {
@@ -253,7 +253,7 @@ impl ForbiddenToken {
     }
 }
 
-fn is_word_byte(b: u8) -> bool {
+const fn is_word_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 

@@ -20,7 +20,7 @@ struct RootInfo {
     vcs: Vcs,
 }
 
-pub(crate) fn main_exit() -> std::process::ExitCode {
+pub fn main_exit() -> std::process::ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         eprintln!(

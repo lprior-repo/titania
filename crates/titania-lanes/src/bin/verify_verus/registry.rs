@@ -6,13 +6,13 @@ const FIXTURE_SMOKE_MARKER: &str = "titania-verus-binding: fixture-smoke";
 const FIXTURE_SMOKE_FILE: &str = "formal_setup_smoke.rs";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProofTargetKind {
+pub enum ProofTargetKind {
     Production,
     FixtureSmoke,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ProofTarget {
+pub struct ProofTarget {
     path: String,
     kind: ProofTargetKind,
 }
@@ -25,15 +25,12 @@ impl ProofTarget {
 }
 
 #[must_use]
-pub(crate) fn registry_path_is_nonempty(path: &Path) -> bool {
+pub fn registry_path_is_nonempty(path: &Path) -> bool {
     let Ok(meta) = fs::metadata(path) else { return false };
     meta.is_file() && meta.len() != 0
 }
 
-pub(crate) fn parse_registry_targets(
-    path: &Path,
-    target: &TargetProject,
-) -> io::Result<Vec<ProofTarget>> {
+pub fn parse_registry_targets(path: &Path, target: &TargetProject) -> io::Result<Vec<ProofTarget>> {
     let text = fs::read_to_string(path)?;
     Ok(extract_yaml_target_paths(&text)
         .into_iter()
@@ -45,7 +42,7 @@ pub(crate) fn parse_registry_targets(
 }
 
 #[must_use]
-pub(crate) fn contains_only_fixture_smoke(targets: &[ProofTarget]) -> bool {
+pub fn contains_only_fixture_smoke(targets: &[ProofTarget]) -> bool {
     !targets.is_empty() && targets.iter().all(|target| target.kind == ProofTargetKind::FixtureSmoke)
 }
 

@@ -7,7 +7,7 @@ use super::{
     identifiers::{extract_identifiers, filter_noise_words},
 };
 
-pub(crate) fn per_mirror_pass(root: &Path, mirror_dir: &str, report: &mut LaneReport) {
+pub fn per_mirror_pass(root: &Path, mirror_dir: &str, report: &mut LaneReport) {
     let dir = root.join(mirror_dir);
     let Ok(read) = std::fs::read_dir(&dir) else {
         return;

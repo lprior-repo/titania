@@ -12,7 +12,7 @@ pub struct CommandOutput {
 }
 
 impl CommandOutput {
-    pub(super) fn new(
+    pub(super) const fn new(
         status: ExitStatus,
         stdout: Vec<u8>,
         stderr: Vec<u8>,

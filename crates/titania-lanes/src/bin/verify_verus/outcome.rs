@@ -9,7 +9,7 @@ const TRUST_FILE: &str = "trust-scan.txt";
 const FORBIDDEN_FILE: &str = "trust-forbidden.txt";
 const RULE_VERUS_TARGET: &str = "VERUS-TARGET-001";
 
-pub(super) fn run_production_targets(
+pub fn run_production_targets(
     report: &mut LaneReport,
     target: &TargetProject,
     evidence_dir: &Path,

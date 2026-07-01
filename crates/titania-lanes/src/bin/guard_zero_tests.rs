@@ -147,7 +147,7 @@ fn report_test_evidence(count: u32) -> Result<(), String> {
     }
 }
 
-fn classify_evidence(count: u32) -> TestEvidence {
+const fn classify_evidence(count: u32) -> TestEvidence {
     if count == 0 { TestEvidence::NotApplicable } else { TestEvidence::Applicable(count) }
 }
 
@@ -184,7 +184,7 @@ fn running_line_count(line: &str) -> Option<u32> {
         return None;
     }
     let after = trimmed.strip_prefix("running ")?;
-    let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
 }
 

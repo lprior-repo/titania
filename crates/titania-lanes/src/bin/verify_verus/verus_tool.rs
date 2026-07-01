@@ -6,7 +6,7 @@ use titania_lanes::CommandIn;
 use super::registry::ProofTarget;
 
 #[must_use]
-pub(crate) fn verus_on_path(target: &TargetProject) -> bool {
+pub fn verus_on_path(target: &TargetProject) -> bool {
     let Ok(mut command) = CommandIn::new(target, "verus") else {
         return false;
     };
@@ -15,7 +15,7 @@ pub(crate) fn verus_on_path(target: &TargetProject) -> bool {
     command.run_capture_raw().is_ok()
 }
 
-pub(crate) fn run_verus_target(
+pub fn run_verus_target(
     target: &TargetProject,
     proof_target: &ProofTarget,
     evidence_dir: &Path,

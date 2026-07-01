@@ -20,14 +20,14 @@ struct RunSummary {
 }
 
 impl RunSummary {
-    fn record(mut self, passed: bool) -> Self {
+    const fn record(mut self, passed: bool) -> Self {
         self.had_runs = true;
         self.any_failed = self.any_failed || !passed;
         self
     }
 }
 
-pub(crate) fn main_exit() -> ExitCode {
+pub fn main_exit() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(err) => {

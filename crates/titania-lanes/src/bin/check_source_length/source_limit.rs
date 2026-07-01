@@ -4,7 +4,7 @@ use titania_lanes::{Finding, LaneReport, helpers::relative_path};
 
 use crate::{LEDGER_PATH, SOURCE_LINE_LIMIT, paths::is_test_like_source_path};
 
-pub(crate) fn check_source_line_limit(
+pub fn check_source_line_limit(
     root: &Path,
     files: &[PathBuf],
     ledger: &[String],

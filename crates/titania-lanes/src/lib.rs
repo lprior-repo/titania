@@ -78,7 +78,7 @@ impl Finding {
     }
 
     #[must_use]
-    pub fn rule(&self) -> &'static str {
+    pub const fn rule(&self) -> &'static str {
         self.rule
     }
 
@@ -88,7 +88,7 @@ impl Finding {
     }
 
     #[must_use]
-    pub fn line(&self) -> u32 {
+    pub const fn line(&self) -> u32 {
         self.line
     }
 
@@ -131,11 +131,11 @@ impl LaneReport {
         self.findings.len()
     }
 
-    pub fn record_pass(&mut self) {
+    pub const fn record_pass(&mut self) {
         self.passed = self.passed.saturating_add(1);
     }
 
-    pub fn record_scan(&mut self) {
+    pub const fn record_scan(&mut self) {
         self.scanned = self.scanned.saturating_add(1);
     }
 
@@ -169,13 +169,13 @@ impl LaneExit {
     /// Stable process exit code. [`LaneExit::NotApplicable`] returns `0`
     /// because a non-applicable lane is a successful process completion.
     #[must_use]
-    pub fn as_u8(self) -> u8 {
+    pub const fn as_u8(self) -> u8 {
         match self {
-            LaneExit::Clean => 0,
-            LaneExit::NotApplicable => 0,
-            LaneExit::Violations => 1,
-            LaneExit::Usage => 2,
-            LaneExit::Failure => 3,
+            Self::Clean => 0,
+            Self::NotApplicable => 0,
+            Self::Violations => 1,
+            Self::Usage => 2,
+            Self::Failure => 3,
         }
     }
 }

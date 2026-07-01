@@ -32,7 +32,7 @@ const EXCLUDED_SUBSTRINGS: &[&str] = &[
     "/pick5-",
 ];
 
-pub(crate) fn main_exit() -> ExitCode {
+pub fn main_exit() -> ExitCode {
     let rule = match spelling_rule() {
         Ok(rule) => rule,
         Err(code) => return code,
@@ -202,11 +202,11 @@ impl<'a> SpellingRule<'a> {
         Ok(Self { bad, good })
     }
 
-    fn bad(&self) -> &str {
+    const fn bad(&self) -> &str {
         self.bad
     }
 
-    fn good(&self) -> &str {
+    const fn good(&self) -> &str {
         self.good
     }
 }

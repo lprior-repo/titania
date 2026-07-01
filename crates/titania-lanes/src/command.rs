@@ -153,13 +153,13 @@ impl<'a> CommandIn<'a> {
     }
 
     /// Explicitly inherit the parent environment.
-    pub fn inherit_env(&mut self) -> &mut Self {
+    pub const fn inherit_env(&mut self) -> &mut Self {
         self.env_policy = EnvPolicy::Inherit;
         self
     }
 
     /// Replace the default execution/output budget.
-    pub fn budget(&mut self, budget: CommandBudget) -> &mut Self {
+    pub const fn budget(&mut self, budget: CommandBudget) -> &mut Self {
         self.budget = budget;
         self
     }
@@ -206,13 +206,14 @@ impl<'a> CommandIn<'a> {
         let mut cmd = self.base_command();
         cmd.stdin(Stdio::null()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
         let mut child = cmd.spawn().map_err(|source| self.io_error(source))?;
-        match child.wait_timeout(self.budget.timeout).map_err(|source| self.io_error(source))? {
-            Some(status) => Ok(status),
-            None => {
-                terminate_child_tree(&mut child, self.program_name())?;
-                child.wait().map_err(|source| self.io_error(source))?;
-                Err(self.timeout_error())
-            }
+        if let Some(status) =
+            child.wait_timeout(self.budget.timeout).map_err(|source| self.io_error(source))?
+        {
+            Ok(status)
+        } else {
+            terminate_child_tree(&mut child, self.program_name())?;
+            child.wait().map_err(|source| self.io_error(source))?;
+            Err(self.timeout_error())
         }
     }
 
@@ -223,7 +224,7 @@ impl<'a> CommandIn<'a> {
         if self.env_policy == EnvPolicy::Clear {
             cmd.env_clear();
         }
-        cmd.args(self.args.iter().map(|a| a.as_ref()));
+        cmd.args(self.args.iter().map(std::convert::AsRef::as_ref));
         cmd.envs(self.env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())));
         for key in &self.env_remove {
             cmd.env_remove(key.as_ref());

@@ -8,7 +8,7 @@ use titania_lanes::{
 const MARKER_PREFIX: &str = "changed by ";
 const MARKER_SUFFIX: &str = "cargo-mutants";
 
-pub(crate) fn check_mutants_residue(root: &Path, report: &mut LaneReport) {
+pub fn check_mutants_residue(root: &Path, report: &mut LaneReport) {
     rust_files_in_crates(root).iter().for_each(|file| check_mutant_file(root, file, report));
 }
 

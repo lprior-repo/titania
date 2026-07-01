@@ -4,7 +4,7 @@ use titania_lanes::{Finding, LaneReport, helpers::line_no_from_idx};
 
 const ALLOW_FILE: &str = "scripts/ignored-fallible-results.allow";
 
-pub(super) fn load_allow(root: &Path, report: &mut LaneReport) -> BTreeMap<String, String> {
+pub fn load_allow(root: &Path, report: &mut LaneReport) -> BTreeMap<String, String> {
     let path = root.join(ALLOW_FILE);
     if !path.is_file() {
         return BTreeMap::new();

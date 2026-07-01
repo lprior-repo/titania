@@ -5,11 +5,11 @@ use std::{
 
 use titania_lanes::helpers::{relative_path, walk_rs_files};
 
-pub(crate) fn is_excluded_source_path(file: &str) -> bool {
+pub fn is_excluded_source_path(file: &str) -> bool {
     is_bad_prefix(file) || is_bad_segment(file) || is_bad_leaf(file)
 }
 
-pub(crate) fn is_test_like_source_path(file: &str) -> bool {
+pub fn is_test_like_source_path(file: &str) -> bool {
     file.ends_with("/tests.rs")
         || file.ends_with("_tests.rs")
         || file.contains("/tests/")
@@ -23,21 +23,21 @@ pub(crate) fn is_test_like_source_path(file: &str) -> bool {
         || file.contains("/benches/")
 }
 
-pub(crate) fn is_titania_hot_source(root: &Path, file: &Path) -> bool {
+pub fn is_titania_hot_source(root: &Path, file: &Path) -> bool {
     let rel = relative_path(root, file);
     !is_test_like_source_path(&rel)
         && (rel.starts_with("crates/titania-core/src/")
             || rel.starts_with("crates/titania-lanes/src/"))
 }
 
-pub(crate) fn tracked_set(root: &Path) -> HashSet<String> {
+pub fn tracked_set(root: &Path) -> HashSet<String> {
     match tracked_rust_files(root) {
         Some(files) => files.iter().map(|p| relative_path(root, p)).collect(),
         None => HashSet::new(),
     }
 }
 
-pub(crate) fn tracked_rust_files(root: &Path) -> Option<Vec<PathBuf>> {
+pub fn tracked_rust_files(root: &Path) -> Option<Vec<PathBuf>> {
     let crates_dir = root.join("crates");
     if !crates_dir.is_dir() {
         return None;

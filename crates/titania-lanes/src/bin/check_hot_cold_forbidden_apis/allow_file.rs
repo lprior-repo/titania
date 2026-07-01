@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, fs, path::Path};
 
-pub(super) fn load_allow_file(root: &Path) -> Result<BTreeSet<(String, String)>, String> {
+pub fn load_allow_file(root: &Path) -> Result<BTreeSet<(String, String)>, String> {
     let allow_path = root.join("scripts/hot-cold-forbidden-apis.allow");
     if !allow_path.exists() {
         eprintln!("NotApplicable: hot/cold forbidden API allow file absent");
