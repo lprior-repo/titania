@@ -62,9 +62,9 @@ fn usage_error(error: impl std::fmt::Display) -> ExitCode {
     exit(LaneExit::Usage)
 }
 
-fn fixture_error(error: String) -> ExitCode {
+fn fixture_error(error: impl std::fmt::Display) -> ExitCode {
     let mut report = LaneReport::new();
-    report.push(Finding::new(RULE_FIXTURE, ".", 0, error));
+    report.push(Finding::new(RULE_FIXTURE, ".", 0, error.to_string()));
     eprint!("{}", report.render());
     exit(LaneExit::Failure)
 }
