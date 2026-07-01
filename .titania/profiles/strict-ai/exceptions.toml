@@ -1,0 +1,4 @@
+# Policy exceptions for the strict-ai profile.
+# No owner, no reason, no expiry, no exception.
+
+exceptions = []

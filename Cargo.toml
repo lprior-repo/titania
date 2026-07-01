@@ -13,9 +13,16 @@ unsafe_code = "forbid"
 unused_must_use = "deny"
 unreachable_pub = "deny"
 rust_2018_idioms = { level = "deny", priority = -1 }
+non_exhaustive_omitted_patterns = "deny"
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+multiple_crate_versions = { level = "allow", priority = 1 }
+
 # Holzman Rust forbidden surface (slice 1).
 unwrap_used = "deny"
 expect_used = "deny"
@@ -30,11 +37,10 @@ dbg_macro = "deny"
 as_conversions = "deny"
 let_underscore_must_use = "deny"
 await_holding_lock = "deny"
-# All correctness lints are on by default for `cargo clippy`; we rely on
-# the default. Pedantic/nursery/cargo land in the dedicated house-style
-# bead; they are intentionally relaxed here so slice 1 ships without
-# style churn.
-multiple_crate_versions = "allow"
+unwrap_or_default = "deny"
+exit = "deny"
+default_numeric_fallback = "deny"
+missing_errors_doc = "deny"
 
 [workspace.metadata.titania]
 strict_ai = true

@@ -1,12 +1,11 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use titania_core::TargetProject;
-use titania_lanes::LaneExit;
+use titania_lanes::{CommandIn, LaneExit};
 
 use super::{Vcs, check};
 
@@ -40,13 +39,13 @@ where
     fs::create_dir_all(root).map_err(|error| format!("create scratch repo failed: {error}"))?;
     fs::write(root.join("Cargo.toml"), "[workspace]\nmembers=[]\n")
         .map_err(|error| format!("write Cargo.toml failed: {error}"))?;
-    run_git(root, &["init", "-q"])?;
-    run_git(root, &["config", "user.email", "lane@example.invalid"])?;
-    run_git(root, &["config", "user.name", "Lane Test"])?;
-    run_git(root, &["add", "Cargo.toml"])?;
-    run_git(root, &["commit", "-q", "-m", "base"])?;
     let target = TargetProject::try_from_path(root)
         .map_err(|error| format!("target project construction failed: {error}"))?;
+    run_git(&target, &["init", "-q"])?;
+    run_git(&target, &["config", "user.email", "lane@example.invalid"])?;
+    run_git(&target, &["config", "user.name", "Lane Test"])?;
+    run_git(&target, &["add", "Cargo.toml"])?;
+    run_git(&target, &["commit", "-q", "-m", "base"])?;
     f(&target)
 }
 
@@ -71,11 +70,13 @@ fn assert_untracked_ignored_fixture(target: &TargetProject) -> Result<(), String
     }
 }
 
-fn run_git(root: &Path, args: &[&str]) -> Result<(), String> {
-    let status = Command::new("git")
-        .args(args)
-        .current_dir(root)
-        .status()
+fn run_git(target: &TargetProject, args: &[&str]) -> Result<(), String> {
+    let mut command =
+        CommandIn::new(target, "git").map_err(|error| format!("git {args:?} invalid: {error}"))?;
+    command.inherit_env();
+    command.args(args);
+    let status = command
+        .run_status_raw()
         .map_err(|error| format!("git {args:?} failed to start: {error}"))?;
     if status.success() { Ok(()) } else { Err(format!("git {args:?} exited with {status}")) }
 }

@@ -3,8 +3,8 @@ mod toml_scan;
 
 use std::path::Path;
 
-use titania_lanes::{Finding, LaneExit, LaneReport, exit};
-
+use titania_core::TargetProject;
+use titania_lanes::{Finding, LaneExit, LaneReport, current_target_project, exit};
 const RULE_INVALID_INVOCATION: &str = "WS-INVOCATION-001";
 const RULE_MEMBERS: &str = "WS-MEMBERS-001";
 const RULE_CRATE_NAME: &str = "WS-CRATE-NAME-001";
@@ -22,30 +22,31 @@ pub(crate) fn main_exit() -> std::process::ExitCode {
         eprintln!(
             "usage: check-workspace-assertions\n\
              Validates the Cargo workspace shape (members, package names,\n\
-             forbidden features, generated-boundary files). Run from the\n\
-             repository root."
+             forbidden features, generated-boundary files). The target\n\
+             project is discovered by walking up from the process CWD."
         );
         return exit(LaneExit::Usage);
     }
 
-    let root = match std::env::current_dir() {
-        Ok(path) => path,
+    let target = match current_target_project() {
+        Ok(target) => target,
         Err(error) => {
-            eprintln!("InvalidInvocation: cannot read current directory: {error}");
+            eprintln!("InvalidInvocation: cannot resolve target project: {error}");
             return exit(LaneExit::Usage);
         }
     };
-    exit(run(&root))
+    exit(run(&target))
 }
 
-fn run(root: &Path) -> LaneExit {
+fn run(target: &TargetProject) -> LaneExit {
+    let root = target.as_std_path();
     if !root.join("Cargo.toml").exists() || !root.join("crates").exists() {
         let mut report = LaneReport::new();
         report.push(Finding::new(
             RULE_INVALID_INVOCATION,
             "Cargo.toml",
             0,
-            "InvalidInvocation: run from repository root",
+            "InvalidInvocation: target project is not a Cargo workspace root",
         ));
         eprint!("{}", report.render());
         return LaneExit::Usage;
