@@ -1,0 +1,429 @@
+{
+  "session_id": "titania-v1-full-20260701",
+  "issue_by_task": {
+    "v1-core-domain-model": "tn-03d",
+    "v1-quality-receipt-schema": "tn-e0r",
+    "v1-json-wire-contracts": "tn-ar2",
+    "v1-policy-loader": "tn-gxr",
+    "v1-lane-artifact-protocol": "tn-0i8",
+    "v1-aggregate-report": "tn-d7l",
+    "v1-cli-dispatch": "tn-cgk",
+    "v1-cargo-lane-runners": "tn-uia",
+    "v1-clippy-normalizer": "tn-d2l",
+    "v1-deny-normalizer": "tn-8xw",
+    "v1-panic-scan-lane": "tn-i7q",
+    "v1-policy-scan-lane": "tn-2cn",
+    "v1-ast-grep-catalog": "tn-37r",
+    "v1-dylint-library-lane": "tn-8ab",
+    "v1-doctor-command": "tn-4rq",
+    "v1-explain-command": "tn-ja8",
+    "v1-moon-task-dag": "tn-1of",
+    "v1-template-adoption": "tn-rld",
+    "v1-docs-contract-sync": "tn-30e",
+    "v1-killer-demo-fixtures": "tn-pdn",
+    "v1-own-repo-dogfood": "tn-d3s",
+    "v1-release-evidence-package": "tn-ed4",
+    "v1-moon-toolchain-bins": "tn-l8h",
+    "v1-strict-ai-profile-files": "tn-bn6",
+    "v1-deny-config": "tn-w0o",
+    "v1-workspace-lints": "tn-u2p"
+  },
+  "dependencies": [
+    {
+      "issue": "tn-e0r",
+      "depends_on": "tn-03d",
+      "task": "v1-quality-receipt-schema",
+      "depends_on_task": "v1-core-domain-model"
+    },
+    {
+      "issue": "tn-ar2",
+      "depends_on": "tn-03d",
+      "task": "v1-json-wire-contracts",
+      "depends_on_task": "v1-core-domain-model"
+    },
+    {
+      "issue": "tn-ar2",
+      "depends_on": "tn-e0r",
+      "task": "v1-json-wire-contracts",
+      "depends_on_task": "v1-quality-receipt-schema"
+    },
+    {
+      "issue": "tn-gxr",
+      "depends_on": "tn-03d",
+      "task": "v1-policy-loader",
+      "depends_on_task": "v1-core-domain-model"
+    },
+    {
+      "issue": "tn-gxr",
+      "depends_on": "tn-ar2",
+      "task": "v1-policy-loader",
+      "depends_on_task": "v1-json-wire-contracts"
+    },
+    {
+      "issue": "tn-gxr",
+      "depends_on": "tn-bn6",
+      "task": "v1-policy-loader",
+      "depends_on_task": "v1-strict-ai-profile-files"
+    },
+    {
+      "issue": "tn-gxr",
+      "depends_on": "tn-w0o",
+      "task": "v1-policy-loader",
+      "depends_on_task": "v1-deny-config"
+    },
+    {
+      "issue": "tn-0i8",
+      "depends_on": "tn-ar2",
+      "task": "v1-lane-artifact-protocol",
+      "depends_on_task": "v1-json-wire-contracts"
+    },
+    {
+      "issue": "tn-d7l",
+      "depends_on": "tn-e0r",
+      "task": "v1-aggregate-report",
+      "depends_on_task": "v1-quality-receipt-schema"
+    },
+    {
+      "issue": "tn-d7l",
+      "depends_on": "tn-0i8",
+      "task": "v1-aggregate-report",
+      "depends_on_task": "v1-lane-artifact-protocol"
+    },
+    {
+      "issue": "tn-d7l",
+      "depends_on": "tn-gxr",
+      "task": "v1-aggregate-report",
+      "depends_on_task": "v1-policy-loader"
+    },
+    {
+      "issue": "tn-cgk",
+      "depends_on": "tn-d7l",
+      "task": "v1-cli-dispatch",
+      "depends_on_task": "v1-aggregate-report"
+    },
+    {
+      "issue": "tn-cgk",
+      "depends_on": "tn-0i8",
+      "task": "v1-cli-dispatch",
+      "depends_on_task": "v1-lane-artifact-protocol"
+    },
+    {
+      "issue": "tn-uia",
+      "depends_on": "tn-cgk",
+      "task": "v1-cargo-lane-runners",
+      "depends_on_task": "v1-cli-dispatch"
+    },
+    {
+      "issue": "tn-d2l",
+      "depends_on": "tn-uia",
+      "task": "v1-clippy-normalizer",
+      "depends_on_task": "v1-cargo-lane-runners"
+    },
+    {
+      "issue": "tn-8xw",
+      "depends_on": "tn-0i8",
+      "task": "v1-deny-normalizer",
+      "depends_on_task": "v1-lane-artifact-protocol"
+    },
+    {
+      "issue": "tn-8xw",
+      "depends_on": "tn-03d",
+      "task": "v1-deny-normalizer",
+      "depends_on_task": "v1-core-domain-model"
+    },
+    {
+      "issue": "tn-8xw",
+      "depends_on": "tn-w0o",
+      "task": "v1-deny-normalizer",
+      "depends_on_task": "v1-deny-config"
+    },
+    {
+      "issue": "tn-i7q",
+      "depends_on": "tn-0i8",
+      "task": "v1-panic-scan-lane",
+      "depends_on_task": "v1-lane-artifact-protocol"
+    },
+    {
+      "issue": "tn-2cn",
+      "depends_on": "tn-gxr",
+      "task": "v1-policy-scan-lane",
+      "depends_on_task": "v1-policy-loader"
+    },
+    {
+      "issue": "tn-2cn",
+      "depends_on": "tn-0i8",
+      "task": "v1-policy-scan-lane",
+      "depends_on_task": "v1-lane-artifact-protocol"
+    },
+    {
+      "issue": "tn-37r",
+      "depends_on": "tn-gxr",
+      "task": "v1-ast-grep-catalog",
+      "depends_on_task": "v1-policy-loader"
+    },
+    {
+      "issue": "tn-37r",
+      "depends_on": "tn-0i8",
+      "task": "v1-ast-grep-catalog",
+      "depends_on_task": "v1-lane-artifact-protocol"
+    },
+    {
+      "issue": "tn-8ab",
+      "depends_on": "tn-gxr",
+      "task": "v1-dylint-library-lane",
+      "depends_on_task": "v1-policy-loader"
+    },
+    {
+      "issue": "tn-8ab",
+      "depends_on": "tn-0i8",
+      "task": "v1-dylint-library-lane",
+      "depends_on_task": "v1-lane-artifact-protocol"
+    },
+    {
+      "issue": "tn-4rq",
+      "depends_on": "tn-cgk",
+      "task": "v1-doctor-command",
+      "depends_on_task": "v1-cli-dispatch"
+    },
+    {
+      "issue": "tn-ja8",
+      "depends_on": "tn-37r",
+      "task": "v1-explain-command",
+      "depends_on_task": "v1-ast-grep-catalog"
+    },
+    {
+      "issue": "tn-ja8",
+      "depends_on": "tn-d2l",
+      "task": "v1-explain-command",
+      "depends_on_task": "v1-clippy-normalizer"
+    },
+    {
+      "issue": "tn-ja8",
+      "depends_on": "tn-8xw",
+      "task": "v1-explain-command",
+      "depends_on_task": "v1-deny-normalizer"
+    },
+    {
+      "issue": "tn-ja8",
+      "depends_on": "tn-i7q",
+      "task": "v1-explain-command",
+      "depends_on_task": "v1-panic-scan-lane"
+    },
+    {
+      "issue": "tn-ja8",
+      "depends_on": "tn-2cn",
+      "task": "v1-explain-command",
+      "depends_on_task": "v1-policy-scan-lane"
+    },
+    {
+      "issue": "tn-ja8",
+      "depends_on": "tn-8ab",
+      "task": "v1-explain-command",
+      "depends_on_task": "v1-dylint-library-lane"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-l8h",
+      "task": "v1-moon-task-dag",
+      "depends_on_task": "v1-moon-toolchain-bins"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-cgk",
+      "task": "v1-moon-task-dag",
+      "depends_on_task": "v1-cli-dispatch"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-uia",
+      "task": "v1-moon-task-dag",
+      "depends_on_task": "v1-cargo-lane-runners"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-d2l",
+      "task": "v1-moon-task-dag",
+      "depends_on_task": "v1-clippy-normalizer"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-8xw",
+      "task": "v1-moon-task-dag",
+      "depends_on_task": "v1-deny-normalizer"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-i7q",
+      "task": "v1-moon-task-dag",
+      "depends_on_task": "v1-panic-scan-lane"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-2cn",
+      "task": "v1-moon-task-dag",
+      "depends_on_task": "v1-policy-scan-lane"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-37r",
+      "task": "v1-moon-task-dag",
+      "depends_on_task": "v1-ast-grep-catalog"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-8ab",
+      "task": "v1-moon-task-dag",
+      "depends_on_task": "v1-dylint-library-lane"
+    },
+    {
+      "issue": "tn-rld",
+      "depends_on": "tn-1of",
+      "task": "v1-template-adoption",
+      "depends_on_task": "v1-moon-task-dag"
+    },
+    {
+      "issue": "tn-rld",
+      "depends_on": "tn-gxr",
+      "task": "v1-template-adoption",
+      "depends_on_task": "v1-policy-loader"
+    },
+    {
+      "issue": "tn-rld",
+      "depends_on": "tn-4rq",
+      "task": "v1-template-adoption",
+      "depends_on_task": "v1-doctor-command"
+    },
+    {
+      "issue": "tn-rld",
+      "depends_on": "tn-l8h",
+      "task": "v1-template-adoption",
+      "depends_on_task": "v1-moon-toolchain-bins"
+    },
+    {
+      "issue": "tn-rld",
+      "depends_on": "tn-bn6",
+      "task": "v1-template-adoption",
+      "depends_on_task": "v1-strict-ai-profile-files"
+    },
+    {
+      "issue": "tn-rld",
+      "depends_on": "tn-w0o",
+      "task": "v1-template-adoption",
+      "depends_on_task": "v1-deny-config"
+    },
+    {
+      "issue": "tn-rld",
+      "depends_on": "tn-u2p",
+      "task": "v1-template-adoption",
+      "depends_on_task": "v1-workspace-lints"
+    },
+    {
+      "issue": "tn-30e",
+      "depends_on": "tn-cgk",
+      "task": "v1-docs-contract-sync",
+      "depends_on_task": "v1-cli-dispatch"
+    },
+    {
+      "issue": "tn-30e",
+      "depends_on": "tn-rld",
+      "task": "v1-docs-contract-sync",
+      "depends_on_task": "v1-template-adoption"
+    },
+    {
+      "issue": "tn-pdn",
+      "depends_on": "tn-cgk",
+      "task": "v1-killer-demo-fixtures",
+      "depends_on_task": "v1-cli-dispatch"
+    },
+    {
+      "issue": "tn-pdn",
+      "depends_on": "tn-37r",
+      "task": "v1-killer-demo-fixtures",
+      "depends_on_task": "v1-ast-grep-catalog"
+    },
+    {
+      "issue": "tn-pdn",
+      "depends_on": "tn-d2l",
+      "task": "v1-killer-demo-fixtures",
+      "depends_on_task": "v1-clippy-normalizer"
+    },
+    {
+      "issue": "tn-pdn",
+      "depends_on": "tn-d7l",
+      "task": "v1-killer-demo-fixtures",
+      "depends_on_task": "v1-aggregate-report"
+    },
+    {
+      "issue": "tn-d3s",
+      "depends_on": "tn-u2p",
+      "task": "v1-own-repo-dogfood",
+      "depends_on_task": "v1-workspace-lints"
+    },
+    {
+      "issue": "tn-d3s",
+      "depends_on": "tn-1of",
+      "task": "v1-own-repo-dogfood",
+      "depends_on_task": "v1-moon-task-dag"
+    },
+    {
+      "issue": "tn-d3s",
+      "depends_on": "tn-pdn",
+      "task": "v1-own-repo-dogfood",
+      "depends_on_task": "v1-killer-demo-fixtures"
+    },
+    {
+      "issue": "tn-d3s",
+      "depends_on": "tn-ja8",
+      "task": "v1-own-repo-dogfood",
+      "depends_on_task": "v1-explain-command"
+    },
+    {
+      "issue": "tn-d3s",
+      "depends_on": "tn-4rq",
+      "task": "v1-own-repo-dogfood",
+      "depends_on_task": "v1-doctor-command"
+    },
+    {
+      "issue": "tn-ed4",
+      "depends_on": "tn-d3s",
+      "task": "v1-release-evidence-package",
+      "depends_on_task": "v1-own-repo-dogfood"
+    },
+    {
+      "issue": "tn-ed4",
+      "depends_on": "tn-rld",
+      "task": "v1-release-evidence-package",
+      "depends_on_task": "v1-template-adoption"
+    },
+    {
+      "issue": "tn-ed4",
+      "depends_on": "tn-30e",
+      "task": "v1-release-evidence-package",
+      "depends_on_task": "v1-docs-contract-sync"
+    },
+    {
+      "issue": "tn-1of",
+      "depends_on": "tn-d7l",
+      "task": "black-hat-repair",
+      "depends_on_task": "black-hat-repair"
+    },
+    {
+      "issue": "tn-pdn",
+      "depends_on": "tn-1of",
+      "task": "black-hat-repair",
+      "depends_on_task": "black-hat-repair"
+    },
+    {
+      "issue": "tn-ja8",
+      "depends_on": "tn-cgk",
+      "task": "v1-explain-command",
+      "depends_on_task": "v1-cli-dispatch"
+    },
+    {
+      "issue": "tn-4rq",
+      "depends_on": "tn-8ab",
+      "task": "v1-doctor-command",
+      "depends_on_task": "v1-dylint-library-lane"
+    }
+  ]
+}
