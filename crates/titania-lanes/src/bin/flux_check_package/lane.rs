@@ -15,6 +15,13 @@ struct Invocation {
 }
 
 pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
+    // Stage 4 Pattern D: validate every RULE_* literal at startup.
+    if let Err((index, error)) =
+        titania_core::RuleId::validate_many(&[RULE_REJECTED, RULE_USAGE, RULE_FLUX_MISSING])
+    {
+        eprintln!("[flux-check-package] invalid rule id at index {index}: {error}");
+        return ExitCode::FAILURE;
+    }
     if help_requested(&args) {
         return print_help();
     }
