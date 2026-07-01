@@ -30,6 +30,7 @@ impl RuleId {
     ///
     /// # Errors
     /// - [`RuleIdError::Empty`] if `s` is empty.
+    /// - [`RuleIdError::TooLong`] if `s` exceeds [`Self::MAX_LEN`].
     /// - [`RuleIdError::NoUnderscore`] if `s` has no underscore.
     /// - [`RuleIdError::NotUppercase`] if `s` contains any character that
     ///   is not uppercase ASCII (`A-Z`, `0-9`).
@@ -38,7 +39,7 @@ impl RuleId {
             return Err(RuleIdError::Empty);
         }
         if s.len() > Self::MAX_LEN {
-            return Err(RuleIdError::Empty); // length handled separately below
+            return Err(RuleIdError::TooLong { len: s.len(), max: Self::MAX_LEN });
         }
         let mut has_underscore = false;
         for (i, c) in s.char_indices() {
