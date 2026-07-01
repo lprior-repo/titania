@@ -1,18 +1,18 @@
 use serde::{Deserialize, Deserializer};
 
 use super::{
-    LaneDigest, QualityReceipt, ReceiptDigests, ReceiptPeriod, RecordedTargetRoot,
+    LaneDigest, ReceiptDigests, ReceiptEnvelope, ReceiptPeriod, RecordedTargetRoot,
     schema::is_supported_receipt_schema_version,
 };
 use crate::{Digest, error::ReceiptError};
 
 #[derive(Deserialize)]
-struct QualityReceiptSchemaWire {
+struct ReceiptEnvelopeSchemaWire {
     schema_version: u32,
 }
 
 #[derive(Deserialize)]
-struct QualityReceiptWire {
+struct ReceiptEnvelopeWire {
     schema_version: u32,
     target_root: RecordedTargetRoot,
     started_at: u64,
@@ -24,17 +24,17 @@ struct QualityReceiptWire {
     toolchain_digest: Digest,
 }
 
-impl<'de> Deserialize<'de> for QualityReceipt {
+impl<'de> Deserialize<'de> for ReceiptEnvelope {
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         let value = serde_json::Value::deserialize(de)?;
         let schema =
-            QualityReceiptSchemaWire::deserialize(&value).map_err(serde::de::Error::custom)?;
+            ReceiptEnvelopeSchemaWire::deserialize(&value).map_err(serde::de::Error::custom)?;
         if !is_supported_receipt_schema_version(schema.schema_version) {
             return Err(serde::de::Error::custom(ReceiptError::UnsupportedSchemaVersion(
                 schema.schema_version,
             )));
         }
-        let wire = QualityReceiptWire::deserialize(value).map_err(serde::de::Error::custom)?;
+        let wire = ReceiptEnvelopeWire::deserialize(value).map_err(serde::de::Error::custom)?;
         Self::from_parts(
             wire.schema_version,
             wire.target_root,

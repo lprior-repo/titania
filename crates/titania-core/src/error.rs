@@ -95,6 +95,74 @@ pub enum ReceiptError {
     TargetRootContainsNul,
 }
 
+/// Errors produced by [`crate::Lane::from_str`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum LaneError {
+    #[error("unknown lane: {0}")]
+    UnknownLane(String),
+}
+
+/// Errors produced by [`crate::GateScope::from_str`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum GateScopeError {
+    #[error("unknown scope: {0}")]
+    UnknownScope(String),
+}
+
+/// Errors produced by [`crate::Location::span`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum LocationError {
+    #[error("line_start must be >= 1")]
+    LineStartBeforeOne,
+    #[error("line_end ({line_end}) must be >= line_start ({line_start})")]
+    EndBeforeStart { line_start: u32, line_end: u32 },
+    #[error("col_end ({col_end}) must be >= col_start ({col_start})")]
+    ColEndBeforeStart { col_start: u32, col_end: u32 },
+}
+
+/// Errors produced by [`crate::RepairHint::patch`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum RepairHintError {
+    #[error("patch range must be non-empty (width > 0)")]
+    EmptyRange,
+}
+
+/// Errors produced by [`crate::Finding::new`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum FindingError {
+    #[error(transparent)]
+    Location(#[from] LocationError),
+    #[error(transparent)]
+    RepairHint(#[from] RepairHintError),
+}
+
+/// Errors produced by [`crate::ProcessTermination::signaled`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum FailureError {
+    #[error("signal number must be 1–31, got {0}")]
+    InvalidSignal(i32),
+}
+
+/// Errors produced by [`crate::CommandEvidence::new`] and [`crate::LaneEvidence::new`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum OutcomeError {
+    #[error("argv must not be empty")]
+    EmptyArgv,
+    #[error("argv[0] ({found}) must equal executable ({expected})")]
+    Argv0Mismatch { expected: String, found: String },
+    #[error("exit status must be Exited(0) for Clean lanes")]
+    NonZeroExit,
+}
+
+/// Errors produced by [`crate::Report::reject`] and [`crate::Report::pass`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ReportError {
+    #[error("reject must have at least one non-empty collection")]
+    EmptyReject,
+    #[error("pass must have at least one lane outcome")]
+    EmptyPerLane,
+}
+
 /// Aggregate for callers that want a single error type across primitives.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CoreError {
@@ -110,4 +178,20 @@ pub enum CoreError {
     TargetProject(#[from] TargetProjectError),
     #[error(transparent)]
     Receipt(#[from] ReceiptError),
+    #[error(transparent)]
+    Lane(#[from] LaneError),
+    #[error(transparent)]
+    GateScope(#[from] GateScopeError),
+    #[error(transparent)]
+    Location(#[from] LocationError),
+    #[error(transparent)]
+    RepairHint(#[from] RepairHintError),
+    #[error(transparent)]
+    Finding(#[from] FindingError),
+    #[error(transparent)]
+    Failure(#[from] FailureError),
+    #[error(transparent)]
+    Outcome(#[from] OutcomeError),
+    #[error(transparent)]
+    Report(#[from] ReportError),
 }

@@ -38,6 +38,7 @@ struct ManifestObservation {
 /// - [`TargetProjectError::MalformedCargoToml`] if the selected manifest is
 ///   malformed TOML.
 /// - [`TargetProjectError::Io`] for non-NotFound filesystem failures.
+#[allow(unreachable_pub)]
 pub fn discover_target(cwd: &Path) -> Result<TargetProject, TargetProjectError> {
     if !cwd.is_absolute() {
         return Err(TargetProjectError::NonAbsolute(cwd.display().to_string()));
