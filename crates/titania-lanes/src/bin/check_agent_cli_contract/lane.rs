@@ -44,6 +44,13 @@ const REJECTED_LITERALS: &[&str] = &[
 ];
 
 pub(crate) fn main_exit() -> ExitCode {
+    // Stage 4 Pattern D: validate every RULE_* literal at startup.
+    if let Err((index, error)) =
+        titania_core::RuleId::validate_many(&[RULE_REQUIRED, RULE_REJECTED])
+    {
+        eprintln!("[check-agent-cli-contract] invalid rule id at index {index}: {error}");
+        return ExitCode::FAILURE;
+    }
     let target = match current_target_project() {
         Ok(target) => target,
         Err(error) => {
