@@ -1,43 +1,95 @@
 use std::{env, fs};
 
+use thiserror::Error;
 use titania_core::TargetProject;
-use titania_lanes::CommandIn;
+use titania_lanes::{CommandIn, LaneError, OutputStream};
 
 use super::{RootInfo, Vcs, scan::is_test_path};
 
-fn tool_output(tool: &str, args: &[&str], target: &TargetProject) -> Result<String, String> {
+/// VCS-layer errors. The bin orchestrator (`mod.rs::check`) wraps these
+/// in its own `TestIntegrityError` via `#[from]` and prints the `Display`
+/// impl on failure. The structured variants survive end-to-end so callers
+/// can match on `Spawn` / `Exit` / `EmptyBase` / `InvalidBase`.
+///
+/// `Spawn` and `Exit` carry the `LaneError` source so the underlying
+/// `CommandIn` failure mode (I/O, non-zero exit, non-UTF-8 output) is
+/// preserved rather than collapsed to a string at the bin boundary.
+#[derive(Debug, Error)]
+pub(super) enum VcsError {
+    #[error("{tool} {args} failed: {source}")]
+    Spawn {
+        tool: String,
+        args: String,
+        #[source]
+        source: LaneError,
+    },
+    #[error("{tool} {args} failed: {stderr}")]
+    Exit { tool: String, args: String, stderr: String },
+    #[error("empty base revision")]
+    EmptyBase,
+    #[error("invalid base revision {base:?}: {source}")]
+    InvalidBase {
+        base: String,
+        #[source]
+        source: Box<VcsError>,
+    },
+}
+
+pub(super) type VcsResult<T> = Result<T, VcsError>;
+
+fn spawn<'a, 'b>(
+    tool: &'a str,
+    args: &'b [&'b str],
+    target: &'a TargetProject,
+) -> VcsResult<CommandIn<'a>>
+where
+    'b: 'a,
+{
     let joined_args = args.join(" ");
-    let mut command = CommandIn::new(target, tool)
-        .map_err(|error| format!("{tool} {joined_args} failed to start: {error}"))?;
+    let mut command = CommandIn::new(target, tool).map_err(|source| VcsError::Spawn {
+        tool: tool.to_owned(),
+        args: joined_args,
+        source,
+    })?;
     command.inherit_env();
     command.args(args);
-    let output = command
-        .run_capture_raw()
-        .map_err(|error| format!("{tool} {joined_args} failed to start: {error}"))?;
+    Ok(command)
+}
+
+fn tool_output(tool: &str, args: &[&str], target: &TargetProject) -> VcsResult<String> {
+    let joined_args = args.join(" ");
+    let output = spawn(tool, args, target)?.run_capture_raw().map_err(|source| {
+        VcsError::Spawn { tool: tool.to_owned(), args: joined_args.clone(), source }
+    })?;
     if output.status.success() {
-        output
+        Ok(output
             .stdout_str()
             .map(str::to_owned)
-            .map_err(|error| format!("{tool} {joined_args} returned non-UTF8 stdout: {error}"))
+            .map_err(|_| VcsError::Spawn {
+                tool: tool.to_owned(),
+                args: joined_args,
+                source: LaneError::NonUtf8Output {
+                    program: tool.to_owned(),
+                    stream: OutputStream::Stdout,
+                },
+            })?
+            .to_owned())
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("{tool} {joined_args} failed: {stderr}"))
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        Err(VcsError::Exit { tool: tool.to_owned(), args: joined_args, stderr })
     }
 }
 
-fn command_output(args: &[&str], target: &TargetProject) -> Result<String, String> {
+fn command_output(args: &[&str], target: &TargetProject) -> VcsResult<String> {
     tool_output("git", args, target)
 }
 
-fn jj_output(args: &[&str], target: &TargetProject) -> Result<String, String> {
+fn jj_output(args: &[&str], target: &TargetProject) -> VcsResult<String> {
     tool_output("jj", args, target)
 }
 
 fn command_output_allow_fail(args: &[&str], target: &TargetProject) -> Option<String> {
-    let mut command = match CommandIn::new(target, "git") {
-        Ok(command) => command,
-        Err(_) => return None,
-    };
+    let mut command = CommandIn::new(target, "git").ok()?;
     command.inherit_env();
     command.args(args);
     command
@@ -47,7 +99,7 @@ fn command_output_allow_fail(args: &[&str], target: &TargetProject) -> Option<St
         .and_then(|output| output.stdout_str().ok().map(str::to_owned))
 }
 
-pub(super) fn root_dir(target: &TargetProject) -> Result<RootInfo, String> {
+pub(super) fn root_dir(target: &TargetProject) -> VcsResult<RootInfo> {
     if command_output(&["rev-parse", "--show-toplevel"], target).is_ok() {
         return Ok(RootInfo { vcs: Vcs::Git });
     }
@@ -81,9 +133,9 @@ pub(super) fn validate_base_revision(
     target: &TargetProject,
     base: &str,
     vcs: Vcs,
-) -> Result<(), String> {
+) -> VcsResult<()> {
     if base.trim().is_empty() {
-        return Err("empty base revision".to_owned());
+        return Err(VcsError::EmptyBase);
     }
     let result = match vcs {
         Vcs::Git => {
@@ -94,21 +146,21 @@ pub(super) fn validate_base_revision(
             jj_output(&["log", "--no-graph", "-r", base, "-T", "commit_id"], target).map(|_| ())
         }
     };
-    result.map_err(|error| format!("invalid base revision {base:?}: {error}"))
+    result.map_err(|error| VcsError::InvalidBase { base: base.to_owned(), source: Box::new(error) })
 }
 
 pub(super) fn changed_files(
     target: &TargetProject,
     base: &str,
     vcs: Vcs,
-) -> Result<Vec<(String, String)>, String> {
+) -> VcsResult<Vec<(String, String)>> {
     match vcs {
         Vcs::Git => git_changed_files(target, base),
         Vcs::Jj => jj_changed_files(target, base),
     }
 }
 
-fn git_changed_files(target: &TargetProject, base: &str) -> Result<Vec<(String, String)>, String> {
+fn git_changed_files(target: &TargetProject, base: &str) -> VcsResult<Vec<(String, String)>> {
     let mut entries = parse_git_name_status(&command_output(
         &["diff", "--name-status", "--find-renames", base, "--"],
         target,
@@ -131,7 +183,7 @@ fn parse_git_name_status(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-fn jj_changed_files(target: &TargetProject, base: &str) -> Result<Vec<(String, String)>, String> {
+fn jj_changed_files(target: &TargetProject, base: &str) -> VcsResult<Vec<(String, String)>> {
     jj_output(&["diff", "--summary", "--from", base, "--to", "@"], target).map(|text| {
         text.lines()
             .filter_map(|line| {
@@ -145,14 +197,14 @@ fn jj_changed_files(target: &TargetProject, base: &str) -> Result<Vec<(String, S
     })
 }
 
-pub(super) fn diff_text(target: &TargetProject, base: &str, vcs: Vcs) -> Result<String, String> {
+pub(super) fn diff_text(target: &TargetProject, base: &str, vcs: Vcs) -> VcsResult<String> {
     match vcs {
         Vcs::Git => git_diff_text(target, base),
         Vcs::Jj => jj_output(&["diff", "--git", "--from", base, "--to", "@"], target),
     }
 }
 
-fn git_diff_text(target: &TargetProject, base: &str) -> Result<String, String> {
+fn git_diff_text(target: &TargetProject, base: &str) -> VcsResult<String> {
     let mut text = command_output(&["diff", "--find-renames", "--unified=0", base, "--"], target)?;
     let untracked = untracked_files(target, Vcs::Git)?;
     let extra = untracked
@@ -164,7 +216,7 @@ fn git_diff_text(target: &TargetProject, base: &str) -> Result<String, String> {
     Ok(text)
 }
 
-fn untracked_files(target: &TargetProject, vcs: Vcs) -> Result<Vec<String>, String> {
+fn untracked_files(target: &TargetProject, vcs: Vcs) -> VcsResult<Vec<String>> {
     match vcs {
         Vcs::Git => {
             command_output(&["ls-files", "--others", "--exclude-standard"], target).map(|text| {

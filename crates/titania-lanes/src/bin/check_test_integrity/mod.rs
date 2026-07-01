@@ -4,8 +4,11 @@ mod vcs;
 
 use std::env;
 
+use thiserror::Error;
 use titania_core::TargetProject;
 use titania_lanes::{Finding, LaneExit, LaneReport, current_target_project, exit};
+
+use vcs::VcsError;
 
 const RULE_TEST_INTEGRITY: &str = "TEST-INTEGRITY-001";
 
@@ -18,6 +21,17 @@ enum Vcs {
 #[derive(Debug, Clone, Copy)]
 struct RootInfo {
     vcs: Vcs,
+}
+
+/// Bin-local errors for the `check-test-integrity` orchestrator. The
+/// internal `vcs` module owns `VcsError` (subprocess failures) and the
+/// `?` operator converts via `#[from]`. Target discovery is done in
+/// `run_for_args` via `current_target_project()` and matched directly,
+/// so the only variant propagated through `check` is `Vcs` at present.
+#[derive(Debug, Error)]
+enum TestIntegrityError {
+    #[error(transparent)]
+    Vcs(#[from] VcsError),
 }
 
 pub(crate) fn main_exit() -> std::process::ExitCode {
@@ -65,7 +79,7 @@ fn run_for_args(args: &[String]) -> LaneExit {
     }
 }
 
-fn check(target: &TargetProject, base: &str, vcs: Vcs) -> Result<i32, String> {
+fn check(target: &TargetProject, base: &str, vcs: Vcs) -> Result<i32, TestIntegrityError> {
     vcs::validate_base_revision(target, base, vcs)?;
     let mut findings = deleted_file_findings(&vcs::changed_files(target, base, vcs)?);
     findings.extend(scan::scan_diff(&vcs::diff_text(target, base, vcs)?));
@@ -103,23 +117,12 @@ fn render_findings(findings: &[(String, String, String)]) {
 }
 
 fn push_finding(report: &mut LaneReport, kind: &str, path: String, detail: String) {
-    let rule = match kind {
-        "DeletedTestFile" => "TEST-INTEGRITY-DEL-001",
-        "IgnoredOrSkippedTest" => "TEST-INTEGRITY-IGNORE-001",
-        "CompileOnlyReplacement" => "TEST-INTEGRITY-COMPILE-001",
-        "DeletedTestDeclaration" => "TEST-INTEGRITY-DECL-001",
-        "WeakenedAssertion" => "TEST-INTEGRITY-WEAK-001",
-        _ => RULE_TEST_INTEGRITY,
-    };
-    report.push(Finding::new(rule, path, 0, format!("{kind}: {detail}")));
+    report.push(Finding::new(RULE_TEST_INTEGRITY, path, 0, format!("{kind}: {detail}")));
 }
 
 fn argument_value(args: &[String], flag: &str) -> Option<String> {
-    args.windows(2).find_map(|window| {
-        let first = window.first()?;
-        let second = window.get(1)?;
-        (first == flag).then(|| second.clone())
-    })
+    let index = args.iter().position(|arg| arg == flag)?;
+    args.get(index.saturating_add(1)).cloned()
 }
 
 #[cfg(test)]
