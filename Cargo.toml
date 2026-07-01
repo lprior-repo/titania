@@ -1,5 +1,5 @@
 [workspace]
-members  = [ "crates/titania-core", "crates/titania-lanes" ]
+members  = [ "crates/titania-core", "crates/titania-lanes", "crates/titania-lints" ]
 resolver = "3"
 
 [workspace.package]
@@ -45,6 +45,9 @@ missing_errors_doc = "deny"
 [workspace.metadata.titania]
 strict_ai = true
 schema_version = 1
+
+[workspace.metadata.dylint]
+libraries = [{ path = "crates/titania-lints" }]
 
 [profile.dev]
 opt-level = 0

@@ -28,6 +28,7 @@ use std::{env, io};
 use thiserror::Error;
 use titania_core::{TargetProject, TargetProjectError, discover_target};
 
+pub mod ast_grep_catalog;
 pub mod command;
 pub mod helpers;
 pub mod source_line;
