@@ -18,12 +18,12 @@ use titania_lanes::{Finding, LaneExit, LaneReport, exit};
 const METADATA_PATH: &str = ".beads/metadata.json";
 const EMBEDDED_MARKER: &str = ".beads/embeddeddolt";
 
-const RULE_BACKEND: &str = "BEADS-BACKEND-001";
-const RULE_DOLT_MODE: &str = "BEADS-MODE-001";
-const RULE_DOLT_PORT: &str = "BEADS-DOLT-PORT-001";
-const RULE_EMBEDDED_MARKER: &str = "BEADS-EMBEDDED-MARKER-001";
-const RULE_METADATA_MISSING: &str = "BEADS-METADATA-MISSING-001";
-const RULE_METADATA_PARSE: &str = "BEADS-METADATA-PARSE-001";
+const RULE_BACKEND: &str = "BEADS_BACKEND_001";
+const RULE_DOLT_MODE: &str = "BEADS_MODE_001";
+const RULE_DOLT_PORT: &str = "BEADS_DOLT_PORT_001";
+const RULE_EMBEDDED_MARKER: &str = "BEADS_EMBEDDED_MARKER_001";
+const RULE_METADATA_MISSING: &str = "BEADS_METADATA_MISSING_001";
+const RULE_METADATA_PARSE: &str = "BEADS_METADATA_PARSE_001";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Backend {

@@ -10,7 +10,7 @@ use titania_lanes::{Finding, LaneExit, LaneReport, current_target_project, exit}
 
 use vcs::VcsError;
 
-const RULE_TEST_INTEGRITY: &str = "TEST-INTEGRITY-001";
+const RULE_TEST_INTEGRITY: &str = "TEST_INTEGRITY_001";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Vcs {

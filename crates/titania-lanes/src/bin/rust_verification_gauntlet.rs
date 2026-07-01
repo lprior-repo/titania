@@ -251,7 +251,7 @@ fn run_proof_steps(
         return LaneExit::Clean;
     }
     let drift =
-        step(report, "DRIFT-STEPSTATE-001", || run_local_lane(target, LocalLane::StepstateMatrix));
+        step(report, "DRIFT_STEP_STATE_001", || run_local_lane(target, LocalLane::StepstateMatrix));
     let admission = if packages.vb_runtime.is_present() {
         kani_steps(target, report, &ADMISSION_KANI, run_kani_default_unwind)
     } else {

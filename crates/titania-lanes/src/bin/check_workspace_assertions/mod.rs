@@ -5,13 +5,13 @@ use std::path::Path;
 
 use titania_lanes::{Finding, LaneExit, LaneReport, exit};
 
-const RULE_INVALID_INVOCATION: &str = "WS-INVOCATION-001";
-const RULE_MEMBERS: &str = "WS-MEMBERS-001";
-const RULE_CRATE_NAME: &str = "WS-CRATE-NAME-001";
-const RULE_FORBIDDEN_FEATURE: &str = "WS-FORBIDDEN-FEATURE-001";
-const RULE_FORBIDDEN_DEP: &str = "WS-FORBIDDEN-DEP-001";
-const RULE_GENERATED_BOUNDARY: &str = "WS-GENERATED-BOUNDARY-001";
-const RULE_UNREADABLE: &str = "WS-UNREADABLE-001";
+const RULE_INVALID_INVOCATION: &str = "WS_INVOCATION_001";
+const RULE_MEMBERS: &str = "WS_MEMBERS_001";
+const RULE_CRATE_NAME: &str = "WS_CRATE_NAME_001";
+const RULE_FORBIDDEN_FEATURE: &str = "WS_FORBIDDEN_FEATURE_001";
+const RULE_FORBIDDEN_DEP: &str = "WS_FORBIDDEN_DEP_001";
+const RULE_GENERATED_BOUNDARY: &str = "WS_GENERATED_BOUNDARY_001";
+const RULE_UNREADABLE: &str = "WS_UNREADABLE_001";
 
 const FORBIDDEN_FEATURE_NAMES: &[&str] =
     &["json", "serde-json", "generated", "maxperf", "velvet-ballistics", "velvet_ballistics"];

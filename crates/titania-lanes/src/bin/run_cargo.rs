@@ -6,11 +6,11 @@ use serde_json::Value;
 use titania_core::{TargetProject, TargetProjectError, discover_target};
 use titania_lanes::{CommandIn, Finding, LaneError, LaneExit, LaneReport, exit};
 
-const RULE_FMT: &str = "CARGO-FMT-001";
-const RULE_COMPILE: &str = "CARGO-COMPILE-001";
-const RULE_CLIPPY: &str = "CARGO-CLIPPY-001";
-const RULE_TEST: &str = "CARGO-TEST-001";
-const RULE_BUILD: &str = "CARGO-BUILD-001";
+const RULE_FMT: &str = "CARGO_FMT_001";
+const RULE_COMPILE: &str = "CARGO_COMPILE_001";
+const RULE_CLIPPY: &str = "CARGO_CLIPPY_001";
+const RULE_TEST: &str = "CARGO_TEST_001";
+const RULE_BUILD: &str = "CARGO_BUILD_001";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CargoLane {

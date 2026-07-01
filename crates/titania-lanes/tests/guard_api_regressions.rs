@@ -109,7 +109,7 @@ fn check_public_api_diff_reports_missing_public_api_as_failure() -> TestResult {
 
     let stderr = stderr_text(&output)?;
     assert_eq!(output.status.code(), Some(3));
-    assert!(stderr.contains("PUBAPI-TOOL-001"));
+    assert!(stderr.contains("PUBAPI_TOOL_001"));
     assert!(stderr.contains("no such command: public-api"));
     Ok(())
 }

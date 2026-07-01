@@ -17,11 +17,11 @@ use titania_lanes::{CommandIn, Finding, LaneExit, LaneReport, current_target_pro
 
 use package_json::extract_package_names;
 
-const RULE_CARGO_MISSING: &str = "PUBAPI-CARGO-MISSING-001";
-const RULE_METADATA: &str = "PUBAPI-METADATA-001";
-const RULE_PUBLIC_API_DIFF: &str = "PUBAPI-DIFF-001";
-const RULE_PUBLIC_API_TOOL: &str = "PUBAPI-TOOL-001";
-const RULE_TARGET: &str = "PUBAPI-TARGET-001";
+const RULE_CARGO_MISSING: &str = "PUBAPI_CARGO_MISSING_001";
+const RULE_METADATA: &str = "PUBAPI_METADATA_001";
+const RULE_PUBLIC_API_DIFF: &str = "PUBAPI_DIFF_001";
+const RULE_PUBLIC_API_TOOL: &str = "PUBAPI_TOOL_001";
+const RULE_TARGET: &str = "PUBAPI_TARGET_001";
 const TOOLCHAIN: &str = "nightly-2026-04-28";
 
 fn filter_packages(discovered: Vec<String>) -> Vec<String> {

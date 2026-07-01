@@ -3,9 +3,9 @@ use std::{env, path::PathBuf, process::ExitCode};
 use titania_core::TargetProject;
 use titania_lanes::{CommandIn, Finding, LaneExit, LaneReport, current_target_project, exit};
 
-const RULE_REJECTED: &str = "FLUX-REJECTED-001";
-const RULE_USAGE: &str = "FLUX-USAGE-001";
-const RULE_FLUX_MISSING: &str = "FLUX-MISSING-001";
+const RULE_REJECTED: &str = "FLUX_REJECTED_001";
+const RULE_USAGE: &str = "FLUX_USAGE_001";
+const RULE_FLUX_MISSING: &str = "FLUX_MISSING_001";
 
 const REJECTED_SELECTORS: &[&str] = &["--lib", "--test", "--tests", "--benches", "--all-targets"];
 

@@ -140,7 +140,6 @@ fails with "Failed to find targets" (cargo's own behavior).
 The lane's invocation is structurally broken; the lane produces a
 **false-positive finding** on every run of every target.
 
----
 
 ## 3. Spec vs code drift — 78% of v1 contract unbuilt
 
@@ -460,3 +459,27 @@ cargo fmt --check                                    # 0 violations
   to `PathBuf` (not `Once<PathBuf>`) before un-parking.
 - `crates/titania-lanes/src/bin/check_panic_surface.rs` has a pre-existing
   build break at line 95 (an unclosed delimiter). Independent of F-010.
+
+---
+
+## Postscript -- added 2026-07-01, perf/lane-parallelism branch
+
+This audit (sections 1-9) was generated against the pre-migration
+state of the codebase. Subsequently, rule id values were migrated
+from dash-format (e.g. `CARGO-FMT-001`) to underscore-format
+(e.g. `CARGO_FMT_001`) to align with the `RuleId` type invariant
+(uppercase ASCII + at least one underscore). The migration is atomic;
+after it lands, all references in this audit to the dash-format rule
+ids (notably `CARGO-FMT-001` on the line in section 2 describing the
+`run-cargo fmt` false-positive finding) refer to the pre-migration
+state and are preserved here as historical record.
+
+Other notable forward changes recorded in branch `perf/lane-parallelism`:
+- F-003 (`RuleId::new` short-circuit to `Empty` for too-long inputs) repaired.
+- `check-nightly-features` 10K regression: profiled, not reproduced; closed.
+- F-010 typed-error remainder: 6 of 10 lane files migrated to typed enums.
+- Stage 4 commit 1: `RuleId::new_const` + `validate_many` for typed-RULE_* constants.
+- `walk.rs` Aho-Corasick prefilter + par_bridge walker shipped.
+- The unclosed-delimiter build break in `check_panic_surface.rs:95` and
+  the `PathBuf is not an iterator` in `walk.rs` referenced above were
+  resolved in the perf checkpoint commit.

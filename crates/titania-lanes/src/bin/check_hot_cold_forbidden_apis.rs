@@ -29,9 +29,9 @@ use std::process::ExitCode;
 use model::{FindingData, HOT_CRATES};
 use titania_lanes::{Finding, LaneExit, LaneReport, current_target_project, exit};
 
-const RULE_INVALID_INVOCATION: &str = "HC-INVOCATION-001";
-const RULE_VIOLATION: &str = "HC-VIOLATION-001";
-const RULE_FIXTURE: &str = "HC-FIXTURE-001";
+const RULE_INVALID_INVOCATION: &str = "HC_INVOCATION_001";
+const RULE_VIOLATION: &str = "HC_VIOLATION_001";
+const RULE_FIXTURE: &str = "HC_FIXTURE_001";
 
 fn push_finding(report: &mut LaneReport, finding: &FindingData, rule: &'static str) {
     report.push(Finding::new(
