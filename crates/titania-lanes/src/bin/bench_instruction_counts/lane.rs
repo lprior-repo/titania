@@ -4,8 +4,9 @@ use std::{
     process::ExitCode,
 };
 
+use thiserror::Error;
 use titania_core::TargetProject;
-use titania_lanes::{CommandIn, LaneExit, current_target_project, exit};
+use titania_lanes::{CommandIn, LaneError, LaneExit, current_target_project, exit};
 
 /// Default benches the bash lane exercised. Override by passing names on argv.
 const DEFAULT_BENCHES: &[&str] = &["ir_traversal", "action_dispatch", "timer_wheel_tick"];
@@ -14,21 +15,23 @@ const DEFAULT_BENCHES: &[&str] = &["ir_traversal", "action_dispatch", "timer_whe
 const RUSTUP_TOOLCHAIN: &str = "nightly-2026-04-28";
 
 /// `-p` target that owns the criterion benches.
-const BENCH_PACKAGE: &str = "velvet-ballistics-workspace-tests";
+const BENCH_PACKAGE: &str = "titania-workspace-tests";
 
-const USAGE: &str = "usage: bench_instruction_counts [bench-name ...]\n  \
-     default benches: ir_traversal, action_dispatch, timer_wheel_tick";
-
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum BenchPlan {
     Run(Vec<String>),
     NotApplicable(String),
 }
 
+#[derive(Debug, Error)]
+enum BenchError {
+    #[error(transparent)]
+    Command(#[from] LaneError),
+    #[error("{0}")]
+    Parse(String),
+}
+
 pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
-    if args.iter().any(|a| a == "--help" || a == "-h") {
-        eprintln!("{USAGE}");
-        return exit(LaneExit::Clean);
-    }
     let target = match target_project() {
         Ok(target) => target,
         Err(code) => return code,
@@ -51,7 +54,7 @@ fn runnable_benches(target: &TargetProject, args: Vec<String>) -> Result<Vec<Str
     match bench_plan(target, args) {
         Ok(BenchPlan::Run(benches)) => Ok(benches),
         Ok(BenchPlan::NotApplicable(reason)) => Err(not_applicable_exit(&reason)),
-        Err(err) => Err(usage_error_exit(&err)),
+        Err(error) => Err(usage_error_exit(&error.to_string())),
     }
 }
 
@@ -66,26 +69,57 @@ fn usage_error_exit(err: &str) -> ExitCode {
 }
 
 fn run_bench_plan(target: &TargetProject, benches: &[String]) -> ExitCode {
-    if let Err(code) = require_perf(target) {
-        return code;
-    }
     let Some((target_dir, evidence_dir)) = prepare_evidence_dirs(target) else {
-        return exit(LaneExit::Failure);
+        return missing_perf_exit();
     };
-    benches
-        .iter()
-        .map(|bench| run_one_bench(target, &target_dir, &evidence_dir, bench))
-        .find(|code| *code != LaneExit::Clean)
-        .map_or_else(|| exit(LaneExit::Clean), exit)
+    if let Err(error) = require_perf(target) {
+        eprintln!("[bench-instruction-counts] {error}");
+        return LaneExit::Failure.into_exit_code();
+    }
+    for bench in benches {
+        eprintln!("[bench-instruction-counts] running {bench}");
+        if let Err(error) = run_compile(target, &target_dir, bench, &[]) {
+            eprintln!("[bench-instruction-counts] {} failed: {error}", bench);
+            return LaneExit::Violations.into_exit_code();
+        }
+        if let Err(error) = run_perf_stat(
+            target,
+            &target_dir,
+            bench,
+            &evidence_dir.join(format!("{bench}.perf.log")),
+        ) {
+            eprintln!("[bench-instruction-counts] {} failed: {error}", bench);
+            return LaneExit::Violations.into_exit_code();
+        }
+    }
+    LaneExit::Clean.into_exit_code()
 }
 
-fn require_perf(target: &TargetProject) -> Result<(), ExitCode> {
-    let mut perf_check = CommandIn::new(target, "perf").map_err(|err| {
-        eprintln!("[bench-instruction-counts] failed to prepare perf check: {err}");
-        exit(LaneExit::Failure)
-    })?;
-    perf_check.inherit_env().arg("--version");
-    perf_check.run_capture_raw().map(|_| ()).map_err(|_| missing_perf_exit())
+/// Helper to map LaneExit (the shared exit-code enum) to a process ExitCode
+/// for use as `Err(code)` in `Result<_, ExitCode>` flows.
+trait IntoExitCode {
+    fn into_exit_code(self) -> ExitCode;
+}
+impl IntoExitCode for LaneExit {
+    fn into_exit_code(self) -> ExitCode {
+        exit(self)
+    }
+}
+
+fn require_perf(target: &TargetProject) -> Result<(), BenchError> {
+    let mut perf = CommandIn::new(target, "perf")?;
+    perf.inherit_env().arg("--version");
+    let status = perf.run_status_raw()?;
+    if status.success() {
+        Ok(())
+    } else {
+        eprintln!("[bench-instruction-counts] perf check failed");
+        Err(BenchError::Command(LaneError::NonZeroExit {
+            program: "perf".to_owned(),
+            code: status.code(),
+            stderr: String::new(),
+        }))
+    }
 }
 
 fn missing_perf_exit() -> ExitCode {
@@ -94,7 +128,7 @@ fn missing_perf_exit() -> ExitCode {
 }
 
 fn prepare_evidence_dirs(target: &TargetProject) -> Option<(PathBuf, PathBuf)> {
-    let target_dir = target.as_std_path().join("target/bench-instruction-counts");
+    let target_dir = target.as_std_path().join("target/perf");
     let evidence_dir = target_dir.join("evidence");
     if let Err(e) = fs::create_dir_all(&evidence_dir) {
         eprintln!("[bench-instruction-counts] could not create evidence dir: {e}");
@@ -103,39 +137,13 @@ fn prepare_evidence_dirs(target: &TargetProject) -> Option<(PathBuf, PathBuf)> {
     Some((target_dir, evidence_dir))
 }
 
-fn run_one_bench(
-    target: &TargetProject,
-    target_dir: &Path,
-    evidence_dir: &Path,
-    bench: &str,
-) -> LaneExit {
-    if bench.is_empty() {
-        eprintln!("Empty benchmark name is not allowed.");
-        return LaneExit::Usage;
-    }
-    let log_file = evidence_dir.join(format!("{bench}.perf.log"));
-    eprintln!("[bench-instruction-counts] running {bench}");
-    if let Err(code) = run_compile(target, target_dir, bench, &[])
-        .and_then(|()| run_perf_stat(target, target_dir, bench, &log_file))
-    {
-        eprintln!("[bench-instruction-counts] {bench} failed: {code}");
-        return LaneExit::Violations;
-    }
-    if is_non_empty(&log_file) { LaneExit::Clean } else { empty_log_exit(&log_file) }
-}
-
-fn empty_log_exit(log_file: &Path) -> LaneExit {
-    eprintln!("Instruction-count log is empty: {}", log_file.display());
-    LaneExit::Violations
-}
-
-fn bench_plan(target: &TargetProject, args: Vec<String>) -> Result<BenchPlan, String> {
+fn bench_plan(target: &TargetProject, args: Vec<String>) -> Result<BenchPlan, BenchError> {
     if !package_manifest(target).is_file() {
         return Ok(BenchPlan::NotApplicable(
-            "benchmark package velvet-ballistics-workspace-tests is absent".to_owned(),
+            "benchmark package titania-workspace-tests is absent".to_owned(),
         ));
     }
-    let requested = requested_benches(args)?;
+    let requested = requested_benches(args).map_err(BenchError::Parse)?;
     let available = available_benches(target, requested);
     if available.is_empty() {
         Ok(BenchPlan::NotApplicable(
@@ -147,7 +155,7 @@ fn bench_plan(target: &TargetProject, args: Vec<String>) -> Result<BenchPlan, St
 }
 
 fn package_manifest(target: &TargetProject) -> PathBuf {
-    target.as_std_path().join("crates/velvet-ballistics-workspace-tests/Cargo.toml")
+    target.as_std_path().join("crates/titania-workspace-tests/Cargo.toml")
 }
 
 fn requested_benches(args: Vec<String>) -> Result<Vec<String>, String> {
@@ -164,8 +172,7 @@ fn requested_benches(args: Vec<String>) -> Result<Vec<String>, String> {
 }
 
 fn available_benches(target: &TargetProject, requested: Vec<String>) -> Vec<String> {
-    let benches_root =
-        target.as_std_path().join("crates/velvet-ballistics-workspace-tests/benches");
+    let benches_root = target.as_std_path().join("crates/titania-workspace-tests/benches");
     requested
         .into_iter()
         .filter(|bench| benches_root.join(format!("{bench}.rs")).is_file())
@@ -178,10 +185,9 @@ fn run_compile(
     target_dir: &Path,
     bench: &str,
     extra: &[&str],
-) -> Result<(), String> {
+) -> Result<(), BenchError> {
     let target_dir_value = target_dir.display().to_string();
-    let mut cmd = CommandIn::new(target, "rustup")
-        .map_err(|e| format!("failed to prepare cargo bench --no-run: {e}"))?;
+    let mut cmd = CommandIn::new(target, "rustup")?;
     cmd.inherit_env();
     append_compile_args(&mut cmd, bench, &target_dir_value, extra);
     run_with_status(&cmd, "cargo bench --no-run")
@@ -205,11 +211,10 @@ fn run_perf_stat(
     target_dir: &Path,
     bench: &str,
     log_file: &Path,
-) -> Result<(), String> {
+) -> Result<(), BenchError> {
     let target_dir_value = target_dir.display().to_string();
     let log_file_value = log_file.display().to_string();
-    let mut cmd = CommandIn::new(target, "perf")
-        .map_err(|e| format!("failed to prepare perf stat cargo bench: {e}"))?;
+    let mut cmd = CommandIn::new(target, "perf")?;
     cmd.inherit_env();
     append_perf_args(&mut cmd, bench, &target_dir_value, &log_file_value);
     run_with_status(&cmd, "perf stat cargo bench")
@@ -228,15 +233,28 @@ fn append_perf_args<'a>(
     cmd.arg("--").arg("--bench").env("CARGO_TARGET_DIR", target_dir);
 }
 
-fn run_with_status(cmd: &CommandIn<'_>, label: &str) -> Result<(), String> {
-    let status = cmd.run_status_raw().map_err(|e| format!("failed to spawn {label}: {e}"))?;
+fn run_with_status(cmd: &CommandIn<'_>, label: &str) -> Result<(), BenchError> {
+    let status = cmd.run_status_raw()?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!("{label} failed with exit {:?}", status.code()))
+        Err(BenchError::Parse(format!("{label} failed with exit {:?}", status.code())))
     }
 }
 
-fn is_non_empty(path: &Path) -> bool {
-    fs::metadata(path).is_ok_and(|m| m.len() > 0)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn requested_benches_uses_default_when_args_empty() {
+        let result = requested_benches(vec![]).expect("default benches");
+        assert_eq!(result, DEFAULT_BENCHES.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn requested_benches_rejects_empty_bench_name() {
+        let result = requested_benches(vec!["foo".to_owned(), "".to_owned()]);
+        assert!(result.is_err());
+    }
 }
