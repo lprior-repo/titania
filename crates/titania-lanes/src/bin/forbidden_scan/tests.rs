@@ -1,3 +1,10 @@
+#![allow(
+    clippy::disallowed_methods,
+    clippy::disallowed_macros,
+    clippy::panic_in_result_fn,
+    reason = "Test harness uses Result-returning test functions with assert! macros and process::Command."
+)]
+
 use std::{error::Error, fs};
 
 use titania_lanes::LaneReport;

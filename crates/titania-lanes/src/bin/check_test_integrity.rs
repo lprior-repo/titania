@@ -20,7 +20,7 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
-#![allow(clippy::type_complexity)]
+#![allow(clippy::type_complexity, reason = "Lane report types carry many fields from multi-step scanning pipelines.")]
 
 #[path = "check_test_integrity/mod.rs"]
 mod check_test_integrity;

@@ -92,6 +92,10 @@ struct TargetPackages {
 }
 
 impl TargetPackages {
+    /// Discover which packages are present in the workspace metadata.
+    ///
+    /// # Errors
+    /// Returns a `String` error when cargo metadata fails or parsing fails.
     fn discover(target: &TargetProject) -> Result<Self, String> {
         let output = cargo_capture(target, &["metadata", "--format-version", "1", "--no-deps"])?;
         let text = output.stdout_str().map_err(|error| error.to_string())?;
@@ -224,7 +228,7 @@ fn run_proof_steps(
     merge(drift, admission)
 }
 
-fn label(m: Mode) -> &'static str {
+const fn label(m: Mode) -> &'static str {
     match m {
         Mode::Fast => "fast",
         Mode::Standard => "standard",
@@ -251,15 +255,14 @@ fn step<F: FnOnce() -> LaneExit>(report: &mut LaneReport, label: &str, f: F) -> 
     }
 }
 
-fn merge(left: LaneExit, right: LaneExit) -> LaneExit {
+const fn merge(left: LaneExit, right: LaneExit) -> LaneExit {
     match (left, right) {
         (LaneExit::Failure | LaneExit::Usage, _) | (_, LaneExit::Failure | LaneExit::Usage) => {
             LaneExit::Failure
         }
         (LaneExit::Violations, _) | (_, LaneExit::Violations) => LaneExit::Violations,
-        (LaneExit::Clean, LaneExit::Clean)
-        | (LaneExit::Clean, LaneExit::NotApplicable)
-        | (LaneExit::NotApplicable, LaneExit::Clean) => LaneExit::Clean,
+        (LaneExit::Clean | LaneExit::NotApplicable, LaneExit::Clean)
+        | (LaneExit::Clean, LaneExit::NotApplicable) => LaneExit::Clean,
         (LaneExit::NotApplicable, LaneExit::NotApplicable) => LaneExit::NotApplicable,
     }
 }

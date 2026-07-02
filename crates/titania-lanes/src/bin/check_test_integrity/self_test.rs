@@ -1,3 +1,8 @@
+#![allow(
+    clippy::missing_errors_doc,
+    reason = "Self-test fixture helpers return Result but are internal to the test harness."
+)]
+
 use std::{
     fs,
     path::{Path, PathBuf},

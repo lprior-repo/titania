@@ -14,5 +14,5 @@
 mod lane;
 
 fn main() -> std::process::ExitCode {
-    lane::main_exit(std::env::args().skip(1).collect())
+    lane::main_exit(&std::env::args().skip(1).collect::<Vec<_>>())
 }

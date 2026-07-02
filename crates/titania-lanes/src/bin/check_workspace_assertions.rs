@@ -21,7 +21,7 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
-#![allow(clippy::filter_map_bool_then)]
+#![allow(clippy::filter_map_bool_then, reason = "TOML parsing in toml_scan.rs uses filter-map chains for quoted-value extraction that are clearer than chained filter+map.")]
 
 #[path = "check_workspace_assertions/mod.rs"]
 mod workspace_assertions;

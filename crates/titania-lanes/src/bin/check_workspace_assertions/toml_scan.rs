@@ -1,9 +1,15 @@
+#![allow(clippy::excessive_nesting, reason = "TOML parsing uses nested conditionals for key/value extraction that are idiomatic for line-by-line scanning.")]
+
 use std::collections::BTreeSet;
+
+const fn is_odd(index: usize) -> bool {
+    index.trailing_zeros() == 0
+}
 
 pub fn quoted_values_in_line(line: &str) -> Vec<String> {
     line.split('"')
         .enumerate()
-        .filter(|&(index, _)| index % 2 == 1)
+        .filter(|&(index, _)| is_odd(index))
         .map(|(_, value)| value.to_owned())
         .filter(|value| !value.is_empty())
         .collect()

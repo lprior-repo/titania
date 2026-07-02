@@ -83,7 +83,7 @@ impl StripState {
         true
     }
 
-    fn consume_string(&mut self, ch: char) -> bool {
+    const fn consume_string(&mut self, ch: char) -> bool {
         if !self.in_string {
             return false;
         }

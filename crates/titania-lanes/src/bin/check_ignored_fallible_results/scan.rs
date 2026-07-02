@@ -8,7 +8,9 @@ use titania_lanes::{Finding, LaneReport, helpers::line_no_from_idx};
 use crate::source::SourceLine;
 
 pub fn scan(root: &Path, allow: &BTreeMap<String, String>, report: &mut LaneReport) {
-    scan_roots(root).iter().for_each(|file_root| scan_dir(file_root, root, allow, report));
+    for file_root in &scan_roots(root) {
+        scan_dir(file_root, root, allow, report);
+    }
 }
 
 fn scan_roots(root: &Path) -> Vec<PathBuf> {
@@ -22,10 +24,10 @@ fn crate_src_roots(root: &Path) -> Vec<PathBuf> {
     let Ok(read) = std::fs::read_dir(&crates_dir) else {
         return Vec::new();
     };
-    read.flatten().filter_map(crate_src_root).collect()
+    read.flatten().filter_map(|e| crate_src_root(&e)).collect()
 }
 
-fn crate_src_root(entry: std::fs::DirEntry) -> Option<PathBuf> {
+fn crate_src_root(entry: &std::fs::DirEntry) -> Option<PathBuf> {
     let path = entry.path();
     let src = path.join("src");
     (path.is_dir() && src.is_dir()).then_some(src)
@@ -51,19 +53,21 @@ fn scan_dir(dir: &Path, root: &Path, allow: &BTreeMap<String, String>, report: &
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
-    read.flatten().for_each(|entry| scan_entry(entry.path(), root, allow, report));
+    for entry in read.flatten() {
+        scan_entry(&entry.path(), root, allow, report);
+    }
 }
 
 fn scan_entry(
-    path: PathBuf,
+    path: &Path,
     root: &Path,
     allow: &BTreeMap<String, String>,
     report: &mut LaneReport,
 ) {
     if path.is_dir() {
-        scan_dir(&path, root, allow, report);
+        scan_dir(path, root, allow, report);
     } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
-        scan_rust_file(&path, root, allow, report);
+        scan_rust_file(path, root, allow, report);
     }
 }
 
@@ -92,9 +96,9 @@ fn scan_file(file: &Path, rel: &str, allow: &BTreeMap<String, String>, report: &
     };
     let mut block_comment = false;
     let mut context = ScanContext { rel, allow, report };
-    text.lines().enumerate().for_each(|(idx, line)| {
+    for (idx, line) in text.lines().enumerate() {
         scan_line(&mut context, line_no_from_idx(idx), line, &mut block_comment);
-    });
+    }
 }
 
 struct ScanContext<'a> {

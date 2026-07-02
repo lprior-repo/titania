@@ -1,3 +1,4 @@
+#![allow(clippy::option_if_let_else, reason = "The match expression for argument_value is clearer than unwrap_or_else here, which would use a disallowed method.")]
 mod scan;
 mod self_test;
 mod vcs;
@@ -20,6 +21,7 @@ struct RootInfo {
     vcs: Vcs,
 }
 
+/// Entry point: parse args, dispatch to self-test or real scan.
 pub fn main_exit() -> std::process::ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -65,6 +67,12 @@ fn run_for_args(args: &[String]) -> LaneExit {
     }
 }
 
+/// Run the test-integrity scan: discover changed files, diff text, check for
+/// deleted/ignored/compile-only replacements and weakened assertions.
+///
+/// # Errors
+/// Returns a `String` error when VCS operations fail (e.g. invalid base
+/// revision, missing repository).
 fn check(target: &TargetProject, base: &str, vcs: Vcs) -> Result<i32, String> {
     vcs::validate_base_revision(target, base, vcs)?;
     let mut findings = deleted_file_findings(&vcs::changed_files(target, base, vcs)?);
@@ -95,14 +103,14 @@ fn deleted_file_findings(entries: &[(String, String)]) -> Vec<(String, String, S
 fn render_findings(findings: &[(String, String, String)]) {
     eprintln!("test integrity: FAIL");
     let mut report = LaneReport::new();
-    findings.iter().for_each(|(kind, path, detail)| {
-        push_finding(&mut report, kind, path.clone(), detail.clone());
-    });
+    for (kind, path, detail) in findings {
+        push_finding(&mut report, kind, path, detail);
+    }
     eprint!("{}", report.render());
     eprintln!("Add equal-or-stronger replacement coverage or bead-linked justification.");
 }
 
-fn push_finding(report: &mut LaneReport, kind: &str, path: String, detail: String) {
+fn push_finding(report: &mut LaneReport, kind: &str, path: &str, detail: &str) {
     let rule = match kind {
         "DeletedTestFile" => "TEST-INTEGRITY-DEL-001",
         "IgnoredOrSkippedTest" => "TEST-INTEGRITY-IGNORE-001",

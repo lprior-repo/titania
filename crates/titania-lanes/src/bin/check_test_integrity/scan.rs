@@ -1,22 +1,26 @@
+#![allow(clippy::excessive_nesting, reason = "Diff parsing logic requires conditional nesting for +++/--- line handling in update_current.")]
+
 use std::collections::BTreeSet;
 
+fn is_rust_ext(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"))
+}
+
 pub fn is_test_path(path: &str) -> bool {
-    if !path.ends_with(".rs") {
+    if !is_rust_ext(path) {
         return false;
     }
-    let segments: Vec<&str> = path.split('/').collect();
-    let is_in_tests = segments
-        .iter()
-        .any(|segment| matches!(*segment, "tests" | "benches" | "examples" | "fuzz"));
+    let is_in_tests = path.split('/').any(|segment| matches!(segment, "tests" | "benches" | "examples" | "fuzz"));
     is_in_tests || path.contains("workspace_tests") || is_module_test_path(path)
 }
 
 fn is_behavior_test_path(path: &str) -> bool {
-    if !path.ends_with(".rs") {
+    if !is_rust_ext(path) {
         return false;
     }
-    let segments: Vec<&str> = path.split('/').collect();
-    let is_in_tests = segments.contains(&"tests");
+    let is_in_tests = path.split('/').any(|segment| segment == "tests");
     is_in_tests || path.contains("workspace_tests") || is_module_test_path(path)
 }
 
@@ -40,7 +44,7 @@ fn is_src_tests_child_path(after_src: &str) -> bool {
     let child = after_src
         .strip_prefix("tests/")
         .or_else(|| after_src.rsplit_once("/tests/").map(|(_before, child)| child));
-    child.is_some_and(|value| !value.is_empty() && value.ends_with(".rs") && !value.contains('/'))
+    child.is_some_and(|value| !value.is_empty() && is_rust_ext(value) && !value.contains('/'))
 }
 
 fn has_exact_assertion(text: &str) -> bool {
@@ -115,28 +119,38 @@ impl DiffState {
             return;
         }
         if let Some(payload) = removed_payload(line) {
-            if !is_fixture_literal_line(payload) {
-                self.scan_removed(payload);
-            }
+            self.scan_removed_if_not_fixture(payload);
         } else if let Some(payload) = added_payload(line) {
-            if !is_fixture_literal_line(payload) {
-                self.scan_added(payload);
-            }
+            self.scan_added_if_not_fixture(payload);
         }
+    }
+
+    fn scan_removed_if_not_fixture(&mut self, payload: &str) {
+        if is_fixture_literal_line(payload) {
+            return;
+        }
+        self.scan_removed(payload);
+    }
+
+    fn scan_added_if_not_fixture(&mut self, payload: &str) {
+        if is_fixture_literal_line(payload) {
+            return;
+        }
+        self.scan_added(payload);
     }
 
     fn update_current(&mut self, line: &str) -> bool {
         if let Some(path) = line.strip_prefix("+++ b/") {
-            self.current = path.to_owned();
-            true
-        } else if let Some(path) = line.strip_prefix("--- a/") {
-            if self.current.is_empty() {
-                self.current = path.to_owned();
-            }
-            true
-        } else {
-            false
+            path.clone_into(&mut self.current);
+            return true;
         }
+        if let Some(path) = line.strip_prefix("--- a/") {
+            if self.current.is_empty() {
+                path.clone_into(&mut self.current);
+            }
+            return true;
+        }
+        false
     }
 
     fn scan_removed(&mut self, payload: &str) {
