@@ -51,7 +51,7 @@ fn inside_next(state: ScanState, raw: &str, rel: &str, report: &mut LaneReport) 
     };
     let count = next_count(count, raw);
     let depth = depth.saturating_add(brace_delta(raw));
-    if depth > 0 {
+    if depth > 0_i32 {
         return ScanState::Inside { start_line, count, depth };
     }
     push_oversized_function(start_line, count, rel, report);

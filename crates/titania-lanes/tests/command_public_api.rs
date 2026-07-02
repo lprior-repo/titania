@@ -84,7 +84,7 @@ fn command_public_api_nonzero_exit_carries_code_and_stderr() -> TestResult {
     match err {
         LaneError::NonZeroExit { program, code, stderr } => {
             assert_eq!(program, "/bin/sh");
-            assert_eq!(code, Some(7));
+            assert_eq!(code, Some(7_i32));
             assert_eq!(stderr, "err");
         }
         other => return Err(test_error(format!("expected NonZeroExit, got {other:?}"))),
@@ -99,7 +99,7 @@ fn command_public_api_run_capture_is_checked_like_run() -> TestResult {
     match err {
         LaneError::NonZeroExit { program, code, stderr } => {
             assert_eq!(program, "/bin/false");
-            assert_eq!(code, Some(1));
+            assert_eq!(code, Some(1_i32));
             assert_eq!(stderr, "");
         }
         other => return Err(test_error(format!("expected NonZeroExit, got {other:?}"))),
@@ -231,6 +231,6 @@ fn command_public_api_run_status_raw_preserves_exit_code() -> TestResult {
     command.arg("-c").arg("exit 4");
 
     let status = command.run_status_raw()?;
-    assert_eq!(status.code(), Some(4));
+    assert_eq!(status.code(), Some(4_i32));
     Ok(())
 }

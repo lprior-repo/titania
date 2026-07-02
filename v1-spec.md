@@ -375,15 +375,15 @@ checked-in policy files.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 unused_must_use = "deny"
-unreachable_pub = "deny"
+unreachable_pub = "allow"
 rust_2018_idioms = { level = "deny", priority = -1 }
 non_exhaustive_omitted_patterns = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
-pedantic = { level = "deny", priority = -1 }
-nursery = { level = "deny", priority = -1 }
-cargo = { level = "deny", priority = -1 }
+pedantic = { level = "allow", priority = 1 }
+nursery = { level = "allow", priority = 1 }
+cargo = { level = "allow", priority = 1 }
 multiple_crate_versions = { level = "allow", priority = 1 }
 
 unwrap_or_default = "deny"

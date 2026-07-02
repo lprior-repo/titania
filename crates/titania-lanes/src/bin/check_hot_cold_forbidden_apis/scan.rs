@@ -97,7 +97,7 @@ struct TestScope {
 impl TestScope {
     fn skip_line(&mut self, line: &str) -> bool {
         let trimmed = line.trim();
-        if self.depth > 0 {
+        if self.depth > 0_i32 {
             self.depth = next_depth(self.depth, line);
             return true;
         }

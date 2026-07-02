@@ -73,11 +73,13 @@ fn print_and_exit(report: &LaneReport) -> std::process::ExitCode {
 mod tests {
     use super::*;
 
-    fn fixture_file(root: &Path, rel: &str, text: &str) {
+    fn fixture_file(root: &Path, rel: &str, text: &str) -> Result<(), Box<dyn std::error::Error>> {
         let path = root.join(rel);
-        std::fs::create_dir_all(path.parent().expect("test path has parent"))
-            .expect("create parent dirs");
-        std::fs::write(path, text).expect("write test file");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, text)?;
+        Ok(())
     }
 
     fn long_source(lines: usize) -> String {
@@ -85,18 +87,20 @@ mod tests {
     }
 
     fn long_function() -> String {
-        let body: String = (0..26).map(|idx| format!("    let _v{idx} = {idx};\n")).collect();
+        let body: String =
+            (0_usize..26_usize).map(|idx| format!("    let _v{idx} = {idx};\n")).collect();
         format!("fn oversized() {{\n{body}}}\n")
     }
 
     #[test]
-    fn missing_source_length_ledger_keeps_line_limit_active() {
-        let temp = tempfile::tempdir().expect("tempdir");
+    fn missing_source_length_ledger_keeps_line_limit_active()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
         fixture_file(
             temp.path(),
             "crates/titania-lanes/src/lib.rs",
             &long_source(SOURCE_LINE_LIMIT + 1),
-        );
+        )?;
 
         let mut report = LaneReport::new();
         run(temp.path(), &mut report);
@@ -105,12 +109,13 @@ mod tests {
             finding.rule() == "SRC-LINE-LIMIT"
                 && finding.path() == "crates/titania-lanes/src/lib.rs"
         }));
+        Ok(())
     }
 
     #[test]
-    fn src_bin_production_functions_are_scanned() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        fixture_file(temp.path(), "crates/titania-lanes/src/bin/oversized.rs", &long_function());
+    fn src_bin_production_functions_are_scanned() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        fixture_file(temp.path(), "crates/titania-lanes/src/bin/oversized.rs", &long_function())?;
 
         let mut report = LaneReport::new();
         run(temp.path(), &mut report);
@@ -119,5 +124,6 @@ mod tests {
             finding.rule() == "FN-LINE-LIMIT"
                 && finding.path() == "crates/titania-lanes/src/bin/oversized.rs"
         }));
+        Ok(())
     }
 }

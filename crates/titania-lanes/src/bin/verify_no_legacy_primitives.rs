@@ -145,7 +145,7 @@ fn extract_balanced(
             depth = depth.saturating_add(1);
         } else if ch == close {
             depth = depth.saturating_sub(1);
-            if depth == 0 {
+            if depth == 0_i32 {
                 let end = open_pos.saturating_add(offset).saturating_add(ch.len_utf8());
                 return text.get(start..end);
             }

@@ -61,20 +61,17 @@ pub fn normalize_slashes(p: &Path) -> String {
 
 #[must_use]
 pub fn relative_path(root: &Path, p: &Path) -> String {
-    match p.strip_prefix(root) {
-        Ok(r) => normalize_slashes(r),
-        Err(_) => normalize_slashes(p),
-    }
+    p.strip_prefix(root).map_or_else(|_| normalize_slashes(p), normalize_slashes)
 }
 
-pub fn walk_rs_files(dir: &Path, _root: &Path, out: &mut Vec<PathBuf>) {
+pub fn walk_rs_files(dir: &Path, root: &Path, out: &mut Vec<PathBuf>) {
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in read.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            walk_rs_files(&path, _root, out);
+            walk_rs_files(&path, root, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
             out.push(path);
         }
@@ -96,7 +93,7 @@ impl LineNo {
 }
 
 #[must_use]
-pub fn line_diff(start: usize, end: usize) -> usize {
+pub const fn line_diff(start: usize, end: usize) -> usize {
     end.saturating_sub(start)
 }
 

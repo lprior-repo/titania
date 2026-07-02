@@ -23,6 +23,7 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
+use core::fmt::Write as _;
 use std::{env, io};
 
 use thiserror::Error;
@@ -49,6 +50,11 @@ pub enum CurrentTargetError {
 /// Lanes are launched from the project they should judge; this helper is the
 /// single adapter that turns the ambient CWD into the typed `TargetProject`
 /// value used by subprocess code.
+///
+/// # Errors
+/// Returns [`CurrentTargetError::CurrentDir`] when CWD cannot be read and
+/// [`CurrentTargetError::Target`] when no valid Cargo target project can be
+/// discovered from that directory.
 pub fn current_target_project() -> Result<TargetProject, CurrentTargetError> {
     let cwd = env::current_dir().map_err(CurrentTargetError::CurrentDir)?;
     discover_target(&cwd).map_err(CurrentTargetError::Target)
@@ -78,7 +84,7 @@ impl Finding {
     }
 
     #[must_use]
-    pub fn rule(&self) -> &'static str {
+    pub const fn rule(&self) -> &'static str {
         self.rule
     }
 
@@ -88,7 +94,7 @@ impl Finding {
     }
 
     #[must_use]
-    pub fn line(&self) -> u32 {
+    pub const fn line(&self) -> u32 {
         self.line
     }
 
@@ -131,21 +137,22 @@ impl LaneReport {
         self.findings.len()
     }
 
-    pub fn record_pass(&mut self) {
+    pub const fn record_pass(&mut self) {
         self.passed = self.passed.saturating_add(1);
     }
 
-    pub fn record_scan(&mut self) {
+    pub const fn record_scan(&mut self) {
         self.scanned = self.scanned.saturating_add(1);
     }
 
     /// Stable `path:line: rule -- message` line for each finding.
     #[must_use]
     pub fn render(&self) -> String {
-        self.findings
-            .iter()
-            .map(|f| format!("{}:{}: {} -- {}\n", f.path, f.line, f.rule, f.message))
-            .collect()
+        self.findings.iter().fold(String::new(), |mut out, f| {
+            match writeln!(out, "{}:{}: {} -- {}", f.path, f.line, f.rule, f.message) {
+                Ok(()) | Err(_) => out,
+            }
+        })
     }
 }
 
@@ -169,13 +176,12 @@ impl LaneExit {
     /// Stable process exit code. [`LaneExit::NotApplicable`] returns `0`
     /// because a non-applicable lane is a successful process completion.
     #[must_use]
-    pub fn as_u8(self) -> u8 {
+    pub const fn as_u8(self) -> u8 {
         match self {
-            LaneExit::Clean => 0,
-            LaneExit::NotApplicable => 0,
-            LaneExit::Violations => 1,
-            LaneExit::Usage => 2,
-            LaneExit::Failure => 3,
+            Self::Clean | Self::NotApplicable => 0,
+            Self::Violations => 1,
+            Self::Usage => 2,
+            Self::Failure => 3,
         }
     }
 }

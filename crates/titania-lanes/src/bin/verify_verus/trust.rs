@@ -71,7 +71,9 @@ fn is_forbidden_trust_line(line: &str) -> bool {
 
 fn is_external_marker_line(line: &str) -> bool {
     !is_rust_comment(line)
-        && (line.contains("#[verifier::external_body]") || line.contains("#[verifier::external]"))
+        && (line.contains("#[verifier::external_body]")
+            || line.contains("#[verifier::external]")
+            || line.contains("assume_specification["))
 }
 
 fn is_rust_comment(line: &str) -> bool {

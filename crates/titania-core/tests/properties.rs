@@ -23,9 +23,9 @@ proptest! {
     }
 
     #[test]
-    fn digest_is_always_64_lowercase_hex(_seed in any::<u32>()) {
+    fn digest_is_always_64_lowercase_hex(seed in any::<u32>()) {
         // Any random input should yield a 64-char lowercase-hex string.
-        let d = Digest::from_bytes(&_seed.to_le_bytes());
+        let d = Digest::from_bytes(&seed.to_le_bytes());
         let s = d.as_hex();
         prop_assert_eq!(s.len(), 64);
         prop_assert!(
@@ -182,7 +182,7 @@ proptest! {
         probe in any::<i32>(),
     ) {
         // Map probe into a wider range than the text range so we exercise both sides.
-        let p = if probe < 0 { 0u32 } else { probe as u32 };
+        let p = u32::try_from(probe).map_or(0_u32, |value| value);
         let end = start.saturating_add(width);
         let r = TextRange::new(start, end).unwrap();
         let inside = r.contains_byte(p);

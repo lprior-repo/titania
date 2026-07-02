@@ -183,6 +183,8 @@ fn discarded_bare_call(trimmed: &str) -> bool {
         && !trimmed.contains("assert")
         && !trimmed.contains("expect(")
         && !trimmed.contains("unwrap")
+        && !trimmed.contains(".push(")
+        && !trimmed.contains(".pop(")
         && contains_fallible_signal(trimmed)
 }
 

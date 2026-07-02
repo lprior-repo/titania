@@ -173,23 +173,23 @@ mod tests {
     use titania_lanes::LaneExit;
 
     #[test]
-    fn project_without_fuzz_targets_emits_not_applicable_disposition() {
-        let temp = tempfile::tempdir().expect("temporary target project");
+    fn project_without_fuzz_targets_emits_not_applicable_disposition()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
         fs::write(
             temp.path().join("Cargo.toml"),
             "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-        )
-        .expect("write manifest");
-        let target = target_project(temp.path());
+        )?;
+        let target = target_project(temp.path())?;
 
-        let outcome = run_lane(&target, LaneInput::DiscoverDefault)
-            .expect("lane should classify missing fuzz setup");
+        let outcome = run_lane(&target, LaneInput::DiscoverDefault)?;
 
         assert!(matches!(outcome, LaneOutcome::NotApplicable(_)));
         assert_eq!(outcome.to_lane_exit(), LaneExit::NotApplicable);
+        Ok(())
     }
 
-    fn target_project(path: &Path) -> TargetProject {
-        TargetProject::try_from_path(path).expect("valid target project")
+    fn target_project(path: &Path) -> Result<TargetProject, titania_core::TargetProjectError> {
+        TargetProject::try_from_path(path)
     }
 }

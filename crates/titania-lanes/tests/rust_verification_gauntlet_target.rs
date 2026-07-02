@@ -44,7 +44,7 @@ fn plain_target_without_vb_compile_is_cleanly_not_applicable() -> TestResult {
     let stderr = stderr_text(&output)?;
 
     assert!(!stderr.contains("titania-lanes` not found"), "{stderr}");
-    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    assert_eq!(output.status.code(), Some(0_i32), "{stderr}");
     assert!(stderr.contains("NotApplicable: package vb_compile absent"), "{stderr}");
     Ok(())
 }

@@ -1,0 +1,6 @@
+trusted-base-ledger/v1
+artifact: verification/verus/receipt_schema.rs
+marker: assume_specification[production::is_supported_receipt_schema_version]
+justification: Verus target binds directly to production schema.rs via #[path] and assumes the pure const predicate contract because Verus cannot execute the compiled Rust body in this harness.
+owner: Lewis
+review: proof-reviewer finding 2026-07-02

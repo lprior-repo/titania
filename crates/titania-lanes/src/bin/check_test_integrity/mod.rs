@@ -160,7 +160,7 @@ mod tests {
             "#[test]\n#[ignore]\nfn tracks_behavior() {\n    assert_eq!(2 + 2, 4);\n}\n",
         )?;
 
-        assert_eq!(check(&target, "HEAD", Vcs::Git)?, 1);
+        assert_eq!(check(&target, "HEAD", Vcs::Git)?, 1_i32);
         Ok(())
     }
 }

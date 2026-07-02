@@ -64,7 +64,7 @@ fn scenario_workspace_discovery_from_subcrate_reports_member_diff() -> TestResul
     let stderr = stderr_text(&output)?;
 
     // Then: the lane discovers the workspace target and reports the member diff.
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(1_i32));
     assert!(stderr.contains("CARGO-FMT-001"));
     assert!(stderr.contains("crates/foo/src/lib.rs"));
     Ok(())
@@ -80,7 +80,7 @@ fn scenario_single_crate_root_uses_cwd_as_target() -> TestResult {
     let stderr = stderr_text(&output)?;
 
     // Then: the lane reports the file inside that single-crate target.
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(output.status.code(), Some(1_i32));
     assert!(stderr.contains("CARGO-FMT-001"));
     assert!(stderr.contains("src/lib.rs"));
     Ok(())
@@ -96,7 +96,7 @@ fn scenario_missing_cargo_toml_returns_usage_with_typed_error() -> TestResult {
     let stderr = stderr_text(&output)?;
 
     // Then: discovery fails closed as a usage/config error with the typed message.
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(2_i32));
     assert!(stderr.contains("target discovery failed"));
     assert!(stderr.contains("target project directory does not contain a Cargo.toml file"));
     Ok(())
@@ -107,7 +107,7 @@ fn scenario_completed_lane_receipt_records_resolved_target_root() -> TestResult 
     // Given: a clean standalone Cargo package and a successful lane run.
     let target_dir = single_crate("receipt_target", "pub fn value() -> u8 {\n    1\n}\n")?;
     let output = run_cargo(target_dir.path(), &["fmt"])?;
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(0_i32));
 
     // When: a receipt is built for the completed lane.
     let target = discover_target(target_dir.path())?;
