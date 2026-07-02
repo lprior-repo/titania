@@ -20,7 +20,7 @@ struct RunSummary {
 }
 
 impl RunSummary {
-    fn record(mut self, passed: bool) -> Self {
+    const fn record(mut self, passed: bool) -> Self {
         self.had_runs = true;
         self.any_failed = self.any_failed || !passed;
         self
@@ -47,7 +47,7 @@ fn run_for_target(target: &TargetProject) -> ExitCode {
     if cfg_files.is_empty() {
         return no_cfg_exit(&tla_dir);
     }
-    summarize_exit(run_cfg_pairs(target, &cfg_files))
+    summarize_exit(&run_cfg_pairs(target, &cfg_files))
 }
 
 fn no_tla_dir_exit(tla_dir: &Path) -> ExitCode {
@@ -63,7 +63,7 @@ fn no_cfg_exit(tla_dir: &Path) -> ExitCode {
     exit(LaneExit::Clean)
 }
 
-fn summarize_exit(summary: RunSummary) -> ExitCode {
+fn summarize_exit(summary: &RunSummary) -> ExitCode {
     if !summary.had_runs {
         eprintln!("[run-tlc-checks] no .tla/.cfg pairs found; nothing to check");
         return exit(LaneExit::Clean);
