@@ -24,7 +24,7 @@
 #![forbid(unsafe_code)]
 
 use core::fmt::Write as _;
-use std::{env, io};
+use std::{env, io, path::Path};
 
 use thiserror::Error;
 use titania_core::{TargetProject, TargetProjectError, discover_target};
@@ -45,6 +45,25 @@ pub enum CurrentTargetError {
     Target(#[from] TargetProjectError),
 }
 
+/// Construct a [`TargetProject`] from an arbitrary filesystem path.
+///
+/// Walks ancestors from the given path, reads manifests, and selects the
+/// nearest workspace root (or single-package root). This is the pure core
+/// of target-project resolution — it accepts any `&Path` and returns a
+/// validated `TargetProject` or a typed error.
+///
+/// # Errors
+/// Returns a [`TargetProjectError`] when the path cannot be resolved to
+/// a valid Cargo target project.
+///
+/// # Pure core
+/// This function performs no I/O beyond filesystem reads for manifest
+/// discovery. It accepts `&Path` to allow callers to pass pre-validated
+/// paths from other layers without requiring CWD resolution.
+pub fn target_project_from_path(cwd: &Path) -> Result<TargetProject, TargetProjectError> {
+    discover_target(cwd)
+}
+
 /// Discover the target Rust project from the current working directory.
 ///
 /// Lanes are launched from the project they should judge; this helper is the
@@ -57,7 +76,7 @@ pub enum CurrentTargetError {
 /// discovered from that directory.
 pub fn current_target_project() -> Result<TargetProject, CurrentTargetError> {
     let cwd = env::current_dir().map_err(CurrentTargetError::CurrentDir)?;
-    discover_target(&cwd).map_err(CurrentTargetError::Target)
+    target_project_from_path(&cwd).map_err(CurrentTargetError::Target)
 }
 /// One typed finding produced by a lane.
 #[derive(Debug, Clone, PartialEq, Eq)]
