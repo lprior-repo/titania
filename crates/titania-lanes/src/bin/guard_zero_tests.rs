@@ -12,7 +12,10 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
-use std::env;
+use std::{
+    env,
+    io::{self, Write},
+};
 
 use titania_lanes::{CommandIn, CommandOutput, LaneExit, current_target_project, exit};
 
@@ -24,30 +27,39 @@ const USAGE: &str = "usage: guard_zero_tests [--] <cargo-test-args>\n  \
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        eprintln!("{USAGE}");
-        return exit(LaneExit::Clean);
+        return exit_after_stderr_line(format_args!("{USAGE}"), LaneExit::Clean);
     }
     match parse_lane_input(args) {
-        LaneInput::MissingCommand => {
-            eprintln!("guard-zero-tests: no command supplied");
-            eprintln!("{USAGE}");
-            exit(LaneExit::Usage)
+        LaneInput::MissingCommand => missing_command_exit(),
+        LaneInput::Run(cmd_args) => run_command_exit(&cmd_args),
+    }
+}
+
+fn missing_command_exit() -> std::process::ExitCode {
+    match write_stderr_line(format_args!("guard-zero-tests: no command supplied")) {
+        Ok(()) => exit_after_stderr_line(format_args!("{USAGE}"), LaneExit::Usage),
+        Err(_) => exit(LaneExit::Failure),
+    }
+}
+
+fn run_command_exit(cmd_args: &[String]) -> std::process::ExitCode {
+    let target = match current_target_project() {
+        Ok(target) => target,
+        Err(err) => {
+            return exit_after_stderr_line(
+                format_args!("[guard-zero-tests] cannot resolve target project: {err}"),
+                LaneExit::Usage,
+            );
         }
-        LaneInput::Run(cmd_args) => {
-            let target = match current_target_project() {
-                Ok(target) => target,
-                Err(err) => {
-                    eprintln!("[guard-zero-tests] cannot resolve target project: {err}");
-                    return exit(LaneExit::Usage);
-                }
-            };
-            match run_lane(&target, &cmd_args) {
-                Ok(()) => exit(LaneExit::Clean),
-                Err(err) => {
-                    eprintln!("[guard-zero-tests] {err}");
-                    exit(LaneExit::Violations)
-                }
-            }
+    };
+    lane_result_exit(run_lane(&target, cmd_args))
+}
+
+fn lane_result_exit(result: Result<(), String>) -> std::process::ExitCode {
+    match result {
+        Ok(()) => exit(LaneExit::Clean),
+        Err(err) => {
+            exit_after_stderr_line(format_args!("[guard-zero-tests] {err}"), LaneExit::Violations)
         }
     }
 }
@@ -62,6 +74,7 @@ enum TestEvidence {
 }
 
 type ParsedCommand<'a> = (&'a str, &'a [String]);
+type LineCountParser = fn(&str) -> Option<u32>;
 
 fn parse_lane_input(args: Vec<String>) -> LaneInput {
     let cmd: Vec<String> = match args.iter().position(|arg| arg == "--") {
@@ -71,15 +84,23 @@ fn parse_lane_input(args: Vec<String>) -> LaneInput {
     if cmd.is_empty() { LaneInput::MissingCommand } else { LaneInput::Run(cmd) }
 }
 
+/// # Errors
+///
+/// Returns an error when the command cannot be parsed, fails to run, fails, or
+/// reports no applicable tests.
 fn run_lane(target: &titania_core::TargetProject, cmd_args: &[String]) -> Result<(), String> {
-    eprintln!("[guard-zero-tests] running: {}", cmd_args.join(" "));
+    write_stderr_line(format_args!("[guard-zero-tests] running: {}", cmd_args.join(" ")))
+        .map_err(|err| stderr_error(&err))?;
     let (program, passthrough) = parse_command_args(cmd_args)?;
     let output = run_test_command(target, program, passthrough)?;
-    let combined = combine_output(&output.stdout, &output.stderr);
+    let combined = combine_output(output.stdout(), output.stderr());
     reject_failed_command(&output, &combined)?;
     report_test_evidence(parse_test_count(&combined)?)
 }
 
+/// # Errors
+///
+/// Returns an error when no program argument is present.
 fn parse_command_args(cmd_args: &[String]) -> Result<ParsedCommand<'_>, String> {
     cmd_args
         .split_first()
@@ -87,6 +108,9 @@ fn parse_command_args(cmd_args: &[String]) -> Result<ParsedCommand<'_>, String> 
         .ok_or_else(|| "guard-zero-tests: empty command".to_string())
 }
 
+/// # Errors
+///
+/// Returns an error when the command cannot be prepared or spawned.
 fn run_test_command<'a>(
     target: &'a titania_core::TargetProject,
     program: &'a str,
@@ -94,60 +118,93 @@ fn run_test_command<'a>(
 ) -> Result<CommandOutput, String> {
     let mut command =
         CommandIn::new(target, program).map_err(|e| format!("failed to spawn {program}: {e}"))?;
-    command.inherit_env();
-    passthrough.iter().for_each(|arg| {
-        command.arg(arg.as_str());
-    });
+    let _ = command.inherit_env();
+    let _ = command.args_strings(passthrough);
     command.run_capture_raw().map_err(|e| format!("failed to spawn {program}: {e}"))
 }
 
+/// # Errors
+///
+/// Returns an error when the captured command status was non-zero or signaled.
 fn reject_failed_command(output: &CommandOutput, combined: &str) -> Result<(), String> {
-    match output.status.code() {
+    match output.status().code() {
         Some(0) => Ok(()),
         Some(code) => reject_nonzero_command(code, combined),
         None => reject_signaled_command(combined),
     }
 }
 
+/// # Errors
+///
+/// Returns an error after reporting a non-zero command status.
 fn reject_nonzero_command(code: i32, combined: &str) -> Result<(), String> {
-    eprintln!("[guard-zero-tests] cargo test exited {code} — treating as tooling failure");
+    write_stderr_line(format_args!(
+        "[guard-zero-tests] cargo test exited {code} - treating as tooling failure"
+    ))
+    .map_err(|err| stderr_error(&err))?;
     if let Some(n) = extract_applicable_count(combined) {
-        eprintln!("[guard-zero-tests] applicable test count: {n} (cargo failed with exit {code})");
+        write_stderr_line(format_args!(
+            "[guard-zero-tests] applicable test count: {n} (cargo failed with exit {code})"
+        ))
+        .map_err(|err| stderr_error(&err))?;
     }
-    eprintln!("{combined}");
+    write_stderr_line(format_args!("{combined}")).map_err(|err| stderr_error(&err))?;
     Err(format!("command exited with status {code}"))
 }
 
+/// # Errors
+///
+/// Returns an error after reporting a signaled command termination.
 fn reject_signaled_command(combined: &str) -> Result<(), String> {
-    eprintln!("[guard-zero-tests] command terminated by signal");
-    eprintln!("{combined}");
+    write_stderr_line(format_args!("[guard-zero-tests] command terminated by signal"))
+        .map_err(|err| stderr_error(&err))?;
+    write_stderr_line(format_args!("{combined}")).map_err(|err| stderr_error(&err))?;
     Err("command terminated by signal".to_string())
 }
 
+/// # Errors
+///
+/// Returns an error when cargo output contains no recognized test count.
 fn parse_test_count(combined: &str) -> Result<u32, String> {
-    extract_applicable_count(combined).ok_or_else(|| {
-        eprintln!("[guard-zero-tests] FAIL: could not parse test count from cargo output.");
-        eprintln!("[guard-zero-tests] Raw output:\n{combined}");
-        "could not parse test count from cargo output".to_string()
-    })
+    extract_applicable_count(combined).map_or_else(|| missing_test_count(combined), Ok)
 }
 
+/// # Errors
+///
+/// Returns an error when reporting fails or zero applicable tests ran.
 fn report_test_evidence(count: u32) -> Result<(), String> {
     match classify_evidence(count) {
         TestEvidence::Applicable(count) => {
-            eprintln!("[guard-zero-tests] PASS: {count} applicable tests executed");
+            write_stderr_line(format_args!(
+                "[guard-zero-tests] PASS: {count} applicable tests executed"
+            ))
+            .map_err(|err| stderr_error(&err))?;
             Ok(())
         }
         TestEvidence::NotApplicable => {
-            eprintln!(
+            write_stderr_line(format_args!(
                 "[guard-zero-tests] FAIL: command completed but executed zero applicable tests"
-            );
+            ))
+            .map_err(|err| stderr_error(&err))?;
             Err("zero applicable tests executed".to_string())
         }
     }
 }
 
-fn classify_evidence(count: u32) -> TestEvidence {
+/// # Errors
+///
+/// Returns an error when writing the parse failure report fails.
+fn missing_test_count(combined: &str) -> Result<u32, String> {
+    write_stderr_line(format_args!(
+        "[guard-zero-tests] FAIL: could not parse test count from cargo output."
+    ))
+    .map_err(|err| stderr_error(&err))?;
+    write_stderr_line(format_args!("[guard-zero-tests] Raw output:\n{combined}"))
+        .map_err(|err| stderr_error(&err))?;
+    Err("could not parse test count from cargo output".to_string())
+}
+
+const fn classify_evidence(count: u32) -> TestEvidence {
     if count == 0 { TestEvidence::NotApplicable } else { TestEvidence::Applicable(count) }
 }
 
@@ -184,7 +241,7 @@ fn running_line_count(line: &str) -> Option<u32> {
         return None;
     }
     let after = trimmed.strip_prefix("running ")?;
-    let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
 }
 
@@ -220,23 +277,44 @@ fn cargo_test_passed_count(line: &str) -> Option<u32> {
 
 /// Format 4 is covered by [`cargo_test_passed_count`].
 fn extract_cargo_test_filtered(text: &str) -> Option<u32> {
-    sum_line_counts(text, |line| {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("cargo test:")
-            && trimmed.contains("passed")
-            && trimmed.contains("filtered out")
-        {
-            cargo_test_passed_count(trimmed)
-        } else {
-            None
-        }
-    })
+    sum_line_counts(text, cargo_test_filtered_count)
 }
 
-fn sum_line_counts(text: &str, parse: fn(&str) -> Option<u32>) -> Option<u32> {
+fn cargo_test_filtered_count(line: &str) -> Option<u32> {
+    let trimmed = line.trim_start();
+    if is_cargo_test_filtered_line(trimmed) { cargo_test_passed_count(trimmed) } else { None }
+}
+
+fn is_cargo_test_filtered_line(trimmed: &str) -> bool {
+    trimmed.starts_with("cargo test:")
+        && trimmed.contains("passed")
+        && trimmed.contains("filtered out")
+}
+
+fn sum_line_counts(text: &str, parse: LineCountParser) -> Option<u32> {
     let (seen, total) = text
         .lines()
         .filter_map(parse)
         .fold((false, 0_u32), |(_, total), count| (true, total.saturating_add(count)));
     if seen { Some(total) } else { None }
+}
+
+fn exit_after_stderr_line(args: std::fmt::Arguments<'_>, code: LaneExit) -> std::process::ExitCode {
+    match write_stderr_line(args) {
+        Ok(()) => exit(code),
+        Err(_) => exit(LaneExit::Failure),
+    }
+}
+
+/// # Errors
+///
+/// Returns an error when stderr cannot be written.
+fn write_stderr_line(args: std::fmt::Arguments<'_>) -> io::Result<()> {
+    let mut stderr = io::stderr().lock();
+    stderr.write_fmt(args)?;
+    stderr.write_all(b"\n")
+}
+
+fn stderr_error(err: &io::Error) -> String {
+    format!("failed to write stderr: {err}")
 }

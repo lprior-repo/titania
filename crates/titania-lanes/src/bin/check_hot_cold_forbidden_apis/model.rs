@@ -30,7 +30,7 @@ pub(super) struct FindingData {
 
 impl FindingData {
     pub(super) fn line_no_as_u32(&self) -> u32 {
-        u32::try_from(self.line_no).unwrap_or(u32::MAX)
+        u32::try_from(self.line_no).map_or(u32::MAX, core::convert::identity)
     }
 }
 

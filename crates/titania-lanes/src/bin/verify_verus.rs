@@ -19,24 +19,37 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
+#[path = "verify_verus/diagnostics.rs"]
+/// Diagnostic helpers for lane exits and stderr reporting.
+pub mod diagnostics;
 #[path = "verify_verus/evidence.rs"]
-mod evidence;
+/// Evidence-file helpers for the Verus lane.
+pub mod evidence;
 #[path = "verify_verus/outcome.rs"]
-mod outcome;
+/// Verus lane outcome orchestration.
+pub mod outcome;
 #[path = "verify_verus/registry.rs"]
-mod registry;
+/// Proof-obligation registry parsing.
+pub mod registry;
+#[path = "verify_verus/target_outcome.rs"]
+/// Verus target execution and failure recording.
+pub mod target_outcome;
 #[path = "verify_verus/trust.rs"]
-mod trust;
+/// Trust-boundary scans for Verus artifacts.
+pub mod trust;
 #[path = "verify_verus/verus_tool.rs"]
-mod verus_tool;
+/// Verus process execution helpers.
+pub mod verus_tool;
 #[path = "verify_verus/walk.rs"]
-mod walk;
+/// Recursive Rust source walking helpers.
+pub mod walk;
 
 use std::{
     env, fs,
     path::{Path, PathBuf},
 };
 
+use diagnostics::{err_after_stderr, lane_after_stderr, write_stderr_line};
 use outcome::run_production_targets;
 use registry::ProofTarget;
 use titania_core::TargetProject;
@@ -60,10 +73,10 @@ fn main() -> std::process::ExitCode {
     let mut report = LaneReport::new();
     match run(&mut report) {
         LaneExit::Clean => exit(LaneExit::Clean),
-        LaneExit::Violations => {
-            eprintln!("{}", report.render());
-            exit(LaneExit::Violations)
-        }
+        LaneExit::Violations => match write_stderr_line(format_args!("{}", report.render())) {
+            Ok(()) => exit(LaneExit::Violations),
+            Err(_) => exit(LaneExit::Failure),
+        },
         other => exit(other),
     }
 }
@@ -74,6 +87,12 @@ fn run(report: &mut LaneReport) -> LaneExit {
     }
 }
 
+/// Run the lane after converting setup failures into lane exits.
+///
+/// # Errors
+///
+/// Returns a lane exit when target discovery, tool discovery, registry input,
+/// or evidence setup fails.
 fn run_checked(report: &mut LaneReport) -> Result<LaneExit, LaneExit> {
     let target = resolve_target()?;
     ensure_verus_on_path(&target)?;
@@ -85,25 +104,44 @@ fn run_checked(report: &mut LaneReport) -> Result<LaneExit, LaneExit> {
     Ok(run_production_targets(report, &target, &paths.evidence_dir, &inputs))
 }
 
+/// Resolve the current target project.
+///
+/// # Errors
+///
+/// Returns usage or failure when the target project cannot be discovered or
+/// the diagnostic cannot be written.
 fn resolve_target() -> Result<TargetProject, LaneExit> {
     match current_target_project() {
         Ok(target) => Ok(target),
-        Err(error) => {
-            eprintln!("[verify-verus] target discovery failed: {error}");
-            Err(LaneExit::Usage)
-        }
+        Err(error) => err_after_stderr(
+            format_args!("[verify-verus] target discovery failed: {error}"),
+            LaneExit::Usage,
+        ),
     }
 }
 
+/// Ensure the Verus binary is runnable from the target environment.
+///
+/// # Errors
+///
+/// Returns failure when Verus is unavailable or the diagnostic cannot be
+/// written.
 fn ensure_verus_on_path(target: &TargetProject) -> Result<(), LaneExit> {
     if verus_tool::verus_on_path(target) {
-        Ok(())
-    } else {
-        eprintln!("[verify-verus] verus not on PATH; formal verification cannot run");
-        Err(LaneExit::Failure)
+        return Ok(());
     }
+    err_after_stderr(
+        format_args!("[verify-verus] verus not on PATH; formal verification cannot run"),
+        LaneExit::Failure,
+    )
 }
 
+/// Load and validate lane inputs.
+///
+/// # Errors
+///
+/// Returns a lane exit when the registry, evidence directory, registry
+/// targets, or initial summary cannot be prepared.
 fn prepare_inputs(
     target: &TargetProject,
     paths: &LanePaths,
@@ -117,61 +155,90 @@ fn prepare_inputs(
     Ok(VerificationInputs { targets, summary_path })
 }
 
+/// Ensure the registry path exists and is non-empty.
+///
+/// # Errors
+///
+/// Returns usage when the registry is missing/empty, or failure when the
+/// diagnostic cannot be written.
 fn ensure_registry_has_content(registry: &Path) -> Result<(), LaneExit> {
     if registry::registry_path_is_nonempty(registry) {
-        Ok(())
-    } else {
-        eprintln!(
+        return Ok(());
+    }
+    err_after_stderr(
+        format_args!(
             "[verify-verus] registry missing or empty: {}; formal obligations are required",
             registry.display()
-        );
-        Err(LaneExit::Usage)
-    }
+        ),
+        LaneExit::Usage,
+    )
 }
 
+/// Create the evidence directory.
+///
+/// # Errors
+///
+/// Returns failure when the directory cannot be created or the diagnostic
+/// cannot be written.
 fn ensure_evidence_dir(evidence_dir: &Path) -> Result<(), LaneExit> {
-    match fs::create_dir_all(evidence_dir) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            eprintln!("[verify-verus] cannot create evidence dir: {e}");
-            Err(LaneExit::Failure)
-        }
-    }
+    fs::create_dir_all(evidence_dir).map_err(|e| {
+        lane_after_stderr(
+            format_args!("[verify-verus] cannot create evidence dir: {e}"),
+            LaneExit::Failure,
+        )
+    })
 }
 
+/// Parse proof targets from the registry.
+///
+/// # Errors
+///
+/// Returns failure when the registry cannot be parsed or the diagnostic
+/// cannot be written.
 fn load_registry_targets(
     target: &TargetProject,
     registry: &Path,
 ) -> Result<Vec<ProofTarget>, LaneExit> {
-    match registry::parse_registry_targets(registry, target) {
-        Ok(targets) => Ok(targets),
-        Err(e) => {
-            eprintln!("[verify-verus] registry parse failed: {e}");
-            Err(LaneExit::Failure)
-        }
-    }
+    registry::parse_registry_targets(registry, target).map_err(|e| {
+        lane_after_stderr(
+            format_args!("[verify-verus] registry parse failed: {e}"),
+            LaneExit::Failure,
+        )
+    })
 }
 
+/// Ensure the registry produced at least one target.
+///
+/// # Errors
+///
+/// Returns usage when no targets are present, or failure when the diagnostic
+/// cannot be written.
 fn ensure_targets_present(targets: &[ProofTarget], registry: &Path) -> Result<(), LaneExit> {
-    if targets.is_empty() {
-        eprintln!(
+    if !targets.is_empty() {
+        return Ok(());
+    }
+    err_after_stderr(
+        format_args!(
             "[verify-verus] no targets discovered in {}; formal obligations are required",
             registry.display()
-        );
-        Err(LaneExit::Usage)
-    } else {
-        Ok(())
-    }
+        ),
+        LaneExit::Usage,
+    )
 }
 
+/// Write the initial evidence summary.
+///
+/// # Errors
+///
+/// Returns failure when the summary cannot be written or the diagnostic cannot
+/// be emitted.
 fn write_initial_summary(summary_path: &Path, target_count: usize) -> Result<(), LaneExit> {
-    match evidence::write_summary_header(summary_path, target_count) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            eprintln!("[verify-verus] cannot write summary: {e}");
-            Err(LaneExit::Failure)
-        }
-    }
+    evidence::write_summary_header(summary_path, target_count).map_err(|e| {
+        lane_after_stderr(
+            format_args!("[verify-verus] cannot write summary: {e}"),
+            LaneExit::Failure,
+        )
+    })
 }
 
 fn lane_paths(target: &TargetProject) -> LanePaths {
@@ -182,10 +249,10 @@ fn lane_paths(target: &TargetProject) -> LanePaths {
 }
 
 fn env_value(key: &str, default: &str) -> String {
-    match env::var(key) {
-        Ok(value) => value,
-        Err(_) => default.to_owned(),
-    }
+    let Ok(value) = env::var(key) else {
+        return default.to_owned();
+    };
+    value
 }
 
 fn target_path(target: &TargetProject, raw: &str) -> PathBuf {
@@ -194,12 +261,18 @@ fn target_path(target: &TargetProject, raw: &str) -> PathBuf {
 }
 
 fn smoke_only_usage(summary_path: &Path) -> LaneExit {
-    eprintln!(
+    if write_stderr_line(format_args!(
         "[verify-verus] only fixture smoke obligations discovered; production Verus obligations are required"
-    );
-    if let Err(e) = evidence::append_not_applicable(summary_path, "fixture-smoke-only") {
-        eprintln!("[verify-verus] cannot append smoke-only summary: {e}");
+    ))
+    .is_err()
+    {
         return LaneExit::Failure;
+    }
+    if let Err(e) = evidence::append_not_applicable(summary_path, "fixture-smoke-only") {
+        return lane_after_stderr(
+            format_args!("[verify-verus] cannot append smoke-only summary: {e}"),
+            LaneExit::Failure,
+        );
     }
     LaneExit::Usage
 }

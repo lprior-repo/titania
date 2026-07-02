@@ -8,27 +8,51 @@ use crate::scan::scan;
 
 pub(super) fn self_test() -> i32 {
     let root = fixture_root();
-    if let Err(error) = reset_fixture(&root) {
-        eprintln!("FixtureFailure: cleanup failed: {error}");
+    if !prepare_fixture(&root) {
         return 1;
     }
-    if let Err(error) = write_fixtures(&root) {
-        eprintln!("FixtureFailure: write failed: {error}");
-        return 1;
+    fixture_result(&root)
+}
+
+fn prepare_fixture(root: &Path) -> bool {
+    if let Err(error) = reset_fixture(root) {
+        return emit_failure(format_args!("FixtureFailure: cleanup failed: {error}"));
     }
-    match missing_required_classes(&root) {
-        Ok(missing) if missing.is_empty() => {
-            println!("FixturePass: hot/cold forbidden API scanner");
-            0
-        }
+    if let Err(error) = write_fixtures(root) {
+        return emit_failure(format_args!("FixtureFailure: write failed: {error}"));
+    }
+    true
+}
+
+fn emit_failure(args: std::fmt::Arguments<'_>) -> bool {
+    if crate::write_stderr_line(args).is_err() {
+        return false;
+    }
+    false
+}
+
+fn fixture_result(root: &Path) -> i32 {
+    match missing_required_classes(root) {
+        Ok(missing) if missing.is_empty() => fixture_exit(&crate::write_stdout_line(format_args!(
+            "FixturePass: hot/cold forbidden API scanner"
+        ))),
         Ok(missing) => {
-            eprintln!("FixtureFailure: missing classes {missing:?}");
+            let _result = crate::write_stderr_line(format_args!(
+                "FixtureFailure: missing classes {missing:?}"
+            ));
             1
         }
         Err(error) => {
-            eprintln!("FixtureFailure: scan failed: {error}");
+            let _emitted = emit_failure(format_args!("FixtureFailure: scan failed: {error}"));
             1
         }
+    }
+}
+
+const fn fixture_exit(result: &io::Result<()>) -> i32 {
+    match result {
+        Ok(()) => 0,
+        Err(_error) => 1,
     }
 }
 
@@ -36,6 +60,11 @@ fn fixture_root() -> PathBuf {
     std::env::temp_dir().join(format!("hot-cold-scan-{}", std::process::id()))
 }
 
+/// Remove any stale fixture directory.
+///
+/// # Errors
+///
+/// Returns filesystem errors other than a missing fixture directory.
 fn reset_fixture(root: &Path) -> io::Result<()> {
     match fs::remove_dir_all(root) {
         Ok(()) => Ok(()),
@@ -44,6 +73,11 @@ fn reset_fixture(root: &Path) -> io::Result<()> {
     }
 }
 
+/// Write one fixture source file, creating its parent directory first.
+///
+/// # Errors
+///
+/// Returns directory creation or file write errors.
 fn write_fixture(path: &Path, text: &str) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -51,6 +85,11 @@ fn write_fixture(path: &Path, text: &str) -> io::Result<()> {
     fs::write(path, text)
 }
 
+/// Write the self-test fixture tree.
+///
+/// # Errors
+///
+/// Returns fixture file creation errors.
 fn write_fixtures(root: &Path) -> io::Result<()> {
     let hot = root.join("crates/titania-core/src/engine.rs");
     let cold = root.join("crates/titania-core/src/diagnostic.rs");
@@ -61,6 +100,11 @@ fn write_fixtures(root: &Path) -> io::Result<()> {
     write_fixture(&cold, "pub fn ok() { println!(\"diagnostic only\"); }\n")
 }
 
+/// Return required finding classes not produced by the fixture scan.
+///
+/// # Errors
+///
+/// Returns scanner errors from the fixture scan.
 fn missing_required_classes(root: &Path) -> Result<Vec<&'static str>, String> {
     let (_classified, violations, _justified) = scan(root)?;
     let classes: BTreeSet<&'static str> =

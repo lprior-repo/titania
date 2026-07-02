@@ -49,6 +49,12 @@ impl RecordedTargetRoot {
     }
 }
 
+/// Validate a recorded target root for emptiness, relativity, and NUL bytes.
+///
+/// # Errors
+/// - [`ReceiptError::TargetRootEmpty`] if the path is empty.
+/// - [`ReceiptError::TargetRootNonAbsolute`] if the path is relative.
+/// - [`ReceiptError::TargetRootContainsNul`] if the path contains NUL.
 fn validate_recorded_root(path: &Utf8Path) -> Result<(), ReceiptError> {
     if path.as_str().is_empty() {
         return Err(ReceiptError::TargetRootEmpty);

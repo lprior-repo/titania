@@ -27,10 +27,10 @@ impl TextRange {
     ///
     /// # Errors
     /// [`TextRangeError::EndBeforeStart`] if `end < start`.
-    pub const fn new(start_byte: u32, end_byte: u32) -> Result<Self, TextRangeError> {
-        if end_byte < start_byte {
-            return Err(TextRangeError::EndBeforeStart { start: start_byte, end: end_byte });
-        }
+    pub fn new(start_byte: u32, end_byte: u32) -> Result<Self, TextRangeError> {
+        (start_byte <= end_byte)
+            .then_some(())
+            .ok_or(TextRangeError::EndBeforeStart { start: start_byte, end: end_byte })?;
         Ok(Self { start_byte, end_byte })
     }
 

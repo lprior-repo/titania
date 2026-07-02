@@ -1,3 +1,5 @@
+//! Verify-verus public-API smoke tests.
+
 use std::{
     env,
     error::Error,
@@ -112,8 +114,8 @@ fn verify_verus_failed_target_returns_violation_and_failure_summary() -> TestRes
     let stderr = stderr_text(&output)?;
     let summary = fs::read_to_string(target.path().join(".evidence/verus/summary.txt"))?;
 
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("VERUS-TARGET-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("VERUS_TARGET_001"));
     assert!(
         stderr.contains("fake verifier failure")
             || stderr.contains("verification/verus/failing.rs")
@@ -132,7 +134,7 @@ fn verify_verus_missing_binary_returns_failure() -> TestResult {
     let output = run_verify_verus_with_path(target.path(), empty_path.path().as_os_str())?;
     let stderr = stderr_text(&output)?;
 
-    assert_eq!(output.status.code(), Some(3));
+    assert_eq!(output.status.code(), Some(3_i32));
     assert!(stderr.contains("verus not on PATH"));
     assert!(stderr.contains("formal verification cannot run"));
     Ok(())
@@ -146,7 +148,7 @@ fn verify_verus_missing_registry_returns_usage_error() -> TestResult {
     let output = run_verify_verus(target.path(), fake_bin.path())?;
     let stderr = stderr_text(&output)?;
 
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(2_i32));
     assert!(stderr.contains("registry missing or empty"));
     assert!(stderr.contains("formal obligations are required"));
     Ok(())
@@ -160,7 +162,7 @@ fn verify_verus_empty_registry_returns_usage_error() -> TestResult {
     let output = run_verify_verus(target.path(), fake_bin.path())?;
     let stderr = stderr_text(&output)?;
 
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(2_i32));
     assert!(stderr.contains("no targets discovered"));
     assert!(stderr.contains("formal obligations are required"));
     Ok(())
@@ -183,8 +185,8 @@ fn verify_verus_external_marker_without_waiver_returns_violation() -> TestResult
     let trust_scan = fs::read_to_string(target.path().join(".evidence/verus/trust-scan.txt"))?;
     let summary = fs::read_to_string(target.path().join(".evidence/verus/summary.txt"))?;
 
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("VERUS-EXTERNAL-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("VERUS_EXTERNAL_001"));
     assert!(trust_scan.contains("verification/verus/external_marker.rs:1"));
     assert!(summary.contains("VERUS_EXTERNAL_MARKER_FAILURE_COUNT 1"));
     assert!(summary.contains("VERUS_REGISTRY_FAILED"));
@@ -208,7 +210,7 @@ fn verify_verus_smoke_only_fixture_returns_usage_not_registry_ok() -> TestResult
     let stderr = stderr_text(&output)?;
     let summary = fs::read_to_string(target.path().join(".evidence/verus/summary.txt"))?;
 
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(2_i32));
     assert!(stderr.contains("only fixture smoke obligations"));
     assert!(summary.contains("VERUS_REGISTRY_NOT_APPLICABLE fixture-smoke-only"));
     assert!(!summary.contains("VERUS_REGISTRY_OK"));

@@ -34,12 +34,15 @@ pub mod source_line;
 
 pub use command::{CommandBudget, CommandIn, CommandOutput, EnvPolicy, LaneError, OutputStream};
 pub use source_line::SourceLine;
+pub use titania_core::{RuleId, RuleIdError};
 
 /// Errors produced while resolving the target project from the process CWD.
 #[derive(Debug, Error)]
 pub enum CurrentTargetError {
+    /// The process current working directory could not be read.
     #[error("cannot read current directory")]
     CurrentDir(#[source] io::Error),
+    /// No valid Cargo target project could be resolved from the CWD.
     #[error(transparent)]
     Target(#[from] TargetProjectError),
 }
@@ -49,6 +52,11 @@ pub enum CurrentTargetError {
 /// Lanes are launched from the project they should judge; this helper is the
 /// single adapter that turns the ambient CWD into the typed `TargetProject`
 /// value used by subprocess code.
+///
+/// # Errors
+/// Returns [`CurrentTargetError::CurrentDir`] when CWD cannot be read and
+/// [`CurrentTargetError::Target`] when no valid Cargo target project can be
+/// discovered from that directory.
 pub fn current_target_project() -> Result<TargetProject, CurrentTargetError> {
     let cwd = env::current_dir().map_err(CurrentTargetError::CurrentDir)?;
     discover_target(&cwd).map_err(CurrentTargetError::Target)
@@ -56,8 +64,8 @@ pub fn current_target_project() -> Result<TargetProject, CurrentTargetError> {
 /// One typed finding produced by a lane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
-    /// Stable lane-internal rule id, e.g. `"DISCARD-001"`.
-    rule: &'static str,
+    /// Stable lane-internal rule id (validated [`RuleId`]).
+    rule: RuleId,
     /// Repository-relative path that produced the finding.
     path: String,
     /// 1-indexed line number in `path`. `0` if the finding is file-level.
@@ -67,9 +75,11 @@ pub struct Finding {
 }
 
 impl Finding {
+    /// Construct a finding from a validated rule id, a repository-relative
+    /// path, a 1-indexed line number (`0` for file-level), and a message.
     #[must_use]
     pub fn new(
-        rule: &'static str,
+        rule: RuleId,
         path: impl Into<String>,
         line: u32,
         message: impl Into<String>,
@@ -77,24 +87,32 @@ impl Finding {
         Self { rule, path: path.into(), line, message: message.into() }
     }
 
+    /// Stable lane-internal rule id (validated [`RuleId`]).
     #[must_use]
-    pub fn rule(&self) -> &'static str {
-        self.rule
+    pub const fn rule(&self) -> &RuleId {
+        &self.rule
     }
 
+    /// Repository-relative path that produced the finding.
     #[must_use]
     pub fn path(&self) -> &str {
         &self.path
     }
 
+    /// 1-indexed line number; `0` for a file-level finding.
     #[must_use]
-    pub fn line(&self) -> u32 {
+    pub const fn line(&self) -> u32 {
         self.line
     }
 
+    /// Human-readable finding message.
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    fn rendered_line(&self) -> String {
+        format!("{}:{}: {} -- {}\n", self.path, self.line, self.rule.as_str(), self.message)
     }
 }
 
@@ -107,45 +125,54 @@ pub struct LaneReport {
 }
 
 impl LaneReport {
+    /// Construct an empty report.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// `true` when no findings have been recorded.
     #[must_use]
     pub fn is_clean(&self) -> bool {
         self.findings.is_empty()
     }
 
+    /// Record a single typed finding.
     pub fn push(&mut self, finding: Finding) {
         self.findings.push(finding);
     }
 
+    /// Append an iterator of findings to the report.
+    pub fn extend_finding(&mut self, findings: impl IntoIterator<Item = Finding>) {
+        self.findings.extend(findings);
+    }
+
+    /// Borrow the recorded findings.
     #[must_use]
     pub fn findings(&self) -> &[Finding] {
         &self.findings
     }
 
+    /// Number of findings recorded.
     #[must_use]
     pub fn finding_count(&self) -> usize {
         self.findings.len()
     }
 
-    pub fn record_pass(&mut self) {
+    /// Record one accepted (passed) item, saturating at `u32::MAX`.
+    pub const fn record_pass(&mut self) {
         self.passed = self.passed.saturating_add(1);
     }
 
-    pub fn record_scan(&mut self) {
+    /// Record one scanned item, saturating at `u32::MAX`.
+    pub const fn record_scan(&mut self) {
         self.scanned = self.scanned.saturating_add(1);
     }
 
     /// Stable `path:line: rule -- message` line for each finding.
     #[must_use]
     pub fn render(&self) -> String {
-        self.findings
-            .iter()
-            .map(|f| format!("{}:{}: {} -- {}\n", f.path, f.line, f.rule, f.message))
-            .collect()
+        self.findings.iter().map(Finding::rendered_line).collect()
     }
 }
 
@@ -158,10 +185,15 @@ impl LaneReport {
 /// error, `3` = upstream dependency missing or fixture self-test failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneExit {
+    /// Lane ran and reported no violations.
     Clean,
+    /// Lane had no valid subject to judge; maps to process exit code `0`.
     NotApplicable,
+    /// Lane ran and reported one or more violations.
     Violations,
+    /// Lane exited with a usage/argument/config error.
     Usage,
+    /// Lane failed to run (infrastructure or internal error).
     Failure,
 }
 
@@ -169,13 +201,12 @@ impl LaneExit {
     /// Stable process exit code. [`LaneExit::NotApplicable`] returns `0`
     /// because a non-applicable lane is a successful process completion.
     #[must_use]
-    pub fn as_u8(self) -> u8 {
+    pub const fn as_u8(self) -> u8 {
         match self {
-            LaneExit::Clean => 0,
-            LaneExit::NotApplicable => 0,
-            LaneExit::Violations => 1,
-            LaneExit::Usage => 2,
-            LaneExit::Failure => 3,
+            Self::Clean | Self::NotApplicable => 0,
+            Self::Violations => 1,
+            Self::Usage => 2,
+            Self::Failure => 3,
         }
     }
 }

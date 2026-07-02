@@ -1,4 +1,4 @@
-//! Verifies StepState enum variants cover VALID_TRANSITIONS matrix fully.
+//! Verifies `StepState` enum variants cover `VALID_TRANSITIONS` matrix fully.
 //!
 //! Rust re-implementation of the bash lane in
 //! `velvet-ballistics/scripts/check-stepstate-matrix.sh`. Run via
@@ -9,9 +9,8 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
-#[path = "check_stepstate_matrix/lane.rs"]
-mod lane;
+include!("check_stepstate_matrix/lane.rs");
 
 fn main() -> std::process::ExitCode {
-    lane::main_exit()
+    main_exit()
 }

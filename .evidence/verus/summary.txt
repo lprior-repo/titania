@@ -1,4 +1,4 @@
-VERUS_REGISTRY evidence=/home/lewis/src/titania/.evidence/verus
+VERUS_REGISTRY evidence=/home/lewis/src/titania/.worktrees/tech-debt-audit/.evidence/verus
 VERUS_TARGET_COUNT 2
 VERUS_TARGETS_OK
 VERUS_FORBIDDEN_TRUST_SCAN_OK

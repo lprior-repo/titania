@@ -1,14 +1,31 @@
 use std::{fs, path::Path};
 
 use titania_core::TargetProject;
-use titania_lanes::{Finding, LaneReport};
+use titania_lanes::{Finding, LaneReport, RuleId, RuleIdError};
 
-use super::walk::walk_rs_lines;
+use super::walk::{WalkLine, walk_rs_lines};
 
-pub(crate) const EXTERNAL_RULE: &str = "VERUS-EXTERNAL-001";
+const EXTERNAL_RULE: &str = "VERUS_EXTERNAL_001";
 pub(crate) const TRUSTED_BASE_WAIVER_FILE: &str = "trusted-base-waivers.txt";
 
-const FORBIDDEN_RULE: &str = "FORBIDDEN-ASSUME";
+const FORBIDDEN_RULE: &str = "FORBIDDEN_ASSUME";
+
+pub(crate) struct TrustRules {
+    pub(crate) forbidden: RuleId,
+    pub(crate) external: RuleId,
+}
+
+impl TrustRules {
+    /// Build rule identifiers for trust-boundary findings.
+    ///
+    /// # Errors
+    ///
+    /// Returns the invalid rule-id error if one of the configured rule ids
+    /// violates the shared rule-id format.
+    pub(crate) fn new() -> Result<Self, RuleIdError> {
+        Ok(Self { forbidden: RuleId::new(FORBIDDEN_RULE)?, external: RuleId::new(EXTERNAL_RULE)? })
+    }
+}
 
 #[must_use]
 pub(crate) fn trusted_base_waiver_exists(evidence_dir: &Path) -> bool {
@@ -17,47 +34,51 @@ pub(crate) fn trusted_base_waiver_exists(evidence_dir: &Path) -> bool {
 }
 
 #[must_use]
-pub(crate) fn scan_forbidden_trust(target: &TargetProject, report: &mut LaneReport) -> Vec<String> {
-    let mut findings = Vec::new();
-    trust_scan_roots(target).iter().for_each(|dir| {
-        walk_rs_lines(dir, target.as_std_path(), |line, path, line_no| {
-            if is_forbidden_trust_line(line) {
-                findings.push(format!("{path}:{line_no}: {line}"));
-                report.push(Finding::new(
-                    FORBIDDEN_RULE,
-                    path.to_owned(),
-                    line_no,
-                    "forbidden `assume(` or `axiom` outside comments",
-                ));
-            }
-        });
-    });
-    findings
+pub(crate) fn scan_forbidden_trust(
+    target: &TargetProject,
+    rule: &RuleId,
+    report: &mut LaneReport,
+) -> Vec<String> {
+    let hits: Vec<WalkLine> = trust_scan_roots(target)
+        .iter()
+        .flat_map(|dir| walk_rs_lines(dir, target.as_std_path()))
+        .filter(|wl| is_forbidden_trust_line(&wl.text))
+        .collect();
+    report.extend_finding(hits.iter().map(|wl| {
+        Finding::new(
+            rule.clone(),
+            wl.path.clone(),
+            wl.line_no,
+            "forbidden `assume(` or `axiom` outside comments",
+        )
+    }));
+    hits.iter().map(|wl| format!("{}:{}: {}", wl.path, wl.line_no, wl.text)).collect()
 }
 
 #[must_use]
 pub(crate) fn scan_external_markers(target: &TargetProject) -> Vec<String> {
-    let mut findings = Vec::new();
-    trust_scan_roots(target).iter().for_each(|dir| {
-        walk_rs_lines(dir, target.as_std_path(), |line, path, line_no| {
-            if is_external_marker_line(line) {
-                findings.push(format!("{path}:{line_no}: {line}"));
-            }
-        });
-    });
-    findings
+    trust_scan_roots(target)
+        .iter()
+        .flat_map(|dir| walk_rs_lines(dir, target.as_std_path()))
+        .filter(|wl| is_external_marker_line(&wl.text))
+        .map(|wl| format!("{}:{}: {}", wl.path, wl.line_no, wl.text))
+        .collect()
 }
 
-pub(crate) fn report_unwaived_external_markers(report: &mut LaneReport, lines: &[String]) {
-    lines.iter().for_each(|line| {
+pub(crate) fn report_unwaived_external_markers(
+    report: &mut LaneReport,
+    lines: &[String],
+    rule: &RuleId,
+) {
+    report.extend_finding(lines.iter().map(|line| {
         let (path, line_no) = parse_finding_location(line);
-        report.push(Finding::new(
-            EXTERNAL_RULE,
+        Finding::new(
+            rule.clone(),
             path,
             line_no,
             "Verus external marker requires explicit trusted-base waiver artifact",
-        ));
-    });
+        )
+    }));
 }
 
 fn trust_scan_roots(target: &TargetProject) -> [std::path::PathBuf; 2] {

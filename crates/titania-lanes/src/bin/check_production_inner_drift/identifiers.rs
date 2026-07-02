@@ -160,15 +160,23 @@ fn collect_identifiers(
 ) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let mut current = String::new();
-    for ch in chars {
-        if ch.is_alphanumeric() || ch == '_' {
-            current.push(ch);
-        } else {
-            flush_identifier(&mut current, min_len, &keep, &mut out);
-        }
-    }
+    chars.for_each(|ch| collect_identifier_char(ch, min_len, &keep, &mut current, &mut out));
     flush_identifier(&mut current, min_len, &keep, &mut out);
     out
+}
+
+fn collect_identifier_char(
+    ch: char,
+    min_len: usize,
+    keep: &impl Fn(&str) -> bool,
+    current: &mut String,
+    out: &mut BTreeSet<String>,
+) {
+    if ch.is_alphanumeric() || ch == '_' {
+        current.push(ch);
+        return;
+    }
+    flush_identifier(current, min_len, keep, out);
 }
 
 fn flush_identifier(
@@ -178,7 +186,7 @@ fn flush_identifier(
     out: &mut BTreeSet<String>,
 ) {
     if current.len() >= min_len && keep(current) {
-        out.insert(std::mem::take(current));
+        let _ = out.insert(std::mem::take(current));
     } else {
         current.clear();
     }
@@ -191,7 +199,7 @@ fn strip_noise(text: &str) -> String {
         out.push_str(stripped);
         out.push('\n');
     });
-    out.replace("pub(crate)", "pub").replace("#![from]", "(")
+    out.replace("#![from]", "(")
 }
 
 fn is_pure_lowercase(s: &str) -> bool {

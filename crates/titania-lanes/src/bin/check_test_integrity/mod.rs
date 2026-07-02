@@ -1,13 +1,58 @@
 mod scan;
 mod self_test;
+#[cfg(test)]
+mod tests;
 mod vcs;
 
-use std::env;
+use std::{
+    env,
+    io::{self, Write as _},
+};
 
 use titania_core::TargetProject;
-use titania_lanes::{Finding, LaneExit, LaneReport, current_target_project, exit};
+use titania_lanes::{
+    Finding, LaneExit, LaneReport, RuleId, RuleIdError, current_target_project, exit,
+};
 
-const RULE_TEST_INTEGRITY: &str = "TEST-INTEGRITY-001";
+const RULE_TEST_INTEGRITY: &str = "TEST_INTEGRITY_001";
+const TEST_INTEGRITY_DEL_RULE: &str = "TEST_INTEGRITY_DEL_001";
+const TEST_INTEGRITY_IGNORE_RULE: &str = "TEST_INTEGRITY_IGNORE_001";
+const TEST_INTEGRITY_COMPILE_RULE: &str = "TEST_INTEGRITY_COMPILE_001";
+const TEST_INTEGRITY_DECL_RULE: &str = "TEST_INTEGRITY_DECL_001";
+const TEST_INTEGRITY_WEAK_RULE: &str = "TEST_INTEGRITY_WEAK_001";
+
+type IntegrityFinding = (String, String, String);
+type TestDeclaration = (String, String);
+type ChangedFile = (String, String);
+type ChangedFiles = Vec<ChangedFile>;
+
+struct TestIntegrityRules {
+    test_integrity: RuleId,
+    del: RuleId,
+    ignore: RuleId,
+    compile: RuleId,
+    decl: RuleId,
+    weak: RuleId,
+}
+
+impl TestIntegrityRules {
+    /// Build rule identifiers for test-integrity findings.
+    ///
+    /// # Errors
+    ///
+    /// Returns the invalid rule-id error if one of the configured rule ids
+    /// violates the shared rule-id format.
+    fn new() -> Result<Self, RuleIdError> {
+        Ok(Self {
+            test_integrity: RuleId::new(RULE_TEST_INTEGRITY)?,
+            del: RuleId::new(TEST_INTEGRITY_DEL_RULE)?,
+            ignore: RuleId::new(TEST_INTEGRITY_IGNORE_RULE)?,
+            compile: RuleId::new(TEST_INTEGRITY_COMPILE_RULE)?,
+            decl: RuleId::new(TEST_INTEGRITY_DECL_RULE)?,
+            weak: RuleId::new(TEST_INTEGRITY_WEAK_RULE)?,
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Vcs {
@@ -20,65 +65,148 @@ struct RootInfo {
     vcs: Vcs,
 }
 
-pub(crate) fn main_exit() -> std::process::ExitCode {
+/// Run the test-integrity lane and return its process exit code.
+#[must_use]
+pub fn main_exit() -> std::process::ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-        eprintln!(
-            "usage: check-test-integrity [--self-test] [--base <rev>]\n\
-             Validates that changes since <rev> do not delete tests, weaken\n\
-             assertions, or add #[ignore] / compile-only replacements."
+        return exit_after_stderr(
+            &write_stderr_line(format_args!(
+                "usage: check-test-integrity [--self-test] [--base <rev>]\n\
+                 Validates that changes since <rev> do not delete tests, weaken\n\
+                 assertions, or add #[ignore] / compile-only replacements."
+            )),
+            LaneExit::Usage,
         );
-        return exit(LaneExit::Usage);
     }
     if args.iter().any(|arg| arg == "--self-test") {
         return exit(self_test::run());
     }
-    exit(run_for_args(&args))
+    let rules = match TestIntegrityRules::new() {
+        Ok(rules) => rules,
+        Err(error) => {
+            return exit_after_stderr(
+                &write_stderr_line(format_args!(
+                    "[check-test-integrity] rule id configuration error: {error}"
+                )),
+                LaneExit::Failure,
+            );
+        }
+    };
+    exit(run_for_args(&args, &rules))
 }
 
-fn run_for_args(args: &[String]) -> LaneExit {
-    let target = match current_target_project() {
-        Ok(target) => target,
-        Err(error) => {
-            eprintln!("test integrity: ERROR cannot resolve target project: {error}");
-            return LaneExit::Usage;
-        }
-    };
-    let root = match vcs::root_dir(&target) {
-        Ok(info) => info,
-        Err(error) => {
-            eprintln!("test integrity: ERROR {error}");
-            return LaneExit::Failure;
-        }
-    };
-    let base = match argument_value(args, "--base") {
-        Some(value) => value,
-        None => vcs::default_base(&target, root.vcs),
-    };
-    match check(&target, &base, root.vcs) {
-        Ok(0) => LaneExit::Clean,
-        Ok(_) => LaneExit::Violations,
-        Err(error) => {
-            eprintln!("test integrity: ERROR {error}");
-            LaneExit::Usage
-        }
+/// Write formatted text to stderr.
+///
+/// # Errors
+///
+/// Returns the underlying stderr write error.
+fn write_stderr(args: std::fmt::Arguments<'_>) -> io::Result<()> {
+    io::stderr().lock().write_fmt(args)
+}
+
+/// Write one formatted line to stderr.
+///
+/// # Errors
+///
+/// Returns the underlying stderr write error.
+fn write_stderr_line(args: std::fmt::Arguments<'_>) -> io::Result<()> {
+    let mut stderr = io::stderr().lock();
+    stderr.write_fmt(args)?;
+    stderr.write_all(b"\n")
+}
+
+fn exit_after_stderr(result: &io::Result<()>, success: LaneExit) -> std::process::ExitCode {
+    exit(lane_after_stderr(result, success))
+}
+
+const fn lane_after_stderr(result: &io::Result<()>, success: LaneExit) -> LaneExit {
+    match result {
+        Ok(()) => success,
+        Err(_) => LaneExit::Failure,
     }
 }
 
-fn check(target: &TargetProject, base: &str, vcs: Vcs) -> Result<i32, String> {
+fn run_for_args(args: &[String], rules: &TestIntegrityRules) -> LaneExit {
+    let target = match resolve_target_project() {
+        Ok(target) => target,
+        Err(code) => return code,
+    };
+    let root = match resolve_vcs_root(&target) {
+        Ok(info) => info,
+        Err(code) => return code,
+    };
+    let base = base_argument_or_default(args, &target, root.vcs);
+    check_result_to_exit(check(&target, &base, root.vcs, rules))
+}
+
+/// Resolve the target project used by the lane.
+///
+/// # Errors
+///
+/// Returns the mapped lane exit code when target discovery fails.
+fn resolve_target_project() -> Result<TargetProject, LaneExit> {
+    current_target_project().map_err(|error| {
+        lane_after_stderr(
+            &write_stderr_line(format_args!(
+                "test integrity: ERROR cannot resolve target project: {error}"
+            )),
+            LaneExit::Usage,
+        )
+    })
+}
+
+/// Resolve the repository VCS root metadata.
+///
+/// # Errors
+///
+/// Returns the mapped lane exit code when neither supported VCS can resolve a root.
+fn resolve_vcs_root(target: &TargetProject) -> Result<RootInfo, LaneExit> {
+    vcs::root_dir(target).map_err(|error| {
+        lane_after_stderr(
+            &write_stderr_line(format_args!("test integrity: ERROR {error}")),
+            LaneExit::Failure,
+        )
+    })
+}
+
+fn check_result_to_exit(result: Result<i32, String>) -> LaneExit {
+    match result {
+        Ok(0) => LaneExit::Clean,
+        Ok(_) => LaneExit::Violations,
+        Err(error) => lane_after_stderr(
+            &write_stderr_line(format_args!("test integrity: ERROR {error}")),
+            LaneExit::Usage,
+        ),
+    }
+}
+
+/// Check changed tests against the selected base revision.
+///
+/// # Errors
+///
+/// Returns VCS, diff loading, base validation, or stderr rendering errors.
+fn check(
+    target: &TargetProject,
+    base: &str,
+    vcs: Vcs,
+    rules: &TestIntegrityRules,
+) -> Result<i32, String> {
     vcs::validate_base_revision(target, base, vcs)?;
     let mut findings = deleted_file_findings(&vcs::changed_files(target, base, vcs)?);
     findings.extend(scan::scan_diff(&vcs::diff_text(target, base, vcs)?));
     if findings.is_empty() {
-        eprintln!("test integrity: PASS base={base}");
+        write_stderr_line(format_args!("test integrity: PASS base={base}"))
+            .map_err(|error| format!("stderr write failed: {error}"))?;
         Ok(0)
     } else {
-        render_findings(&findings);
+        render_findings(&findings, rules)
+            .map_err(|error| format!("stderr write failed: {error}"))?;
         Ok(1)
     }
 }
 
-fn deleted_file_findings(entries: &[(String, String)]) -> Vec<(String, String, String)> {
+fn deleted_file_findings(entries: &[ChangedFile]) -> Vec<IntegrityFinding> {
     entries
         .iter()
         .filter(|(status, path)| status.starts_with('D') && scan::is_test_path(path))
@@ -92,26 +220,39 @@ fn deleted_file_findings(entries: &[(String, String)]) -> Vec<(String, String, S
         .collect()
 }
 
-fn render_findings(findings: &[(String, String, String)]) {
-    eprintln!("test integrity: FAIL");
-    let mut report = LaneReport::new();
-    findings.iter().for_each(|(kind, path, detail)| {
-        push_finding(&mut report, kind, path.clone(), detail.clone());
+/// Render integrity findings to stderr.
+///
+/// # Errors
+///
+/// Returns the first stderr write error.
+fn render_findings(findings: &[IntegrityFinding], rules: &TestIntegrityRules) -> io::Result<()> {
+    write_stderr_line(format_args!("test integrity: FAIL"))?;
+    let report = findings.iter().fold(LaneReport::new(), |mut report, (kind, path, detail)| {
+        push_finding(&mut report, kind, path, detail, rules);
+        report
     });
-    eprint!("{}", report.render());
-    eprintln!("Add equal-or-stronger replacement coverage or bead-linked justification.");
+    write_stderr(format_args!("{}", report.render()))?;
+    write_stderr_line(format_args!(
+        "Add equal-or-stronger replacement coverage or bead-linked justification."
+    ))
 }
 
-fn push_finding(report: &mut LaneReport, kind: &str, path: String, detail: String) {
+fn push_finding(
+    report: &mut LaneReport,
+    kind: &str,
+    path: &str,
+    detail: &str,
+    rules: &TestIntegrityRules,
+) {
     let rule = match kind {
-        "DeletedTestFile" => "TEST-INTEGRITY-DEL-001",
-        "IgnoredOrSkippedTest" => "TEST-INTEGRITY-IGNORE-001",
-        "CompileOnlyReplacement" => "TEST-INTEGRITY-COMPILE-001",
-        "DeletedTestDeclaration" => "TEST-INTEGRITY-DECL-001",
-        "WeakenedAssertion" => "TEST-INTEGRITY-WEAK-001",
-        _ => RULE_TEST_INTEGRITY,
+        "DeletedTestFile" => &rules.del,
+        "IgnoredOrSkippedTest" => &rules.ignore,
+        "CompileOnlyReplacement" => &rules.compile,
+        "DeletedTestDeclaration" => &rules.decl,
+        "WeakenedAssertion" => &rules.weak,
+        _ => &rules.test_integrity,
     };
-    report.push(Finding::new(rule, path, 0, format!("{kind}: {detail}")));
+    report.push(Finding::new(rule.clone(), path.to_owned(), 0, format!("{kind}: {detail}")));
 }
 
 fn argument_value(args: &[String], flag: &str) -> Option<String> {
@@ -122,45 +263,9 @@ fn argument_value(args: &[String], flag: &str) -> Option<String> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use std::{fs, process::Command};
-
-    use tempfile::TempDir;
-    use titania_core::TargetProject;
-
-    use super::{Vcs, check};
-
-    fn run_git(root: &std::path::Path, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
-        let status = Command::new("git").args(args).current_dir(root).status()?;
-        assert!(status.success(), "git {args:?} failed with {status}");
-        Ok(())
-    }
-
-    fn initialized_repo() -> Result<(TempDir, TargetProject), Box<dyn std::error::Error>> {
-        let temp = TempDir::new()?;
-        let root = temp.path();
-        fs::write(root.join("Cargo.toml"), "[workspace]\nmembers=[]\n")?;
-        run_git(root, &["init", "-q"])?;
-        run_git(root, &["config", "user.email", "lane@example.invalid"])?;
-        run_git(root, &["config", "user.name", "Lane Test"])?;
-        run_git(root, &["add", "Cargo.toml"])?;
-        run_git(root, &["commit", "-q", "-m", "base"])?;
-        let target = TargetProject::try_from_path(root)?;
-        Ok((temp, target))
-    }
-
-    #[test]
-    fn check_reports_untracked_new_behavior_tests() -> Result<(), Box<dyn std::error::Error>> {
-        let (_temp, target) = initialized_repo()?;
-        let tests_dir = target.as_std_path().join("tests");
-        fs::create_dir_all(&tests_dir)?;
-        fs::write(
-            tests_dir.join("new_behavior.rs"),
-            "#[test]\n#[ignore]\nfn tracks_behavior() {\n    assert_eq!(2 + 2, 4);\n}\n",
-        )?;
-
-        assert_eq!(check(&target, "HEAD", Vcs::Git)?, 1);
-        Ok(())
-    }
+fn base_argument_or_default(args: &[String], target: &TargetProject, vcs: Vcs) -> String {
+    let Some(base) = argument_value(args, "--base") else {
+        return vcs::default_base(target, vcs);
+    };
+    base
 }

@@ -1,5 +1,6 @@
+//! Behavior (BDD) tests for target-project discovery.
+
 use std::{
-    error::Error,
     fs,
     path::Path,
     process::{Command, Output},
@@ -11,10 +12,25 @@ use titania_core::{
     TargetProject, TargetProjectError, discover_target,
 };
 
-type TestResult = Result<(), Box<dyn Error>>;
-
 fn run_cargo(cwd: &Path, args: &[&str]) -> Result<Output, std::io::Error> {
     Command::new(env!("CARGO_BIN_EXE_run-cargo")).args(args).current_dir(cwd).output()
+}
+
+macro_rules! must {
+    ($result:expr, $context:expr) => {
+        must($result, $context)
+    };
+}
+
+fn must<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(error) => {
+            let message = format!("{context}: {error}");
+            assert_eq!(message, "", "{message}");
+            std::process::abort();
+        }
+    }
 }
 
 fn single_crate(name: &str, lib_rs: &str) -> Result<TempDir, std::io::Error> {
@@ -55,92 +71,102 @@ fn stable_digest(label: &'static [u8]) -> Digest {
 }
 
 #[test]
-fn scenario_workspace_discovery_from_subcrate_reports_member_diff() -> TestResult {
+fn scenario_workspace_discovery_from_subcrate_reports_member_diff() {
     // Given: cwd is a sub-crate of a workspace with badly formatted Rust.
-    let (_workspace, member) = workspace_with_member("pub fn value()->u8{1}\n")?;
+    let (_workspace, member) =
+        must!(workspace_with_member("pub fn value()->u8{1}\n"), "create workspace fixture");
 
     // When: run-cargo fmt is invoked from the member directory.
-    let output = run_cargo(&member, &["fmt"])?;
-    let stderr = stderr_text(&output)?;
+    let output = must!(run_cargo(&member, &["fmt"]), "run cargo fmt from member");
+    let stderr = must!(stderr_text(&output), "decode stderr");
 
     // Then: the lane discovers the workspace target and reports the member diff.
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-FMT-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_FMT_001"));
     assert!(stderr.contains("crates/foo/src/lib.rs"));
-    Ok(())
 }
 
 #[test]
-fn scenario_single_crate_root_uses_cwd_as_target() -> TestResult {
+fn scenario_single_crate_root_uses_cwd_as_target() {
     // Given: cwd is a standalone Cargo package root.
-    let target = single_crate("single_crate_target", "pub fn value()->u8{1}\n")?;
+    let target = must!(
+        single_crate("single_crate_target", "pub fn value()->u8{1}\n"),
+        "create single-crate fixture"
+    );
 
     // When: run-cargo fmt is invoked from that root.
-    let output = run_cargo(target.path(), &["fmt"])?;
-    let stderr = stderr_text(&output)?;
+    let output = must!(run_cargo(target.path(), &["fmt"]), "run cargo fmt from target");
+    let stderr = must!(stderr_text(&output), "decode stderr");
 
     // Then: the lane reports the file inside that single-crate target.
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-FMT-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_FMT_001"));
     assert!(stderr.contains("src/lib.rs"));
-    Ok(())
 }
 
 #[test]
-fn scenario_missing_cargo_toml_returns_usage_with_typed_error() -> TestResult {
+fn scenario_missing_cargo_toml_returns_usage_with_typed_error() {
     // Given: cwd has no Cargo.toml in itself or its temporary ancestors.
-    let target = tempfile::tempdir()?;
+    let target = must!(tempfile::tempdir(), "create empty target fixture");
 
     // When: run-cargo fmt is invoked there.
-    let output = run_cargo(target.path(), &["fmt"])?;
-    let stderr = stderr_text(&output)?;
+    let output = must!(run_cargo(target.path(), &["fmt"]), "run cargo fmt without manifest");
+    let stderr = must!(stderr_text(&output), "decode stderr");
 
     // Then: discovery fails closed as a usage/config error with the typed message.
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(2_i32));
     assert!(stderr.contains("target discovery failed"));
     assert!(stderr.contains("target project directory does not contain a Cargo.toml file"));
-    Ok(())
 }
 
 #[test]
-fn scenario_completed_lane_receipt_records_resolved_target_root() -> TestResult {
+fn scenario_completed_lane_receipt_records_resolved_target_root() {
     // Given: a clean standalone Cargo package and a successful lane run.
-    let target_dir = single_crate("receipt_target", "pub fn value() -> u8 {\n    1\n}\n")?;
-    let output = run_cargo(target_dir.path(), &["fmt"])?;
-    assert_eq!(output.status.code(), Some(0));
+    let target_dir = must!(
+        single_crate("receipt_target", "pub fn value() -> u8 {\n    1\n}\n"),
+        "create receipt target fixture"
+    );
+    let output = must!(run_cargo(target_dir.path(), &["fmt"]), "run clean cargo fmt");
+    assert_eq!(output.status.code(), Some(0_i32));
 
     // When: a receipt is built for the completed lane.
-    let target = discover_target(target_dir.path())?;
+    let target = must!(discover_target(target_dir.path()), "discover target");
     let receipt = QualityReceipt::new(
         &target,
-        ReceiptPeriod::new(1, 2)?,
-        vec![LaneDigest::new(LaneName::new("fmt")?, ReceiptLaneExit::Clean, 1, 1, 0)?],
+        must!(ReceiptPeriod::new(1, 2), "build receipt period"),
+        vec![must!(
+            LaneDigest::new(
+                must!(LaneName::new("fmt"), "build lane name"),
+                ReceiptLaneExit::Clean,
+                1,
+                1,
+                0,
+            ),
+            "build lane digest"
+        )],
         ReceiptDigests::new(
             stable_digest(b"source"),
             stable_digest(b"lock"),
             stable_digest(b"policy"),
             stable_digest(b"toolchain"),
         ),
-    )?;
-    let json = serde_json::to_string(&receipt)?;
+    );
+    let receipt = must!(receipt, "build quality receipt");
+    let json = must!(serde_json::to_string(&receipt), "serialize receipt");
 
     // Then: the serialized receipt includes the resolved target_root.
     assert!(json.contains("\"target_root\""));
     assert!(json.contains(&target_dir.path().display().to_string()));
-    Ok(())
 }
 
 #[test]
-fn scenario_empty_target_input_returns_typed_error_without_panic() -> TestResult {
+fn scenario_empty_target_input_returns_typed_error_without_panic() {
     // Given: an empty target path.
     let empty = Path::new("");
 
     // When: the TargetProject constructor validates it.
-    let err = TargetProject::try_from_path(empty)
-        .err()
-        .ok_or_else(|| std::io::Error::other("empty target path was accepted"))?;
+    let result = TargetProject::try_from_path(empty);
 
     // Then: construction returns the exact typed error.
-    assert_eq!(err, TargetProjectError::Empty);
-    Ok(())
+    assert_eq!(result, Err(TargetProjectError::Empty));
 }

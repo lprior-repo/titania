@@ -1,3 +1,5 @@
+//! run-cargo public-API smoke tests.
+
 use std::{
     error::Error,
     fs,
@@ -61,7 +63,7 @@ fn stderr_text(output: &Output) -> Result<String, std::string::FromUtf8Error> {
 #[test]
 fn run_cargo_without_subcommand_returns_usage() -> TestResult {
     let output = run_cargo(Path::new("."), &[])?;
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(2_i32));
     assert!(stderr_text(&output)?.contains("usage: run-cargo"));
     Ok(())
 }
@@ -69,7 +71,7 @@ fn run_cargo_without_subcommand_returns_usage() -> TestResult {
 #[test]
 fn run_cargo_unknown_subcommand_returns_usage() -> TestResult {
     let output = run_cargo(Path::new("."), &["frobnicate"])?;
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(2_i32));
     assert!(stderr_text(&output)?.contains("fmt|compile|clippy|test|build"));
     Ok(())
 }
@@ -80,7 +82,7 @@ fn run_cargo_fmt_clean_project_returns_clean() -> TestResult {
         package("fmt_clean_project", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")?;
 
     let output = run_cargo(temp.path(), &["fmt"])?;
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(0_i32));
     assert_eq!(stderr_text(&output)?, "");
     Ok(())
 }
@@ -91,8 +93,8 @@ fn run_cargo_fmt_bad_project_reports_diff_hunk() -> TestResult {
 
     let output = run_cargo(temp.path(), &["fmt"])?;
     let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-FMT-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_FMT_001"));
     assert!(stderr.contains("rustfmt diff hunk"));
     Ok(())
 }
@@ -106,7 +108,7 @@ fn run_cargo_clippy_clean_project_returns_clean() -> TestResult {
     )?;
 
     let output = run_cargo(temp.path(), &["clippy"])?;
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(0_i32));
     assert_eq!(stderr_text(&output)?, "");
     Ok(())
 }
@@ -121,8 +123,8 @@ fn run_cargo_clippy_bad_project_reports_diagnostic() -> TestResult {
 
     let output = run_cargo(temp.path(), &["clippy"])?;
     let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-CLIPPY-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_CLIPPY_001"));
     assert!(stderr.contains("needless_bool") || stderr.contains("bool"));
     Ok(())
 }
@@ -142,8 +144,8 @@ fn run_cargo_clippy_checks_examples() -> TestResult {
 
     let output = run_cargo(temp.path(), &["clippy"])?;
     let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-CLIPPY-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_CLIPPY_001"));
     assert!(stderr.contains("mismatched types"));
     Ok(())
 }
@@ -157,7 +159,7 @@ fn run_cargo_compile_clean_project_returns_clean() -> TestResult {
     )?;
 
     let output = run_cargo(temp.path(), &["compile"])?;
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(0_i32));
     assert_eq!(stderr_text(&output)?, "");
     Ok(())
 }
@@ -172,8 +174,8 @@ fn run_cargo_compile_bad_project_reports_diagnostic() -> TestResult {
 
     let output = run_cargo(temp.path(), &["compile"])?;
     let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-COMPILE-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_COMPILE_001"));
     assert!(stderr.contains("mismatched types"));
     Ok(())
 }
@@ -193,8 +195,8 @@ fn run_cargo_compile_checks_integration_tests() -> TestResult {
 
     let output = run_cargo(temp.path(), &["compile"])?;
     let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-COMPILE-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_COMPILE_001"));
     assert!(stderr.contains("mismatched types"));
     Ok(())
 }
@@ -208,7 +210,7 @@ fn run_cargo_test_clean_project_returns_clean() -> TestResult {
     )?;
 
     let output = run_cargo(temp.path(), &["test"])?;
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(0_i32));
     assert_eq!(stderr_text(&output)?, "");
     Ok(())
 }
@@ -223,8 +225,8 @@ fn run_cargo_test_bad_project_reports_failed_test() -> TestResult {
 
     let output = run_cargo(temp.path(), &["test"])?;
     let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-TEST-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_TEST_001"));
     assert!(stderr.contains("test failed: tests::fails"));
     Ok(())
 }
@@ -240,8 +242,8 @@ fn run_cargo_test_checks_all_features() -> TestResult {
 
     let output = run_cargo(temp.path(), &["test"])?;
     let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-TEST-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_TEST_001"));
     assert!(stderr.contains("test failed: tests::fails_when_feature_enabled"));
     Ok(())
 }
@@ -255,7 +257,7 @@ fn run_cargo_build_clean_project_returns_clean() -> TestResult {
     )?;
 
     let output = run_cargo(temp.path(), &["build"])?;
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(0_i32));
     assert_eq!(stderr_text(&output)?, "");
     Ok(())
 }
@@ -270,8 +272,8 @@ fn run_cargo_build_bad_project_reports_diagnostic() -> TestResult {
 
     let output = run_cargo(temp.path(), &["build"])?;
     let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("CARGO-BUILD-001"));
+    assert_eq!(output.status.code(), Some(1_i32));
+    assert!(stderr.contains("CARGO_BUILD_001"));
     assert!(stderr.contains("mismatched types"));
     Ok(())
 }

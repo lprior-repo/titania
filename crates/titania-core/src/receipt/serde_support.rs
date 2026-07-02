@@ -29,11 +29,9 @@ impl<'de> Deserialize<'de> for QualityReceipt {
         let value = serde_json::Value::deserialize(de)?;
         let schema =
             QualityReceiptSchemaWire::deserialize(&value).map_err(serde::de::Error::custom)?;
-        if !is_supported_receipt_schema_version(schema.schema_version) {
-            return Err(serde::de::Error::custom(ReceiptError::UnsupportedSchemaVersion(
-                schema.schema_version,
-            )));
-        }
+        is_supported_receipt_schema_version(schema.schema_version)
+            .then_some(())
+            .ok_or_else(|| unsupported_schema::<D::Error>(schema.schema_version))?;
         let wire = QualityReceiptWire::deserialize(value).map_err(serde::de::Error::custom)?;
         Self::from_parts(
             wire.schema_version,
@@ -50,4 +48,8 @@ impl<'de> Deserialize<'de> for QualityReceipt {
         )
         .map_err(serde::de::Error::custom)
     }
+}
+
+fn unsupported_schema<E: serde::de::Error>(schema_version: u32) -> E {
+    serde::de::Error::custom(ReceiptError::UnsupportedSchemaVersion(schema_version))
 }

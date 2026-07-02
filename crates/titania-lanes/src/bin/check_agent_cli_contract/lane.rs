@@ -1,16 +1,35 @@
 use std::{
     fs,
+    io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
 use titania_core::TargetProject;
-use titania_lanes::{Finding, LaneExit, LaneReport, current_target_project, exit};
+use titania_lanes::{
+    Finding, LaneExit, LaneReport, RuleId, RuleIdError, current_target_project, exit,
+};
 
 const CLI_SRC: TargetRelativePath = TargetRelativePath::new("crates/vb_cli/src");
 const MASTER_DOC: TargetRelativePath = TargetRelativePath::new("velvet-ballistics-MASTER.md");
-const RULE_REQUIRED: &str = "AGENT-CLI-REQUIRED-001";
-const RULE_REJECTED: &str = "AGENT-CLI-REJECTED-001";
+const RULE_REQUIRED: &str = "AGENT_CLI_REQUIRED_001";
+const RULE_REJECTED: &str = "AGENT_CLI_REJECTED_001";
+
+struct AgentCliRules {
+    required: RuleId,
+    rejected: RuleId,
+}
+
+impl AgentCliRules {
+    /// Construct rule identifiers for the agent CLI contract lane.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuleIdError`] when a configured rule identifier is invalid.
+    fn new() -> Result<Self, RuleIdError> {
+        Ok(Self { required: RuleId::new(RULE_REQUIRED)?, rejected: RuleId::new(RULE_REJECTED)? })
+    }
+}
 
 #[derive(Clone, Copy)]
 struct TargetRelativePath {
@@ -47,34 +66,61 @@ pub(crate) fn main_exit() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(error) => {
-            eprintln!("[check-agent-cli-contract] target discovery failed: {error}");
-            return exit(LaneExit::Usage);
+            return exit_after_stderr_line(
+                format_args!("[check-agent-cli-contract] target discovery failed: {error}"),
+                LaneExit::Usage,
+            );
         }
     };
-    let report = run(&target);
-    eprint!("{}", report.render());
+    let rules = match AgentCliRules::new() {
+        Ok(rules) => rules,
+        Err(error) => {
+            return exit_after_stderr_line(
+                format_args!("[check-agent-cli-contract] rule id configuration error: {error}"),
+                LaneExit::Failure,
+            );
+        }
+    };
+    let report = match run(&target, &rules) {
+        Ok(report) => report,
+        Err(_error) => return exit(LaneExit::Failure),
+    };
+    if write_stderr(&report.render()).is_err() {
+        return exit(LaneExit::Failure);
+    }
     if report.is_clean() { exit(LaneExit::Clean) } else { exit(LaneExit::Violations) }
 }
 
-pub(crate) fn run(target: &TargetProject) -> LaneReport {
+/// Run the agent CLI contract scan.
+///
+/// # Errors
+///
+/// Returns the stderr write error when the lane is not applicable and cannot
+/// emit its not-applicable diagnostic.
+fn run(target: &TargetProject, rules: &AgentCliRules) -> std::io::Result<LaneReport> {
     let mut report = LaneReport::new();
     let cli_root = CLI_SRC.in_target(target);
     if !cli_root.exists() {
-        print_not_applicable(target);
-        return report;
+        print_not_applicable(target)?;
+        return Ok(report);
     }
     let cli_files = collect_files(&cli_root);
-    check_required_literals(target, &cli_files, &mut report);
-    check_rejected_literals(target, &cli_files, &mut report);
-    report
+    check_required_literals(target, &cli_files, rules, &mut report);
+    check_rejected_literals(target, &cli_files, rules, &mut report);
+    Ok(report)
 }
 
-fn print_not_applicable(target: &TargetProject) {
-    eprintln!(
+/// Emit the not-applicable diagnostic for targets without `vb_cli` sources.
+///
+/// # Errors
+///
+/// Returns the underlying stderr write error.
+fn print_not_applicable(target: &TargetProject) -> std::io::Result<()> {
+    write_stderr_line(format_args!(
         "[check-agent-cli-contract] not applicable: {} is absent under {}; skipping vb_cli contract lane",
         CLI_SRC.as_str(),
         target
-    );
+    ))
 }
 
 fn collect_files(root: &Path) -> Vec<PathBuf> {
@@ -84,14 +130,10 @@ fn collect_files(root: &Path) -> Vec<PathBuf> {
 }
 
 fn collect_files_into(root: &Path, out: &mut Vec<PathBuf>) {
-    let entries = match fs::read_dir(root) {
-        Ok(entries) => entries,
-        Err(_) => return,
-    };
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .for_each(|path| record_file_path(path, out));
+    let Ok(entries) = fs::read_dir(root) else { return };
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        record_file_path(path, out);
+    }
 }
 
 fn record_file_path(path: PathBuf, out: &mut Vec<PathBuf>) {
@@ -102,64 +144,83 @@ fn record_file_path(path: PathBuf, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn check_required_literals(target: &TargetProject, files: &[PathBuf], report: &mut LaneReport) {
-    REQUIRED_LITERALS.iter().chain(REQUIRED_IN_MASTER.iter()).for_each(|literal| {
+fn check_required_literals(
+    target: &TargetProject,
+    files: &[PathBuf],
+    rules: &AgentCliRules,
+    report: &mut LaneReport,
+) {
+    for literal in REQUIRED_LITERALS.iter().chain(REQUIRED_IN_MASTER.iter()) {
         report.record_scan();
-        check_required_literal(target, files, literal, report);
-    });
+        check_required_literal(target, files, literal, rules, report);
+    }
 }
 
 fn check_required_literal(
     target: &TargetProject,
     files: &[PathBuf],
     literal: &str,
+    rules: &AgentCliRules,
     report: &mut LaneReport,
 ) {
     if literal == "Agent-First CLI Principles" {
-        check_master_literal(target, literal, report);
+        check_master_literal(target, literal, rules, report);
     } else if !any_file_contains(files, literal) {
-        push_required(report, CLI_SRC.as_str(), literal);
+        push_required(report, rules, CLI_SRC.as_str(), literal);
     }
 }
 
-fn check_master_literal(target: &TargetProject, literal: &str, report: &mut LaneReport) {
+fn check_master_literal(
+    target: &TargetProject,
+    literal: &str,
+    rules: &AgentCliRules,
+    report: &mut LaneReport,
+) {
     let master_doc = MASTER_DOC.in_target(target);
     if !master_doc.exists() || !file_contains(&master_doc, literal) {
-        push_required(report, MASTER_DOC.as_str(), literal);
+        push_required(report, rules, MASTER_DOC.as_str(), literal);
     }
 }
 
-fn push_required(report: &mut LaneReport, path: &str, literal: &str) {
+fn push_required(report: &mut LaneReport, rules: &AgentCliRules, path: &str, literal: &str) {
     report.push(Finding::new(
-        RULE_REQUIRED,
+        rules.required.clone(),
         path,
         0,
         format!("agent CLI contract missing required literal: {literal}"),
     ));
 }
 
-fn check_rejected_literals(target: &TargetProject, files: &[PathBuf], report: &mut LaneReport) {
-    REJECTED_LITERALS.iter().for_each(|literal| {
-        report.record_scan();
-        if let Some((path, line)) = first_match(files, literal) {
-            push_rejected(target, report, &path, line, literal);
-        }
-    });
+fn check_rejected_literals(
+    target: &TargetProject,
+    files: &[PathBuf],
+    rules: &AgentCliRules,
+    report: &mut LaneReport,
+) {
+    let rejected: Vec<Finding> = REJECTED_LITERALS
+        .iter()
+        .inspect(|_| report.record_scan())
+        .filter_map(|literal| {
+            first_match(files, literal)
+                .map(|(path, line)| rejected_finding(target, rules, &path, line, literal))
+        })
+        .collect();
+    report.extend_finding(rejected);
 }
 
-fn push_rejected(
+fn rejected_finding(
     target: &TargetProject,
-    report: &mut LaneReport,
+    rules: &AgentCliRules,
     path: &Path,
     line: u32,
     literal: &str,
-) {
-    report.push(Finding::new(
-        RULE_REJECTED,
+) -> Finding {
+    Finding::new(
+        rules.rejected.clone(),
         finding_path(target, path),
         line,
         format!("agent CLI contract rejected literal: {literal}"),
-    ));
+    )
 }
 
 fn file_contains(path: &Path, needle: &str) -> bool {
@@ -189,4 +250,32 @@ fn first_match(files: &[PathBuf], needle: &str) -> Option<(PathBuf, u32)> {
 fn finding_path(target: &TargetProject, path: &Path) -> String {
     path.strip_prefix(target.as_std_path())
         .map_or_else(|_| path.display().to_string(), |rel| rel.display().to_string())
+}
+
+/// Write raw text to stderr.
+///
+/// # Errors
+///
+/// Returns the underlying stderr write error.
+fn write_stderr(text: &str) -> std::io::Result<()> {
+    let mut stderr = std::io::stderr().lock();
+    stderr.write_all(text.as_bytes())
+}
+
+/// Write formatted text followed by a newline to stderr.
+///
+/// # Errors
+///
+/// Returns the underlying stderr write error.
+fn write_stderr_line(args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+    let mut stderr = std::io::stderr().lock();
+    stderr.write_fmt(args)?;
+    stderr.write_all(b"\n")
+}
+
+fn exit_after_stderr_line(args: std::fmt::Arguments<'_>, code: LaneExit) -> ExitCode {
+    match write_stderr_line(args) {
+        Ok(()) => exit(code),
+        Err(_) => exit(LaneExit::Failure),
+    }
 }

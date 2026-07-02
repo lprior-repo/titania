@@ -2,8 +2,9 @@ use std::{io::ErrorKind, path::PathBuf};
 
 use titania_core::TargetProject;
 
-#[derive(Clone, Copy)]
-pub(super) struct TargetRelativePath {
+/// Path relative to the target project root.
+#[derive(Debug, Clone, Copy)]
+pub struct TargetRelativePath {
     value: &'static str,
 }
 
@@ -12,30 +13,49 @@ impl TargetRelativePath {
         Self { value }
     }
 
-    pub(super) const fn as_str(self) -> &'static str {
+    /// Borrow the stored target-relative path string.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
         self.value
     }
 
-    pub(super) fn in_target(self, target: &TargetProject) -> PathBuf {
+    /// Resolve this path under a target project root.
+    #[must_use]
+    pub fn in_target(self, target: &TargetProject) -> PathBuf {
         target.as_std_path().join(self.value)
     }
 }
 
-pub(super) struct Oracle {
-    pub(super) path: TargetRelativePath,
-    pub(super) function: &'static str,
+/// Fuzz or test oracle function that must mention every error variant.
+#[derive(Debug)]
+pub struct Oracle {
+    /// Oracle source file path.
+    pub path: TargetRelativePath,
+    /// Oracle function name.
+    pub function: &'static str,
 }
 
-pub(super) struct Check {
-    pub(super) type_name: &'static str,
-    pub(super) enum_path: TargetRelativePath,
-    pub(super) domain_label: &'static str,
-    pub(super) oracles: &'static [Oracle],
+/// One error enum and its associated oracle functions.
+#[derive(Debug)]
+pub struct Check {
+    /// Error enum type name.
+    pub type_name: &'static str,
+    /// Source path containing the error enum.
+    pub enum_path: TargetRelativePath,
+    /// Human-readable domain label for status output.
+    pub domain_label: &'static str,
+    /// Oracle functions expected to cover the enum variants.
+    pub oracles: &'static [Oracle],
 }
 
-pub(super) enum DomainFile {
+/// Optional domain file read result.
+#[derive(Debug)]
+pub enum DomainFile {
+    /// File exists and was read as UTF-8 text.
     Present(String),
+    /// File is absent, making the associated check not applicable.
     Absent,
+    /// File exists but could not be read.
     Unreadable(ErrorKind),
 }
 
@@ -68,7 +88,8 @@ const VALIDATION_ORACLES: &[Oracle] = &[Oracle {
     function: "assert_typed_validation_error",
 }];
 
-pub(super) const CHECKS: &[Check] = &[
+/// Static error-exhaustiveness checks executed by this lane.
+pub const CHECKS: &[Check] = &[
     Check {
         type_name: "JournalError",
         enum_path: TargetRelativePath::new("crates/vb_storage/src/error/mod.rs"),

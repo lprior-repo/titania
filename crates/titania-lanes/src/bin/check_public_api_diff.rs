@@ -10,19 +10,49 @@
 #![forbid(unsafe_code)]
 
 #[path = "check_public_api_diff/package_json.rs"]
-mod package_json;
+/// Cargo metadata package-name extraction helpers.
+pub mod package_json;
 
 use titania_core::TargetProject;
-use titania_lanes::{CommandIn, Finding, LaneExit, LaneReport, current_target_project, exit};
+use titania_lanes::{
+    CommandIn, Finding, LaneExit, LaneReport, RuleId, RuleIdError, current_target_project, exit,
+};
+
+use std::io::{self, Write};
 
 use package_json::extract_package_names;
 
-const RULE_CARGO_MISSING: &str = "PUBAPI-CARGO-MISSING-001";
-const RULE_METADATA: &str = "PUBAPI-METADATA-001";
-const RULE_PUBLIC_API_DIFF: &str = "PUBAPI-DIFF-001";
-const RULE_PUBLIC_API_TOOL: &str = "PUBAPI-TOOL-001";
-const RULE_TARGET: &str = "PUBAPI-TARGET-001";
+const RULE_CARGO_MISSING: &str = "PUBAPI_CARGO_MISSING_001";
+const RULE_METADATA: &str = "PUBAPI_METADATA_001";
+const RULE_PUBLIC_API_DIFF: &str = "PUBAPI_DIFF_001";
+const RULE_PUBLIC_API_TOOL: &str = "PUBAPI_TOOL_001";
+const RULE_TARGET: &str = "PUBAPI_TARGET_001";
 const TOOLCHAIN: &str = "nightly-2026-04-28";
+
+struct PubApiRules {
+    cargo_missing: RuleId,
+    metadata: RuleId,
+    public_api_diff: RuleId,
+    public_api_tool: RuleId,
+    target: RuleId,
+}
+
+impl PubApiRules {
+    /// Builds typed rule IDs used by the public API lane.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`RuleIdError`] when a configured rule ID literal is invalid.
+    fn new() -> Result<Self, RuleIdError> {
+        Ok(Self {
+            cargo_missing: RuleId::new(RULE_CARGO_MISSING)?,
+            metadata: RuleId::new(RULE_METADATA)?,
+            public_api_diff: RuleId::new(RULE_PUBLIC_API_DIFF)?,
+            public_api_tool: RuleId::new(RULE_PUBLIC_API_TOOL)?,
+            target: RuleId::new(RULE_TARGET)?,
+        })
+    }
+}
 
 fn filter_packages(discovered: Vec<String>) -> Vec<String> {
     let mut selected: Vec<String> = discovered
@@ -36,12 +66,18 @@ fn filter_packages(discovered: Vec<String>) -> Vec<String> {
     selected
 }
 
+/// Discovers public API checked package names from Cargo metadata.
+///
+/// # Errors
+///
+/// Returns an error string when `cargo metadata` cannot start, exits with a
+/// failure status, or emits non-UTF-8 JSON.
 fn discover_packages(target: &TargetProject) -> Result<Vec<String>, String> {
     let manifest = target.manifest_path();
     let mut command = CommandIn::new(target, "cargo")
         .map_err(|error| format!("cargo metadata failed to start: {error}"))?;
-    command.inherit_env();
-    command
+    let _ = command.inherit_env();
+    let _ = command
         .arg("metadata")
         .arg("--format-version")
         .arg("1")
@@ -51,11 +87,11 @@ fn discover_packages(target: &TargetProject) -> Result<Vec<String>, String> {
     let output = command
         .run_capture_raw()
         .map_err(|error| format!("cargo metadata failed to start: {error}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status().success() {
+        let stderr = String::from_utf8_lossy(output.stderr());
         return Err(format!("cargo metadata failed: {stderr}"));
     }
-    let text = String::from_utf8(output.stdout)
+    let text = String::from_utf8(output.stdout().to_vec())
         .map_err(|error| format!("cargo metadata returned non-UTF8 JSON: {error}"))?;
     Ok(filter_packages(extract_package_names(&text)))
 }
@@ -64,6 +100,12 @@ enum PublicApiDiff {
     Clean,
     Violation(String),
     Failure(String),
+}
+
+struct DiffContext<'a> {
+    target: &'a TargetProject,
+    manifest: &'a str,
+    rules: &'a PubApiRules,
 }
 
 fn run_public_api_diff<'a>(
@@ -75,13 +117,13 @@ fn run_public_api_diff<'a>(
         Ok(command) => command,
         Err(error) => return PublicApiDiff::Failure(format!("rustup command invalid: {error}")),
     };
-    command.inherit_env();
+    let _ = command.inherit_env();
     add_public_api_args(&mut command, package, manifest);
     classify_public_api_output(package, command.run_capture_raw())
 }
 
 fn add_public_api_args<'a>(command: &mut CommandIn<'a>, package: &'a str, manifest: &'a str) {
-    command
+    let _ = command
         .arg("run")
         .arg(TOOLCHAIN)
         .arg("cargo")
@@ -111,14 +153,14 @@ fn classify_public_api_output(
             ));
         }
     };
-    if output.status.success() {
+    if output.status().success() {
         return PublicApiDiff::Clean;
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(output.stderr());
+    let stdout = String::from_utf8_lossy(output.stdout());
     let message = format!(
         "cargo public-api diff failed for {package} with code {:?}\n{stdout}{stderr}",
-        output.status.code()
+        output.status().code()
     );
     if is_public_api_missing(&message) {
         PublicApiDiff::Failure(message)
@@ -135,103 +177,70 @@ fn run_package_diffs(
     target: &TargetProject,
     packages: &[String],
     manifest: &str,
+    rules: &PubApiRules,
     report: &mut LaneReport,
 ) -> LaneExit {
     let mut exit_code = LaneExit::Clean;
+    let context = DiffContext { target, manifest, rules };
     for package in packages {
-        match run_public_api_diff(target, package, manifest) {
-            PublicApiDiff::Clean => {}
-            PublicApiDiff::Violation(message) => {
-                report.push(Finding::new(RULE_PUBLIC_API_DIFF, package, 0, message));
-                if exit_code == LaneExit::Clean {
-                    exit_code = LaneExit::Violations;
-                }
-            }
-            PublicApiDiff::Failure(message) => {
-                report.push(Finding::new(RULE_PUBLIC_API_TOOL, package, 0, message));
-                exit_code = LaneExit::Failure;
-            }
+        exit_code = apply_public_api_diff(&context, package, report, exit_code);
+    }
+    exit_code
+}
+
+fn apply_public_api_diff(
+    context: &DiffContext<'_>,
+    package: &str,
+    report: &mut LaneReport,
+    current_exit: LaneExit,
+) -> LaneExit {
+    match run_public_api_diff(context.target, package, context.manifest) {
+        PublicApiDiff::Clean => current_exit,
+        PublicApiDiff::Violation(message) => {
+            report.push(Finding::new(context.rules.public_api_diff.clone(), package, 0, message));
+            violation_exit(current_exit)
+        }
+        PublicApiDiff::Failure(message) => {
+            report.push(Finding::new(context.rules.public_api_tool.clone(), package, 0, message));
+            LaneExit::Failure
         }
     }
-    exit_code
 }
 
-fn usage_requested(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--help" || arg == "-h")
-}
-
-fn emit_usage() {
-    eprintln!(
-        "usage: check-public-api-diff\n\
-         Discovers vb_* workspace packages and runs\n\
-         `cargo public-api diff origin/main..HEAD` through CommandIn."
-    );
-}
-
-fn resolve_target(report: &mut LaneReport) -> Result<TargetProject, LaneExit> {
-    current_target_project().map_err(|error| {
-        report.push(Finding::new(
-            RULE_TARGET,
-            "Cargo.toml",
-            0,
-            format!("target discovery failed: {error}"),
-        ));
-        eprint!("{}", report.render());
-        LaneExit::Usage
-    })
-}
-
-fn resolve_package_list(
-    target: &TargetProject,
-    report: &mut LaneReport,
-) -> Result<Vec<String>, LaneExit> {
-    discover_packages(target).map_err(|error| {
-        let is_missing = error.contains("failed to start");
-        let rule = if is_missing { RULE_CARGO_MISSING } else { RULE_METADATA };
-        report.push(Finding::new(rule, "Cargo.toml", 0, error));
-        eprint!("{}", report.render());
-        if is_missing { LaneExit::Failure } else { LaneExit::Violations }
-    })
-}
-
-fn report_no_packages() -> LaneExit {
-    eprintln!(
-        "NotApplicable: no vb_* or velvet-ballistics packages discovered in workspace metadata"
-    );
-    LaneExit::NotApplicable
-}
-
-fn run_diffs_and_emit(
-    target: &TargetProject,
-    packages: &[String],
-    report: &mut LaneReport,
-) -> LaneExit {
-    let manifest = target.manifest_path();
-    let exit_code = run_package_diffs(target, packages, manifest.as_str(), report);
-    if exit_code != LaneExit::Clean {
-        eprint!("{}", report.render());
+const fn violation_exit(current: LaneExit) -> LaneExit {
+    match current {
+        LaneExit::Failure => LaneExit::Failure,
+        _ => LaneExit::Violations,
     }
-    exit_code
 }
+
+include!("check_public_api_diff/output.rs");
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if usage_requested(&args) {
-        emit_usage();
-        return exit(LaneExit::Usage);
+        return usage_exit();
     }
-
+    let rules = match PubApiRules::new() {
+        Ok(rules) => rules,
+        Err(error) => {
+            return exit_after_stderr_line(
+                &format!("[check-public-api-diff] rule id configuration error: {error}"),
+                LaneExit::Failure,
+            );
+        }
+    };
     let mut report = LaneReport::new();
-    let target = match resolve_target(&mut report) {
+    let target = match resolve_target(&mut report, &rules) {
         Ok(target) => target,
         Err(code) => return exit(code),
     };
-    let packages = match resolve_package_list(&target, &mut report) {
+    let packages = match resolve_package_list(&target, &mut report, &rules) {
         Ok(packages) => packages,
         Err(code) => return exit(code),
     };
     if packages.is_empty() {
         return exit(report_no_packages());
     }
-    exit(run_diffs_and_emit(&target, &packages, &mut report))
+    exit(run_diffs_and_emit(&target, &packages, &mut report, &rules))
 }

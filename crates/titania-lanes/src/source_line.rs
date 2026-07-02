@@ -11,6 +11,7 @@
 //! future scan-style lanes share one well-tested lexer. See
 //! `bin/forbidden_scan/lane.rs` and `bin/check_panic_surface.rs` for
 //! the consumers.
+
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
@@ -24,35 +25,49 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
-use std::{iter::Peekable, str::Chars};
+mod parser;
+mod strategy;
+
+use std::borrow::Cow;
+
+use strategy::ParseStrategy;
 
 /// A source line after stripping comments and string contents.
 ///
 /// `Code` carries the surviving runes (with string contents replaced
-/// by spaces so the byte count and column positions are preserved).
-/// `NonCode` means the whole line was a comment or string; the
-/// scanner can skip it.
+/// by spaces so the byte count and column positions are preserved). It
+/// borrows the input line directly when no transformation was needed
+/// (no string literals or comments present and not inside a spanning
+/// block comment); otherwise it owns the transformed buffer. `NonCode`
+/// means the whole line was a comment or string; the scanner can skip
+/// it.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum SourceLine {
-    Code(String),
+pub enum SourceLine<'a> {
+    /// Surviving code runes, with string contents replaced by spaces.
+    Code(Cow<'a, str>),
+    /// Whole line was a comment or string; the scanner can skip it.
     NonCode,
 }
 
-impl SourceLine {
+impl<'a> SourceLine<'a> {
     /// Tokenize one line. `block_comment` is the carry-over flag from
     /// the previous line: `true` if we are inside a `/* … */` block
     /// that has not yet been closed. The function updates it in place.
     #[must_use]
-    pub fn parse(raw: &str, block_comment: &mut bool) -> Self {
-        let parser = SourceLineParser::new(raw, *block_comment);
-        let parsed = parser.parse();
-        *block_comment = parsed.block_comment;
-        parsed.line
+    pub fn parse(raw: &'a str, block_comment: &mut bool) -> Self {
+        // Fast path: when not inside a spanning block comment and the
+        // line contains no string literal or comment opener, no
+        // transformation is possible — borrow the input slice directly
+        // and skip the per-char buffer allocation.
+        match ParseStrategy::for_line(raw, *block_comment) {
+            ParseStrategy::Borrowed => finish_borrowed(raw),
+            ParseStrategy::Parsed => parser::parse_owned(raw, block_comment),
+        }
     }
 
     /// True if the line was entirely comments or string contents.
     #[must_use]
-    pub fn is_non_code(&self) -> bool {
+    pub const fn is_non_code(&self) -> bool {
         matches!(self, Self::NonCode)
     }
 
@@ -60,114 +75,29 @@ impl SourceLine {
     #[must_use]
     pub fn code(&self) -> &str {
         match self {
-            Self::Code(code) => code.as_str(),
+            Self::Code(code) => code,
             Self::NonCode => "",
         }
     }
 }
 
-struct ParsedLine {
-    line: SourceLine,
-    block_comment: bool,
+fn finish_borrowed(raw: &str) -> SourceLine<'_> {
+    finish_line(raw.trim().is_empty(), Cow::Borrowed(raw))
 }
 
-struct SourceLineParser<'a> {
-    chars: Peekable<Chars<'a>>,
-    code: String,
-    block_comment: bool,
-    in_string: bool,
-    escaped: bool,
+pub(super) fn finish_owned<'a>(code: String) -> SourceLine<'a> {
+    finish_line(code.trim().is_empty(), Cow::Owned(code))
 }
 
-impl<'a> SourceLineParser<'a> {
-    fn new(raw: &'a str, block_comment: bool) -> Self {
-        Self {
-            chars: raw.chars().peekable(),
-            code: String::with_capacity(raw.len()),
-            block_comment,
-            in_string: false,
-            escaped: false,
-        }
-    }
-
-    fn parse(mut self) -> ParsedLine {
-        while let Some(ch) = self.chars.next() {
-            if self.consume_block_comment(ch) || self.consume_string(ch) {
-                continue;
-            }
-            if self.starts_line_comment(ch) {
-                break;
-            }
-            if self.starts_block_comment(ch) {
-                continue;
-            }
-            self.consume_code(ch);
-        }
-        self.finish()
-    }
-
-    fn consume_block_comment(&mut self, ch: char) -> bool {
-        if !self.block_comment {
-            return false;
-        }
-        if ch == '*' && self.chars.peek().is_some_and(|next| *next == '/') {
-            let _slash = self.chars.next();
-            self.block_comment = false;
-        }
-        true
-    }
-
-    fn consume_string(&mut self, ch: char) -> bool {
-        if !self.in_string {
-            return false;
-        }
-        if self.escaped {
-            self.escaped = false;
-        } else if ch == '\\' {
-            self.escaped = true;
-        } else if ch == '"' {
-            self.in_string = false;
-        }
-        true
-    }
-
-    fn starts_line_comment(&mut self, ch: char) -> bool {
-        ch == '/' && self.chars.peek().is_some_and(|next| *next == '/')
-    }
-
-    fn starts_block_comment(&mut self, ch: char) -> bool {
-        if ch != '/' || !self.chars.peek().is_some_and(|next| *next == '*') {
-            return false;
-        }
-        let _star = self.chars.next();
-        self.block_comment = true;
-        true
-    }
-
-    fn consume_code(&mut self, ch: char) {
-        if ch == '"' {
-            self.in_string = true;
-            self.code.push(' ');
-        } else {
-            self.code.push(ch);
-        }
-    }
-
-    fn finish(self) -> ParsedLine {
-        let line = if self.code.trim().is_empty() {
-            SourceLine::NonCode
-        } else {
-            SourceLine::Code(self.code)
-        };
-        ParsedLine { line, block_comment: self.block_comment }
-    }
+fn finish_line(is_empty: bool, code: Cow<'_, str>) -> SourceLine<'_> {
+    if is_empty { SourceLine::NonCode } else { SourceLine::Code(code) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::SourceLine;
 
-    fn parse_lines(text: &str) -> Vec<SourceLine> {
+    fn parse_lines(text: &str) -> Vec<SourceLine<'_>> {
         let mut block_comment = false;
         text.lines().map(|line| SourceLine::parse(line, &mut block_comment)).collect()
     }
@@ -196,12 +126,11 @@ mod tests {
     #[test]
     fn block_comment_spans_multiple_lines() {
         let mut block_comment = false;
-        let line1 = SourceLine::parse("/* spans", &mut block_comment);
+        drop(SourceLine::parse("/* spans", &mut block_comment));
         assert!(block_comment, "block_comment should remain open");
         let line2 = SourceLine::parse("more lines */ let x = 1;", &mut block_comment);
         assert!(!block_comment, "block_comment should be closed");
         assert!(line2.code().contains("let x = 1;"));
-        let _ = line1;
     }
 
     #[test]
@@ -220,7 +149,15 @@ mod tests {
         // contents between the quotes are blanked but the
         // surrounding code survives.
         assert!(code.starts_with("let s = "));
-        assert!(code.ends_with(";"));
+        assert!(code.ends_with(';'));
         assert!(!code.contains(r#"a\"b"#));
+    }
+
+    #[test]
+    fn plain_code_line_is_borrowed_without_allocation() {
+        let mut block_comment = false;
+        let line = SourceLine::parse("let x = 1;", &mut block_comment);
+        assert!(matches!(line.code(), "let x = 1;"));
+        assert!(!block_comment);
     }
 }

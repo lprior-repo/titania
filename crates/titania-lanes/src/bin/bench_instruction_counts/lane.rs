@@ -1,5 +1,11 @@
+#![expect(
+    clippy::redundant_pub_crate,
+    reason = "lane entrypoint is called by the private bench_instruction_counts wrapper module"
+)]
+
 use std::{
     fs,
+    io::{self, Write},
     path::{Path, PathBuf},
     process::ExitCode,
 };
@@ -24,10 +30,9 @@ enum BenchPlan {
     NotApplicable(String),
 }
 
-pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
+pub(super) fn main_exit(args: Vec<String>) -> ExitCode {
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        eprintln!("{USAGE}");
-        return exit(LaneExit::Clean);
+        return exit_after_stderr(format_args!("{USAGE}"), LaneExit::Clean);
     }
     let target = match target_project() {
         Ok(target) => target,
@@ -40,13 +45,21 @@ pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
     run_bench_plan(&target, &benches)
 }
 
+/// # Errors
+///
+/// Returns an exit code when the current target project cannot be resolved.
 fn target_project() -> Result<TargetProject, ExitCode> {
     current_target_project().map_err(|err| {
-        eprintln!("[bench-instruction-counts] cannot resolve target project: {err}");
-        exit(LaneExit::Usage)
+        exit_after_stderr(
+            format_args!("[bench-instruction-counts] cannot resolve target project: {err}"),
+            LaneExit::Usage,
+        )
     })
 }
 
+/// # Errors
+///
+/// Returns an exit code when bench selection is invalid or not applicable.
 fn runnable_benches(target: &TargetProject, args: Vec<String>) -> Result<Vec<String>, ExitCode> {
     match bench_plan(target, args) {
         Ok(BenchPlan::Run(benches)) => Ok(benches),
@@ -56,13 +69,14 @@ fn runnable_benches(target: &TargetProject, args: Vec<String>) -> Result<Vec<Str
 }
 
 fn not_applicable_exit(reason: &str) -> ExitCode {
-    eprintln!("[bench-instruction-counts] NotApplicable: {reason}");
-    exit(LaneExit::NotApplicable)
+    exit_after_stderr(
+        format_args!("[bench-instruction-counts] NotApplicable: {reason}"),
+        LaneExit::NotApplicable,
+    )
 }
 
 fn usage_error_exit(err: &str) -> ExitCode {
-    eprintln!("[bench-instruction-counts] {err}");
-    exit(LaneExit::Usage)
+    exit_after_stderr(format_args!("[bench-instruction-counts] {err}"), LaneExit::Usage)
 }
 
 fn run_bench_plan(target: &TargetProject, benches: &[String]) -> ExitCode {
@@ -79,28 +93,39 @@ fn run_bench_plan(target: &TargetProject, benches: &[String]) -> ExitCode {
         .map_or_else(|| exit(LaneExit::Clean), exit)
 }
 
+/// # Errors
+///
+/// Returns an exit code when `perf` cannot be prepared or executed.
 fn require_perf(target: &TargetProject) -> Result<(), ExitCode> {
     let mut perf_check = CommandIn::new(target, "perf").map_err(|err| {
-        eprintln!("[bench-instruction-counts] failed to prepare perf check: {err}");
-        exit(LaneExit::Failure)
+        exit_after_stderr(
+            format_args!("[bench-instruction-counts] failed to prepare perf check: {err}"),
+            LaneExit::Failure,
+        )
     })?;
-    perf_check.inherit_env().arg("--version");
-    perf_check.run_capture_raw().map(|_| ()).map_err(|_| missing_perf_exit())
+    let _ = perf_check.inherit_env().arg("--version");
+    perf_check.run_capture_raw().map(|_| ()).map_err(|_error| missing_perf_exit())
 }
 
 fn missing_perf_exit() -> ExitCode {
-    eprintln!("Missing required instruction counter: perf");
-    exit(LaneExit::Failure)
+    exit_after_stderr(format_args!("Missing required instruction counter: perf"), LaneExit::Failure)
 }
 
 fn prepare_evidence_dirs(target: &TargetProject) -> Option<(PathBuf, PathBuf)> {
     let target_dir = target.as_std_path().join("target/bench-instruction-counts");
     let evidence_dir = target_dir.join("evidence");
     if let Err(e) = fs::create_dir_all(&evidence_dir) {
-        eprintln!("[bench-instruction-counts] could not create evidence dir: {e}");
-        return None;
+        return evidence_dir_error(&e);
     }
     Some((target_dir, evidence_dir))
+}
+
+fn evidence_dir_error(error: &io::Error) -> Option<(PathBuf, PathBuf)> {
+    match write_stderr_line(format_args!(
+        "[bench-instruction-counts] could not create evidence dir: {error}"
+    )) {
+        Ok(()) | Err(_) => None,
+    }
 }
 
 fn run_one_bench(
@@ -110,25 +135,50 @@ fn run_one_bench(
     bench: &str,
 ) -> LaneExit {
     if bench.is_empty() {
-        eprintln!("Empty benchmark name is not allowed.");
-        return LaneExit::Usage;
+        return empty_benchmark_exit();
     }
     let log_file = evidence_dir.join(format!("{bench}.perf.log"));
-    eprintln!("[bench-instruction-counts] running {bench}");
+    if write_stderr_line(format_args!("[bench-instruction-counts] running {bench}")).is_err() {
+        return LaneExit::Failure;
+    }
     if let Err(code) = run_compile(target, target_dir, bench, &[])
         .and_then(|()| run_perf_stat(target, target_dir, bench, &log_file))
     {
-        eprintln!("[bench-instruction-counts] {bench} failed: {code}");
-        return LaneExit::Violations;
+        return failed_benchmark_exit(bench, &code);
     }
     if is_non_empty(&log_file) { LaneExit::Clean } else { empty_log_exit(&log_file) }
 }
 
+fn empty_benchmark_exit() -> LaneExit {
+    lane_after_stderr(format_args!("Empty benchmark name is not allowed."), LaneExit::Usage)
+}
+
+fn failed_benchmark_exit(bench: &str, code: &str) -> LaneExit {
+    lane_after_stderr(
+        format_args!("[bench-instruction-counts] {bench} failed: {code}"),
+        LaneExit::Violations,
+    )
+}
+
+fn lane_after_stderr(args: std::fmt::Arguments<'_>, code: LaneExit) -> LaneExit {
+    match write_stderr_line(args) {
+        Ok(()) => code,
+        Err(_) => LaneExit::Failure,
+    }
+}
+
 fn empty_log_exit(log_file: &Path) -> LaneExit {
-    eprintln!("Instruction-count log is empty: {}", log_file.display());
+    if write_stderr_line(format_args!("Instruction-count log is empty: {}", log_file.display()))
+        .is_err()
+    {
+        return LaneExit::Failure;
+    }
     LaneExit::Violations
 }
 
+/// # Errors
+///
+/// Returns an error when requested benchmark names are invalid.
 fn bench_plan(target: &TargetProject, args: Vec<String>) -> Result<BenchPlan, String> {
     if !package_manifest(target).is_file() {
         return Ok(BenchPlan::NotApplicable(
@@ -150,13 +200,16 @@ fn package_manifest(target: &TargetProject) -> PathBuf {
     target.as_std_path().join("crates/velvet-ballistics-workspace-tests/Cargo.toml")
 }
 
+/// # Errors
+///
+/// Returns an error when any requested benchmark name is empty.
 fn requested_benches(args: Vec<String>) -> Result<Vec<String>, String> {
     let requested = if args.is_empty() {
         DEFAULT_BENCHES.iter().map(|bench| (*bench).to_owned()).collect()
     } else {
         args
     };
-    if requested.iter().any(|bench| bench.is_empty()) {
+    if requested.iter().any(std::string::String::is_empty) {
         Err("empty benchmark name is not allowed".to_owned())
     } else {
         Ok(requested)
@@ -172,62 +225,11 @@ fn available_benches(target: &TargetProject, requested: Vec<String>) -> Vec<Stri
         .collect()
 }
 
-/// `cargo bench --bench NAME --all-features --no-run` (via rustup).
-fn run_compile(
-    target: &TargetProject,
-    target_dir: &Path,
-    bench: &str,
-    extra: &[&str],
-) -> Result<(), String> {
-    let target_dir_value = target_dir.display().to_string();
-    let mut cmd = CommandIn::new(target, "rustup")
-        .map_err(|e| format!("failed to prepare cargo bench --no-run: {e}"))?;
-    cmd.inherit_env();
-    append_compile_args(&mut cmd, bench, &target_dir_value, extra);
-    run_with_status(&cmd, "cargo bench --no-run")
-}
+include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bin/bench_instruction_counts/commands.rs"));
 
-fn append_compile_args<'a>(
-    cmd: &mut CommandIn<'a>,
-    bench: &'a str,
-    target_dir: &'a str,
-    extra: &'a [&'a str],
-) {
-    cmd.arg("run").arg(RUSTUP_TOOLCHAIN).arg("cargo").arg("bench");
-    cmd.args(&["-p", BENCH_PACKAGE]).arg("--bench").arg(bench);
-    cmd.args(&["--all-features"]).arg("--no-run");
-    cmd.env("CARGO_TARGET_DIR", target_dir).args(extra);
-}
-
-/// `perf stat -x, -e instructions -- rustup run nightly-… cargo bench -- --bench`
-fn run_perf_stat(
-    target: &TargetProject,
-    target_dir: &Path,
-    bench: &str,
-    log_file: &Path,
-) -> Result<(), String> {
-    let target_dir_value = target_dir.display().to_string();
-    let log_file_value = log_file.display().to_string();
-    let mut cmd = CommandIn::new(target, "perf")
-        .map_err(|e| format!("failed to prepare perf stat cargo bench: {e}"))?;
-    cmd.inherit_env();
-    append_perf_args(&mut cmd, bench, &target_dir_value, &log_file_value);
-    run_with_status(&cmd, "perf stat cargo bench")
-}
-
-fn append_perf_args<'a>(
-    cmd: &mut CommandIn<'a>,
-    bench: &'a str,
-    target_dir: &'a str,
-    log_file: &'a str,
-) {
-    cmd.args(&["stat", "-x,", "-e", "instructions", "-o"]).arg(log_file);
-    cmd.arg("--").arg("rustup").arg("run").arg(RUSTUP_TOOLCHAIN);
-    cmd.arg("cargo").arg("bench").args(&["-p", BENCH_PACKAGE]);
-    cmd.arg("--bench").arg(bench).args(&["--all-features"]);
-    cmd.arg("--").arg("--bench").env("CARGO_TARGET_DIR", target_dir);
-}
-
+/// # Errors
+///
+/// Returns an error when the command cannot spawn or exits unsuccessfully.
 fn run_with_status(cmd: &CommandIn<'_>, label: &str) -> Result<(), String> {
     let status = cmd.run_status_raw().map_err(|e| format!("failed to spawn {label}: {e}"))?;
     if status.success() {
@@ -239,4 +241,20 @@ fn run_with_status(cmd: &CommandIn<'_>, label: &str) -> Result<(), String> {
 
 fn is_non_empty(path: &Path) -> bool {
     fs::metadata(path).is_ok_and(|m| m.len() > 0)
+}
+
+fn exit_after_stderr(args: std::fmt::Arguments<'_>, code: LaneExit) -> ExitCode {
+    match write_stderr_line(args) {
+        Ok(()) => exit(code),
+        Err(_) => exit(LaneExit::Failure),
+    }
+}
+
+/// # Errors
+///
+/// Returns an error when stderr cannot be written.
+fn write_stderr_line(args: std::fmt::Arguments<'_>) -> io::Result<()> {
+    let mut stderr = io::stderr().lock();
+    stderr.write_fmt(args)?;
+    stderr.write_all(b"\n")
 }

@@ -1,34 +1,44 @@
 use std::collections::BTreeSet;
 
-pub(super) fn quoted_values_in_line(line: &str) -> Vec<String> {
+fn quoted_values_in_line(line: &str) -> Vec<String> {
     line.split('"')
-        .enumerate()
-        .filter(|&(index, _)| index % 2 == 1)
-        .map(|(_, value)| value.to_owned())
+        .skip(1)
+        .step_by(2)
+        .map(str::to_owned)
         .filter(|value| !value.is_empty())
         .collect()
 }
 
 /// Locate the `[` that opens a TOML array for `key`. Tolerates arbitrary
 /// whitespace, including compact arrays such as `members=["crates/foo"]`.
-pub(super) fn array_open_after<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+fn array_open_after<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     let bytes = text.as_bytes();
     let key_bytes = key.as_bytes();
-    let mut start = 0;
-    while let Some(rel) = find_subslice(bytes.get(start..)?, key_bytes) {
-        let match_start = start.saturating_add(rel);
-        let key_end = match_start.saturating_add(key_bytes.len());
-        if !is_line_key_start(bytes, match_start) {
-            start = key_end;
-            continue;
-        }
-        let Some(after_bracket) = bracket_after_key(bytes, key_end) else {
-            start = key_end;
-            continue;
-        };
-        return text.get(after_bracket..);
+    if key_bytes.is_empty() || bytes.len() < key_bytes.len() {
+        return None;
     }
-    None
+    bytes.windows(key_bytes.len()).enumerate().find_map(|(match_start, window)| {
+        array_slice_for_match(text, bytes, key_bytes, match_start, window)
+    })
+}
+
+fn array_slice_for_match<'a>(
+    text: &'a str,
+    bytes: &[u8],
+    key_bytes: &[u8],
+    match_start: usize,
+    window: &[u8],
+) -> Option<&'a str> {
+    if window != key_bytes {
+        return None;
+    }
+    let key_end = match_start.saturating_add(key_bytes.len());
+    bracket_after_line_key(bytes, match_start, key_end).and_then(|after| text.get(after..))
+}
+
+fn bracket_after_line_key(bytes: &[u8], match_start: usize, key_end: usize) -> Option<usize> {
+    is_line_key_start(bytes, match_start).then_some(())?;
+    bracket_after_key(bytes, key_end)
 }
 
 fn is_line_key_start(bytes: &[u8], match_start: usize) -> bool {
@@ -52,13 +62,6 @@ fn skip_ascii_whitespace(bytes: &[u8], pos: usize) -> usize {
         .get(pos..)
         .and_then(|tail| tail.iter().position(|byte| !byte.is_ascii_whitespace()))
         .map_or(bytes.len(), |offset| pos.saturating_add(offset))
-}
-
-fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() || haystack.len() < needle.len() {
-        return None;
-    }
-    haystack.windows(needle.len()).position(|window| window == needle)
 }
 
 pub(super) fn quoted_array_values(text: &str, key: &str) -> BTreeSet<String> {
@@ -88,45 +91,74 @@ pub(super) fn package_name(manifest: &str) -> Option<String> {
 }
 
 pub(super) fn named_table_values(manifest: &str, table: &str) -> BTreeSet<String> {
-    let mut in_table = false;
-    let mut names = BTreeSet::new();
-    manifest.lines().for_each(|line| {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            in_table = trimmed == table;
-            return;
-        }
-        if in_table && trimmed.contains('=') {
-            if let Some((name, _rest)) = trimmed.split_once('=') {
-                let cleaned = name.trim();
-                if !cleaned.is_empty() {
-                    names.insert(cleaned.to_owned());
-                }
-            }
-        }
-    });
-    names
+    manifest
+        .lines()
+        .fold((false, BTreeSet::new()), |(in_table, names), line| {
+            collect_table_line(table, in_table, names, line)
+        })
+        .1
+}
+
+fn collect_table_line(
+    table: &str,
+    in_table: bool,
+    mut names: BTreeSet<String>,
+    line: &str,
+) -> (bool, BTreeSet<String>) {
+    let trimmed = line.trim();
+    if trimmed.starts_with('[') {
+        return (trimmed == table, names);
+    }
+    if !in_table {
+        return (in_table, names);
+    }
+    insert_table_key(&mut names, trimmed);
+    (in_table, names)
+}
+
+fn insert_table_key(names: &mut BTreeSet<String>, trimmed: &str) {
+    let Some((name, _rest)) = trimmed.split_once('=') else {
+        return;
+    };
+    let cleaned = name.trim();
+    if !cleaned.is_empty() {
+        let _inserted = names.insert(cleaned.to_owned());
+    }
 }
 
 pub(super) fn binary_names(manifest: &str) -> BTreeSet<String> {
-    let mut in_bin = false;
-    let mut names = BTreeSet::new();
-    manifest.lines().for_each(|line| {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            in_bin = trimmed.starts_with("[[bin]]") || trimmed == "[[bin]]";
-            return;
-        }
-        if in_bin && trimmed.starts_with("name") {
-            if let Some((_key, value)) = trimmed.split_once('=') {
-                let cleaned = value.trim().trim_matches('"');
-                if !cleaned.is_empty() {
-                    names.insert(cleaned.to_owned());
-                }
-            }
-        }
-    });
-    names
+    manifest
+        .lines()
+        .fold((false, BTreeSet::new()), |(in_bin, names), line| {
+            collect_bin_line(in_bin, names, line)
+        })
+        .1
+}
+
+fn collect_bin_line(
+    in_bin: bool,
+    mut names: BTreeSet<String>,
+    line: &str,
+) -> (bool, BTreeSet<String>) {
+    let trimmed = line.trim();
+    if trimmed.starts_with('[') {
+        return (trimmed.starts_with("[[bin]]"), names);
+    }
+    if !in_bin || !trimmed.starts_with("name") {
+        return (in_bin, names);
+    }
+    insert_bin_name(&mut names, trimmed);
+    (in_bin, names)
+}
+
+fn insert_bin_name(names: &mut BTreeSet<String>, trimmed: &str) {
+    let Some((_key, value)) = trimmed.split_once('=') else {
+        return;
+    };
+    let cleaned = value.trim().trim_matches('"');
+    if !cleaned.is_empty() {
+        let _inserted = names.insert(cleaned.to_owned());
+    }
 }
 
 #[cfg(test)]

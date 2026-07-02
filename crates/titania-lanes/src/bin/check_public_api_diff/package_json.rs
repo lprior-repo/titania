@@ -1,4 +1,6 @@
-pub(crate) fn extract_package_names(json: &str) -> Vec<String> {
+/// Extract package names from Cargo metadata JSON.
+#[must_use]
+pub fn extract_package_names(json: &str) -> Vec<String> {
     let Some((start, remainder)) = package_remainder(json) else {
         return Vec::new();
     };
@@ -29,58 +31,65 @@ struct ObjectScan {
 fn scan_package_objects(start: usize, remainder: &str) -> Vec<(usize, usize)> {
     let mut objects = Vec::new();
     let mut scan = ObjectScan::default();
-    for (offset, byte) in remainder.bytes().enumerate() {
-        let abs = start.saturating_add(offset);
-        if scan.feed(byte, abs, &mut objects) {
-            break;
-        }
-    }
+    let _completed = remainder
+        .bytes()
+        .enumerate()
+        .try_for_each(|(offset, byte)| {
+            let abs = start.saturating_add(offset);
+            (!feed_scan(&mut scan, byte, abs, &mut objects)).then_some(()).ok_or(())
+        })
+        .is_ok();
     objects
 }
 
-impl ObjectScan {
-    fn feed(&mut self, byte: u8, abs: usize, objects: &mut Vec<(usize, usize)>) -> bool {
-        if self.in_string {
-            self.feed_string(byte);
-            return false;
-        }
-        match byte {
-            b'"' => self.in_string = true,
-            b'{' => self.open_object(abs),
-            b'}' => self.close_object(abs, objects),
-            b']' if self.depth == 0 => return true,
-            _ => {}
-        }
-        false
+fn feed_scan(
+    scan: &mut ObjectScan,
+    byte: u8,
+    abs: usize,
+    objects: &mut Vec<(usize, usize)>,
+) -> bool {
+    if scan.in_string {
+        feed_string(scan, byte);
+        return false;
     }
+    match byte {
+        b'"' => scan.in_string = true,
+        b'{' => open_object(scan, abs),
+        b'}' => close_object(scan, abs, objects),
+        b']' if scan.depth == 0 => return true,
+        _ => {}
+    }
+    false
+}
 
-    fn feed_string(&mut self, byte: u8) {
-        if self.escape {
-            self.escape = false;
-        } else if byte == b'\\' {
-            self.escape = true;
-        } else if byte == b'"' {
-            self.in_string = false;
-        }
+const fn feed_string(scan: &mut ObjectScan, byte: u8) {
+    if scan.escape {
+        scan.escape = false;
+        return;
     }
+    match byte {
+        b'\\' => scan.escape = true,
+        b'"' => scan.in_string = false,
+        _ => {}
+    }
+}
 
-    fn open_object(&mut self, abs: usize) {
-        if self.depth == 0 {
-            self.object_start = Some(abs);
-        }
-        self.depth = self.depth.saturating_add(1);
+const fn open_object(scan: &mut ObjectScan, abs: usize) {
+    if scan.depth == 0 {
+        scan.object_start = Some(abs);
     }
+    scan.depth = scan.depth.saturating_add(1);
+}
 
-    fn close_object(&mut self, abs: usize, objects: &mut Vec<(usize, usize)>) {
-        self.depth = self.depth.saturating_sub(1);
-        if self.depth != 0 {
-            return;
-        }
-        if let Some(object_start) = self.object_start {
-            objects.push((object_start, abs));
-        }
-        self.object_start = None;
+fn close_object(scan: &mut ObjectScan, abs: usize, objects: &mut Vec<(usize, usize)>) {
+    scan.depth = scan.depth.saturating_sub(1);
+    if scan.depth != 0 {
+        return;
     }
+    if let Some(object_start) = scan.object_start {
+        objects.push((object_start, abs));
+    }
+    scan.object_start = None;
 }
 
 fn find_substring(haystack: &str, needle: &str) -> Option<usize> {

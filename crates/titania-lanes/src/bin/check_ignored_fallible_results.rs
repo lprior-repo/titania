@@ -9,39 +9,91 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
+/// Allowlist loading and validation for ignored fallible-result findings.
 #[path = "check_ignored_fallible_results/allow.rs"]
-mod allow;
+pub mod allow;
+/// Source scanner for ignored fallible-result patterns.
 #[path = "check_ignored_fallible_results/scan.rs"]
-mod scan;
+pub mod scan;
+/// Source-line parsing that strips comments and signatures.
 #[path = "check_ignored_fallible_results/source.rs"]
-mod source;
+pub mod source;
 
-use std::{path::Path, process::ExitCode};
+use std::{io::Write as _, path::Path, process::ExitCode};
 
-use titania_lanes::{LaneExit, LaneReport, current_target_project, exit};
+use titania_lanes::{LaneExit, LaneReport, RuleId, RuleIdError, current_target_project, exit};
 
 fn main() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(error) => {
-            eprintln!("[check-ignored-fallible-results] cannot resolve target project: {error}");
-            return exit(LaneExit::Usage);
+            return exit_after_stderr_line(
+                format_args!(
+                    "[check-ignored-fallible-results] cannot resolve target project: {error}"
+                ),
+                LaneExit::Usage,
+            );
         }
     };
     let mut report = LaneReport::new();
-    run(target.as_std_path(), &mut report);
+    if let Err(error) = run(target.as_std_path(), &mut report) {
+        return exit_after_stderr_line(
+            format_args!("[check-ignored-fallible-results] rule id configuration error: {error}"),
+            LaneExit::Failure,
+        );
+    }
     print_and_exit(&report)
 }
 
-fn run(root: &Path, report: &mut LaneReport) {
-    let allow = allow::load_allow(root, report);
-    scan::scan(root, &allow, report);
+/// Run the ignored fallible-result scan.
+///
+/// # Errors
+///
+/// Returns a rule-id construction error if one of the configured discard or
+/// allowlist rules is invalid.
+fn run(root: &Path, report: &mut LaneReport) -> Result<(), RuleIdError> {
+    let allow_rule = RuleId::new(allow::ALLOW_RULE)?;
+    let discard_rules = scan::DiscardRules::new()?;
+    let allow = allow::load_allow(root, &allow_rule, report);
+    scan::scan(root, &allow, &discard_rules, report);
+    Ok(())
+}
+
+fn exit_after_stderr_line(
+    args: std::fmt::Arguments<'_>,
+    success: LaneExit,
+) -> std::process::ExitCode {
+    if write_stderr_line(args).is_err() {
+        return exit(LaneExit::Failure);
+    }
+    exit(success)
 }
 
 fn print_and_exit(report: &LaneReport) -> ExitCode {
     let rendered = report.render();
-    if !rendered.is_empty() {
-        eprint!("{rendered}");
+    if !rendered.is_empty() && write_stderr(&rendered).is_err() {
+        return exit(LaneExit::Failure);
     }
     if report.is_clean() { exit(LaneExit::Clean) } else { exit(LaneExit::Violations) }
+}
+
+/// Write raw text to stderr.
+///
+/// # Errors
+///
+/// Returns the underlying stderr write error.
+fn write_stderr(text: &str) -> std::io::Result<()> {
+    let mut stderr = std::io::stderr().lock();
+    stderr.write_all(text.as_bytes())
+}
+
+/// Write one formatted line to stderr.
+///
+/// # Errors
+///
+/// Returns the underlying stderr write error.
+fn write_stderr_line(args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
+    let mut stderr = std::io::stderr().lock();
+    stderr.write_fmt(args)?;
+    stderr.write_all(b"\n")
 }

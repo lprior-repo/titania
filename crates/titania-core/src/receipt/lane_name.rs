@@ -19,12 +19,8 @@ impl LaneName {
     /// - [`ReceiptError::InvalidLaneName`] if `name` contains a NUL byte.
     pub fn new(name: impl Into<String>) -> Result<Self, ReceiptError> {
         let name = name.into();
-        if name.is_empty() {
-            return Err(ReceiptError::EmptyLaneName);
-        }
-        if name.as_bytes().contains(&b'\0') {
-            return Err(ReceiptError::InvalidLaneName);
-        }
+        (!name.is_empty()).then_some(()).ok_or(ReceiptError::EmptyLaneName)?;
+        (!name.as_bytes().contains(&b'\0')).then_some(()).ok_or(ReceiptError::InvalidLaneName)?;
         Ok(Self(name))
     }
 

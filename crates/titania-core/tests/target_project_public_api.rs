@@ -1,3 +1,7 @@
+//! `TargetProject` public-API smoke tests.
+
+#![expect(clippy::disallowed_methods, reason = "test helpers may unwrap/expect")]
+
 use std::path::{Path, PathBuf};
 
 use tempfile::tempdir;

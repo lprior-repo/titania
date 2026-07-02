@@ -13,18 +13,16 @@
     clippy::as_conversions
 )]
 #![forbid(unsafe_code)]
-#[path = "rust_verification_gauntlet/commands.rs"]
-mod commands;
-
-use std::env;
-
-use commands::{
-    cargo_capture, run_clippy_vb_compile, run_kani, run_kani_default_unwind, run_local_lane,
-    run_test,
+use std::{
+    env,
+    io::{self, Write},
 };
+
 use serde_json::Value;
 use titania_core::TargetProject;
 use titania_lanes::{LaneExit, LaneReport, current_target_project, exit};
+
+include!("rust_verification_gauntlet/commands.rs");
 
 const TEST_GROUPS: [(&str, &str); 4] = [
     ("UNIT-EXPR-BYTESTACK-001", "expression_bytecode"),
@@ -92,6 +90,12 @@ struct TargetPackages {
 }
 
 impl TargetPackages {
+    /// Discovers whether the target project contains packages needed by the gauntlet.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when cargo metadata cannot be captured, decoded as UTF-8,
+    /// or parsed as JSON.
     fn discover(target: &TargetProject) -> Result<Self, String> {
         let output = cargo_capture(target, &["metadata", "--format-version", "1", "--no-deps"])?;
         let text = output.stdout_str().map_err(|error| error.to_string())?;
@@ -129,14 +133,18 @@ fn main() -> std::process::ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let mode_str = args.first().map_or("fast", String::as_str);
     let Some(mode) = Mode::parse(mode_str) else {
-        eprintln!("usage: rust-verification-gauntlet <fast|standard|deep|proof|all>");
-        return exit(LaneExit::Usage);
+        return exit_after_stderr(
+            format_args!("usage: rust-verification-gauntlet <fast|standard|deep|proof|all>"),
+            LaneExit::Usage,
+        );
     };
     let target = match current_target_project() {
         Ok(target) => target,
         Err(err) => {
-            eprintln!("[gauntlet] cannot resolve target project: {err}");
-            return exit(LaneExit::Usage);
+            return exit_after_stderr(
+                format_args!("[gauntlet] cannot resolve target project: {err}"),
+                LaneExit::Usage,
+            );
         }
     };
     exit(run(mode, &target))
@@ -146,14 +154,15 @@ fn run(mode: Mode, target: &TargetProject) -> LaneExit {
     let packages = match TargetPackages::discover(target) {
         Ok(packages) => packages,
         Err(error) => {
-            eprintln!("[gauntlet] cannot inspect target packages: {error}");
-            return LaneExit::Failure;
+            return failure_after_stderr(format_args!(
+                "[gauntlet] cannot inspect target packages: {error}"
+            ));
         }
     };
     let mut report = LaneReport::new();
     let result = dispatch(mode, target, packages, &mut report);
-    if !report.is_clean() {
-        eprintln!("{}", report.render());
+    if !report.is_clean() && write_stderr_line(format_args!("{}", report.render())).is_err() {
+        return LaneExit::Failure;
     }
     result
 }
@@ -164,10 +173,13 @@ fn dispatch(
     packages: TargetPackages,
     report: &mut LaneReport,
 ) -> LaneExit {
-    eprintln!("[gauntlet] mode: {}", label(mode));
+    if write_stderr_line(format_args!("[gauntlet] mode: {}", label(mode))).is_err() {
+        return LaneExit::Failure;
+    }
     if !packages.vb_compile.is_present() {
-        eprintln!("[gauntlet] NotApplicable: package vb_compile absent; skipping compile gauntlet");
-        return LaneExit::NotApplicable;
+        return not_applicable_after_stderr(format_args!(
+            "[gauntlet] NotApplicable: package vb_compile absent; skipping compile gauntlet"
+        ));
     }
     let fast = run_fast_steps(target, report);
     let standard = run_standard_steps(mode, target, report);
@@ -175,108 +187,4 @@ fn dispatch(
     merge(merge(fast, standard), merge(deep, run_proof_steps(mode, target, packages, report)))
 }
 
-fn run_fast_steps(target: &TargetProject, report: &mut LaneReport) -> LaneExit {
-    let clippy = step(report, "STATIC-LINT-001", || run_clippy_vb_compile(target));
-    let ignored = step(report, "ignored-fallible gate", || {
-        run_local_lane(target, LocalLane::IgnoredFallible)
-    });
-    merge(merge(clippy, ignored), test_steps(target, report))
-}
-
-fn run_standard_steps(mode: Mode, target: &TargetProject, report: &mut LaneReport) -> LaneExit {
-    if matches!(mode, Mode::Standard | Mode::Deep | Mode::Proof) {
-        kani_steps(target, report, &STANDARD_KANI, run_kani)
-    } else {
-        LaneExit::Clean
-    }
-}
-
-fn run_deep_steps(mode: Mode, target: &TargetProject, report: &mut LaneReport) -> LaneExit {
-    if matches!(mode, Mode::Deep | Mode::Proof) {
-        kani_steps(target, report, &DEEP_KANI, run_kani)
-    } else {
-        LaneExit::Clean
-    }
-}
-
-fn run_proof_steps(
-    mode: Mode,
-    target: &TargetProject,
-    packages: TargetPackages,
-    report: &mut LaneReport,
-) -> LaneExit {
-    if mode != Mode::Proof {
-        return LaneExit::Clean;
-    }
-    let drift =
-        step(report, "DRIFT-STEPSTATE-001", || run_local_lane(target, LocalLane::StepstateMatrix));
-    let admission = if packages.vb_runtime.is_present() {
-        kani_steps(target, report, &ADMISSION_KANI, run_kani_default_unwind)
-    } else {
-        eprintln!(
-            "[gauntlet] NotApplicable: package vb_runtime absent; skipping admission Kani checks"
-        );
-        LaneExit::Clean
-    };
-    eprintln!(
-        "[gauntlet] NOTE: Verus proofs (VERUS-EXPR-STACK-001, VERUS-SLOT-MAX-001) are WAIVED -- toolchain not installed"
-    );
-    merge(drift, admission)
-}
-
-fn label(m: Mode) -> &'static str {
-    match m {
-        Mode::Fast => "fast",
-        Mode::Standard => "standard",
-        Mode::Deep => "deep",
-        Mode::Proof => "proof",
-    }
-}
-
-fn step<F: FnOnce() -> LaneExit>(report: &mut LaneReport, label: &str, f: F) -> LaneExit {
-    match f() {
-        LaneExit::Clean | LaneExit::NotApplicable => {
-            eprintln!("[PASS] {label}");
-            report.record_pass();
-            LaneExit::Clean
-        }
-        LaneExit::Violations => {
-            eprintln!("[FAIL] {label}");
-            LaneExit::Violations
-        }
-        LaneExit::Usage | LaneExit::Failure => {
-            eprintln!("[ERROR] {label}");
-            LaneExit::Failure
-        }
-    }
-}
-
-fn merge(left: LaneExit, right: LaneExit) -> LaneExit {
-    match (left, right) {
-        (LaneExit::Failure | LaneExit::Usage, _) | (_, LaneExit::Failure | LaneExit::Usage) => {
-            LaneExit::Failure
-        }
-        (LaneExit::Violations, _) | (_, LaneExit::Violations) => LaneExit::Violations,
-        (LaneExit::Clean, LaneExit::Clean)
-        | (LaneExit::Clean, LaneExit::NotApplicable)
-        | (LaneExit::NotApplicable, LaneExit::Clean) => LaneExit::Clean,
-        (LaneExit::NotApplicable, LaneExit::NotApplicable) => LaneExit::NotApplicable,
-    }
-}
-
-fn test_steps(target: &TargetProject, report: &mut LaneReport) -> LaneExit {
-    TEST_GROUPS.iter().fold(LaneExit::Clean, |exit_code, (name, group)| {
-        merge(exit_code, step(report, name, || run_test(target, group)))
-    })
-}
-
-fn kani_steps(
-    target: &TargetProject,
-    report: &mut LaneReport,
-    steps: &[(&str, &str)],
-    runner: fn(&TargetProject, &str) -> LaneExit,
-) -> LaneExit {
-    steps.iter().fold(LaneExit::Clean, |exit_code, (name, harness)| {
-        merge(exit_code, step(report, name, || runner(target, harness)))
-    })
-}
+include!("rust_verification_gauntlet/dispatch.rs");

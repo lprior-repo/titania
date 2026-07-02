@@ -10,13 +10,19 @@ use crate::{
     syntax::{ApiSourceLine, compact, remove_spaces},
 };
 
-pub(super) fn scan(
-    root: &Path,
-) -> Result<(Vec<String>, Vec<FindingData>, Vec<FindingData>), String> {
+type ScanOutcome = (Vec<String>, Vec<FindingData>, Vec<FindingData>);
+
+/// Scan hot source files for forbidden APIs.
+///
+/// # Errors
+///
+/// Returns an error when allow-file loading or source enumeration fails, or
+/// when a hot source file cannot be read.
+pub(super) fn scan(root: &Path) -> Result<ScanOutcome, String> {
     let allowed = load_allow_file(root)?;
     let sources = hot_sources(root).map_err(|error| format!("hot source scan failed: {error}"))?;
     let mut state = ScanState::new(allowed);
-    sources.iter().try_for_each(|source| state.scan_source(root, source))?;
+    sources.iter().try_for_each(|source| scan_source(&mut state, root, source))?;
     Ok(state.finish())
 }
 
@@ -28,58 +34,61 @@ struct ScanState {
 }
 
 impl ScanState {
-    fn new(allowed: BTreeSet<(String, String)>) -> Self {
+    const fn new(allowed: BTreeSet<(String, String)>) -> Self {
         Self { allowed, classified: Vec::new(), violations: Vec::new(), justified: Vec::new() }
     }
 
-    fn finish(self) -> (Vec<String>, Vec<FindingData>, Vec<FindingData>) {
+    fn finish(self) -> ScanOutcome {
         (self.classified, self.violations, self.justified)
     }
+}
 
-    fn scan_source(&mut self, root: &Path, source: &Path) -> Result<(), String> {
-        let rel_path = relative_path(root, source);
-        let role = source_role(&rel_path);
-        self.classified.push(format!("ClassifiedPath|{:?}|{}", role, rel_path));
-        if role != SourceRole::HotProduction {
-            return Ok(());
-        }
-        let text = fs::read_to_string(source)
-            .map_err(|error| format!("{}: unreadable: {error}", source.display()))?;
-        self.scan_hot_text(&rel_path, &text);
-        Ok(())
+/// Scan one source file already selected as part of the hot/cold domain.
+///
+/// # Errors
+///
+/// Returns an error when a hot production source cannot be read.
+fn scan_source(state: &mut ScanState, root: &Path, source: &Path) -> Result<(), String> {
+    let rel_path = relative_path(root, source);
+    let role = source_role(&rel_path);
+    state.classified.push(format!("ClassifiedPath|{role:?}|{rel_path}"));
+    if role != SourceRole::HotProduction {
+        return Ok(());
     }
+    let text = fs::read_to_string(source)
+        .map_err(|error| format!("{}: unreadable: {error}", source.display()))?;
+    scan_hot_text(state, &rel_path, &text);
+    Ok(())
+}
 
-    fn scan_hot_text(&mut self, rel_path: &str, text: &str) {
-        let mut state = HotLineState::default();
-        text.lines().enumerate().for_each(|(index, line)| {
-            self.scan_hot_line(rel_path, index.saturating_add(1), line, &mut state);
-        });
-    }
+fn scan_hot_text(state: &mut ScanState, rel_path: &str, text: &str) {
+    let mut line_state = HotLineState::default();
+    text.lines().enumerate().for_each(|(index, line)| {
+        scan_hot_line(state, rel_path, index.saturating_add(1), line, &mut line_state);
+    });
+}
 
-    fn scan_hot_line(
-        &mut self,
-        rel_path: &str,
-        line_no: usize,
-        line: &str,
-        state: &mut HotLineState,
-    ) {
-        if state.test_scope.skip_line(line) {
-            return;
-        }
-        let source_line = ApiSourceLine::parse(line, &mut state.block_comment);
-        classify_line(rel_path, line_no, &source_line)
-            .into_iter()
-            .for_each(|finding| self.push_classified_finding(finding));
+fn scan_hot_line(
+    state: &mut ScanState,
+    rel_path: &str,
+    line_no: usize,
+    line: &str,
+    line_state: &mut HotLineState,
+) {
+    if skip_test_scope_line(&mut line_state.test_scope, line) {
+        return;
     }
+    let source_line = ApiSourceLine::parse(line, &mut line_state.block_comment);
+    let findings = classify_line(rel_path, line_no, &source_line);
+    let (justified, violations): (Vec<FindingData>, Vec<FindingData>) =
+        findings.into_iter().partition(|finding| allowed_finding(&state.allowed, finding));
+    state.justified.extend(justified);
+    state.violations.extend(violations);
+}
 
-    fn push_classified_finding(&mut self, finding: FindingData) {
-        let key = (finding.rel_path.clone(), finding.class_id.to_owned());
-        if self.allowed.contains(&key) {
-            self.justified.push(finding);
-        } else {
-            self.violations.push(finding);
-        }
-    }
+fn allowed_finding(allowed: &BTreeSet<(String, String)>, finding: &FindingData) -> bool {
+    let key = (finding.rel_path.clone(), finding.class_id.to_owned());
+    allowed.contains(&key)
 }
 
 #[derive(Default)]
@@ -94,30 +103,28 @@ struct TestScope {
     depth: i32,
 }
 
-impl TestScope {
-    fn skip_line(&mut self, line: &str) -> bool {
-        let trimmed = line.trim();
-        if self.depth > 0 {
-            self.depth = next_depth(self.depth, line);
-            return true;
-        }
-        if trimmed.starts_with("#[cfg(test)]") {
-            self.cfg_test_pending = true;
-            return true;
-        }
-        if self.cfg_test_pending && trimmed.contains("mod ") {
-            self.depth = initial_test_depth(line);
-            self.cfg_test_pending = false;
-            return true;
-        }
-        self.clear_pending_for_code(trimmed);
-        false
+fn skip_test_scope_line(scope: &mut TestScope, line: &str) -> bool {
+    let trimmed = line.trim();
+    if scope.depth > 0_i32 {
+        scope.depth = next_depth(scope.depth, line);
+        return true;
     }
+    if trimmed.starts_with("#[cfg(test)]") {
+        scope.cfg_test_pending = true;
+        return true;
+    }
+    if scope.cfg_test_pending && trimmed.contains("mod ") {
+        scope.depth = initial_test_depth(line);
+        scope.cfg_test_pending = false;
+        return true;
+    }
+    clear_pending_for_code(scope, trimmed);
+    false
+}
 
-    fn clear_pending_for_code(&mut self, trimmed: &str) {
-        if !trimmed.is_empty() && !trimmed.starts_with('#') {
-            self.cfg_test_pending = false;
-        }
+fn clear_pending_for_code(scope: &mut TestScope, trimmed: &str) {
+    if !trimmed.is_empty() && !trimmed.starts_with('#') {
+        scope.cfg_test_pending = false;
     }
 }
 
@@ -193,8 +200,12 @@ fn classify_line(rel_path: &str, line_no: usize, source_line: &ApiSourceLine) ->
     let text = compact(stripped);
     checks_for(stripped)
         .into_iter()
-        .filter_map(|(class_id, matched)| {
-            finding_if_matched(rel_path, line_no, class_id, &text, matched)
+        .filter(|(_class_id, matched)| *matched)
+        .map(|(class_id, _matched)| FindingData {
+            rel_path: rel_path.to_owned(),
+            line_no,
+            class_id,
+            text: text.clone(),
         })
         .collect()
 }
@@ -218,21 +229,6 @@ fn checks_for(stripped: &str) -> [(&'static str, bool); 6] {
     ]
 }
 
-fn finding_if_matched(
-    rel_path: &str,
-    line_no: usize,
-    class_id: &'static str,
-    text: &str,
-    matched: bool,
-) -> Option<FindingData> {
-    matched.then(|| FindingData {
-        rel_path: rel_path.to_owned(),
-        line_no,
-        class_id,
-        text: text.to_owned(),
-    })
-}
-
 fn has_unbounded_channel(stripped: &str) -> bool {
     stripped.contains("std::sync::mpsc::channel(")
         || stripped.contains("mpsc::channel(")
@@ -240,17 +236,28 @@ fn has_unbounded_channel(stripped: &str) -> bool {
         || stripped.contains("crossbeam_channel::unbounded(")
 }
 
+/// Recursively collect Rust files under `root`.
+///
+/// # Errors
+///
+/// Returns the first directory traversal error from `read_dir`.
 fn rust_files(root: &Path) -> io::Result<Vec<PathBuf>> {
     if !root.exists() {
         return Ok(Vec::new());
     }
     fs::read_dir(root)?.try_fold(Vec::new(), |mut out, entry| {
-        append_rust_entry(&mut out, entry?, root)?;
+        let entry = entry?;
+        append_rust_entry(&mut out, &entry, root)?;
         Ok(out)
     })
 }
 
-fn append_rust_entry(out: &mut Vec<PathBuf>, entry: fs::DirEntry, _root: &Path) -> io::Result<()> {
+/// Append one directory entry's Rust files to the accumulator.
+///
+/// # Errors
+///
+/// Returns directory traversal errors from recursive Rust-file collection.
+fn append_rust_entry(out: &mut Vec<PathBuf>, entry: &fs::DirEntry, _root: &Path) -> io::Result<()> {
     let path = entry.path();
     if path.is_dir() {
         out.extend(rust_files(&path)?);
@@ -260,6 +267,11 @@ fn append_rust_entry(out: &mut Vec<PathBuf>, entry: fs::DirEntry, _root: &Path) 
     Ok(())
 }
 
+/// Collect source files from the configured hot crates.
+///
+/// # Errors
+///
+/// Returns directory traversal errors from hot-crate source enumeration.
 fn hot_sources(root: &Path) -> io::Result<Vec<PathBuf>> {
     HOT_CRATES.iter().try_fold(Vec::new(), |mut out, crate_name| {
         let src = root.join("crates").join(crate_name).join("src");

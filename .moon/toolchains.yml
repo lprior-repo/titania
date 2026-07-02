@@ -6,8 +6,7 @@
 rust:
   version: 'nightly-2026-04-27'
   bins:
-    - 'cargo-deny@latest'
-    - 'cargo-binstall@latest'
-    - 'cargo-dylint@latest'
+    - 'cargo-deny'
+    - 'cargo-binstall'
+    - 'cargo-dylint'
   syncToolchainConfig: true
-

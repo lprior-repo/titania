@@ -1,2 +1,7 @@
 [build]
-rustflags = ["-Zcrate-attr=feature(non_exhaustive_omitted_patterns_lint)"]
+# The unstable `non_exhaustive_omitted_patterns` lint is intentionally NOT
+# enforced: on nightly-2026-04-27 the workspace-lint path leaves clippy
+# unable to recognize it, while explicit `-Zcrate-attr` injection collides
+# with the implicit feature enable under `cargo build`. Re-enabling it
+# requires a toolchain where the lint is stable or uniformly recognized.
+# rustflags = ["-Zcrate-attr=feature(non_exhaustive_omitted_patterns_lint)"]
