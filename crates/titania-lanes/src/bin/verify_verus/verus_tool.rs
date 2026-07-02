@@ -15,6 +15,14 @@ pub fn verus_on_path(target: &TargetProject) -> bool {
     command.run_capture_raw().is_ok()
 }
 
+/// Run Verus on a single proof target and capture its output as a log file.
+///
+/// # Errors
+///
+/// - Fails if `CommandIn::new` cannot prepare the verus command.
+/// - Fails if `verus` itself crashes or cannot be executed.
+/// - Fails if the log file cannot be written to disk (I/O error).
+/// - Returns an error string when verus exits with a non-zero status.
 pub fn run_verus_target(
     target: &TargetProject,
     proof_target: &ProofTarget,
@@ -46,6 +54,11 @@ fn safe_log_name(proof_target: &str) -> String {
         .collect()
 }
 
+/// Write verus stdout and stderr to a log file.
+///
+/// # Errors
+///
+/// - Fails if the log file cannot be written to disk (I/O error).
 fn write_log(path: &Path, stdout: &[u8], stderr: &[u8]) -> Result<(), String> {
     let mut body = String::from_utf8_lossy(stdout).into_owned();
     body.push_str("\n--- stderr ---\n");
