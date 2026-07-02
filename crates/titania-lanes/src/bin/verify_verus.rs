@@ -74,6 +74,16 @@ fn run(report: &mut LaneReport) -> LaneExit {
     }
 }
 
+/// Orchestrates the full verification lane: target discovery, registry parsing,
+/// proof execution, and evidence collection.
+///
+/// # Errors
+///
+/// - Returns `Err(LaneExit::Usage)` if the target project cannot be resolved
+///   or the proof registry is missing/empty/has no targets.
+/// - Returns `Err(LaneExit::Failure)` if Verus is not found on PATH, the evidence
+///   directory cannot be created, the summary file cannot be written, or the
+///   registry YAML cannot be parsed.
 fn run_checked(report: &mut LaneReport) -> Result<LaneExit, LaneExit> {
     let target = resolve_target()?;
     ensure_verus_on_path(&target)?;
@@ -85,6 +95,11 @@ fn run_checked(report: &mut LaneReport) -> Result<LaneExit, LaneExit> {
     Ok(run_production_targets(report, &target, &paths.evidence_dir, &inputs))
 }
 
+/// Discover the target project from the environment.
+///
+/// # Errors
+///
+/// - Returns `Err(LaneExit::Usage)` if no target project can be resolved.
 fn resolve_target() -> Result<TargetProject, LaneExit> {
     match current_target_project() {
         Ok(target) => Ok(target),
@@ -95,6 +110,11 @@ fn resolve_target() -> Result<TargetProject, LaneExit> {
     }
 }
 
+/// Verify that the Verus compiler is available on PATH.
+///
+/// # Errors
+///
+/// - Returns `Err(LaneExit::Failure)` if Verus is not found.
 fn ensure_verus_on_path(target: &TargetProject) -> Result<(), LaneExit> {
     if verus_tool::verus_on_path(target) {
         Ok(())
@@ -104,6 +124,13 @@ fn ensure_verus_on_path(target: &TargetProject) -> Result<(), LaneExit> {
     }
 }
 
+/// Prepare all inputs needed for the verification lane.
+///
+/// # Errors
+///
+/// - Returns `Err(LaneExit::Usage)` if the registry is missing/empty or has no targets.
+/// - Returns `Err(LaneExit::Failure)` if the evidence directory cannot be created,
+///   the summary file cannot be written, or the registry YAML cannot be parsed.
 fn prepare_inputs(
     target: &TargetProject,
     paths: &LanePaths,
@@ -117,6 +144,11 @@ fn prepare_inputs(
     Ok(VerificationInputs { targets, summary_path })
 }
 
+/// Verify the registry file exists and is non-empty.
+///
+/// # Errors
+///
+/// - Returns `Err(LaneExit::Usage)` if the registry file is missing or empty.
 fn ensure_registry_has_content(registry: &Path) -> Result<(), LaneExit> {
     if registry::registry_path_is_nonempty(registry) {
         Ok(())
@@ -129,6 +161,11 @@ fn ensure_registry_has_content(registry: &Path) -> Result<(), LaneExit> {
     }
 }
 
+/// Create the evidence output directory if it does not exist.
+///
+/// # Errors
+///
+/// - Returns `Err(LaneExit::Failure)` if the directory cannot be created.
 fn ensure_evidence_dir(evidence_dir: &Path) -> Result<(), LaneExit> {
     match fs::create_dir_all(evidence_dir) {
         Ok(()) => Ok(()),
@@ -139,6 +176,11 @@ fn ensure_evidence_dir(evidence_dir: &Path) -> Result<(), LaneExit> {
     }
 }
 
+/// Parse the registry YAML and return the list of proof targets.
+///
+/// # Errors
+///
+/// - Returns `Err(LaneExit::Failure)` if the registry file cannot be read or parsed.
 fn load_registry_targets(
     target: &TargetProject,
     registry: &Path,
@@ -152,6 +194,11 @@ fn load_registry_targets(
     }
 }
 
+/// Ensure at least one target was discovered.
+///
+/// # Errors
+///
+/// - Returns `Err(LaneExit::Usage)` if no targets were discovered in the registry.
 fn ensure_targets_present(targets: &[ProofTarget], registry: &Path) -> Result<(), LaneExit> {
     if targets.is_empty() {
         eprintln!(
@@ -164,6 +211,11 @@ fn ensure_targets_present(targets: &[ProofTarget], registry: &Path) -> Result<()
     }
 }
 
+/// Write the initial summary header to the evidence file.
+///
+/// # Errors
+///
+/// - Returns `Err(LaneExit::Failure)` if the summary file cannot be written.
 fn write_initial_summary(summary_path: &Path, target_count: usize) -> Result<(), LaneExit> {
     match evidence::write_summary_header(summary_path, target_count) {
         Ok(()) => Ok(()),
@@ -181,6 +233,7 @@ fn lane_paths(target: &TargetProject) -> LanePaths {
     }
 }
 
+#[expect(clippy::option_if_let_else, reason = "unwrap_or_else disallowed by disallowed_methods")]
 fn env_value(key: &str, default: &str) -> String {
     match env::var(key) {
         Ok(value) => value,

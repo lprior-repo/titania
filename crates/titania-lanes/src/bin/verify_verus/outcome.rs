@@ -131,7 +131,7 @@ fn append_final_summary(
         external_marker_count: external_markers.len(),
         external_markers_waived: waiver_exists,
     };
-    if let Err(e) = evidence::append_summary_status(summary_path, status) {
+    if let Err(e) = evidence::append_summary_status(summary_path, &status) {
         eprintln!("[verify-verus] cannot append summary: {e}");
     }
 }

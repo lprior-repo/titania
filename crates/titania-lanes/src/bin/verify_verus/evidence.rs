@@ -98,7 +98,7 @@ fn append_target_status(existing: &mut String, target_failures: &[String]) {
     if target_failures.is_empty() {
         existing.push_str("VERUS_TARGETS_OK\n");
     } else {
-        let _ = write!(existing, "VERUS_TARGET_FAILURE_COUNT {}\n", target_failures.len());
+        writeln!(existing, "VERUS_TARGET_FAILURE_COUNT {}", target_failures.len()).ok();
         for failure in target_failures {
             existing.push_str("VERUS_TARGET_FAILED ");
             existing.push_str(failure);
@@ -111,7 +111,7 @@ fn append_forbidden_status(existing: &mut String, forbidden_count: usize) {
     if forbidden_count == 0 {
         existing.push_str("VERUS_FORBIDDEN_TRUST_SCAN_OK\n");
     } else {
-        let _ = write!(existing, "VERUS_FORBIDDEN_TRUST_FAILURE_COUNT {forbidden_count}\n");
+        writeln!(existing, "VERUS_FORBIDDEN_TRUST_FAILURE_COUNT {forbidden_count}").ok();
     }
 }
 
@@ -119,10 +119,10 @@ fn append_external_status(existing: &mut String, external_marker_count: usize, w
     match (external_marker_count, waived) {
         (0, _) => existing.push_str("VERUS_EXTERNAL_MARKER_SCAN_OK\n"),
         (count, true) => {
-            let _ = write!(existing, "VERUS_EXTERNAL_MARKER_WAIVED_COUNT {count}\n");
+            writeln!(existing, "VERUS_EXTERNAL_MARKER_WAIVED_COUNT {count}").ok();
         }
         (count, false) => {
-            let _ = write!(existing, "VERUS_EXTERNAL_MARKER_FAILURE_COUNT {count}\n");
+            writeln!(existing, "VERUS_EXTERNAL_MARKER_FAILURE_COUNT {count}").ok();
         }
     }
 }
