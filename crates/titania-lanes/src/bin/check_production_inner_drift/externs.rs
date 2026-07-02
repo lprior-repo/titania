@@ -19,15 +19,17 @@ struct LedgerState {
     pending_line: u32,
 }
 
+/// Tuple returned by `extract_arrow`: `(path, start_line, end_line)`.
+type Arrow = (String, usize, usize);
+
 pub fn per_extern_pass(root: &Path, report: &mut LaneReport) {
     let verif_dir = root.join("verification/verus");
     let Ok(read) = std::fs::read_dir(&verif_dir) else {
         return;
     };
-    read.filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| is_extern_ledger(path))
-        .for_each(|path| scan_extern_ledger(root, &path, report));
+    for path in read.filter_map(Result::ok).map(|e| e.path()).filter(|p| is_extern_ledger(p)) {
+        scan_extern_ledger(root, &path, report);
+    }
 }
 
 fn scan_extern_ledger(root: &Path, path: &Path, report: &mut LaneReport) {
@@ -35,7 +37,9 @@ fn scan_extern_ledger(root: &Path, path: &Path, report: &mut LaneReport) {
     let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
-    parse_extern_ledger(&text).iter().for_each(|entry| check_entry(root, &rel, entry, report));
+    for entry in parse_extern_ledger(&text) {
+        check_entry(root, &rel, &entry, report);
+    }
 }
 
 fn check_entry(root: &Path, rel: &str, entry: &ExternEntry, report: &mut LaneReport) {
@@ -109,7 +113,7 @@ fn parse_ledger_line(
     }
     if line_no.saturating_sub(state.pending_line) <= 5 {
         if let Some(id) = state.pending_id.take() {
-            out.push(ExternEntry { named: id, line_no, path: path.to_string(), start, end });
+            out.push(ExternEntry { named: id, line_no, path, start, end });
         }
     }
 }
@@ -122,11 +126,13 @@ fn extract_bullet_id(line: &str) -> Option<String> {
     after.get(..end).map(str::to_string)
 }
 
-fn extract_arrow(line: &str) -> Option<(&str, usize, usize)> {
+fn extract_arrow(line: &str) -> Option<Arrow> {
     let pos = line.find("<-")?;
     let rest = line.get(pos.saturating_add(2)..)?.trim_start();
-    let (path, range_str) =
-        rest.split_once(':').map_or((rest.trim(), ""), |(path, range)| (path.trim(), range.trim()));
+    let (path, range_str) = rest.split_once(':').map_or_else(
+        || (rest.trim().to_owned(), String::new()),
+        |(path, range)| (path.trim().to_owned(), range.trim().to_owned()),
+    );
     let mut rparts = range_str.splitn(2, '-');
     let start = rparts.next().and_then(|s| s.parse().ok()).map_or(1, |value: usize| value);
     let end = rparts.next().and_then(|s| s.parse().ok()).map_or(start, |value: usize| value);
@@ -143,5 +149,5 @@ fn rel_path(root: &Path, path: &Path) -> String {
 fn is_extern_ledger(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("extern_") && name.ends_with(".rs"))
+        .is_some_and(|name| name.starts_with("extern_") && std::path::Path::new(name).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("rs")))
 }

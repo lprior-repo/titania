@@ -26,12 +26,21 @@ pub fn parse_claims(text: &str) -> Vec<Claim> {
             continue;
         }
         if let Some(path) = extract_claim_path(trimmed) {
-            let klass =
-                if trimmed.contains("REMOVED:") { ClaimClass::Skip } else { ClaimClass::Claim };
+            let klass = classify(trimmed);
             out.push(Claim { klass, range: path });
         }
     }
     out
+}
+
+/// Maps a claim line to its `ClaimClass`. `REMOVED:` lines are
+/// `Skip`; all other claim lines are `Claim`.
+fn classify(trimmed: &str) -> ClaimClass {
+    if trimmed.contains("REMOVED:") {
+        ClaimClass::Skip
+    } else {
+        ClaimClass::Claim
+    }
 }
 
 pub fn resolve_range(
