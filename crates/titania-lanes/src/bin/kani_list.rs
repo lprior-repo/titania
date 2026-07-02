@@ -48,20 +48,41 @@ fn main() -> std::process::ExitCode {
             report.push(finding);
             exit(LaneExit::Failure)
         }
-        Err(LaneError::Violation(rule, path, line, msg)) => {
-            let finding = Finding::new(rule, path, line, msg.clone());
-            eprintln!("[kani_list] {msg}");
+        Err(LaneError::Violation(details)) => {
+            let finding = Finding::new(
+                details.rule,
+                details.path.clone(),
+                details.line,
+                details.message.clone(),
+            );
+            eprintln!("[kani_list] {}", details.message);
             report.push(finding);
             exit(LaneExit::Violations)
         }
     }
 }
 
-/// Lane-local error taxonomy.
+/// Lane-local error taxonomy. `Violation` carries a boxed [`Violation`]
+/// struct so the variant's stack footprint stays under the 64-byte
+/// `result_large_err` threshold.
 enum LaneError {
     Usage(String),
     Failure(String),
-    Violation(&'static str, String, u32, String),
+    Violation(Box<Violation>),
+}
+
+/// Per-finding payload carried by `LaneError::Violation`.
+struct Violation {
+    rule: &'static str,
+    path: String,
+    line: u32,
+    message: String,
+}
+
+impl From<io::Error> for LaneError {
+    fn from(err: io::Error) -> Self {
+        Self::Failure(format!("io error: {err}"))
+    }
 }
 
 /// Boundary-parsed lane input.
@@ -70,21 +91,23 @@ enum LaneInput {
     Packages(Vec<String>),
 }
 
-impl From<io::Error> for LaneError {
-    fn from(err: io::Error) -> Self {
-        LaneError::Failure(format!("io error: {err}"))
-    }
-}
-
 fn parse_lane_input(args: Vec<String>) -> LaneInput {
     let packages: Vec<String> = args.into_iter().filter(|a| !a.is_empty()).collect();
     if packages.is_empty() { LaneInput::Workspace } else { LaneInput::Packages(packages) }
 }
 
+/// Top-level lane dispatcher. Targets the workspace list or one
+/// per-package list depending on `input`.
+///
+/// # Errors
+/// Returns `LaneError::Usage` when `current_target_project()` fails.
+/// Returns `LaneError::Failure` for I/O or cargo subprocess errors.
+/// Returns `LaneError::Violation` for kani-list subprocess failures
+/// or missing/invalid produced JSON.
 fn run_lane(input: &LaneInput) -> Result<(), LaneError> {
     let target = current_target_project()
         .map_err(|e| LaneError::Usage(format!("target discovery failed: {e}")))?;
-    let output_dir = output_dir(&target)?;
+    let output_dir = output_dir(&target);
     fs::create_dir_all(&output_dir)?;
 
     match input {
@@ -93,6 +116,13 @@ fn run_lane(input: &LaneInput) -> Result<(), LaneError> {
     }
 }
 
+/// Runs `cargo kani list` once for the workspace and writes
+/// `kani-list.json` into the lane output directory.
+///
+/// # Errors
+/// Returns `LaneError::Failure` on I/O, and `LaneError::Violation`
+/// when `cargo kani list` exits non-success or its JSON output is
+/// missing/invalid.
 fn run_workspace_list(target: &TargetProject, output_dir: &Path) -> Result<(), LaneError> {
     let target_file = output_dir.join("workspace.json");
     let produced = target.as_std_path().join("kani-list.json");
@@ -101,12 +131,12 @@ fn run_workspace_list(target: &TargetProject, output_dir: &Path) -> Result<(), L
     eprintln!("[kani-list] scope=workspace output={}", target_file.display());
     let kani_status = run_kani_list(target, None)?;
     if !kani_status.success() {
-        return Err(LaneError::Violation(
-            "KANI-LIST-EXEC",
-            target.as_std_path().display().to_string(),
-            0,
-            format!("cargo kani list failed (exit {:?})", kani_status.code()),
-        ));
+        return Err(LaneError::Violation(Box::new(Violation {
+            rule: "KANI-LIST-EXEC",
+            path: target.as_std_path().display().to_string(),
+            line: 0,
+            message: format!("cargo kani list failed (exit {:?}", kani_status.code()),
+        })));
     }
     validate_produced_json(&produced)?;
     fs::rename(&produced, &target_file)?;
@@ -114,6 +144,14 @@ fn run_workspace_list(target: &TargetProject, output_dir: &Path) -> Result<(), L
     Ok(())
 }
 
+/// Runs `cargo kani list` once per package and writes one JSON file
+/// per package into the lane output directory.
+///
+/// # Errors
+/// Returns `LaneError::Failure` for I/O or cargo-metadata errors
+/// (missing workspace, duplicate package, bad manifest). Returns
+/// `LaneError::Violation` for kani-list subprocess failures or
+/// missing/invalid produced JSON.
 fn run_package_lists(
     target: &TargetProject,
     output_dir: &Path,
@@ -123,45 +161,69 @@ fn run_package_lists(
     let metadata: Value = serde_json::from_str(&metadata_text)
         .map_err(|e| LaneError::Failure(format!("cargo metadata parse: {e}")))?;
 
-    packages.iter().try_for_each(|package| {
-        let manifest = find_manifest(&metadata, package)?;
-        let package_dir = manifest_dir(&manifest);
-        let target_file = output_dir.join(format!("{package}.json"));
-        let produced = target.as_std_path().join("kani-list.json");
-        remove_if_present(&produced)?;
-
-        eprintln!(
-            "[kani-list] package={package} dir={} output={}",
-            package_dir.display(),
-            target_file.display()
-        );
-        let kani_status = run_kani_list(target, Some(&manifest))?;
-        if !kani_status.success() {
-            return Err(LaneError::Violation(
-                "KANI-LIST-EXEC",
-                package_dir.display().to_string(),
-                0,
-                format!("cargo kani list failed (exit {:?})", kani_status.code()),
-            ));
-        }
-        validate_produced_json(&produced)?;
-        fs::rename(&produced, &target_file)?;
-        eprintln!("[kani-list] wrote {}", target_file.display());
-        Ok(())
-    })?;
+    for package in packages {
+        write_package_list(target, output_dir, &metadata, package)?;
+    }
 
     eprintln!("KANI_LIST_OK output_dir={} packages={}", output_dir.display(), packages.join(","));
     Ok(())
 }
 
-fn output_dir(target: &TargetProject) -> Result<PathBuf, LaneError> {
+/// Runs `cargo kani list` for one package, validates the produced
+/// JSON, and renames it into the lane output directory.
+///
+/// # Errors
+/// Returns `LaneError::Failure` for I/O (via the `io::Error` `From`
+/// impl) and metadata lookups. Returns `LaneError::Violation` for
+/// kani-list subprocess failures or missing/invalid produced JSON.
+fn write_package_list(
+    target: &TargetProject,
+    output_dir: &Path,
+    metadata: &Value,
+    package: &str,
+) -> Result<(), LaneError> {
+    let manifest = find_manifest(metadata, package)?;
+    let package_dir = manifest_dir(&manifest);
+    let target_file = output_dir.join(format!("{package}.json"));
+    let produced = target.as_std_path().join("kani-list.json");
+    remove_if_present(&produced)?;
+
+    eprintln!(
+        "[kani-list] package={package} dir={} output={}",
+        package_dir.display(),
+        target_file.display()
+    );
+    let kani_status = run_kani_list(target, Some(&manifest))?;
+    if !kani_status.success() {
+        return Err(LaneError::Violation(Box::new(Violation {
+            rule: "KANI-LIST-EXEC",
+            path: package_dir.display().to_string(),
+            line: 0,
+            message: format!("cargo kani list failed (exit {:?}", kani_status.code()),
+        })));
+    }
+    validate_produced_json(&produced)?;
+    fs::rename(&produced, &target_file)?;
+    eprintln!("[kani-list] wrote {}", target_file.display());
+    Ok(())
+}
+
+/// Resolves the lane output directory from `KANI_LIST_DIR` (or the
+/// default `.evidence/kani-list` under the target root).
+fn output_dir(target: &TargetProject) -> PathBuf {
     let raw = match env::var_os("KANI_LIST_DIR") {
         Some(s) if !s.is_empty() => PathBuf::from(s),
         _ => PathBuf::from(".evidence/kani-list"),
     };
-    Ok(target_root_path(target, raw))
+    target_root_path(target, raw)
 }
 
+/// Runs `cargo metadata --no-deps --format-version 1` and returns
+/// its stdout.
+///
+/// # Errors
+/// Returns `LaneError::Failure` when the subprocess cannot be
+/// spawned, exits non-success, or returns non-UTF8 stdout.
 fn run_cargo_metadata(target: &TargetProject) -> Result<String, LaneError> {
     let manifest = target.manifest_path();
     let mut command = command_in(target, "cargo")?;
@@ -183,6 +245,13 @@ fn run_cargo_metadata(target: &TargetProject) -> Result<String, LaneError> {
         .map_err(|e| LaneError::Failure(format!("cargo metadata non-UTF8: {e}")))
 }
 
+/// Looks up `package`'s `manifest_path` in the cargo metadata JSON.
+///
+/// # Errors
+/// Returns `LaneError::Failure` when the metadata is missing the
+/// `packages` field, when no package matches, when the matching
+/// package has no `manifest_path`, or when multiple packages share
+/// the requested name.
 fn find_manifest(metadata: &Value, package: &str) -> Result<PathBuf, LaneError> {
     let packages = metadata
         .get("packages")
@@ -211,12 +280,16 @@ fn find_manifest(metadata: &Value, package: &str) -> Result<PathBuf, LaneError> 
 }
 
 fn manifest_dir(manifest: &Path) -> PathBuf {
-    match manifest.parent() {
-        Some(parent) => parent.to_path_buf(),
-        None => PathBuf::from("."),
-    }
+    manifest
+        .parent()
+        .map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf)
 }
 
+/// Runs `cargo kani list` and returns the subprocess `ExitStatus`.
+///
+/// # Errors
+/// Returns `LaneError::Failure` for subprocess spawn errors or for
+/// non-UTF-8 manifest paths passed via `--manifest-path`.
 fn run_kani_list(
     target: &TargetProject,
     manifest: Option<&Path>,
@@ -242,6 +315,12 @@ fn target_root_path(target: &TargetProject, path: PathBuf) -> PathBuf {
     if path.is_absolute() { path } else { target.as_std_path().join(path) }
 }
 
+/// Builds a `CommandIn` for `program` against `target` with the
+/// inherited environment.
+///
+/// # Errors
+/// Returns `LaneError::Failure` when `CommandIn::new` rejects
+/// `program` (e.g. the binary is not on `PATH`).
 fn command_in<'a>(target: &'a TargetProject, program: &'a str) -> Result<CommandIn<'a>, LaneError> {
     let mut command = CommandIn::new(target, program)
         .map_err(|e| LaneError::Failure(format!("failed to prepare {program}: {e}")))?;
@@ -249,27 +328,39 @@ fn command_in<'a>(target: &'a TargetProject, program: &'a str) -> Result<Command
     Ok(command)
 }
 
+/// Validates the `kani-list.json` produced by `cargo kani list`:
+/// non-empty file and parses as JSON.
+///
+/// # Errors
+/// Returns `LaneError::Violation` when the file is missing/empty or
+/// contains invalid JSON. Returns `LaneError::Failure` (via the
+/// `io::Error` `From` impl) when the file cannot be read.
 fn validate_produced_json(produced: &Path) -> Result<(), LaneError> {
     if !is_non_empty(produced) {
-        return Err(LaneError::Violation(
-            "KANI-LIST-MISSING",
-            produced.display().to_string(),
-            0,
-            format!("cargo kani list did not produce {}", produced.display()),
-        ));
+        return Err(LaneError::Violation(Box::new(Violation {
+            rule: "KANI-LIST-MISSING",
+            path: produced.display().to_string(),
+            line: 0,
+            message: format!("cargo kani list did not produce {}", produced.display()),
+        })));
     }
 
     let raw = fs::read_to_string(produced)?;
     validate_json(&raw).map_err(|e| {
-        LaneError::Violation(
-            "KANI-LIST-INVALID-JSON",
-            produced.display().to_string(),
-            0,
-            format!("invalid JSON in {}: {e}", produced.display()),
-        )
+        LaneError::Violation(Box::new(Violation {
+            rule: "KANI-LIST-INVALID-JSON",
+            path: produced.display().to_string(),
+            line: 0,
+            message: format!("invalid JSON in {}: {e}", produced.display()),
+        }))
     })
 }
 
+/// Removes a file if it exists, treating a missing file as success.
+///
+/// # Errors
+/// Returns the underlying `io::Error` when `fs::remove_file` fails
+/// for any reason other than the file already being absent.
 fn remove_if_present(path: &Path) -> Result<(), LaneError> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -282,6 +373,12 @@ fn is_non_empty(path: &Path) -> bool {
     fs::metadata(path).is_ok_and(|m| m.len() > 0)
 }
 
+/// Parses `raw` as JSON and returns the parse error (if any) as a
+/// `String` for inclusion in the lane report.
+///
+/// # Errors
+/// Returns `Err(String)` carrying the `serde_json::Error` text when
+/// `raw` is not valid JSON.
 fn validate_json(raw: &str) -> Result<(), String> {
     serde_json::from_str::<Value>(raw).map(|_| ()).map_err(|e| e.to_string())
 }
