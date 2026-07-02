@@ -63,6 +63,25 @@ impl LaneDigest {
     ///
     /// # Errors
     /// - [`ReceiptError::PassedExceedsScanned`] if `passed > scanned`.
+    #[cfg_attr(
+        kani,
+        kani::requires(passed <= scanned)
+    )]
+    #[cfg_attr(
+        kani,
+        kani::ensures(|result: &Result<LaneDigest, ReceiptError>| {
+            match result {
+                Ok(digest) => {
+                    digest.lane() == &lane
+                    && digest.exit() == exit
+                    && digest.scanned() == scanned
+                    && digest.passed() == passed
+                    && digest.finding_count() == finding_count
+                }
+                Err(_) => false,
+            }
+        })
+    )]
     pub fn new(
         lane: LaneName,
         exit: ReceiptLaneExit,
@@ -119,6 +138,19 @@ impl ReceiptPeriod {
     ///
     /// # Errors
     /// - [`ReceiptError::FinishedBeforeStarted`] if `finished_at < started_at`.
+    #[cfg_attr(
+        kani,
+        kani::requires(finished_at >= started_at)
+    )]
+    #[cfg_attr(
+        kani,
+        kani::ensures(|result: &Result<ReceiptPeriod, ReceiptError>| {
+            match result {
+                Ok(period) => period.started_at() == started_at && period.finished_at() == finished_at,
+                Err(_) => false,
+            }
+        })
+    )]
     pub const fn new(started_at: u64, finished_at: u64) -> Result<Self, ReceiptError> {
         if finished_at < started_at {
             return Err(ReceiptError::FinishedBeforeStarted { started_at, finished_at });
