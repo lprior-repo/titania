@@ -27,7 +27,7 @@ impl RunSummary {
     }
 }
 
-pub(crate) fn main_exit() -> ExitCode {
+pub fn main_exit() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(err) => {

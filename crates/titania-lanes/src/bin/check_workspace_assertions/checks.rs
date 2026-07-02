@@ -16,7 +16,7 @@ fn expected_set(values: &[&str]) -> BTreeSet<String> {
     values.iter().map(|value| (*value).to_owned()).collect()
 }
 
-pub(super) fn check_workspace_members(root: &Path, report: &mut LaneReport) {
+pub fn check_workspace_members(root: &Path, report: &mut LaneReport) {
     let cargo_path = root.join("Cargo.toml");
     let manifest = match fs::read_to_string(&cargo_path) {
         Ok(text) => text,
@@ -44,7 +44,7 @@ pub(super) fn check_workspace_members(root: &Path, report: &mut LaneReport) {
     }
 }
 
-pub(super) fn check_crate_names(root: &Path, members: &[String], report: &mut LaneReport) {
+pub fn check_crate_names(root: &Path, members: &[String], report: &mut LaneReport) {
     members.iter().for_each(|member| check_crate_name(root, member, report));
 }
 
@@ -100,7 +100,7 @@ fn check_forbidden_features(member: &str, manifest: &str, report: &mut LaneRepor
     }
 }
 
-pub(super) fn check_forbidden_dependencies(
+pub fn check_forbidden_dependencies(
     root: &Path,
     members: &[String],
     report: &mut LaneReport,
@@ -131,7 +131,7 @@ fn dependency_names(manifest: &str) -> BTreeSet<String> {
         .collect()
 }
 
-pub(super) fn check_generated_boundaries(root: &Path, report: &mut LaneReport) {
+pub fn check_generated_boundaries(root: &Path, report: &mut LaneReport) {
     collect_generated_dirs(root)
         .into_iter()
         .flat_map(|dir| rust_files(&dir).into_iter())
@@ -188,7 +188,7 @@ fn rust_file_entry(path: PathBuf) -> Vec<PathBuf> {
     }
 }
 
-pub(super) fn discover_members(root: &Path) -> Vec<String> {
+pub fn discover_members(root: &Path) -> Vec<String> {
     match fs::read_to_string(root.join("Cargo.toml")) {
         Ok(manifest) => quoted_array_values(&manifest, "members").into_iter().collect(),
         Err(_) => Vec::new(),

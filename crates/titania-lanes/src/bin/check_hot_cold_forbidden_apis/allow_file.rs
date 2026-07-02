@@ -1,6 +1,11 @@
 use std::{collections::BTreeSet, fs, path::Path};
 
-pub(super) fn load_allow_file(root: &Path) -> Result<BTreeSet<(String, String)>, String> {
+/// Loads the hot/cold forbidden API allow file and returns the set of allowed
+/// `(path, class)` pairs.
+///
+/// # Errors
+/// Returns an error if the allow file exists but cannot be read.
+pub fn load_allow_file(root: &Path) -> Result<BTreeSet<(String, String)>, String> {
     let allow_path = root.join("scripts/hot-cold-forbidden-apis.allow");
     if !allow_path.exists() {
         eprintln!("NotApplicable: hot/cold forbidden API allow file absent");
@@ -11,6 +16,10 @@ pub(super) fn load_allow_file(root: &Path) -> Result<BTreeSet<(String, String)>,
     text.lines().enumerate().try_fold(BTreeSet::new(), collect_allow_entry)
 }
 
+/// Accumulates allowed `(path, class)` entries from allow-file lines.
+///
+/// # Errors
+/// Returns an error if a line cannot be parsed as a valid allow entry.
 fn collect_allow_entry(
     mut acc: BTreeSet<(String, String)>,
     (index, line): (usize, &str),
@@ -21,6 +30,11 @@ fn collect_allow_entry(
     Ok(acc)
 }
 
+/// Parses a single allow-file line into an optional `(path, class)` entry.
+///
+/// # Errors
+/// Returns an error if the line is malformed (wrong format) or violates
+/// allow-file constraints (overbroad path or class).
 fn parse_allow_entry(index: usize, line: &str) -> Result<Option<(String, String)>, String> {
     let trimmed = line.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -48,6 +62,12 @@ struct AllowEntry<'a> {
     reason: &'a str,
 }
 
+/// Validates an allow-file entry for path and class constraints.
+///
+/// # Errors
+/// Returns an error if the path contains wildcards, does not start with
+/// `crates/`, or does not end with `.rs`; or if the class is `ALL` or
+/// contains wildcards; or if required fields are missing.
 fn validate_allow_entry(entry: &AllowEntry<'_>) -> Result<(), String> {
     if entry.path.contains('*')
         || !entry.path.starts_with("crates/")

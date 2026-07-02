@@ -3,7 +3,7 @@ use std::{io::ErrorKind, path::PathBuf};
 use titania_core::TargetProject;
 
 #[derive(Clone, Copy)]
-pub(super) struct TargetRelativePath {
+pub struct TargetRelativePath {
     value: &'static str,
 }
 
@@ -12,28 +12,28 @@ impl TargetRelativePath {
         Self { value }
     }
 
-    pub(super) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         self.value
     }
 
-    pub(super) fn in_target(self, target: &TargetProject) -> PathBuf {
+    pub fn in_target(self, target: &TargetProject) -> PathBuf {
         target.as_std_path().join(self.value)
     }
 }
 
-pub(super) struct Oracle {
-    pub(super) path: TargetRelativePath,
-    pub(super) function: &'static str,
+pub struct Oracle {
+    pub path: TargetRelativePath,
+    pub function: &'static str,
 }
 
-pub(super) struct Check {
-    pub(super) type_name: &'static str,
-    pub(super) enum_path: TargetRelativePath,
-    pub(super) domain_label: &'static str,
-    pub(super) oracles: &'static [Oracle],
+pub struct Check {
+    pub type_name: &'static str,
+    pub enum_path: TargetRelativePath,
+    pub domain_label: &'static str,
+    pub oracles: &'static [Oracle],
 }
 
-pub(super) enum DomainFile {
+pub enum DomainFile {
     Present(String),
     Absent,
     Unreadable(ErrorKind),
@@ -68,7 +68,7 @@ const VALIDATION_ORACLES: &[Oracle] = &[Oracle {
     function: "assert_typed_validation_error",
 }];
 
-pub(super) const CHECKS: &[Check] = &[
+pub const CHECKS: &[Check] = &[
     Check {
         type_name: "JournalError",
         enum_path: TargetRelativePath::new("crates/vb_storage/src/error/mod.rs"),

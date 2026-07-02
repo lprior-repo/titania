@@ -17,14 +17,14 @@ const RUSTUP_TOOLCHAIN: &str = "nightly-2026-04-28";
 const BENCH_PACKAGE: &str = "velvet-ballistics-workspace-tests";
 
 const USAGE: &str = "usage: bench_instruction_counts [bench-name ...]\n  \
-     default benches: ir_traversal, action_dispatch, timer_wheel_tick";
+    default benches: ir_traversal, action_dispatch, timer_wheel_tick";
 
 enum BenchPlan {
     Run(Vec<String>),
     NotApplicable(String),
 }
 
-pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
+pub fn main_exit(args: Vec<String>) -> ExitCode {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         eprintln!("{USAGE}");
         return exit(LaneExit::Clean);
@@ -40,6 +40,11 @@ pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
     run_bench_plan(&target, &benches)
 }
 
+/// Resolves the current target project for the lane binary.
+///
+/// # Errors
+/// Returns an `ExitCode` of `LaneExit::Usage` if the target project cannot be
+/// resolved (propagated through `current_target_project()`).
 fn target_project() -> Result<TargetProject, ExitCode> {
     current_target_project().map_err(|err| {
         eprintln!("[bench-instruction-counts] cannot resolve target project: {err}");
@@ -47,6 +52,11 @@ fn target_project() -> Result<TargetProject, ExitCode> {
     })
 }
 
+/// Selects the list of benches the lane will run.
+///
+/// # Errors
+/// Returns an `ExitCode` for `NotApplicable` (no benches to run) or `Usage`
+/// (lane-level error from `bench_plan`).
 fn runnable_benches(target: &TargetProject, args: Vec<String>) -> Result<Vec<String>, ExitCode> {
     match bench_plan(target, args) {
         Ok(BenchPlan::Run(benches)) => Ok(benches),
@@ -79,13 +89,24 @@ fn run_bench_plan(target: &TargetProject, benches: &[String]) -> ExitCode {
         .map_or_else(|| exit(LaneExit::Clean), exit)
 }
 
+/// Confirms that the `perf` instruction-counting tool is on `PATH`.
+///
+/// # Errors
+/// Returns `ExitCode` via `exit(LaneExit::Failure)` when `CommandIn::new`
+/// rejects the binary or `run_capture_raw` reports the binary is missing.
 fn require_perf(target: &TargetProject) -> Result<(), ExitCode> {
     let mut perf_check = CommandIn::new(target, "perf").map_err(|err| {
         eprintln!("[bench-instruction-counts] failed to prepare perf check: {err}");
         exit(LaneExit::Failure)
     })?;
     perf_check.inherit_env().arg("--version");
-    perf_check.run_capture_raw().map(|_| ()).map_err(|_| missing_perf_exit())
+    perf_check
+        .run_capture_raw()
+        .map(|_output| ())
+        .map_err(|err| {
+            eprintln!("[bench-instruction-counts] perf missing: {err}");
+            missing_perf_exit()
+        })
 }
 
 fn missing_perf_exit() -> ExitCode {
@@ -129,6 +150,11 @@ fn empty_log_exit(log_file: &Path) -> LaneExit {
     LaneExit::Violations
 }
 
+/// Builds the bench plan (which benches to run, or `NotApplicable`).
+///
+/// # Errors
+/// Returns `Err(String)` if `requested_benches` rejects an empty bench
+/// name from the command line.
 fn bench_plan(target: &TargetProject, args: Vec<String>) -> Result<BenchPlan, String> {
     if !package_manifest(target).is_file() {
         return Ok(BenchPlan::NotApplicable(
@@ -150,13 +176,18 @@ fn package_manifest(target: &TargetProject) -> PathBuf {
     target.as_std_path().join("crates/velvet-ballistics-workspace-tests/Cargo.toml")
 }
 
+/// Resolves the requested bench list from CLI args, falling back to
+/// `DEFAULT_BENCHES` when no args are provided.
+///
+/// # Errors
+/// Returns `Err(String)` if any bench name is empty.
 fn requested_benches(args: Vec<String>) -> Result<Vec<String>, String> {
     let requested = if args.is_empty() {
-        DEFAULT_BENCHES.iter().map(|bench| (*bench).to_owned()).collect()
+        DEFAULT_BENCHES.iter().map(ToString::to_string).collect()
     } else {
         args
     };
-    if requested.iter().any(|bench| bench.is_empty()) {
+    if requested.iter().any(String::is_empty) {
         Err("empty benchmark name is not allowed".to_owned())
     } else {
         Ok(requested)
@@ -173,6 +204,10 @@ fn available_benches(target: &TargetProject, requested: Vec<String>) -> Vec<Stri
 }
 
 /// `cargo bench --bench NAME --all-features --no-run` (via rustup).
+///
+/// # Errors
+/// Returns `Err(String)` if `CommandIn::new` rejects the target or
+/// `cmd.run_status_raw` reports a non-zero exit from `cargo bench --no-run`.
 fn run_compile(
     target: &TargetProject,
     target_dir: &Path,
@@ -200,6 +235,10 @@ fn append_compile_args<'a>(
 }
 
 /// `perf stat -x, -e instructions -- rustup run nightly-… cargo bench -- --bench`
+///
+/// # Errors
+/// Returns `Err(String)` if `CommandIn::new` rejects the target or
+/// `cmd.run_status_raw` reports a non-zero exit from `perf stat cargo bench`.
 fn run_perf_stat(
     target: &TargetProject,
     target_dir: &Path,
@@ -228,8 +267,15 @@ fn append_perf_args<'a>(
     cmd.arg("--").arg("--bench").env("CARGO_TARGET_DIR", target_dir);
 }
 
+/// Spawns the prepared command and converts non-zero exits into an error.
+///
+/// # Errors
+/// Returns `Err(String)` if `cmd.run_status_raw` fails to spawn the
+/// subprocess or the resulting `ExitStatus` is non-success.
 fn run_with_status(cmd: &CommandIn<'_>, label: &str) -> Result<(), String> {
-    let status = cmd.run_status_raw().map_err(|e| format!("failed to spawn {label}: {e}"))?;
+    let status = cmd
+        .run_status_raw()
+        .map_err(|e| format!("failed to spawn {label}: {e}"))?;
     if status.success() {
         Ok(())
     } else {

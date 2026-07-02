@@ -6,7 +6,7 @@ use std::{
 
 use crate::scan::scan;
 
-pub(super) fn self_test() -> i32 {
+pub fn self_test() -> i32 {
     let root = fixture_root();
     if let Err(error) = reset_fixture(&root) {
         eprintln!("FixtureFailure: cleanup failed: {error}");

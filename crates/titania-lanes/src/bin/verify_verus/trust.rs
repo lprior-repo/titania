@@ -5,19 +5,19 @@ use titania_lanes::{Finding, LaneReport};
 
 use super::walk::walk_rs_lines;
 
-pub(crate) const EXTERNAL_RULE: &str = "VERUS-EXTERNAL-001";
-pub(crate) const TRUSTED_BASE_WAIVER_FILE: &str = "trusted-base-waivers.txt";
+pub const EXTERNAL_RULE: &str = "VERUS-EXTERNAL-001";
+pub const TRUSTED_BASE_WAIVER_FILE: &str = "trusted-base-waivers.txt";
 
 const FORBIDDEN_RULE: &str = "FORBIDDEN-ASSUME";
 
 #[must_use]
-pub(crate) fn trusted_base_waiver_exists(evidence_dir: &Path) -> bool {
+pub fn trusted_base_waiver_exists(evidence_dir: &Path) -> bool {
     fs::metadata(evidence_dir.join(TRUSTED_BASE_WAIVER_FILE))
         .is_ok_and(|meta| meta.is_file() && meta.len() != 0)
 }
 
 #[must_use]
-pub(crate) fn scan_forbidden_trust(target: &TargetProject, report: &mut LaneReport) -> Vec<String> {
+pub fn scan_forbidden_trust(target: &TargetProject, report: &mut LaneReport) -> Vec<String> {
     let mut findings = Vec::new();
     trust_scan_roots(target).iter().for_each(|dir| {
         walk_rs_lines(dir, target.as_std_path(), |line, path, line_no| {
@@ -36,7 +36,7 @@ pub(crate) fn scan_forbidden_trust(target: &TargetProject, report: &mut LaneRepo
 }
 
 #[must_use]
-pub(crate) fn scan_external_markers(target: &TargetProject) -> Vec<String> {
+pub fn scan_external_markers(target: &TargetProject) -> Vec<String> {
     let mut findings = Vec::new();
     trust_scan_roots(target).iter().for_each(|dir| {
         walk_rs_lines(dir, target.as_std_path(), |line, path, line_no| {
@@ -48,7 +48,7 @@ pub(crate) fn scan_external_markers(target: &TargetProject) -> Vec<String> {
     findings
 }
 
-pub(crate) fn report_unwaived_external_markers(report: &mut LaneReport, lines: &[String]) {
+pub fn report_unwaived_external_markers(report: &mut LaneReport, lines: &[String]) {
     lines.iter().for_each(|line| {
         let (path, line_no) = parse_finding_location(line);
         report.push(Finding::new(

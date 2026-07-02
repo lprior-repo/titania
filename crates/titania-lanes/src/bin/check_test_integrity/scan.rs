@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-pub(super) fn is_test_path(path: &str) -> bool {
+pub fn is_test_path(path: &str) -> bool {
     if !path.ends_with(".rs") {
         return false;
     }
@@ -92,7 +92,7 @@ fn has_compile_only(text: &str) -> bool {
         .any(|needle| lower.contains(needle))
 }
 
-pub(super) fn scan_diff(diff: &str) -> Vec<(String, String, String)> {
+pub fn scan_diff(diff: &str) -> Vec<(String, String, String)> {
     let mut state = DiffState::default();
     diff.lines().for_each(|line| state.scan_line(line));
     state.finish()

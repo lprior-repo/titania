@@ -1,24 +1,24 @@
 use std::{iter::Peekable, str::Chars};
 
-pub(super) fn compact(line: &str) -> String {
+pub fn compact(line: &str) -> String {
     line.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-pub(super) fn remove_spaces(line: &str) -> String {
+pub fn remove_spaces(line: &str) -> String {
     line.chars().filter(|ch| !ch.is_whitespace()).collect()
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ApiSourceLine {
+pub struct ApiSourceLine {
     code: String,
 }
 
 impl ApiSourceLine {
-    pub(super) fn parse(raw: &str, block_comment: &mut bool) -> Self {
+    pub fn parse(raw: &str, block_comment: &mut bool) -> Self {
         Self { code: strip_non_code(raw, block_comment).trim().to_owned() }
     }
 
-    pub(super) fn code(&self) -> &str {
+    pub fn code(&self) -> &str {
         self.code.as_str()
     }
 }

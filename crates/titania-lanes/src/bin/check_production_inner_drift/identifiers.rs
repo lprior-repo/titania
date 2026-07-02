@@ -123,21 +123,21 @@ const DROPPED_KEYWORDS: &[&str] = &[
     "debug",
 ];
 
-pub(crate) fn extract_identifiers(text: &str) -> BTreeSet<String> {
+pub fn extract_identifiers(text: &str) -> BTreeSet<String> {
     collect_identifiers(strip_noise(text).chars(), 3, |token| {
         !is_dropped_keyword(token) && !is_pure_screaming_short(token) && !is_pure_lowercase(token)
     })
 }
 
-pub(crate) fn filter_noise_words(set: BTreeSet<String>) -> BTreeSet<String> {
+pub fn filter_noise_words(set: BTreeSet<String>) -> BTreeSet<String> {
     set.into_iter().filter(|s| !NOISE_WORDS.contains(&s.as_str())).collect()
 }
 
-pub(crate) fn extract_id_extern(text: &str) -> BTreeSet<String> {
+pub fn extract_id_extern(text: &str) -> BTreeSet<String> {
     collect_identifiers(text.chars(), 2, |token| !is_dropped_keyword(token))
 }
 
-pub(crate) fn candidate_tokens(name: &str) -> Vec<String> {
+pub fn candidate_tokens(name: &str) -> Vec<String> {
     let last = name.rsplit("::").next().map_or(name, |value| value);
     let mut out: Vec<String> = vec![last.to_string()];
     ["Mirror", "Spec", "production_", "spec_"]
@@ -191,7 +191,7 @@ fn strip_noise(text: &str) -> String {
         out.push_str(stripped);
         out.push('\n');
     });
-    out.replace("pub(crate)", "pub").replace("#![from]", "(")
+    out.replace("pub", "pub").replace("#![from]", "(")
 }
 
 fn is_pure_lowercase(s: &str) -> bool {

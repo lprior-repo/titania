@@ -1,35 +1,35 @@
 use std::{iter::Peekable, str::Chars};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum LineKind {
+pub enum LineKind {
     NonCode,
     Signature,
     Expression,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct SourceLine {
+pub struct SourceLine {
     code: String,
     kind: LineKind,
 }
 
 impl SourceLine {
-    pub(super) fn parse(raw: &str, block_comment: &mut bool) -> Self {
+    pub fn parse(raw: &str, block_comment: &mut bool) -> Self {
         let code = strip_non_code(raw, block_comment);
         let trimmed = code.trim().to_owned();
         let kind = classify_kind(&trimmed);
         Self { code: trimmed, kind }
     }
 
-    pub(super) fn code(&self) -> &str {
+    pub fn code(&self) -> &str {
         self.code.as_str()
     }
 
-    pub(super) fn is_signature(&self) -> bool {
+    pub fn is_signature(&self) -> bool {
         self.kind == LineKind::Signature
     }
 
-    pub(super) fn is_code_expression(&self) -> bool {
+    pub fn is_code_expression(&self) -> bool {
         self.kind == LineKind::Expression
     }
 }
@@ -48,8 +48,8 @@ fn is_signature_line(trimmed: &str) -> bool {
     let looks_like_fn = [
         "fn ",
         "pub fn ",
-        "pub(crate) fn ",
-        "pub(super) fn ",
+        "pub fn ",
+        "pub fn ",
         "async fn ",
         "pub async fn ",
         "const fn ",

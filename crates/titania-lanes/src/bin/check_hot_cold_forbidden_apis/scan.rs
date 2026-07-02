@@ -10,7 +10,7 @@ use crate::{
     syntax::{ApiSourceLine, compact, remove_spaces},
 };
 
-pub(super) fn scan(
+pub fn scan(
     root: &Path,
 ) -> Result<(Vec<String>, Vec<FindingData>, Vec<FindingData>), String> {
     let allowed = load_allow_file(root)?;

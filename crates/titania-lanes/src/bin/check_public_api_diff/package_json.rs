@@ -1,4 +1,4 @@
-pub(crate) fn extract_package_names(json: &str) -> Vec<String> {
+pub fn extract_package_names(json: &str) -> Vec<String> {
     let Some((start, remainder)) = package_remainder(json) else {
         return Vec::new();
     };

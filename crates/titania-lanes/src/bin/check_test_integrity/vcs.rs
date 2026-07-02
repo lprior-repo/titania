@@ -47,14 +47,14 @@ fn command_output_allow_fail(args: &[&str], target: &TargetProject) -> Option<St
         .and_then(|output| output.stdout_str().ok().map(str::to_owned))
 }
 
-pub(super) fn root_dir(target: &TargetProject) -> Result<RootInfo, String> {
+pub fn root_dir(target: &TargetProject) -> Result<RootInfo, String> {
     if command_output(&["rev-parse", "--show-toplevel"], target).is_ok() {
         return Ok(RootInfo { vcs: Vcs::Git });
     }
     jj_output(&["workspace", "root"], target).map(|_| RootInfo { vcs: Vcs::Jj })
 }
 
-pub(super) fn default_base(target: &TargetProject, vcs: Vcs) -> String {
+pub fn default_base(target: &TargetProject, vcs: Vcs) -> String {
     if let Ok(value) = env::var("TEST_INTEGRITY_BASE") {
         if !value.trim().is_empty() {
             return value;
@@ -77,7 +77,7 @@ pub(super) fn default_base(target: &TargetProject, vcs: Vcs) -> String {
     }
 }
 
-pub(super) fn validate_base_revision(
+pub fn validate_base_revision(
     target: &TargetProject,
     base: &str,
     vcs: Vcs,
@@ -97,7 +97,7 @@ pub(super) fn validate_base_revision(
     result.map_err(|error| format!("invalid base revision {base:?}: {error}"))
 }
 
-pub(super) fn changed_files(
+pub fn changed_files(
     target: &TargetProject,
     base: &str,
     vcs: Vcs,
@@ -145,7 +145,7 @@ fn jj_changed_files(target: &TargetProject, base: &str) -> Result<Vec<(String, S
     })
 }
 
-pub(super) fn diff_text(target: &TargetProject, base: &str, vcs: Vcs) -> Result<String, String> {
+pub fn diff_text(target: &TargetProject, base: &str, vcs: Vcs) -> Result<String, String> {
     match vcs {
         Vcs::Git => git_diff_text(target, base),
         Vcs::Jj => jj_output(&["diff", "--git", "--from", base, "--to", "@"], target),

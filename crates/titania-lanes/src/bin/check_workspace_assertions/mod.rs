@@ -14,7 +14,7 @@ const RULE_UNREADABLE: &str = "WS-UNREADABLE-001";
 const FORBIDDEN_FEATURE_NAMES: &[&str] =
     &["json", "serde-json", "generated", "maxperf", "velvet-ballistics", "velvet_ballistics"];
 
-pub(crate) fn main_exit() -> std::process::ExitCode {
+pub fn main_exit() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         eprintln!(

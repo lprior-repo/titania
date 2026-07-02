@@ -31,11 +31,11 @@ enum NotApplicableReason {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct BindingSummary {
-    pub(crate) strong: u32,
-    pub(crate) weak: u32,
-    pub(crate) not_applicable: u32,
-    pub(crate) vacuum: u32,
+pub struct BindingSummary {
+    pub strong: u32,
+    pub weak: u32,
+    pub not_applicable: u32,
+    pub vacuum: u32,
 }
 
 impl BindingSummary {
@@ -59,7 +59,7 @@ impl BindingSummary {
     }
 }
 
-pub(crate) fn main_exit() -> ExitCode {
+pub fn main_exit() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(error) => {
@@ -73,7 +73,7 @@ pub(crate) fn main_exit() -> ExitCode {
     print_and_exit(&report)
 }
 
-pub(crate) fn run(root: &Path, report: &mut LaneReport) -> BindingSummary {
+pub fn run(root: &Path, report: &mut LaneReport) -> BindingSummary {
     let mut summary = BindingSummary::default();
     candidate_proof_files(root, report, &mut summary)
         .iter()

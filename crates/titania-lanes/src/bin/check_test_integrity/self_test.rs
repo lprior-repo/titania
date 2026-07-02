@@ -9,7 +9,7 @@ use titania_lanes::{CommandIn, LaneExit};
 
 use super::{Vcs, check};
 
-pub(super) fn run() -> LaneExit {
+pub fn run() -> LaneExit {
     match run_fixtures() {
         Ok(()) => {
             eprintln!("SelfTest:check-test-integrity:PASS");

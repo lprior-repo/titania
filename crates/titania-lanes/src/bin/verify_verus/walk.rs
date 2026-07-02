@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) fn walk_rs_lines<F: FnMut(&str, &str, u32)>(
+pub fn walk_rs_lines<F: FnMut(&str, &str, u32)>(
     root: &Path,
     display_root: &Path,
     mut visit: F,

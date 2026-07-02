@@ -43,7 +43,7 @@ const REJECTED_LITERALS: &[&str] = &[
     "named_flag(args, \"--skip-confirmation\")",
 ];
 
-pub(crate) fn main_exit() -> ExitCode {
+pub fn main_exit() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(error) => {
@@ -56,7 +56,7 @@ pub(crate) fn main_exit() -> ExitCode {
     if report.is_clean() { exit(LaneExit::Clean) } else { exit(LaneExit::Violations) }
 }
 
-pub(crate) fn run(target: &TargetProject) -> LaneReport {
+pub fn run(target: &TargetProject) -> LaneReport {
     let mut report = LaneReport::new();
     let cli_root = CLI_SRC.in_target(target);
     if !cli_root.exists() {
@@ -84,14 +84,10 @@ fn collect_files(root: &Path) -> Vec<PathBuf> {
 }
 
 fn collect_files_into(root: &Path, out: &mut Vec<PathBuf>) {
-    let entries = match fs::read_dir(root) {
-        Ok(entries) => entries,
-        Err(_) => return,
-    };
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .for_each(|path| record_file_path(path, out));
+    let Ok(entries) = fs::read_dir(root) else { return };
+    for entry in entries.filter_map(Result::ok) {
+        record_file_path(entry.path(), out);
+    }
 }
 
 fn record_file_path(path: PathBuf, out: &mut Vec<PathBuf>) {
@@ -103,10 +99,10 @@ fn record_file_path(path: PathBuf, out: &mut Vec<PathBuf>) {
 }
 
 fn check_required_literals(target: &TargetProject, files: &[PathBuf], report: &mut LaneReport) {
-    REQUIRED_LITERALS.iter().chain(REQUIRED_IN_MASTER.iter()).for_each(|literal| {
+    for literal in REQUIRED_LITERALS.iter().chain(REQUIRED_IN_MASTER.iter()) {
         report.record_scan();
         check_required_literal(target, files, literal, report);
-    });
+    }
 }
 
 fn check_required_literal(
@@ -139,12 +135,12 @@ fn push_required(report: &mut LaneReport, path: &str, literal: &str) {
 }
 
 fn check_rejected_literals(target: &TargetProject, files: &[PathBuf], report: &mut LaneReport) {
-    REJECTED_LITERALS.iter().for_each(|literal| {
+    for literal in REJECTED_LITERALS {
         report.record_scan();
         if let Some((path, line)) = first_match(files, literal) {
             push_rejected(target, report, &path, line, literal);
         }
-    });
+    }
 }
 
 fn push_rejected(
@@ -163,7 +159,7 @@ fn push_rejected(
 }
 
 fn file_contains(path: &Path, needle: &str) -> bool {
-    fs::read_to_string(path).map_or_else(|_| false, |text| text.contains(needle))
+    fs::read_to_string(path).is_ok_and(|text| text.contains(needle))
 }
 
 fn any_file_contains(files: &[PathBuf], needle: &str) -> bool {

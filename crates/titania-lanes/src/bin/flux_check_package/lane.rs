@@ -14,7 +14,7 @@ struct Invocation {
     forwarded: Vec<String>,
 }
 
-pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
+pub fn main_exit(args: Vec<String>) -> ExitCode {
     if help_requested(&args) {
         return print_help();
     }

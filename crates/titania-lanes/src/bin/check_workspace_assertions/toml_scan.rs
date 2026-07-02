@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-pub(super) fn quoted_values_in_line(line: &str) -> Vec<String> {
+pub fn quoted_values_in_line(line: &str) -> Vec<String> {
     line.split('"')
         .enumerate()
         .filter(|&(index, _)| index % 2 == 1)
@@ -11,7 +11,7 @@ pub(super) fn quoted_values_in_line(line: &str) -> Vec<String> {
 
 /// Locate the `[` that opens a TOML array for `key`. Tolerates arbitrary
 /// whitespace, including compact arrays such as `members=["crates/foo"]`.
-pub(super) fn array_open_after<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+pub fn array_open_after<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     let bytes = text.as_bytes();
     let key_bytes = key.as_bytes();
     let mut start = 0;
@@ -61,7 +61,7 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|window| window == needle)
 }
 
-pub(super) fn quoted_array_values(text: &str, key: &str) -> BTreeSet<String> {
+pub fn quoted_array_values(text: &str, key: &str) -> BTreeSet<String> {
     let Some(after_key) = array_open_after(text, key) else {
         return BTreeSet::new();
     };
@@ -77,7 +77,7 @@ pub(super) fn quoted_array_values(text: &str, key: &str) -> BTreeSet<String> {
         .collect()
 }
 
-pub(super) fn package_name(manifest: &str) -> Option<String> {
+pub fn package_name(manifest: &str) -> Option<String> {
     manifest.lines().find_map(|line| {
         let trimmed = line.trim_start();
         let after = trimmed.strip_prefix("name")?;
@@ -87,7 +87,7 @@ pub(super) fn package_name(manifest: &str) -> Option<String> {
     })
 }
 
-pub(super) fn named_table_values(manifest: &str, table: &str) -> BTreeSet<String> {
+pub fn named_table_values(manifest: &str, table: &str) -> BTreeSet<String> {
     let mut in_table = false;
     let mut names = BTreeSet::new();
     manifest.lines().for_each(|line| {
@@ -108,7 +108,7 @@ pub(super) fn named_table_values(manifest: &str, table: &str) -> BTreeSet<String
     names
 }
 
-pub(super) fn binary_names(manifest: &str) -> BTreeSet<String> {
+pub fn binary_names(manifest: &str) -> BTreeSet<String> {
     let mut in_bin = false;
     let mut names = BTreeSet::new();
     manifest.lines().for_each(|line| {

@@ -48,6 +48,13 @@ struct BeadsMetadata {
 }
 
 impl BeadsMetadata {
+/// Parses raw `.beads/metadata.json` text into the typed `BeadsMetadata` view
+/// used by the lane, treating each absent or unknown field as a typed
+/// `Missing`/`Other` variant so partial metadata still produces findings.
+///
+/// # Errors
+/// Returns `serde_json::Error` when `text` is not valid JSON or does not
+/// match the shape required by `serde_json::from_str::<Value>(text)`.
     fn parse(text: &str) -> Result<Self, serde_json::Error> {
         let value = serde_json::from_str::<Value>(text)?;
         Ok(Self {

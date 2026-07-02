@@ -55,7 +55,7 @@ impl StepStateFacts {
     }
 }
 
-pub(crate) fn main_exit() -> ExitCode {
+pub fn main_exit() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(error) => {
@@ -68,7 +68,7 @@ pub(crate) fn main_exit() -> ExitCode {
     print_and_exit(&report)
 }
 
-pub(crate) fn run(target: &TargetProject, report: &mut LaneReport) {
+pub fn run(target: &TargetProject, report: &mut LaneReport) {
     let Some(text) = read_source(target, report) else {
         return;
     };
