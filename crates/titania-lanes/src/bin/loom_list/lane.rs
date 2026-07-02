@@ -13,8 +13,8 @@ enum LaneOutcome {
     NotApplicable(String),
 }
 
-pub fn main_exit(args: Vec<String>) -> ExitCode {
-    if let Some(code) = usage_exit(&args) {
+pub fn main_exit(args: &[String]) -> ExitCode {
+    if let Some(code) = usage_exit(args) {
         return code;
     }
     let target = match current_target_project() {
@@ -49,7 +49,9 @@ fn render_lane_result(result: Result<LaneOutcome, String>) -> ExitCode {
 
 fn models_exit(models: &[String]) -> ExitCode {
     eprintln!("[loom-list] Found {} loom models:", models.len());
-    models.iter().for_each(|name| println!("{name}"));
+    for name in models {
+        println!("{name}");
+    }
     exit(LaneExit::Clean)
 }
 
@@ -63,6 +65,14 @@ fn violations_exit(err: &str) -> ExitCode {
     exit(LaneExit::Violations)
 }
 
+/// Runs the loom model enumeration lane for the target project.
+///
+/// # Errors
+///
+/// Returns `Err` if the `cargo xtask loom` command cannot be prepared
+/// (e.g. target project resolution fails), cannot be spawned (e.g. cargo
+/// absent), or the output cannot be parsed into a known model inventory
+/// (delegated to `unparsed_inventory` which always returns `Ok`).
 fn run_lane(target: &TargetProject) -> Result<LaneOutcome, String> {
     if !has_xtask_inventory(target) {
         return Ok(LaneOutcome::NotApplicable(
@@ -78,6 +88,13 @@ fn has_xtask_inventory(target: &TargetProject) -> bool {
     target.as_std_path().join("xtask/Cargo.toml").is_file()
 }
 
+/// Spawns `cargo xtask loom --model __loom_list_enumerate__` for the target.
+///
+/// # Errors
+///
+/// Returns `Err` with a message if `CommandIn::new` fails to prepare the
+/// cargo command, or if `run_capture_raw` fails to spawn and capture the
+/// child process output.
 fn run_xtask_loom(target: &TargetProject) -> Result<titania_lanes::CommandOutput, String> {
     let mut command =
         CommandIn::new(target, "cargo").map_err(|e| format!("failed to prepare cargo: {e}"))?;
@@ -92,6 +109,14 @@ fn combined_output(stdout: &[u8], stderr: &[u8]) -> String {
     format!("{stdout}{stderr}")
 }
 
+/// Classifies the combined stdout/stderr output from `cargo xtask loom`.
+///
+/// # Errors
+///
+/// Always returns `Ok`. Parsing failure is handled gracefully by
+/// `unparsed_inventory`, which returns `NotApplicable`. The only actual
+/// error path is in the caller (`run_lane`) which propagates
+/// `run_xtask_loom` errors via `?`.
 fn classify_loom_output(sentinel_success: bool, combined: &str) -> Result<LaneOutcome, String> {
     if sentinel_success {
         eprintln!("[loom-list] WARNING: xtask exited 0 for sentinel model (unexpected)");
@@ -102,12 +127,12 @@ fn classify_loom_output(sentinel_success: bool, combined: &str) -> Result<LaneOu
         ));
     }
     parse_models(combined)
-        .map_or_else(|| unparsed_inventory(combined), |models| Ok(LaneOutcome::Models(models)))
+        .map_or_else(|| Ok(unparsed_inventory(combined)), |models| Ok(LaneOutcome::Models(models)))
 }
 
-fn unparsed_inventory(combined: &str) -> Result<LaneOutcome, String> {
+fn unparsed_inventory(combined: &str) -> LaneOutcome {
     eprintln!("[loom-list] Raw output:\n{combined}");
-    Ok(LaneOutcome::NotApplicable("could not parse model inventory from xtask output".to_owned()))
+    LaneOutcome::NotApplicable("could not parse model inventory from xtask output".to_owned())
 }
 
 /// Parse the model list. Prefers the JSON array form
