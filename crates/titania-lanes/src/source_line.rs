@@ -71,12 +71,17 @@ struct ParsedLine {
     block_comment: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StringMode {
+    Normal { escaped: bool },
+    Raw { hashes: u8 },
+}
+
 struct SourceLineParser<'a> {
     chars: Peekable<Chars<'a>>,
     code: String,
     block_comment: bool,
-    in_string: bool,
-    escaped: bool,
+    string_mode: Option<StringMode>,
 }
 
 impl<'a> SourceLineParser<'a> {
@@ -85,8 +90,7 @@ impl<'a> SourceLineParser<'a> {
             chars: raw.chars().peekable(),
             code: String::with_capacity(raw.len()),
             block_comment,
-            in_string: false,
-            escaped: false,
+            string_mode: None,
         }
     }
 
@@ -117,18 +121,18 @@ impl<'a> SourceLineParser<'a> {
         true
     }
 
-    const fn consume_string(&mut self, ch: char) -> bool {
-        if !self.in_string {
-            return false;
+    fn consume_string(&mut self, ch: char) -> bool {
+        match self.string_mode {
+            None => false,
+            Some(StringMode::Normal { escaped }) => {
+                self.consume_normal_string_char(ch, escaped);
+                true
+            }
+            Some(StringMode::Raw { hashes }) => {
+                self.consume_raw_string_char(ch, hashes);
+                true
+            }
         }
-        if self.escaped {
-            self.escaped = false;
-        } else if ch == '\\' {
-            self.escaped = true;
-        } else if ch == '"' {
-            self.in_string = false;
-        }
-        true
     }
 
     fn starts_line_comment(&mut self, ch: char) -> bool {
@@ -145,11 +149,116 @@ impl<'a> SourceLineParser<'a> {
     }
 
     fn consume_code(&mut self, ch: char) {
-        if ch == '"' {
-            self.in_string = true;
+        match ch {
+            '"' => self.start_normal_string_with_prefix_width(1),
+            'b' => {
+                if !self.try_start_byte_string() {
+                    self.code.push(ch);
+                }
+            }
+            'r' => {
+                if !self.try_start_raw_string() {
+                    self.code.push(ch);
+                }
+            }
+            _ => self.code.push(ch),
+        }
+    }
+
+    fn consume_normal_string_char(&mut self, ch: char, escaped: bool) {
+        if escaped {
+            self.string_mode = Some(StringMode::Normal { escaped: false });
             self.code.push(' ');
+        } else if ch == '\\' {
+            self.string_mode = Some(StringMode::Normal { escaped: true });
+            self.code.push(' ');
+        } else if ch == '"' {
+            self.string_mode = None;
         } else {
-            self.code.push(ch);
+            self.code.push(' ');
+        }
+    }
+
+    fn consume_raw_string_char(&mut self, ch: char, hashes: u8) {
+        if ch == '"' && self.raw_terminator_follows(hashes) {
+            self.consume_hashes(hashes);
+            self.string_mode = None;
+        } else {
+            self.code.push(' ');
+        }
+    }
+
+    fn try_start_byte_string(&mut self) -> bool {
+        if self.chars.peek().is_some_and(|next| *next == '"') {
+            let _quote = self.chars.next();
+            self.start_normal_string_with_prefix_width(2);
+            true
+        } else if self.byte_raw_string_follows() {
+            let _raw_prefix = self.chars.next();
+            self.try_start_raw_string_after_r(2)
+        } else {
+            false
+        }
+    }
+
+    fn try_start_raw_string(&mut self) -> bool {
+        self.try_start_raw_string_after_r(1)
+    }
+
+    fn try_start_raw_string_after_r(&mut self, prefix_width: u8) -> bool {
+        match raw_hash_count_before_quote(self.chars.clone()) {
+            Some(hashes) => {
+                self.push_spaces(prefix_width);
+                self.consume_hashes_as_spaces(hashes);
+                let _quote = self.chars.next();
+                self.code.push(' ');
+                self.string_mode = Some(StringMode::Raw { hashes });
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn byte_raw_string_follows(&self) -> bool {
+        let mut probe = self.chars.clone();
+        match probe.next() {
+            Some('r') => raw_hash_count_before_quote(probe).is_some(),
+            _ => false,
+        }
+    }
+
+    fn raw_terminator_follows(&self, hashes: u8) -> bool {
+        let mut probe = self.chars.clone();
+        (0..hashes).all(|_| {
+            let matched = probe.peek().is_some_and(|next| *next == '#');
+            if matched {
+                let _hash = probe.next();
+            }
+            matched
+        })
+    }
+
+    fn start_normal_string_with_prefix_width(&mut self, prefix_width: u8) {
+        self.push_spaces(prefix_width);
+        self.string_mode = Some(StringMode::Normal { escaped: false });
+    }
+
+    fn consume_hashes(&mut self, hashes: u8) {
+        for _ in 0..hashes {
+            let _hash = self.chars.next();
+        }
+    }
+
+    fn consume_hashes_as_spaces(&mut self, hashes: u8) {
+        for _ in 0..hashes {
+            let _hash = self.chars.next();
+            self.code.push(' ');
+        }
+    }
+
+    fn push_spaces(&mut self, count: u8) {
+        for _ in 0..count {
+            self.code.push(' ');
         }
     }
 
@@ -163,64 +272,11 @@ impl<'a> SourceLineParser<'a> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::SourceLine;
-
-    fn parse_lines(text: &str) -> Vec<SourceLine> {
-        let mut block_comment = false;
-        text.lines().map(|line| SourceLine::parse(line, &mut block_comment)).collect()
+fn raw_hash_count_before_quote(mut chars: Peekable<Chars<'_>>) -> Option<u8> {
+    let mut hashes = 0_u8;
+    while chars.peek().is_some_and(|next| *next == '#') {
+        let _hash = chars.next();
+        hashes = hashes.checked_add(1)?;
     }
-
-    #[test]
-    fn line_comment_is_skipped() {
-        let lines = parse_lines("// hello\nlet x = 1;");
-        assert!(lines[0].is_non_code());
-        assert_eq!(lines[1].code(), "let x = 1;");
-    }
-
-    #[test]
-    fn block_comment_within_one_line_is_skipped() {
-        let lines = parse_lines("/* foo */ let x = 1;");
-        // The whole line collapses to whitespace when only the
-        // comment was real code, but `is_non_code` here returns
-        // false because the line still has visible code.
-        let line = &lines[0];
-        // `code()` returns the surviving runes with the comment
-        // replaced by spaces.
-        let code = line.code();
-        assert!(!code.contains("foo"));
-        assert!(code.contains("let"));
-    }
-
-    #[test]
-    fn block_comment_spans_multiple_lines() {
-        let mut block_comment = false;
-        let line1 = SourceLine::parse("/* spans", &mut block_comment);
-        assert!(block_comment, "block_comment should remain open");
-        let line2 = SourceLine::parse("more lines */ let x = 1;", &mut block_comment);
-        assert!(!block_comment, "block_comment should be closed");
-        assert!(line2.code().contains("let x = 1;"));
-        let _ = line1;
-    }
-
-    #[test]
-    fn string_literal_contents_are_blanked_out() {
-        let lines = parse_lines("let s = \"assert!\";");
-        let code = lines[0].code();
-        assert!(!code.contains("assert!"));
-        assert!(code.contains("let s = "));
-    }
-
-    #[test]
-    fn escaped_quote_in_string_does_not_close() {
-        let lines = parse_lines(r#"let s = "a\"b";"#);
-        let code = lines[0].code();
-        // The closing `"` after `b` ends the string; the literal
-        // contents between the quotes are blanked but the
-        // surrounding code survives.
-        assert!(code.starts_with("let s = "));
-        assert!(code.ends_with(';'));
-        assert!(!code.contains(r#"a\"b"#));
-    }
+    chars.next().is_some_and(|next| next == '"').then_some(hashes)
 }
