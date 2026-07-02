@@ -27,7 +27,8 @@
 #![forbid(unsafe_code)]
 
 #[path = "check_spelling_gate/lane.rs"]
-mod lane;
+/// Spelling gate lane implementation.
+pub mod lane;
 
 fn main() -> std::process::ExitCode {
     lane::main_exit()

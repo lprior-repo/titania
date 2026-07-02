@@ -23,13 +23,14 @@
 mod digest;
 mod discover;
 mod error;
-#[cfg(kani)]
-mod kani;
 mod receipt;
 mod rule_id;
 mod target_project;
 mod text_range;
 mod workspace_path;
+
+#[cfg(kani)]
+mod kani;
 
 pub use digest::Digest;
 pub use discover::discover_target;

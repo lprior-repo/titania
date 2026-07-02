@@ -1,70 +1,70 @@
-use std::{env, path::PathBuf};
+use std::path::PathBuf;
 
-use titania_core::TargetProject;
-use titania_lanes::{CommandIn, LaneExit};
+use titania_lanes::CommandIn;
 
-use super::LocalLane;
-
-pub(super) fn run_local_lane(target: &TargetProject, lane: LocalLane) -> LaneExit {
+fn run_local_lane(target: &TargetProject, lane: LocalLane) -> LaneExit {
     let binary = match sibling_binary(lane.binary_name()) {
         Ok(binary) => binary,
-        Err(error) => {
-            eprintln!("[gauntlet] Failure: {error}");
-            return LaneExit::Failure;
-        }
+        Err(error) => return failure_after_stderr(format_args!("[gauntlet] Failure: {error}")),
     };
-    binary_status(target, binary)
+    binary_status(target, &binary)
 }
 
+/// Resolves a gauntlet helper binary next to the current executable.
+///
+/// # Errors
+///
+/// Returns an error when the current executable cannot be resolved, has no parent
+/// directory, or the named sibling binary is absent.
 fn sibling_binary(binary_name: &str) -> Result<PathBuf, String> {
-    let current = env::current_exe().map_err(|error| error.to_string())?;
+    let current = std::env::current_exe().map_err(|error| error.to_string())?;
     let Some(dir) = current.parent() else {
         return Err("cannot resolve current Titania lane binary directory".to_owned());
     };
     let binary = dir.join(binary_name);
-    if binary.is_file() { Ok(binary) } else { missing_binary(binary_name, dir) }
+    if binary.is_file() { Ok(binary) } else { Err(missing_binary(binary_name, dir)) }
 }
 
-fn missing_binary(binary_name: &str, dir: &std::path::Path) -> Result<PathBuf, String> {
+fn missing_binary(binary_name: &str, dir: &std::path::Path) -> String {
     let shown = dir.display();
-    Err(format!(
+    format!(
         "missing Titania lane binary `{binary_name}` beside `{shown}`; build/install titania-lanes lane binaries before running applicable target projects"
-    ))
+    )
 }
 
-fn binary_status(target: &TargetProject, binary: PathBuf) -> LaneExit {
+fn binary_status(target: &TargetProject, binary: &std::path::Path) -> LaneExit {
     let Some(program) = binary.to_str() else {
-        eprintln!("[gauntlet] Failure: Titania lane binary path is not valid UTF-8");
-        return LaneExit::Failure;
+        return failure_after_stderr(format_args!(
+            "[gauntlet] Failure: Titania lane binary path is not valid UTF-8"
+        ));
     };
     let mut cmd = match CommandIn::new(target, program) {
         Ok(command) => command,
-        Err(error) => {
-            eprintln!("[gauntlet] Failure: cannot prepare Titania lane binary: {error}");
-            return LaneExit::Failure;
-        }
+        Err(error) => return failure_after_stderr(format_args!(
+            "[gauntlet] Failure: cannot prepare Titania lane binary: {error}"
+        )),
     };
     command_status(&mut cmd)
 }
 
-pub(super) fn run_clippy_vb_compile(target: &TargetProject) -> LaneExit {
+fn run_clippy_vb_compile(target: &TargetProject) -> LaneExit {
     cargo_status(
         target,
         &["clippy", "-p", "vb_compile", "--lib", "--", "-D", "warnings", "-A", "unsafe_code"],
     )
 }
 
-pub(super) fn run_test(target: &TargetProject, group: &str) -> LaneExit {
+fn run_test(target: &TargetProject, group: &str) -> LaneExit {
     let args = vec!["test", "-p", "vb_compile", "--lib", group, "--", "--nocapture"];
     cargo_status(target, &args)
 }
 
-pub(super) fn run_kani(target: &TargetProject, harness: &str) -> LaneExit {
+fn run_kani(target: &TargetProject, harness: &str) -> LaneExit {
     let args = vec!["kani", "--package", "vb_compile", "--harness", harness, "--quiet"];
     cargo_status(target, &args)
 }
 
-pub(super) fn run_kani_default_unwind(target: &TargetProject, harness: &str) -> LaneExit {
+fn run_kani_default_unwind(target: &TargetProject, harness: &str) -> LaneExit {
     let args = vec![
         "kani",
         "--package",
@@ -78,37 +78,41 @@ pub(super) fn run_kani_default_unwind(target: &TargetProject, harness: &str) -> 
     cargo_status(target, &args)
 }
 
-pub(super) fn cargo_capture(
+/// Captures a cargo invocation in the target project.
+///
+/// # Errors
+///
+/// Returns an error when the cargo command cannot be prepared, fails to execute,
+/// or its captured output cannot be represented by `CommandOutput`.
+fn cargo_capture(
     target: &TargetProject,
     args: &[&str],
 ) -> Result<titania_lanes::CommandOutput, String> {
     let mut cmd = CommandIn::new(target, "cargo").map_err(|error| error.to_string())?;
-    cmd.inherit_env();
-    cmd.env_remove("RUSTC_WRAPPER");
-    cmd.env("SCCACHE_DISABLE", "1");
-    cmd.args(args);
+    let _ = cmd.inherit_env();
+    let _ = cmd.env_remove("RUSTC_WRAPPER");
+    let _ = cmd.env("SCCACHE_DISABLE", "1");
+    let _ = cmd.args(args);
     cmd.run_capture().map_err(|error| error.to_string())
 }
 
 fn cargo_status(target: &TargetProject, args: &[&str]) -> LaneExit {
-    let mut cmd = match CommandIn::new(target, "cargo") {
-        Ok(command) => command,
-        Err(_) => return LaneExit::Violations,
+    let Ok(mut cmd) = CommandIn::new(target, "cargo") else {
+        return LaneExit::Violations;
     };
-    cmd.args(args);
+    let _ = cmd.args(args);
     command_status(&mut cmd)
 }
 
 fn command_status(cmd: &mut CommandIn<'_>) -> LaneExit {
-    cmd.inherit_env();
-    cmd.env_remove("RUSTC_WRAPPER");
-    cmd.env("SCCACHE_DISABLE", "1");
+    let _ = cmd.inherit_env();
+    let _ = cmd.env_remove("RUSTC_WRAPPER");
+    let _ = cmd.env("SCCACHE_DISABLE", "1");
     match cmd.run_status_raw() {
         Ok(status) if status.success() => LaneExit::Clean,
         Ok(_) => LaneExit::Violations,
-        Err(error) => {
-            eprintln!("[gauntlet] Failure: command execution failed: {error}");
-            LaneExit::Failure
-        }
+        Err(error) => failure_after_stderr(format_args!(
+            "[gauntlet] Failure: command execution failed: {error}"
+        )),
     }
 }

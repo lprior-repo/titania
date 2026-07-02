@@ -1,13 +1,12 @@
+//! Rust verification gauntlet target-project integration tests.
+
 use std::{
-    error::Error,
     fs,
     path::Path,
     process::{Command, Output},
 };
 
 use tempfile::TempDir;
-
-type TestResult = Result<(), Box<dyn Error>>;
 
 fn plain_target() -> Result<TempDir, std::io::Error> {
     let temp = tempfile::tempdir()?;
@@ -36,15 +35,31 @@ fn stderr_text(output: &Output) -> Result<String, std::string::FromUtf8Error> {
     String::from_utf8(output.stderr.clone())
 }
 
-#[test]
-fn plain_target_without_vb_compile_is_cleanly_not_applicable() -> TestResult {
-    let target = plain_target()?;
+macro_rules! must {
+    ($result:expr, $context:expr) => {
+        must($result, $context)
+    };
+}
 
-    let output = run_gauntlet(target.path(), "fast")?;
-    let stderr = stderr_text(&output)?;
+fn must<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(error) => {
+            let message = format!("{context}: {error}");
+            assert_eq!(message, "", "{message}");
+            std::process::abort();
+        }
+    }
+}
+
+#[test]
+fn plain_target_without_vb_compile_is_cleanly_not_applicable() {
+    let target = must!(plain_target(), "create plain target");
+
+    let output = must!(run_gauntlet(target.path(), "fast"), "run gauntlet");
+    let stderr = must!(stderr_text(&output), "decode stderr");
 
     assert!(!stderr.contains("titania-lanes` not found"), "{stderr}");
     assert_eq!(output.status.code(), Some(0_i32), "{stderr}");
     assert!(stderr.contains("NotApplicable: package vb_compile absent"), "{stderr}");
-    Ok(())
 }

@@ -1,3 +1,5 @@
+//! Toolchain config sanity tests.
+
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},

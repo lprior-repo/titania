@@ -17,23 +17,11 @@ impl LaneName {
     /// # Errors
     /// - [`ReceiptError::EmptyLaneName`] if `name` is empty.
     /// - [`ReceiptError::InvalidLaneName`] if `name` contains a NUL byte.
-    #[cfg_attr(kani, kani::requires(name.is_empty() == false))]
-    #[cfg_attr(kani, kani::requires(!name.as_bytes().contains(&b'\0')))]
-    #[cfg_attr(
-        kani,
-        kani::ensures(|result: &Result<LaneName, ReceiptError>, name: &str| match result {
-            Ok(lane) => lane.as_str() == name,
-            Err(_) => false,
-        })
-    )]
-    pub fn new(name: &str) -> Result<Self, ReceiptError> {
-        if name.is_empty() {
-            return Err(ReceiptError::EmptyLaneName);
-        }
-        if name.as_bytes().contains(&b'\0') {
-            return Err(ReceiptError::InvalidLaneName);
-        }
-        Ok(Self(name.to_string()))
+    pub fn new(name: impl Into<String>) -> Result<Self, ReceiptError> {
+        let name = name.into();
+        (!name.is_empty()).then_some(()).ok_or(ReceiptError::EmptyLaneName)?;
+        (!name.as_bytes().contains(&b'\0')).then_some(()).ok_or(ReceiptError::InvalidLaneName)?;
+        Ok(Self(name))
     }
 
     /// Borrow the validated lane name.

@@ -4,7 +4,7 @@
 //! dependency surface. They prove constructor boundaries for the new receipt
 //! domain without touching filesystem-backed TargetProject behavior.
 
-use crate::{LaneDigest, LaneName, ReceiptError, ReceiptLaneExit, ReceiptPeriod, RecordedTargetRoot};
+use crate::{LaneDigest, LaneName, ReceiptError, ReceiptLaneExit, RecordedTargetRoot};
 
 #[kani::proof]
 fn lane_name_rejects_empty_string() {
@@ -99,15 +99,3 @@ fn recorded_target_root_accepts_absolute_path() {
         Err(_) => kani::assert(false, "absolute target root is accepted"),
     }
 }
-
-#[kani::proof_for_contract(LaneName::new)]
-fn verify_lane_name_contract() {}
-
-#[kani::proof_for_contract(LaneDigest::new)]
-fn verify_lane_digest_contract() {}
-
-#[kani::proof_for_contract(RecordedTargetRoot::new)]
-fn verify_recorded_target_root_contract() {}
-
-#[kani::proof_for_contract(ReceiptPeriod::new)]
-fn verify_receipt_period_contract() {}

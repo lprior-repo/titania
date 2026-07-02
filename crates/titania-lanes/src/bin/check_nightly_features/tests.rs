@@ -1,31 +1,28 @@
-use super::{FeatureUse, collect_features, is_perf_scoped_path, push_closed_feature};
+use super::{collector::collect_features, scope::is_perf_scoped_path};
 
 #[test]
 fn push_closed_feature_extracts_single_line_attribute_without_stray_paren() {
     // Regression: the slice used to end at the `)` of `)]`, leaving the
     // `]` out. `extract_names` then failed to strip the `)]` suffix and
     // the last feature name carried a stray `)`.
-    let mut out: Vec<FeatureUse> = Vec::new();
-    assert!(push_closed_feature(1, "try_blocks)]", &mut out));
-    assert_eq!(out.len(), 1);
-    let (line_no, names, _) = &out[0];
+    let uses = collect_features("#![feature(try_blocks)]\n");
+    assert_eq!(uses.len(), 1);
+    let (line_no, names, _) = &uses[0];
     assert_eq!(*line_no, 1);
     assert_eq!(names, &vec!["try_blocks".to_owned()]);
 }
 
 #[test]
 fn push_closed_feature_extracts_multi_feature_attribute() {
-    let mut out: Vec<FeatureUse> = Vec::new();
-    assert!(push_closed_feature(1, "allocator_api, generic_const_exprs)]", &mut out));
-    let names = &out[0].1;
+    let uses = collect_features("#![feature(allocator_api, generic_const_exprs)]\n");
+    let names = &uses[0].1;
     assert_eq!(names, &vec!["allocator_api".to_owned(), "generic_const_exprs".to_owned()]);
 }
 
 #[test]
 fn push_closed_feature_returns_false_when_no_close() {
-    let mut out: Vec<FeatureUse> = Vec::new();
-    assert!(!push_closed_feature(1, "try_blocks", &mut out));
-    assert!(out.is_empty());
+    let uses = collect_features("#![feature(try_blocks\n");
+    assert!(uses.is_empty());
 }
 
 #[test]

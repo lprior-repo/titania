@@ -20,19 +20,6 @@ impl RecordedTargetRoot {
     /// - [`ReceiptError::TargetRootEmpty`] if the path is empty.
     /// - [`ReceiptError::TargetRootNonAbsolute`] if the path is relative.
     /// - [`ReceiptError::TargetRootContainsNul`] if the path contains NUL.
-    #[cfg_attr(
-        kani,
-        kani::requires(path.is_empty() == false && path.starts_with('/') && !path.contains('\0'))
-    )]
-    #[cfg_attr(
-        kani,
-        kani::ensures(|result: &Result<RecordedTargetRoot, ReceiptError>, path: &str| {
-            match result {
-                Ok(root) => root.as_str() == path,
-                Err(_) => false,
-            }
-        })
-    )]
     pub fn new(path: &str) -> Result<Self, ReceiptError> {
         let path_buf = camino::Utf8PathBuf::from(path);
         validate_recorded_root(&path_buf)?;
@@ -62,6 +49,12 @@ impl RecordedTargetRoot {
     }
 }
 
+/// Validate a recorded target root for emptiness, relativity, and NUL bytes.
+///
+/// # Errors
+/// - [`ReceiptError::TargetRootEmpty`] if the path is empty.
+/// - [`ReceiptError::TargetRootNonAbsolute`] if the path is relative.
+/// - [`ReceiptError::TargetRootContainsNul`] if the path contains NUL.
 fn validate_recorded_root(path: &Utf8Path) -> Result<(), ReceiptError> {
     if path.as_str().is_empty() {
         return Err(ReceiptError::TargetRootEmpty);

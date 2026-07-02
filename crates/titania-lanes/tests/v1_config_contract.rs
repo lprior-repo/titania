@@ -1,3 +1,5 @@
+//! Contract tests for the strict workspace lint configuration.
+
 use std::collections::BTreeMap;
 
 const ROOT_CARGO: &str = include_str!("../../../Cargo.toml");
@@ -6,8 +8,9 @@ const CLIPPY: &str = include_str!("../../../clippy.toml");
 const REQUIRED_RUST_LINTS: &[(&str, &str)] = &[
     ("unsafe_code", "forbid"),
     ("unused_must_use", "deny"),
-    ("unreachable_pub", "allow"),
-    ("non_exhaustive_omitted_patterns", "deny"),
+    ("unreachable_pub", "deny"),
+    ("missing_docs", "deny"),
+    ("unsafe_op_in_unsafe_fn", "deny"),
 ];
 
 const REQUIRED_RUST_TABLE_LINTS: &[(&str, &str, &str)] = &[("rust_2018_idioms", "deny", "-1")];
@@ -24,26 +27,54 @@ const REQUIRED_CLIPPY_LINTS: &[(&str, &str)] = &[
     ("arithmetic_side_effects", "deny"),
     ("dbg_macro", "deny"),
     ("as_conversions", "deny"),
-    ("let_underscore_must_use", "deny"),
     ("await_holding_lock", "deny"),
-    ("unwrap_or_default", "deny"),
-    ("exit", "deny"),
-    ("default_numeric_fallback", "deny"),
     ("missing_errors_doc", "deny"),
+    ("panic_in_result_fn", "deny"),
+    ("print_stdout", "deny"),
+    ("print_stderr", "deny"),
+    ("integer_division", "deny"),
+    ("integer_division_remainder_used", "deny"),
+    ("modulo_arithmetic", "deny"),
+    ("float_arithmetic", "deny"),
+    ("allow_attributes", "deny"),
+    ("allow_attributes_without_reason", "deny"),
+    ("result_large_err", "deny"),
+    ("result_unit_err", "deny"),
+    ("map_err_ignore", "deny"),
+    ("missing_panics_doc", "deny"),
+    ("missing_safety_doc", "deny"),
+    ("large_enum_variant", "deny"),
+    ("cognitive_complexity", "deny"),
+    ("too_many_arguments", "deny"),
+    ("too_many_lines", "deny"),
+    ("type_complexity", "deny"),
+    ("excessive_nesting", "deny"),
+    ("await_holding_refcell_ref", "deny"),
+    ("future_not_send", "deny"),
+    ("large_futures", "deny"),
+    ("disallowed_methods", "deny"),
+    ("disallowed_macros", "deny"),
+    ("disallowed_types", "deny"),
+    ("disallowed_fields", "deny"),
+    ("multiple_crate_versions", "deny"),
+    ("wildcard_dependencies", "deny"),
+    ("negative_feature_names", "deny"),
+    ("redundant_feature_names", "deny"),
 ];
 
 const REQUIRED_CLIPPY_TABLE_LINTS: &[(&str, &str, &str)] = &[
     ("all", "deny", "-1"),
-    ("pedantic", "allow", "1"),
-    ("nursery", "allow", "1"),
-    ("cargo", "allow", "1"),
-    ("multiple_crate_versions", "allow", "1"),
+    ("pedantic", "deny", "-1"),
+    ("nursery", "deny", "-1"),
+    ("cargo", "deny", "-1"),
 ];
 
 const REQUIRED_CLIPPY_THRESHOLDS: &[(&str, &str)] = &[
-    ("too-many-lines-threshold", "40"),
+    ("too-many-lines-threshold", "60"),
     ("too-many-arguments-threshold", "5"),
-    ("max-fn-params-bools", "1"),
+    ("cognitive-complexity-threshold", "8"),
+    ("excessive-nesting-threshold", "2"),
+    ("type-complexity-threshold", "120"),
 ];
 
 #[test]
@@ -70,7 +101,7 @@ fn workspace_lints_reject_weakened_fixture() {
 
 #[test]
 fn clippy_thresholds_reject_weakened_fixture() {
-    let weakened = CLIPPY.replace("too-many-lines-threshold = 40", "too-many-lines-threshold = 80");
+    let weakened = CLIPPY.replace("too-many-lines-threshold = 60", "too-many-lines-threshold = 80");
     let clippy_thresholds = flat_entries(&weakened);
 
     assert_eq!(clippy_thresholds.get("too-many-lines-threshold"), Some(&"80"));

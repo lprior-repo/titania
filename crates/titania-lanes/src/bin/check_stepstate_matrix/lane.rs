@@ -1,11 +1,17 @@
-use std::{collections::BTreeSet, fs, io::ErrorKind, path::PathBuf, process::ExitCode};
+use std::{
+    collections::BTreeSet,
+    fs,
+    io::{self, ErrorKind, Write},
+    path::PathBuf,
+    process::ExitCode,
+};
 
 use titania_core::TargetProject;
-use titania_lanes::{Finding, LaneExit, LaneReport, current_target_project, exit};
+use titania_lanes::{Finding, LaneExit, LaneReport, RuleId, current_target_project, exit};
 
 const SRC: TargetRelativePath =
     TargetRelativePath::new("crates/vb_core/src/proof_kernels/step_state.rs");
-const RULE_STEPSTATE: &str = "STEPSTATE";
+const RULE_STEPSTATE: &str = "STEPSTATE_MATRIX";
 
 type StateSet = BTreeSet<String>;
 
@@ -55,44 +61,51 @@ impl StepStateFacts {
     }
 }
 
-pub(crate) fn main_exit() -> ExitCode {
+fn main_exit() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(error) => {
-            eprintln!("[check-stepstate-matrix] target discovery failed: {error}");
-            return exit(LaneExit::Usage);
+            return exit_after_stderr_line(
+                format_args!("[check-stepstate-matrix] target discovery failed: {error}"),
+                LaneExit::Usage,
+            );
+        }
+    };
+    let rule = match RuleId::new(RULE_STEPSTATE) {
+        Ok(rule) => rule,
+        Err(error) => {
+            return exit_after_stderr_line(
+                format_args!("[check-stepstate-matrix] rule id configuration error: {error}"),
+                LaneExit::Failure,
+            );
         }
     };
     let mut report = LaneReport::new();
-    run(&target, &mut report);
+    run(&target, &rule, &mut report);
     print_and_exit(&report)
 }
 
-pub(crate) fn run(target: &TargetProject, report: &mut LaneReport) {
-    let Some(text) = read_source(target, report) else {
+fn run(target: &TargetProject, rule: &RuleId, report: &mut LaneReport) {
+    let Some(text) = read_source(target, rule, report) else {
         return;
     };
     let facts = StepStateFacts::parse(&text);
-    check_transition_coverage(&facts.variants, &facts.transitions, report);
-    check_terminal_consistency(&facts, report);
-    check_non_terminal_consistency(&facts, report);
+    check_transition_coverage(&facts.variants, &facts.transitions, rule, report);
+    check_terminal_consistency(&facts, rule, report);
+    check_non_terminal_consistency(&facts, rule, report);
 }
 
-fn read_source(target: &TargetProject, report: &mut LaneReport) -> Option<String> {
+fn read_source(target: &TargetProject, rule: &RuleId, report: &mut LaneReport) -> Option<String> {
     let path = SRC.in_target(target);
     match fs::read_to_string(&path) {
         Ok(text) => Some(text),
         Err(error) if error.kind() == ErrorKind::NotFound => {
-            eprintln!(
-                "[check-stepstate-matrix] not applicable: {} is absent under {}; skipping StepState matrix lane",
-                SRC.as_str(),
-                target
-            );
+            record_absent_source(rule, report, target);
             None
         }
         Err(error) => {
             report.push(Finding::new(
-                RULE_STEPSTATE,
+                rule.clone(),
                 SRC.as_str(),
                 0,
                 format!("source not readable: {:?}", error.kind()),
@@ -102,10 +115,15 @@ fn read_source(target: &TargetProject, report: &mut LaneReport) -> Option<String
     }
 }
 
-fn check_transition_coverage(variants: &StateSet, transitions: &StateSet, report: &mut LaneReport) {
+fn check_transition_coverage(
+    variants: &StateSet,
+    transitions: &StateSet,
+    rule: &RuleId,
+    report: &mut LaneReport,
+) {
     variants.iter().filter(|v| !transitions.contains(*v)).for_each(|v| {
         report.push(Finding::new(
-            RULE_STEPSTATE,
+            rule.clone(),
             SRC.as_str(),
             0,
             format!("variant {v} missing from VALID_TRANSITIONS"),
@@ -113,7 +131,7 @@ fn check_transition_coverage(variants: &StateSet, transitions: &StateSet, report
     });
     transitions.iter().filter(|t| !variants.contains(*t)).for_each(|t| {
         report.push(Finding::new(
-            RULE_STEPSTATE,
+            rule.clone(),
             SRC.as_str(),
             0,
             format!("phantom state {t} in VALID_TRANSITIONS"),
@@ -121,7 +139,7 @@ fn check_transition_coverage(variants: &StateSet, transitions: &StateSet, report
     });
     if variants.len() != transitions.len() {
         report.push(Finding::new(
-            RULE_STEPSTATE,
+            rule.clone(),
             SRC.as_str(),
             0,
             transition_count_message(variants, transitions),
@@ -133,10 +151,10 @@ fn transition_count_message(variants: &StateSet, transitions: &StateSet) -> Stri
     format!("variant count ({}) != transition state count ({})", variants.len(), transitions.len())
 }
 
-fn check_terminal_consistency(facts: &StepStateFacts, report: &mut LaneReport) {
+fn check_terminal_consistency(facts: &StepStateFacts, rule: &RuleId, report: &mut LaneReport) {
     if facts.is_terminal != facts.terminal_states {
         report.push(Finding::new(
-            RULE_STEPSTATE,
+            rule.clone(),
             SRC.as_str(),
             0,
             format!(
@@ -147,11 +165,11 @@ fn check_terminal_consistency(facts: &StepStateFacts, report: &mut LaneReport) {
     }
 }
 
-fn check_non_terminal_consistency(facts: &StepStateFacts, report: &mut LaneReport) {
+fn check_non_terminal_consistency(facts: &StepStateFacts, rule: &RuleId, report: &mut LaneReport) {
     let non_terminal_derived = facts.non_terminal_derived();
     if non_terminal_derived != facts.non_terminal_fn {
         report.push(Finding::new(
-            RULE_STEPSTATE,
+            rule.clone(),
             SRC.as_str(),
             0,
             format!(
@@ -164,109 +182,55 @@ fn check_non_terminal_consistency(facts: &StepStateFacts, report: &mut LaneRepor
 
 fn print_and_exit(report: &LaneReport) -> ExitCode {
     let rendered = report.render();
-    if !rendered.is_empty() {
-        eprint!("{rendered}");
+    if !rendered.is_empty() && write_stderr(format_args!("{rendered}")).is_err() {
+        return exit(LaneExit::Failure);
     }
     if report.is_clean() { exit(LaneExit::Clean) } else { exit(LaneExit::Violations) }
 }
 
-fn find_char_in(text: &str, start: usize, target: char) -> Option<usize> {
-    let rest = text.get(start..)?;
-    rest.find(target).map(|off| start.saturating_add(off))
-}
+include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bin/check_stepstate_matrix/parser.rs"));
 
-fn extract_enum_body(text: &str, enum_name: &str) -> Option<String> {
-    let marker = format!("pub enum {enum_name}");
-    let start = text.find(&marker)?;
-    let open_pos = find_char_in(text, start, '{')?;
-    balanced_block_from_open(text, open_pos)
-}
-
-fn balanced_block_from_open(text: &str, open_pos: usize) -> Option<String> {
-    let mut depth: i32 = 0;
-    let mut idx = open_pos;
-    loop {
-        let b = text.as_bytes().get(idx).copied()?;
-        depth = next_depth(depth, b);
-        if depth == 0 && b == b'}' {
-            let end = idx.saturating_add(1);
-            return text.get(open_pos..end).map(str::to_string);
-        }
-        idx = idx.saturating_add(1);
+fn record_absent_source(rule: &RuleId, report: &mut LaneReport, target: &TargetProject) {
+    if write_stderr_line(format_args!(
+        "[check-stepstate-matrix] not applicable: {} is absent under {}; skipping StepState matrix lane",
+        SRC.as_str(),
+        target
+    ))
+    .is_err()
+    {
+        report.push(Finding::new(
+            rule.clone(),
+            SRC.as_str(),
+            0,
+            "stderr write failed while reporting StepState source absence",
+        ));
     }
 }
 
-fn next_depth(depth: i32, byte: u8) -> i32 {
-    match byte {
-        b'{' => depth.saturating_add(1),
-        b'}' => depth.saturating_sub(1),
-        _ => depth,
+/// Write formatted text to stderr without adding a newline.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] when stderr cannot be written.
+fn write_stderr(args: std::fmt::Arguments<'_>) -> io::Result<()> {
+    let mut stderr = io::stderr().lock();
+    stderr.write_fmt(args)
+}
+
+/// Write formatted text to stderr followed by a newline.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] when stderr cannot be written.
+fn write_stderr_line(args: std::fmt::Arguments<'_>) -> io::Result<()> {
+    let mut stderr = io::stderr().lock();
+    stderr.write_fmt(args)?;
+    stderr.write_all(b"\n")
+}
+
+fn exit_after_stderr_line(args: std::fmt::Arguments<'_>, code: LaneExit) -> ExitCode {
+    match write_stderr_line(args) {
+        Ok(()) => exit(code),
+        Err(_) => exit(LaneExit::Failure),
     }
-}
-
-fn extract_enum_variants(text: &str, enum_name: &str) -> StateSet {
-    extract_enum_body(text, enum_name).map_or_else(StateSet::new, |body| {
-        body.lines().filter_map(|line| variant_name(line, enum_name)).collect()
-    })
-}
-
-fn variant_name(line: &str, enum_name: &str) -> Option<String> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with('#') {
-        return None;
-    }
-    let first_word = trimmed.split_whitespace().next()?;
-    accepted_variant_name(first_word.trim_end_matches(',').trim_end_matches('('), enum_name)
-}
-
-fn accepted_variant_name(name: &str, enum_name: &str) -> Option<String> {
-    let first = name.chars().next()?;
-    let valid = !name.is_empty()
-        && name != enum_name
-        && first.is_ascii_uppercase()
-        && name.chars().all(|c| c.is_alphanumeric() || c == '_');
-    if valid { Some(name.to_string()) } else { None }
-}
-
-fn extract_block_after(text: &str, marker: &str, end_marker: &str) -> Option<String> {
-    let start = text.find(marker)?;
-    let end = find_substr(text, start, end_marker)?;
-    let end_inclusive = end.saturating_add(end_marker.len());
-    text.get(start..end_inclusive).map(str::to_string)
-}
-
-fn find_substr(text: &str, start: usize, needle: &str) -> Option<usize> {
-    let hay = text.get(start..)?;
-    hay.find(needle).map(|off| start.saturating_add(off))
-}
-
-fn collect_stepstate_refs(text: &str) -> StateSet {
-    text.match_indices("StepState::")
-        .filter_map(|(start, needle)| stepstate_ref_at(text, start.saturating_add(needle.len())))
-        .collect()
-}
-
-fn stepstate_ref_at(text: &str, start: usize) -> Option<String> {
-    let name: String =
-        text.get(start..)?.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
-    if name.is_empty() { None } else { Some(name) }
-}
-
-fn find_function_body(text: &str, fn_name: &str) -> Option<String> {
-    function_patterns(fn_name).iter().find_map(|pat| body_after_pattern(text, pat))
-}
-
-fn function_patterns(fn_name: &str) -> [String; 4] {
-    [
-        format!("pub fn {fn_name}("),
-        format!("pub fn {fn_name}<"),
-        format!("fn {fn_name}("),
-        format!("fn {fn_name}<"),
-    ]
-}
-
-fn body_after_pattern(text: &str, pattern: &str) -> Option<String> {
-    let start = text.find(pattern)?;
-    let open_pos = find_char_in(text, start, '{')?;
-    balanced_block_from_open(text, open_pos)
 }

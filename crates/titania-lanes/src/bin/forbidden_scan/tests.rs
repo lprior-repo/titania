@@ -1,6 +1,6 @@
 use std::{error::Error, fs};
 
-use titania_lanes::LaneReport;
+use titania_lanes::RuleId;
 
 use super::{ForbiddenToken, collect_source_files, default_forbidden_set, scan_file};
 
@@ -90,14 +90,16 @@ fn production_tests_rs_is_scanned_under_tests_checkout_path() -> Result<(), Box<
     }
     fs::write(&file, "pub fn bad() { panic!(\"boom\"); }\n")?;
 
-    let mut report = LaneReport::new();
     let forbidden = default_forbidden_set();
-    collect_source_files(&root)
+    let rule = RuleId::new("FORBIDDEN_001")?;
+    let findings = collect_source_files(&root)
         .iter()
-        .for_each(|source| scan_file(&root, source, &forbidden, &mut report));
+        .flat_map(|source| scan_file(&root, source, &forbidden, &rule))
+        .collect::<Vec<_>>();
 
-    assert!(report.findings().iter().any(|finding| {
-        finding.path() == "crates/example/src/tests.rs" && finding.rule() == "FORBIDDEN-001"
+    assert!(findings.iter().any(|finding| {
+        finding.path() == "crates/example/src/tests.rs"
+            && finding.rule().as_str() == "FORBIDDEN_001"
     }));
     Ok(())
 }

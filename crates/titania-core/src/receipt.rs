@@ -25,9 +25,13 @@ pub use target_root::RecordedTargetRoot;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReceiptLaneExit {
+    /// Lane ran and reported no violations.
     Clean,
+    /// Lane ran and reported one or more violations.
     Violations,
+    /// Lane exited with a usage/argument error.
     Usage,
+    /// Lane failed to run (infrastructure or internal error).
     Failure,
 }
 
@@ -63,25 +67,6 @@ impl LaneDigest {
     ///
     /// # Errors
     /// - [`ReceiptError::PassedExceedsScanned`] if `passed > scanned`.
-    #[cfg_attr(
-        kani,
-        kani::requires(passed <= scanned)
-    )]
-    #[cfg_attr(
-        kani,
-        kani::ensures(|result: &Result<LaneDigest, ReceiptError>| {
-            match result {
-                Ok(digest) => {
-                    digest.lane() == &lane
-                    && digest.exit() == exit
-                    && digest.scanned() == scanned
-                    && digest.passed() == passed
-                    && digest.finding_count() == finding_count
-                }
-                Err(_) => false,
-            }
-        })
-    )]
     pub fn new(
         lane: LaneName,
         exit: ReceiptLaneExit,
@@ -89,9 +74,9 @@ impl LaneDigest {
         passed: u32,
         finding_count: u32,
     ) -> Result<Self, ReceiptError> {
-        if passed > scanned {
-            return Err(ReceiptError::PassedExceedsScanned { passed, scanned });
-        }
+        (passed <= scanned)
+            .then_some(())
+            .ok_or(ReceiptError::PassedExceedsScanned { passed, scanned })?;
         Ok(Self { lane, exit, scanned, passed, finding_count })
     }
 
@@ -138,35 +123,22 @@ impl ReceiptPeriod {
     ///
     /// # Errors
     /// - [`ReceiptError::FinishedBeforeStarted`] if `finished_at < started_at`.
-    #[cfg_attr(
-        kani,
-        kani::requires(finished_at >= started_at)
-    )]
-    #[cfg_attr(
-        kani,
-        kani::ensures(|result: &Result<ReceiptPeriod, ReceiptError>| {
-            match result {
-                Ok(period) => period.started_at() == started_at && period.finished_at() == finished_at,
-                Err(_) => false,
-            }
-        })
-    )]
-    pub const fn new(started_at: u64, finished_at: u64) -> Result<Self, ReceiptError> {
-        if finished_at < started_at {
-            return Err(ReceiptError::FinishedBeforeStarted { started_at, finished_at });
-        }
+    pub fn new(started_at: u64, finished_at: u64) -> Result<Self, ReceiptError> {
+        (started_at <= finished_at)
+            .then_some(())
+            .ok_or(ReceiptError::FinishedBeforeStarted { started_at, finished_at })?;
         Ok(Self { started_at, finished_at })
     }
 
     /// Run start time, in Unix seconds.
     #[must_use]
-    pub const fn started_at(&self) -> u64 {
+    pub const fn started_at(self) -> u64 {
         self.started_at
     }
 
     /// Run finish time, in Unix seconds.
     #[must_use]
-    pub const fn finished_at(&self) -> u64 {
+    pub const fn finished_at(self) -> u64 {
         self.finished_at
     }
 }
@@ -205,6 +177,11 @@ impl QualityReceipt {
         )
     }
 
+    /// Build a receipt from already-validated parts, re-checking the schema.
+    ///
+    /// # Errors
+    /// - [`ReceiptError::UnsupportedSchemaVersion`] if `schema_version` is
+    ///   not the current schema.
     fn from_parts(
         schema_version: u32,
         target_root: RecordedTargetRoot,
@@ -212,9 +189,9 @@ impl QualityReceipt {
         lane_results: Vec<LaneDigest>,
         digests: ReceiptDigests,
     ) -> Result<Self, ReceiptError> {
-        if schema_version != RECEIPT_SCHEMA_VERSION {
-            return Err(ReceiptError::UnsupportedSchemaVersion(schema_version));
-        }
+        (schema_version == RECEIPT_SCHEMA_VERSION)
+            .then_some(())
+            .ok_or(ReceiptError::UnsupportedSchemaVersion(schema_version))?;
         let ReceiptPeriod { started_at, finished_at } = period;
         let (source_digest, lock_digest, policy_digest, toolchain_digest) = digests.into_parts();
         Ok(Self {

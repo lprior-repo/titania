@@ -56,33 +56,32 @@ impl WorkspacePath {
         self.0.split('/').next().is_some_and(|first| first == segment)
     }
 
+    /// Validate the raw path string against all invariants.
+    ///
+    /// # Errors
+    /// See [`WorkspacePathError`] for the full taxonomy.
     fn validate(s: &str) -> Result<(), WorkspacePathError> {
-        if s.is_empty() {
-            return Err(WorkspacePathError::Empty);
-        }
-        if s.starts_with('/') {
-            return Err(WorkspacePathError::LeadingSlash);
-        }
-        let bytes = s.as_bytes();
-        for &b in bytes {
-            if b == b'\\' {
-                return Err(WorkspacePathError::ContainsBackslash);
-            }
-            if b == 0 {
-                return Err(WorkspacePathError::ContainsNull);
-            }
-            if b < 0x20 {
-                return Err(WorkspacePathError::ControlByte(b));
-            }
-        }
-        // Check for '..' as a complete segment.
-        for seg in s.split('/') {
-            if seg == ".." {
-                return Err(WorkspacePathError::ContainsDotDot);
-            }
-        }
+        (!s.is_empty()).then_some(()).ok_or(WorkspacePathError::Empty)?;
+        (!s.starts_with('/')).then_some(()).ok_or(WorkspacePathError::LeadingSlash)?;
+        s.as_bytes().iter().try_for_each(|&b| validate_path_byte(b))?;
+        (!s.split('/').any(|seg| seg == ".."))
+            .then_some(())
+            .ok_or(WorkspacePathError::ContainsDotDot)?;
         Ok(())
     }
+}
+
+/// Validate a single path byte: rejects backslash, NUL, and control bytes.
+///
+/// # Errors
+/// - [`WorkspacePathError::ContainsBackslash`] for `\`.
+/// - [`WorkspacePathError::ContainsNull`] for a NUL byte.
+/// - [`WorkspacePathError::ControlByte`] for any byte below 0x20.
+fn validate_path_byte(b: u8) -> Result<(), WorkspacePathError> {
+    (b != b'\\').then_some(()).ok_or(WorkspacePathError::ContainsBackslash)?;
+    (b != 0).then_some(()).ok_or(WorkspacePathError::ContainsNull)?;
+    (b >= 0x20).then_some(()).ok_or(WorkspacePathError::ControlByte(b))?;
+    Ok(())
 }
 
 impl fmt::Display for WorkspacePath {

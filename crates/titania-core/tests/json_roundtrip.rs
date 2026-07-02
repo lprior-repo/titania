@@ -5,8 +5,7 @@
 //!
 //! Test files are exempt from the strict production code lint policy.
 
-#![allow(clippy::needless_borrow)]
-#![allow(clippy::useless_vec)]
+#![expect(clippy::disallowed_methods, reason = "test helpers may unwrap/expect")]
 
 use titania_core::{Digest, RuleId, TextRange, WorkspacePath};
 

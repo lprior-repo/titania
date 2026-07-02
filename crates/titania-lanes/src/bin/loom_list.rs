@@ -16,5 +16,6 @@
 mod lane;
 
 fn main() -> std::process::ExitCode {
-    lane::main_exit(std::env::args().skip(1).collect())
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    lane::main_exit(&args)
 }

@@ -17,20 +17,9 @@ pub(crate) fn parse_claims(text: &str) -> Vec<Claim> {
     let mut out: Vec<Claim> = Vec::new();
     let mut master_emitted = false;
     let mut drift_pending = false;
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if emit_pending_drift(trimmed, &mut master_emitted, &mut drift_pending, &mut out) {
-            continue;
-        }
-        if emit_drift_policy(trimmed, &mut master_emitted, &mut drift_pending, &mut out) {
-            continue;
-        }
-        if let Some(path) = extract_claim_path(trimmed) {
-            let klass =
-                if trimmed.contains("REMOVED:") { ClaimClass::Skip } else { ClaimClass::Claim };
-            out.push(Claim { klass, range: path });
-        }
-    }
+    text.lines().for_each(|line| {
+        parse_claim_line(line.trim_start(), &mut master_emitted, &mut drift_pending, &mut out);
+    });
     out
 }
 
@@ -58,6 +47,32 @@ pub(crate) fn resolve_range(
         return (resolved_path, start, end, false);
     }
     (resolved_path, start, end, true)
+}
+
+fn claim_class(trimmed: &str) -> ClaimClass {
+    if trimmed.contains("REMOVED:") { ClaimClass::Skip } else { ClaimClass::Claim }
+}
+
+fn parse_claim_line(
+    trimmed: &str,
+    master_emitted: &mut bool,
+    drift_pending: &mut bool,
+    out: &mut Vec<Claim>,
+) {
+    if emit_pending_drift(trimmed, master_emitted, drift_pending, out) {
+        return;
+    }
+    if emit_drift_policy(trimmed, master_emitted, drift_pending, out) {
+        return;
+    }
+    emit_claim_path(trimmed, out);
+}
+
+fn emit_claim_path(trimmed: &str, out: &mut Vec<Claim>) {
+    if let Some(path) = extract_claim_path(trimmed) {
+        let klass = claim_class(trimmed);
+        out.push(Claim { klass, range: path });
+    }
 }
 
 fn emit_pending_drift(

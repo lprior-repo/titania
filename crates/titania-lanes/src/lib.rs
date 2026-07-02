@@ -23,7 +23,6 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
-use core::fmt::Write as _;
 use std::{env, io, path::Path};
 
 use thiserror::Error;
@@ -35,12 +34,15 @@ pub mod source_line;
 
 pub use command::{CommandBudget, CommandIn, CommandOutput, EnvPolicy, LaneError, OutputStream};
 pub use source_line::SourceLine;
+pub use titania_core::{RuleId, RuleIdError};
 
 /// Errors produced while resolving the target project from the process CWD.
 #[derive(Debug, Error)]
 pub enum CurrentTargetError {
+    /// The process current working directory could not be read.
     #[error("cannot read current directory")]
     CurrentDir(#[source] io::Error),
+    /// No valid Cargo target project could be resolved from the CWD.
     #[error(transparent)]
     Target(#[from] TargetProjectError),
 }
@@ -81,8 +83,8 @@ pub fn current_target_project() -> Result<TargetProject, CurrentTargetError> {
 /// One typed finding produced by a lane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
-    /// Stable lane-internal rule id, e.g. `"DISCARD-001"`.
-    rule: &'static str,
+    /// Stable lane-internal rule id (validated [`RuleId`]).
+    rule: RuleId,
     /// Repository-relative path that produced the finding.
     path: String,
     /// 1-indexed line number in `path`. `0` if the finding is file-level.
@@ -92,9 +94,11 @@ pub struct Finding {
 }
 
 impl Finding {
+    /// Construct a finding from a validated rule id, a repository-relative
+    /// path, a 1-indexed line number (`0` for file-level), and a message.
     #[must_use]
     pub fn new(
-        rule: &'static str,
+        rule: RuleId,
         path: impl Into<String>,
         line: u32,
         message: impl Into<String>,
@@ -102,24 +106,32 @@ impl Finding {
         Self { rule, path: path.into(), line, message: message.into() }
     }
 
+    /// Stable lane-internal rule id (validated [`RuleId`]).
     #[must_use]
-    pub const fn rule(&self) -> &'static str {
-        self.rule
+    pub const fn rule(&self) -> &RuleId {
+        &self.rule
     }
 
+    /// Repository-relative path that produced the finding.
     #[must_use]
     pub fn path(&self) -> &str {
         &self.path
     }
 
+    /// 1-indexed line number; `0` for a file-level finding.
     #[must_use]
     pub const fn line(&self) -> u32 {
         self.line
     }
 
+    /// Human-readable finding message.
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    fn rendered_line(&self) -> String {
+        format!("{}:{}: {} -- {}\n", self.path, self.line, self.rule.as_str(), self.message)
     }
 }
 
@@ -132,34 +144,46 @@ pub struct LaneReport {
 }
 
 impl LaneReport {
+    /// Construct an empty report.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// `true` when no findings have been recorded.
     #[must_use]
     pub fn is_clean(&self) -> bool {
         self.findings.is_empty()
     }
 
+    /// Record a single typed finding.
     pub fn push(&mut self, finding: Finding) {
         self.findings.push(finding);
     }
 
+    /// Append an iterator of findings to the report.
+    pub fn extend_finding(&mut self, findings: impl IntoIterator<Item = Finding>) {
+        self.findings.extend(findings);
+    }
+
+    /// Borrow the recorded findings.
     #[must_use]
     pub fn findings(&self) -> &[Finding] {
         &self.findings
     }
 
+    /// Number of findings recorded.
     #[must_use]
     pub fn finding_count(&self) -> usize {
         self.findings.len()
     }
 
+    /// Record one accepted (passed) item, saturating at `u32::MAX`.
     pub const fn record_pass(&mut self) {
         self.passed = self.passed.saturating_add(1);
     }
 
+    /// Record one scanned item, saturating at `u32::MAX`.
     pub const fn record_scan(&mut self) {
         self.scanned = self.scanned.saturating_add(1);
     }
@@ -167,11 +191,7 @@ impl LaneReport {
     /// Stable `path:line: rule -- message` line for each finding.
     #[must_use]
     pub fn render(&self) -> String {
-        self.findings.iter().fold(String::new(), |mut out, f| {
-            match writeln!(out, "{}:{}: {} -- {}", f.path, f.line, f.rule, f.message) {
-                Ok(()) | Err(_) => out,
-            }
-        })
+        self.findings.iter().map(Finding::rendered_line).collect()
     }
 }
 
@@ -184,10 +204,15 @@ impl LaneReport {
 /// error, `3` = upstream dependency missing or fixture self-test failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneExit {
+    /// Lane ran and reported no violations.
     Clean,
+    /// Lane had no valid subject to judge; maps to process exit code `0`.
     NotApplicable,
+    /// Lane ran and reported one or more violations.
     Violations,
+    /// Lane exited with a usage/argument/config error.
     Usage,
+    /// Lane failed to run (infrastructure or internal error).
     Failure,
 }
 

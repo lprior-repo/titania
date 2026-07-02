@@ -1,3 +1,5 @@
+//! Verify-verus public-API smoke tests.
+
 use std::{
     env,
     error::Error,
@@ -113,7 +115,7 @@ fn verify_verus_failed_target_returns_violation_and_failure_summary() -> TestRes
     let summary = fs::read_to_string(target.path().join(".evidence/verus/summary.txt"))?;
 
     assert_eq!(output.status.code(), Some(1_i32));
-    assert!(stderr.contains("VERUS-TARGET-001"));
+    assert!(stderr.contains("VERUS_TARGET_001"));
     assert!(
         stderr.contains("fake verifier failure")
             || stderr.contains("verification/verus/failing.rs")
@@ -184,7 +186,7 @@ fn verify_verus_external_marker_without_waiver_returns_violation() -> TestResult
     let summary = fs::read_to_string(target.path().join(".evidence/verus/summary.txt"))?;
 
     assert_eq!(output.status.code(), Some(1_i32));
-    assert!(stderr.contains("VERUS-EXTERNAL-001"));
+    assert!(stderr.contains("VERUS_EXTERNAL_001"));
     assert!(trust_scan.contains("verification/verus/external_marker.rs:1"));
     assert!(summary.contains("VERUS_EXTERNAL_MARKER_FAILURE_COUNT 1"));
     assert!(summary.contains("VERUS_REGISTRY_FAILED"));
@@ -210,7 +212,7 @@ fn verify_verus_assume_specification_without_waiver_returns_violation() -> TestR
     let summary = fs::read_to_string(target.path().join(".evidence/verus/summary.txt"))?;
 
     assert_eq!(output.status.code(), Some(1_i32));
-    assert!(stderr.contains("VERUS-EXTERNAL-001"));
+    assert!(stderr.contains("VERUS_EXTERNAL_001"));
     assert!(trust_scan.contains("verification/verus/assume_contract.rs:2"));
     assert!(summary.contains("VERUS_EXTERNAL_MARKER_FAILURE_COUNT 1"));
     assert!(summary.contains("VERUS_REGISTRY_FAILED"));

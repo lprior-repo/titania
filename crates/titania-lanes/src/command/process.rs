@@ -7,12 +7,16 @@ use std::os::unix::process::CommandExt;
 
 #[cfg(unix)]
 pub(super) fn configure_process_group(cmd: &mut Command) {
-    cmd.process_group(0);
+    let _ = cmd.process_group(0);
 }
 
 #[cfg(not(unix))]
 pub(super) fn configure_process_group(_cmd: &mut Command) {}
 
+/// Terminate the process group and then the direct child process.
+///
+/// # Errors
+/// Returns [`LaneError::Io`] if killing the direct child process fails.
 pub(super) fn terminate_child_tree(child: &mut Child, program: String) -> Result<(), LaneError> {
     terminate_process_group(child.id());
     child.kill().map_err(|source| LaneError::Io { program, source })

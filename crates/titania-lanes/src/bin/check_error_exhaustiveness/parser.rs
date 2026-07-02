@@ -1,24 +1,30 @@
 use std::collections::BTreeSet;
 
-pub(super) fn extract_enum_variants(text: &str, name: &str) -> BTreeSet<String> {
+/// Extract simple enum variant names from a Rust source string.
+#[must_use]
+pub fn extract_enum_variants(text: &str, name: &str) -> BTreeSet<String> {
     let Some(body) = extract_enum_body(text, name) else {
         return BTreeSet::new();
     };
     body.lines().filter_map(|line| extract_variant(line, name)).collect()
 }
 
-pub(super) fn find_function_body(text: &str, fn_name: &str) -> Option<String> {
+/// Find the balanced source body for a named function.
+#[must_use]
+pub fn find_function_body(text: &str, fn_name: &str) -> Option<String> {
     function_patterns(fn_name).iter().find_map(|pattern| {
         text.find(pattern.as_str()).and_then(|start| balanced_item(text, start))
     })
 }
 
-pub(super) fn collect_qualified_refs(text: &str, type_name: &str) -> BTreeSet<String> {
+/// Collect `TypeName::Variant` references from source text.
+#[must_use]
+pub fn collect_qualified_refs(text: &str, type_name: &str) -> BTreeSet<String> {
     let needle = format!("{type_name}::");
     let mut out = BTreeSet::new();
     let mut cursor = 0;
     while let Some((name, next_cursor)) = next_qualified_ref(text, &needle, cursor) {
-        out.insert(name);
+        let _ = out.insert(name);
         cursor = next_cursor;
     }
     out
@@ -29,27 +35,50 @@ fn extract_enum_body(text: &str, name: &str) -> Option<String> {
     text.find(&marker).and_then(|start| balanced_item(text, start))
 }
 
+struct BalanceState {
+    depth: i32,
+    started: bool,
+}
+
+enum BodyStep {
+    Continue,
+    Complete(Option<String>),
+}
+
 fn balanced_item(text: &str, start: usize) -> Option<String> {
     let bytes = text.as_bytes();
-    let mut depth: i32 = 0;
-    let mut started = false;
+    let mut state = BalanceState { depth: 0, started: false };
     let mut cursor = start;
     while let Some(&byte) = bytes.get(cursor) {
-        if consume_body_byte(byte, &mut depth, &mut started) {
-            return text.get(start..cursor.saturating_add(1)).map(str::to_string);
+        match completed_body(text, start, cursor, byte, &mut state) {
+            BodyStep::Complete(body) => return body,
+            BodyStep::Continue => cursor = cursor.saturating_add(1),
         }
-        cursor = cursor.saturating_add(1);
     }
     None
 }
 
-fn consume_body_byte(byte: u8, depth: &mut i32, started: &mut bool) -> bool {
+fn completed_body(
+    text: &str,
+    start: usize,
+    cursor: usize,
+    byte: u8,
+    state: &mut BalanceState,
+) -> BodyStep {
+    if consume_body_byte(byte, state) {
+        BodyStep::Complete(text.get(start..cursor.saturating_add(1)).map(str::to_string))
+    } else {
+        BodyStep::Continue
+    }
+}
+
+const fn consume_body_byte(byte: u8, state: &mut BalanceState) -> bool {
     if byte == b'{' {
-        *depth = depth.saturating_add(1);
-        *started = true;
+        state.depth = state.depth.saturating_add(1);
+        state.started = true;
     } else if byte == b'}' {
-        *depth = depth.saturating_sub(1);
-        return *started && *depth == 0;
+        state.depth = state.depth.saturating_sub(1);
+        return state.started && state.depth == 0;
     }
     false
 }

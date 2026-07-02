@@ -20,10 +20,10 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
-#![allow(clippy::type_complexity)]
 
 #[path = "check_test_integrity/mod.rs"]
-mod check_test_integrity;
+/// Test-integrity lane implementation.
+pub mod check_test_integrity;
 
 fn main() -> std::process::ExitCode {
     check_test_integrity::main_exit()

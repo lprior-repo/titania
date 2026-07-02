@@ -29,7 +29,7 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
-use std::{fs, io, path::Path};
+use std::{fs, io, io::Write, path::Path};
 
 use titania_lanes::{CommandIn, LaneExit, current_target_project, exit};
 
@@ -46,15 +46,15 @@ enum LaneOutcome {
 
 impl LaneOutcome {
     #[must_use]
-    fn to_lane_exit(&self) -> LaneExit {
+    const fn to_lane_exit(&self) -> LaneExit {
         match self {
-            LaneOutcome::NotApplicable(_) => LaneExit::NotApplicable,
-            LaneOutcome::Child(code) => *code,
+            Self::NotApplicable(_) => LaneExit::NotApplicable,
+            Self::Child(code) => *code,
         }
     }
 }
 
-fn parse_lane_input(args: Vec<String>) -> LaneInput {
+fn parse_lane_input(args: &[String]) -> LaneInput {
     match args.split_first() {
         Some((target, extra)) if !target.is_empty() => {
             LaneInput::Explicit { fuzz_target: target.clone(), extra_args: extra.to_vec() }
@@ -63,7 +63,7 @@ fn parse_lane_input(args: Vec<String>) -> LaneInput {
     }
 }
 
-fn status_to_lane(code: Option<i32>) -> LaneExit {
+const fn status_to_lane(code: Option<i32>) -> LaneExit {
     match code {
         Some(0) => LaneExit::Clean,
         Some(2) => LaneExit::Usage,
@@ -73,51 +73,83 @@ fn status_to_lane(code: Option<i32>) -> LaneExit {
 }
 
 fn main() -> std::process::ExitCode {
-    let input = parse_lane_input(std::env::args().skip(1).collect());
+    let input = {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        parse_lane_input(&args)
+    };
     let target = match current_target_project() {
         Ok(target) => target,
         Err(err) => {
-            eprintln!("[fuzz-minimization] cannot resolve target project: {err}");
-            return exit(LaneExit::Usage);
+            return exit_after_stderr_line(
+                &format!("[fuzz-minimization] cannot resolve target project: {err}"),
+                LaneExit::Usage,
+            );
         }
     };
 
     match run_lane(&target, input) {
-        Ok(outcome) => {
-            let code = outcome.to_lane_exit();
-            if let LaneOutcome::NotApplicable(reason) = outcome {
-                eprintln!("[fuzz-minimization] NotApplicable: {reason}");
-            }
-            exit(code)
-        }
+        Ok(outcome) => outcome_exit(outcome),
         Err(err) => {
-            eprintln!("[fuzz-minimization] {err}");
-            exit(LaneExit::Failure)
+            exit_after_stderr_line(&format!("[fuzz-minimization] {err}"), LaneExit::Failure)
         }
     }
 }
 
+fn outcome_exit(outcome: LaneOutcome) -> std::process::ExitCode {
+    let code = outcome.to_lane_exit();
+    match outcome {
+        LaneOutcome::NotApplicable(reason) => {
+            exit_after_stderr_line(&format!("[fuzz-minimization] NotApplicable: {reason}"), code)
+        }
+        LaneOutcome::Child(_) => exit(code),
+    }
+}
+
+/// Write one line to stderr.
+///
+/// # Errors
+///
+/// Returns the underlying stderr write error.
+fn write_stderr_line(text: &str) -> io::Result<()> {
+    let mut stderr = io::stderr().lock();
+    stderr.write_all(text.as_bytes())?;
+    stderr.write_all(b"\n")
+}
+
+fn exit_after_stderr_line(text: &str, code: LaneExit) -> std::process::ExitCode {
+    match write_stderr_line(text) {
+        Ok(()) => exit(code),
+        Err(_) => exit(LaneExit::Failure),
+    }
+}
+
+/// Run fuzz-minimization command selection for a target project.
+///
+/// # Errors
+///
+/// Returns an error string when fuzz-target discovery fails or cargo-fuzz
+/// cannot be spawned.
 fn run_lane(target: &titania_core::TargetProject, input: LaneInput) -> Result<LaneOutcome, String> {
+    let has_targets = has_fuzz_targets(target)?;
+    if !has_targets {
+        return Ok(LaneOutcome::NotApplicable("target project has no fuzz target".to_owned()));
+    }
     match input {
-        LaneInput::DiscoverDefault => {
-            if has_fuzz_targets(target)? {
-                Ok(LaneOutcome::NotApplicable(
-                    "fuzz targets exist, but no target name was provided".to_owned(),
-                ))
-            } else {
-                Ok(LaneOutcome::NotApplicable("target project has no fuzz target".to_owned()))
-            }
-        }
+        LaneInput::DiscoverDefault => Ok(LaneOutcome::NotApplicable(
+            "fuzz targets exist, but no target name was provided".to_owned(),
+        )),
         LaneInput::Explicit { fuzz_target, extra_args } => {
-            if has_fuzz_targets(target)? {
-                run_fuzz_target(target, &fuzz_target, &extra_args)
-            } else {
-                Ok(LaneOutcome::NotApplicable("target project has no fuzz target".to_owned()))
-            }
+            run_fuzz_target(target, &fuzz_target, &extra_args)
         }
     }
 }
 
+/// Detect whether the target project has cargo-fuzz target sources.
+///
+/// # Errors
+///
+/// Returns an error string when the fuzz target directory exists but cannot be
+/// read or inspected.
 fn has_fuzz_targets(target: &titania_core::TargetProject) -> Result<bool, String> {
     let fuzz_dir = target.as_std_path().join("fuzz");
     if !fuzz_dir.join("Cargo.toml").is_file() {
@@ -141,6 +173,11 @@ fn is_rust_source(path: &Path) -> bool {
     path.is_file() && path.extension().and_then(|value| value.to_str()) == Some("rs")
 }
 
+/// Run cargo-fuzz minimization for a named target.
+///
+/// # Errors
+///
+/// Returns an error string when command construction or process spawning fails.
 fn run_fuzz_target(
     target: &titania_core::TargetProject,
     fuzz_target: &str,
@@ -148,15 +185,13 @@ fn run_fuzz_target(
 ) -> Result<LaneOutcome, String> {
     let mut command = CommandIn::new(target, "cargo")
         .map_err(|err| format!("failed to prepare cargo fuzz: {err}"))?;
-    command.inherit_env();
-    command.arg("fuzz").arg("run").arg(fuzz_target);
-    command.arg("--target").arg("x86_64-unknown-linux-gnu");
-    command.arg("--");
-    command.arg("-len_control=1");
-    command.arg("-minimize_contribs=1");
-    extra_args.iter().for_each(|arg| {
-        command.arg(arg.as_str());
-    });
+    let _ = command.inherit_env();
+    let _ = command.arg("fuzz").arg("run").arg(fuzz_target);
+    let _ = command.arg("--target").arg("x86_64-unknown-linux-gnu");
+    let _ = command.arg("--");
+    let _ = command.arg("-len_control=1");
+    let _ = command.arg("-minimize_contribs=1");
+    let _ = command.args_strings(extra_args);
 
     command
         .run_status_raw()
@@ -166,27 +201,40 @@ fn run_fuzz_target(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path};
+    use std::{fs, path::Path, process::ExitCode};
 
     use super::{LaneInput, LaneOutcome, run_lane};
     use titania_core::TargetProject;
     use titania_lanes::LaneExit;
 
     #[test]
-    fn project_without_fuzz_targets_emits_not_applicable_disposition()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let temp = tempfile::tempdir()?;
-        fs::write(
+    fn project_without_fuzz_targets_emits_not_applicable_disposition() -> ExitCode {
+        let Ok(temp) = tempfile::tempdir() else {
+            return ExitCode::FAILURE;
+        };
+        if fs::write(
             temp.path().join("Cargo.toml"),
             "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-        )?;
-        let target = target_project(temp.path())?;
+        )
+        .is_err()
+        {
+            return ExitCode::FAILURE;
+        }
+        let Ok(target) = target_project(temp.path()) else {
+            return ExitCode::FAILURE;
+        };
 
-        let outcome = run_lane(&target, LaneInput::DiscoverDefault)?;
+        let Ok(outcome) = run_lane(&target, LaneInput::DiscoverDefault) else {
+            return ExitCode::FAILURE;
+        };
 
-        assert!(matches!(outcome, LaneOutcome::NotApplicable(_)));
-        assert_eq!(outcome.to_lane_exit(), LaneExit::NotApplicable);
-        Ok(())
+        if matches!(outcome, LaneOutcome::NotApplicable(_))
+            && outcome.to_lane_exit() == LaneExit::NotApplicable
+        {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        }
     }
 
     fn target_project(path: &Path) -> Result<TargetProject, titania_core::TargetProjectError> {

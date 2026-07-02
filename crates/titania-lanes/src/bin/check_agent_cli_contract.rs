@@ -15,7 +15,8 @@
 #![forbid(unsafe_code)]
 
 #[path = "check_agent_cli_contract/lane.rs"]
-mod lane;
+/// Agent CLI contract lane implementation.
+pub mod lane;
 
 fn main() -> std::process::ExitCode {
     lane::main_exit()

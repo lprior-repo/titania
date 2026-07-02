@@ -1,3 +1,5 @@
+//! Scanner lane behavior tests against a synthetic target project.
+
 use std::{
     error::Error,
     fs,
@@ -39,7 +41,7 @@ fn panic_surface_from_member_scans_workspace_root() -> TestResult {
     assert!(!output.status.success(), "scanner missed root panic macro");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("crates/example/src/lib.rs"), "stderr was: {stderr}");
-    assert!(stderr.contains("PANIC-SURFACE-001"), "stderr was: {stderr}");
+    assert!(stderr.contains("PANIC_SURFACE_001"), "stderr was: {stderr}");
     Ok(())
 }
 
@@ -123,7 +125,7 @@ fn panic_surface_flags_assert_after_cfg_test_mod_inside_fn() -> TestResult {
     // The assert OUTSIDE the cfg(test) block (line 9) must be reported
     // as a violation, with the macro name `assert!` in the message.
     assert!(stderr.contains("lib.rs:9"), "expected finding at lib.rs:9; stderr was: {stderr}");
-    assert!(stderr.contains("PANIC-SURFACE-001"), "stderr was: {stderr}");
+    assert!(stderr.contains("PANIC_SURFACE_001"), "stderr was: {stderr}");
     // The assert INSIDE the cfg(test) block (line 5) must NOT appear.
     assert!(!stderr.contains("lib.rs:5"), "cfg(test) internals leaked: {stderr}");
     Ok(())

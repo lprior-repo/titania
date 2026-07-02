@@ -1,3 +1,8 @@
+//! `QualityReceipt` public-API smoke tests.
+
+#![expect(clippy::panic_in_result_fn, reason = "test helpers assert inside Result fns")]
+#![expect(clippy::cognitive_complexity, reason = "end-to-end receipt scenarios")]
+
 use std::{error::Error, fs, path::Path};
 
 use titania_core::{

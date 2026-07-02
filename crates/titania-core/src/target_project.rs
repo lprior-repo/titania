@@ -71,24 +71,46 @@ impl TargetProject {
     }
 }
 
+/// Reject an empty target path.
+///
+/// # Errors
+/// Returns [`TargetProjectError::Empty`] when `path` is empty.
 fn validate_not_empty(path: &Utf8Path) -> Result<(), TargetProjectError> {
     if path.as_str().is_empty() { Err(TargetProjectError::Empty) } else { Ok(()) }
 }
 
+/// Require an absolute target path.
+///
+/// # Errors
+/// Returns [`TargetProjectError::NonAbsolute`] when `path` is relative.
 fn validate_absolute(path: &Utf8Path) -> Result<(), TargetProjectError> {
     if path.is_absolute() { Ok(()) } else { Err(TargetProjectError::NonAbsolute(path.to_string())) }
 }
 
+/// Require the target path to be an existing directory.
+///
+/// # Errors
+/// Returns [`TargetProjectError::NotFound`] when missing, or
+/// [`TargetProjectError::NotADirectory`] when it is not a directory.
 fn validate_root_directory(path: &Utf8Path) -> Result<(), TargetProjectError> {
     let metadata = metadata_or(path, TargetProjectError::NotFound)?;
     if metadata.is_dir() { Ok(()) } else { Err(TargetProjectError::NotADirectory) }
 }
 
+/// Require a `Cargo.toml` regular file at `path`.
+///
+/// # Errors
+/// Returns [`TargetProjectError::NoCargoToml`] when missing, or
+/// [`TargetProjectError::CargoTomlNotFile`] when it is not a file.
 fn validate_manifest_file(path: &Utf8Path) -> Result<(), TargetProjectError> {
     let metadata = metadata_or(path, TargetProjectError::NoCargoToml)?;
     if metadata.is_file() { Ok(()) } else { Err(TargetProjectError::CargoTomlNotFile) }
 }
 
+/// Read filesystem metadata for `path`, mapping `NotFound` to `missing`.
+///
+/// # Errors
+/// Returns `missing` on `NotFound`, otherwise a [`TargetProjectError::Io`].
 fn metadata_or(
     path: &Utf8Path,
     missing: TargetProjectError,

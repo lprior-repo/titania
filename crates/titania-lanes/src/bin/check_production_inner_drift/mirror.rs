@@ -1,13 +1,18 @@
 use std::{collections::BTreeSet, path::Path};
 
-use titania_lanes::{Finding, LaneReport};
+use titania_lanes::{Finding, LaneReport, RuleId};
 
 use super::{
     claims::{Claim, ClaimClass, parse_claims, resolve_range},
     identifiers::{extract_identifiers, filter_noise_words},
 };
 
-pub(crate) fn per_mirror_pass(root: &Path, mirror_dir: &str, report: &mut LaneReport) {
+pub(crate) fn per_mirror_pass(
+    root: &Path,
+    mirror_dir: &str,
+    rule: &RuleId,
+    report: &mut LaneReport,
+) {
     let dir = root.join(mirror_dir);
     let Ok(read) = std::fs::read_dir(&dir) else {
         return;
@@ -15,23 +20,29 @@ pub(crate) fn per_mirror_pass(root: &Path, mirror_dir: &str, report: &mut LaneRe
     read.filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| is_rust_file(path))
-        .for_each(|path| scan_mirror_file(root, &path, report));
+        .for_each(|path| scan_mirror_file(root, &path, rule, report));
 }
 
-fn scan_mirror_file(root: &Path, path: &Path, report: &mut LaneReport) {
+fn scan_mirror_file(root: &Path, path: &Path, rule: &RuleId, report: &mut LaneReport) {
     let rel = rel_path(root, path);
     let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
     let claims = parse_claims(&text);
     if claims.is_empty() {
-        report_missing_header(&rel, report);
+        report_missing_header(&rel, rule, report);
         return;
     }
     let master_dir = master_dir(&claims);
     let mirror_ids = filter_noise_words(extract_identifiers(&text));
-    let mut context =
-        MirrorContext { root, rel: &rel, master_dir: &master_dir, mirror_ids: &mirror_ids, report };
+    let mut context = MirrorContext {
+        root,
+        rel: &rel,
+        master_dir: &master_dir,
+        mirror_ids: &mirror_ids,
+        rule,
+        report,
+    };
     claims
         .iter()
         .filter(|claim| matches!(claim.klass, ClaimClass::Claim))
@@ -43,23 +54,24 @@ struct MirrorContext<'a> {
     rel: &'a str,
     master_dir: &'a str,
     mirror_ids: &'a BTreeSet<String>,
+    rule: &'a RuleId,
     report: &'a mut LaneReport,
 }
 
 fn check_claim(context: &mut MirrorContext<'_>, claim: &Claim) {
     let (resolved, start, end, ok) = resolve_range(&claim.range, context.master_dir, context.root);
     if !ok {
-        report_unresolvable(context.rel, &claim.range, start, end, context.report);
+        report_unresolvable(context, &claim.range, start, end);
         return;
     }
     let Ok(prod_text) = std::fs::read_to_string(context.root.join(&resolved)) else {
-        report_missing_source(context.rel, &resolved, context.report);
+        report_missing_source(context.rel, &resolved, context.rule, context.report);
         return;
     };
     let prod_ids =
         filter_noise_words(extract_identifiers(&production_slice(&prod_text, start, end)));
     let missing: BTreeSet<&String> = prod_ids.difference(context.mirror_ids).collect();
-    report_missing_ids(context.rel, &resolved, &missing, context.report);
+    report_missing_ids(context.rel, &resolved, &missing, context.rule, context.report);
 }
 
 fn production_slice(text: &str, start: usize, end: usize) -> String {
@@ -74,6 +86,7 @@ fn report_missing_ids(
     rel: &str,
     resolved: &str,
     missing: &BTreeSet<&String>,
+    rule: &RuleId,
     report: &mut LaneReport,
 ) {
     if missing.is_empty() {
@@ -82,7 +95,7 @@ fn report_missing_ids(
     let mut list: Vec<String> = missing.iter().map(|name| (*name).clone()).collect();
     list.sort();
     report.push(Finding::new(
-        "DRIFT",
+        rule.clone(),
         rel.to_owned(),
         0,
         format!("missing identifiers in {resolved}: {}", list.join(",")),
@@ -98,27 +111,27 @@ fn master_dir(claims: &[Claim]) -> String {
         .map_or_else(|| ".".to_string(), str::to_string)
 }
 
-fn report_missing_header(rel: &str, report: &mut LaneReport) {
+fn report_missing_header(rel: &str, rule: &RuleId, report: &mut LaneReport) {
     report.push(Finding::new(
-        "DRIFT",
+        rule.clone(),
         rel.to_owned(),
         0,
         "no claimed production source range found in header".to_string(),
     ));
 }
 
-fn report_unresolvable(rel: &str, range: &str, start: usize, end: usize, report: &mut LaneReport) {
-    report.push(Finding::new(
-        "DRIFT",
-        rel.to_owned(),
+fn report_unresolvable(context: &mut MirrorContext<'_>, range: &str, start: usize, end: usize) {
+    context.report.push(Finding::new(
+        context.rule.clone(),
+        context.rel.to_owned(),
         0,
         format!("unresolvable range {range} (start={start} end={end})"),
     ));
 }
 
-fn report_missing_source(rel: &str, resolved: &str, report: &mut LaneReport) {
+fn report_missing_source(rel: &str, resolved: &str, rule: &RuleId, report: &mut LaneReport) {
     report.push(Finding::new(
-        "DRIFT",
+        rule.clone(),
         rel.to_owned(),
         0,
         format!("production source missing: {resolved}"),

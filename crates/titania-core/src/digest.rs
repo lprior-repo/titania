@@ -1,7 +1,8 @@
-//! 64-character lowercase hex content digest. Backed by a `String` because
-//! the byte representation is 64 ASCII chars; `String` keeps the API safe
-//! (no `unsafe` needed) and the allocation cost is amortized at
-//! construction.
+//! 64-character lowercase hex content digest.
+//!
+//! Backed by a `String` because the byte representation is 64 ASCII chars;
+//! `String` keeps the API safe (no `unsafe` needed) and the allocation cost
+//! is amortized at construction.
 //!
 //! Construction is total: [`Digest::from_hex`] returns `Result`, and
 //! [`Digest::from_bytes`] is infallible because blake3's hex output is
@@ -40,15 +41,13 @@ impl Digest {
     /// - [`DigestError::NonHexChar`] at the first non-`[0-9a-f]` byte.
     pub fn from_hex(hex: &str) -> Result<Self, DigestError> {
         let bytes = hex.as_bytes();
-        if bytes.len() != DIGEST_HEX_LEN {
-            return Err(DigestError::WrongLength(bytes.len()));
-        }
-        for (i, &b) in bytes.iter().enumerate() {
-            if !is_lower_hex(b) {
-                return Err(DigestError::NonHexChar(i));
-            }
-        }
-        Ok(Self(hex.to_owned()))
+        (bytes.len() == DIGEST_HEX_LEN)
+            .then_some(())
+            .ok_or(DigestError::WrongLength(bytes.len()))?;
+        bytes
+            .iter()
+            .position(|&b| !is_lower_hex(b))
+            .map_or_else(|| Ok(Self(hex.to_owned())), |i| Err(DigestError::NonHexChar(i)))
     }
 
     /// Borrow the underlying lowercase-hex string.

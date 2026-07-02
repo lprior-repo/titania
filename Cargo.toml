@@ -9,38 +9,111 @@ license = "MIT OR Apache-2.0"
 authors = ["Titania Contributors"]
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
-unused_must_use = "deny"
-unreachable_pub = "allow"
+warnings = { level = "deny", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
 rust_2018_idioms = { level = "deny", priority = -1 }
-non_exhaustive_omitted_patterns = "deny"
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(kani)'] }
+
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+
+unused_must_use = "deny"
+unused_results = "deny"
+let_underscore_drop = "deny"
+
+elided_lifetimes_in_paths = "deny"
+explicit_outlives_requirements = "deny"
+missing_debug_implementations = "deny"
+missing_docs = "deny"
+unreachable_pub = "deny"
+
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+variant_size_differences = "deny"
+unused_extern_crates = "deny"
+unused_import_braces = "deny"
+keyword_idents_2024 = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+bare_urls = "deny"
+private_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+missing_crate_level_docs = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
-pedantic = { level = "allow", priority = 1 }
-nursery = { level = "allow", priority = 1 }
-cargo = { level = "allow", priority = 1 }
-multiple_crate_versions = { level = "allow", priority = 1 }
+cargo = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 
-# Holzman Rust forbidden surface (slice 1).
+# Escape-hatch discipline.
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+
+# Panic-free / placeholder-free production.
 unwrap_used = "deny"
 expect_used = "deny"
+unwrap_in_result = "deny"
 panic = "deny"
+panic_in_result_fn = "deny"
 todo = "deny"
 unimplemented = "deny"
+unreachable = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+# Indexing, slicing, casts, and arithmetic.
 indexing_slicing = "deny"
 string_slice = "deny"
 get_unwrap = "deny"
 arithmetic_side_effects = "deny"
-dbg_macro = "deny"
 as_conversions = "deny"
-let_underscore_must_use = "deny"
-await_holding_lock = "deny"
-unwrap_or_default = "deny"
-exit = "deny"
-default_numeric_fallback = "deny"
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_sign_loss = "deny"
+cast_precision_loss = "deny"
+integer_division = "deny"
+integer_division_remainder_used = "deny"
+modulo_arithmetic = "deny"
+
+# Enable only for no-float safety-critical domains. For numeric/SIMD code, require a local allow with reason.
+float_arithmetic = "deny"
+
+# Error and API discipline.
+result_large_err = "deny"
+result_unit_err = "deny"
+map_err_ignore = "deny"
 missing_errors_doc = "deny"
+missing_panics_doc = "deny"
+missing_safety_doc = "deny"
+large_enum_variant = "deny"
+
+# Complexity and reviewability.
+cognitive_complexity = "deny"
+too_many_arguments = "deny"
+too_many_lines = "deny"
+type_complexity = "deny"
+excessive_nesting = "deny"
+
+# Async and concurrency.
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+future_not_send = "deny"
+large_futures = "deny"
+
+# Policy-driven config from clippy.toml.
+disallowed_methods = "deny"
+disallowed_macros = "deny"
+disallowed_types = "deny"
+disallowed_fields = "deny"
+
+# Manifest/dependency hygiene.
+multiple_crate_versions = "deny"
+wildcard_dependencies = "deny"
+negative_feature_names = "deny"
+redundant_feature_names = "deny"
 
 [workspace.metadata.titania]
 strict_ai = true

@@ -1,3 +1,5 @@
+//! kani-list public-API smoke tests.
+
 use std::{error::Error, fs, path::Path, process::Command};
 
 use serde_json::Value;
@@ -5,8 +7,6 @@ use tempfile::TempDir;
 
 const MOON_TASKS: &str = include_str!("../../../.moon/tasks/all.yml");
 const KANI_WORKSPACE: &str = include_str!("../../../.evidence/kani-list/workspace.json");
-
-type TestResult = Result<(), Box<dyn Error>>;
 
 fn write_workspace(root: &Path) -> Result<(), std::io::Error> {
     fs::write(
@@ -59,33 +59,55 @@ exit 64
 }
 
 fn path_with_fake_cargo(bin_dir: &Path) -> String {
-    let existing = std::env::var("PATH").unwrap_or_default();
-    format!("{}:{existing}", bin_dir.display())
+    std::env::var("PATH").map_or_else(
+        |_| format!("{}:", bin_dir.display()),
+        |existing| format!("{}:{existing}", bin_dir.display()),
+    )
+}
+
+macro_rules! must {
+    ($result:expr, $context:expr) => {
+        must($result, $context)
+    };
+}
+
+fn must<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
+    match result {
+        Ok(value) => value,
+        Err(error) => {
+            let message = format!("{context}: {error}");
+            assert_eq!(message, "", "{message}");
+            std::process::abort();
+        }
+    }
 }
 
 #[cfg(unix)]
 #[test]
-fn kani_list_package_mode_scopes_cargo_kani_to_selected_manifest() -> TestResult {
-    let workspace = TempDir::new()?;
-    write_workspace(workspace.path())?;
+fn kani_list_package_mode_scopes_cargo_kani_to_selected_manifest() {
+    let workspace = must!(TempDir::new(), "create workspace tempdir");
+    must!(write_workspace(workspace.path()), "write workspace fixture");
     let fake_bin = workspace.path().join("fake-bin");
-    make_fake_cargo(&fake_bin)?;
+    must!(make_fake_cargo(&fake_bin), "create fake cargo");
     let output_dir = workspace.path().join("evidence");
     let log_path = workspace.path().join("cargo.log");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_kani-list"))
-        .arg("alpha")
-        .current_dir(workspace.path())
-        .env("PATH", path_with_fake_cargo(&fake_bin))
-        .env("FAKE_WORKSPACE_ROOT", workspace.path())
-        .env("CARGO_LOG_FILE", &log_path)
-        .env("KANI_LIST_DIR", &output_dir)
-        .output()?;
+    let output = must!(
+        Command::new(env!("CARGO_BIN_EXE_kani-list"))
+            .arg("alpha")
+            .current_dir(workspace.path())
+            .env("PATH", path_with_fake_cargo(&fake_bin))
+            .env("FAKE_WORKSPACE_ROOT", workspace.path())
+            .env("CARGO_LOG_FILE", &log_path)
+            .env("KANI_LIST_DIR", &output_dir)
+            .output(),
+        "run kani-list"
+    );
 
     assert!(output.status.success(), "stderr={}", String::from_utf8_lossy(&output.stderr));
     assert!(output_dir.join("alpha.json").is_file());
 
-    let log = fs::read_to_string(&log_path)?;
+    let log = must!(fs::read_to_string(&log_path), "read cargo log");
     let alpha_manifest = workspace.path().join("crates/alpha/Cargo.toml");
     assert!(
         log.contains(&format!(
@@ -95,52 +117,60 @@ fn kani_list_package_mode_scopes_cargo_kani_to_selected_manifest() -> TestResult
         "cargo kani list was not scoped to alpha manifest; log:\n{log}"
     );
     assert!(!log.contains("--manifest-path crates/beta/Cargo.toml"));
-    Ok(())
 }
 
 #[test]
-fn moon_kani_core_command_lists_every_recorded_core_harness() -> TestResult {
-    let task = moon_task("lane-kani-core")?;
-    let evidence: Value = serde_json::from_str(KANI_WORKSPACE)?;
-    let harnesses = evidence
-        .get("standard-harnesses")
-        .and_then(|v| v.get("crates/titania-core/src/kani.rs"))
-        .and_then(Value::as_array)
-        .ok_or("missing titania-core Kani harness inventory")?;
+fn moon_kani_core_command_lists_every_recorded_core_harness() {
+    let task = must!(moon_task("lane-kani-core"), "read lane-kani-core Moon task");
+    let evidence: Value =
+        must!(serde_json::from_str(KANI_WORKSPACE), "parse Kani workspace evidence");
+    let harnesses = must!(
+        evidence
+            .get("standard-harnesses")
+            .and_then(|v| v.get("crates/titania-core/src/kani.rs"))
+            .and_then(Value::as_array)
+            .ok_or("missing titania-core Kani harness inventory"),
+        "read titania-core Kani harness inventory"
+    );
 
     for harness in harnesses {
-        let harness = harness.as_str().ok_or("non-string harness name")?;
-        let short_name = harness.rsplit("::").next().ok_or("empty harness name")?;
+        let harness = must!(harness.as_str().ok_or("non-string harness name"), "read harness name");
+        let short_name = must!(
+            harness.rsplit("::").next().ok_or("empty harness name"),
+            "read short harness name"
+        );
         assert!(
             task.contains(&format!("--harness {short_name}")),
             "lane-kani-core omits harness from evidence: {harness}\n{task}"
         );
     }
-    Ok(())
 }
 
 #[test]
-fn moon_geiger_inputs_track_lockfile_and_crate_manifests() -> TestResult {
-    let task = moon_task("geiger")?;
+fn moon_geiger_inputs_track_lockfile_and_crate_manifests() {
+    let task = must!(moon_task("geiger"), "read geiger Moon task");
     assert!(task.contains("- 'Cargo.lock'"), "geiger must include Cargo.lock input\n{task}");
     assert!(
         task.contains("- 'crates/**/Cargo.toml'"),
         "geiger must include crate manifest inputs\n{task}"
     );
-    Ok(())
 }
 
 fn moon_task(name: &str) -> Result<&'static str, Box<dyn Error>> {
     let marker = format!("  {name}:\n");
     let (_before, after_marker) =
         MOON_TASKS.split_once(&marker).ok_or_else(|| format!("missing Moon task {name}"))?;
-    let end = after_marker
-        .match_indices("\n  ")
-        .find_map(|(idx, matched)| {
-            let next_start = idx.checked_add(matched.len())?;
-            let tail = after_marker.get(next_start..)?;
-            tail.chars().next().filter(|next| !next.is_whitespace()).map(|_| idx)
-        })
-        .unwrap_or(after_marker.len());
+    let end = task_end(after_marker);
     after_marker.get(..end).ok_or_else(|| "invalid Moon task slice".into())
+}
+
+fn task_end(after_marker: &str) -> usize {
+    let Some(end) = after_marker.match_indices("\n  ").find_map(|(idx, matched)| {
+        let next_start = idx.checked_add(matched.len())?;
+        let tail = after_marker.get(next_start..)?;
+        tail.chars().next().filter(|next| !next.is_whitespace()).map(|_| idx)
+    }) else {
+        return after_marker.len();
+    };
+    end
 }

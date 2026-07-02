@@ -21,10 +21,10 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
-#![allow(clippy::filter_map_bool_then)]
 
+/// Workspace assertion implementation for the binary entry point.
 #[path = "check_workspace_assertions/mod.rs"]
-mod workspace_assertions;
+pub mod workspace_assertions;
 
 fn main() -> std::process::ExitCode {
     workspace_assertions::main_exit()

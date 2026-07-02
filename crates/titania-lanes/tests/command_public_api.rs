@@ -1,3 +1,5 @@
+//! CommandIn public-API smoke tests.
+
 use std::{error::Error, io::ErrorKind, time::Duration};
 
 use tempfile::tempdir;
@@ -47,13 +49,13 @@ fn command_public_api_rejects_invalid_program_names() -> TestResult {
 fn command_public_api_args_env_and_cwd_are_subprocess_visible() -> TestResult {
     let (_tmp, target) = fixture_target()?;
     let mut command = CommandIn::new(&target, "/bin/sh")?;
-    command.args(&[
+    let _ = command.args(&[
         "-c",
         "printf '%s:%s:%s' \"$1\" \"$TITANIA_VALUE\" \"$(pwd)\"",
         "ignored",
         "arg",
     ]);
-    command.env("TITANIA_VALUE", "env");
+    let _ = command.env("TITANIA_VALUE", "env");
 
     let out = command.run()?;
     let expected = format!("arg:env:{}", target.as_std_path().display());
@@ -68,7 +70,7 @@ fn command_public_api_default_env_clear_and_inherit_env_are_observable() -> Test
     assert_eq!(clear.stdout_str()?, "");
 
     let mut inherited = CommandIn::new(&target, "/bin/sh")?;
-    inherited.inherit_env().arg("-c").arg("printf '%s' \"${PATH:+present}\"");
+    let _ = inherited.inherit_env().arg("-c").arg("printf '%s' \"${PATH:+present}\"");
     let out = inherited.run()?;
     assert_eq!(out.stdout_str()?, "present");
     Ok(())
@@ -78,7 +80,7 @@ fn command_public_api_default_env_clear_and_inherit_env_are_observable() -> Test
 fn command_public_api_nonzero_exit_carries_code_and_stderr() -> TestResult {
     let (_tmp, target) = fixture_target()?;
     let mut command = CommandIn::new(&target, "/bin/sh")?;
-    command.arg("-c").arg("printf err >&2; exit 7");
+    let _ = command.arg("-c").arg("printf err >&2; exit 7");
 
     let err = expect_run_error(command.run())?;
     match err {
@@ -125,7 +127,7 @@ fn command_public_api_spawn_io_error_carries_program_and_kind() -> TestResult {
 fn command_public_api_non_utf8_errors_carry_program_and_stream() -> TestResult {
     let (_tmp, target) = fixture_target()?;
     let mut stdout = CommandIn::new(&target, "/bin/sh")?;
-    stdout.arg("-c").arg("printf '\\377'");
+    let _ = stdout.arg("-c").arg("printf '\\377'");
     let stdout_raw = stdout.run_capture_raw()?;
     let stdout_err = expect_run_error(stdout_raw.stdout_str())?;
     match stdout_err {
@@ -137,7 +139,7 @@ fn command_public_api_non_utf8_errors_carry_program_and_stream() -> TestResult {
     }
 
     let mut stderr = CommandIn::new(&target, "/bin/sh")?;
-    stderr.arg("-c").arg("printf '\\377' >&2; exit 1");
+    let _ = stderr.arg("-c").arg("printf '\\377' >&2; exit 1");
     let stderr_err = expect_run_error(stderr.run())?;
     match stderr_err {
         LaneError::NonUtf8Output { program, stream } => {
@@ -153,8 +155,8 @@ fn command_public_api_non_utf8_errors_carry_program_and_stream() -> TestResult {
 fn command_public_api_timeout_and_output_limits_carry_exact_fields() -> TestResult {
     let (_tmp, target) = fixture_target()?;
     let mut timeout = CommandIn::new(&target, "/bin/sh")?;
-    timeout.arg("-c").arg("sleep 2");
-    timeout.budget(CommandBudget {
+    let _ = timeout.arg("-c").arg("sleep 2");
+    let _ = timeout.budget(CommandBudget {
         timeout: Duration::from_millis(20),
         max_stdout: 1024,
         max_stderr: 1024,
@@ -169,8 +171,8 @@ fn command_public_api_timeout_and_output_limits_carry_exact_fields() -> TestResu
     }
 
     let mut stdout = CommandIn::new(&target, "/bin/sh")?;
-    stdout.arg("-c").arg("printf 1234567890");
-    stdout.budget(CommandBudget {
+    let _ = stdout.arg("-c").arg("printf 1234567890");
+    let _ = stdout.budget(CommandBudget {
         timeout: Duration::from_secs(1),
         max_stdout: 4,
         max_stderr: 1024,
@@ -188,8 +190,8 @@ fn command_public_api_timeout_and_output_limits_carry_exact_fields() -> TestResu
     }
 
     let mut stderr = CommandIn::new(&target, "/bin/sh")?;
-    stderr.arg("-c").arg("printf 1234567890 >&2; exit 1");
-    stderr.budget(CommandBudget {
+    let _ = stderr.arg("-c").arg("printf 1234567890 >&2; exit 1");
+    let _ = stderr.budget(CommandBudget {
         timeout: Duration::from_secs(1),
         max_stdout: 1024,
         max_stderr: 4,
@@ -212,7 +214,7 @@ fn command_public_api_timeout_and_output_limits_carry_exact_fields() -> TestResu
 fn command_public_api_env_remove_scrubs_explicit_env() -> TestResult {
     let (_tmp, target) = fixture_target()?;
     let mut command = CommandIn::new(&target, "/bin/sh")?;
-    command
+    let _ = command
         .inherit_env()
         .env("TITANIA_DELETE_ME", "present")
         .env_remove("TITANIA_DELETE_ME")
@@ -228,7 +230,7 @@ fn command_public_api_env_remove_scrubs_explicit_env() -> TestResult {
 fn command_public_api_run_status_raw_preserves_exit_code() -> TestResult {
     let (_tmp, target) = fixture_target()?;
     let mut command = CommandIn::new(&target, "/bin/sh")?;
-    command.arg("-c").arg("exit 4");
+    let _ = command.arg("-c").arg("exit 4");
 
     let status = command.run_status_raw()?;
     assert_eq!(status.code(), Some(4_i32));

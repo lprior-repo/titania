@@ -5,10 +5,11 @@
 //! they may use `as`, assertions, and complex types. The Holzman gate
 //! ensures these never leak into crate source.
 
-#![allow(clippy::as_conversions)]
-#![allow(clippy::arithmetic_side_effects)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::map_identity)]
+#![expect(
+    clippy::arithmetic_side_effects,
+    reason = "property tests reason about ranges explicitly"
+)]
+#![expect(clippy::disallowed_methods, reason = "test helpers may unwrap/expect")]
 
 use proptest::prelude::*;
 

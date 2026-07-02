@@ -55,6 +55,12 @@ pub fn discover_target(cwd: &Path) -> Result<TargetProject, TargetProjectError> 
     TargetProject::try_from_path(&target)
 }
 
+/// Read and classify the `Cargo.toml` at `root`, if present.
+///
+/// # Errors
+/// Returns [`TargetProjectError::Io`] on a non-NotFound metadata or read
+/// failure, and [`TargetProjectError::CargoTomlNotFile`] when the manifest
+/// path exists but is not a file.
 fn read_manifest_observation(
     root: &Path,
 ) -> Result<Option<ManifestObservation>, TargetProjectError> {
@@ -83,6 +89,11 @@ fn read_manifest_observation(
     }))
 }
 
+/// Select the target root from observed ancestor manifests.
+///
+/// # Errors
+/// Returns [`TargetProjectError::NoCargoToml`] when no workspace or package
+/// manifest was observed.
 fn select_target_root(observations: &[ManifestObservation]) -> Result<PathBuf, TargetProjectError> {
     if let Some(workspace) = observations.iter().find(|o| o.status == ManifestStatus::Workspace) {
         return Ok(workspace.root.clone());
@@ -93,6 +104,11 @@ fn select_target_root(observations: &[ManifestObservation]) -> Result<PathBuf, T
         .map_or(Err(TargetProjectError::NoCargoToml), selected_target_root)
 }
 
+/// Resolve the target root for a single observation.
+///
+/// # Errors
+/// Returns [`TargetProjectError::MalformedCargoToml`] for a malformed
+/// manifest, or [`TargetProjectError::NoCargoToml`] for an inert manifest.
 fn selected_target_root(observation: &ManifestObservation) -> Result<PathBuf, TargetProjectError> {
     match observation.status {
         ManifestStatus::Workspace | ManifestStatus::Package => Ok(observation.root.clone()),
@@ -112,7 +128,8 @@ fn manifest_status(toml_text: &str) -> ManifestStatus {
     }
 }
 
-/// Returns `true` if the given Cargo.toml document has an explicit table.
+/// Whether the given Cargo.toml document has an explicit table.
+///
 /// TOML parsing prevents comments, strings, arrays, and implicit parent
 /// tables such as `[workspace.metadata]` from being treated as roots.
 fn has_explicit_table(doc: &toml_edit::DocumentMut, name: &str) -> bool {

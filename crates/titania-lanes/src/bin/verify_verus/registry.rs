@@ -6,7 +6,7 @@ const FIXTURE_SMOKE_MARKER: &str = "titania-verus-binding: fixture-smoke";
 const FIXTURE_SMOKE_FILE: &str = "formal_setup_smoke.rs";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProofTargetKind {
+enum ProofTargetKind {
     Production,
     FixtureSmoke,
 }
@@ -30,6 +30,11 @@ pub(crate) fn registry_path_is_nonempty(path: &Path) -> bool {
     meta.is_file() && meta.len() != 0
 }
 
+/// Parse proof targets from the proof-obligations registry.
+///
+/// # Errors
+///
+/// Returns filesystem errors from reading the registry file.
 pub(crate) fn parse_registry_targets(
     path: &Path,
     target: &TargetProject,

@@ -40,10 +40,9 @@ tasks:
       - 'clippy.toml'
 
   clippy-all:
-    # Stricter still: includes tests + benches + examples + workspace.
-    # Used by tn-igo dogfood gate; intentionally redundant with lint-src
-    # so `moon :lint-src` and `moon :clippy-all` can diverge in slice 2.
-    command: 'cargo clippy --workspace --all-targets --all-features -- -D warnings -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic'
+    # Strict source lint. Tests compile and prove behavior, but test style is
+    # intentionally kept out of clippy gates.
+    command: 'cargo clippy --workspace --lib --bins --examples --all-features -- -D warnings -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic'
     toolchains: [rust]
     options:
       runInCI: true

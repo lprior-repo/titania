@@ -1,4 +1,12 @@
-use std::process::ExitCode;
+#![expect(
+    clippy::redundant_pub_crate,
+    reason = "lane entrypoint is called by the private loom_list wrapper module"
+)]
+
+use std::{
+    io::{self, Write},
+    process::ExitCode,
+};
 
 use serde_json::Value;
 use titania_core::TargetProject;
@@ -13,15 +21,17 @@ enum LaneOutcome {
     NotApplicable(String),
 }
 
-pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
-    if let Some(code) = usage_exit(&args) {
+pub(super) fn main_exit(args: &[String]) -> ExitCode {
+    if let Some(code) = usage_exit(args) {
         return code;
     }
     let target = match current_target_project() {
         Ok(target) => target,
         Err(error) => {
-            eprintln!("[loom-list] target discovery failed: {error}");
-            return exit(LaneExit::Usage);
+            return exit_after_stderr(
+                format_args!("[loom-list] target discovery failed: {error}"),
+                LaneExit::Usage,
+            );
         }
     };
     render_lane_result(run_lane(&target))
@@ -29,12 +39,16 @@ pub(crate) fn main_exit(args: Vec<String>) -> ExitCode {
 
 fn usage_exit(args: &[String]) -> Option<ExitCode> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        eprintln!("usage: loom_list\n  enumerates xtask loom models (PO-011)");
-        return Some(exit(LaneExit::Clean));
+        return Some(exit_after_stderr(
+            format_args!("usage: loom_list\n  enumerates xtask loom models (PO-011)"),
+            LaneExit::Clean,
+        ));
     }
     if !args.is_empty() {
-        eprintln!("usage: loom_list\n  no arguments allowed");
-        return Some(exit(LaneExit::Usage));
+        return Some(exit_after_stderr(
+            format_args!("usage: loom_list\n  no arguments allowed"),
+            LaneExit::Usage,
+        ));
     }
     None
 }
@@ -48,21 +62,29 @@ fn render_lane_result(result: Result<LaneOutcome, String>) -> ExitCode {
 }
 
 fn models_exit(models: &[String]) -> ExitCode {
-    eprintln!("[loom-list] Found {} loom models:", models.len());
-    models.iter().for_each(|name| println!("{name}"));
+    if write_stderr_line(format_args!("[loom-list] Found {} loom models:", models.len())).is_err() {
+        return exit(LaneExit::Failure);
+    }
+    if !models.is_empty() && write_stdout_line(format_args!("{}", models.join("\n"))).is_err() {
+        return exit(LaneExit::Failure);
+    }
     exit(LaneExit::Clean)
 }
 
 fn not_applicable_exit(reason: &str) -> ExitCode {
-    eprintln!("[loom-list] NotApplicable: {reason}");
-    exit(LaneExit::NotApplicable)
+    exit_after_stderr(format_args!("[loom-list] NotApplicable: {reason}"), LaneExit::NotApplicable)
 }
 
 fn violations_exit(err: &str) -> ExitCode {
-    eprintln!("[loom-list] {err}");
-    exit(LaneExit::Violations)
+    exit_after_stderr(format_args!("[loom-list] {err}"), LaneExit::Violations)
 }
 
+/// Run the loom inventory lane against the target project.
+///
+/// # Errors
+///
+/// Returns an error string when cargo xtask execution fails, stderr emission
+/// fails, or the xtask output cannot be classified as a clean inventory state.
 fn run_lane(target: &TargetProject) -> Result<LaneOutcome, String> {
     if !has_xtask_inventory(target) {
         return Ok(LaneOutcome::NotApplicable(
@@ -70,19 +92,24 @@ fn run_lane(target: &TargetProject) -> Result<LaneOutcome, String> {
         ));
     }
     let output = run_xtask_loom(target)?;
-    let combined = combined_output(&output.stdout, &output.stderr);
-    classify_loom_output(output.status.success(), &combined)
+    let combined = combined_output(output.stdout(), output.stderr());
+    classify_loom_output(output.status().success(), &combined)
 }
 
 fn has_xtask_inventory(target: &TargetProject) -> bool {
     target.as_std_path().join("xtask/Cargo.toml").is_file()
 }
 
+/// Invoke `cargo xtask loom --model <sentinel>` and capture its output.
+///
+/// # Errors
+///
+/// Returns an error string when command construction or process spawning fails.
 fn run_xtask_loom(target: &TargetProject) -> Result<titania_lanes::CommandOutput, String> {
     let mut command =
         CommandIn::new(target, "cargo").map_err(|e| format!("failed to prepare cargo: {e}"))?;
-    command.inherit_env();
-    command.arg("xtask").arg("loom").arg("--model").arg(SENTINEL);
+    let _ = command.inherit_env();
+    let _ = command.arg("xtask").arg("loom").arg("--model").arg(SENTINEL);
     command.run_capture_raw().map_err(|e| format!("failed to spawn cargo xtask loom: {e}"))
 }
 
@@ -92,9 +119,18 @@ fn combined_output(stdout: &[u8], stderr: &[u8]) -> String {
     format!("{stdout}{stderr}")
 }
 
+/// Classify captured xtask output into lane outcome categories.
+///
+/// # Errors
+///
+/// Returns an error string if warning or raw-output diagnostics cannot be
+/// written to stderr.
 fn classify_loom_output(sentinel_success: bool, combined: &str) -> Result<LaneOutcome, String> {
     if sentinel_success {
-        eprintln!("[loom-list] WARNING: xtask exited 0 for sentinel model (unexpected)");
+        write_stderr_line(format_args!(
+            "[loom-list] WARNING: xtask exited 0 for sentinel model (unexpected)"
+        ))
+        .map_err(|error| format!("stderr write failed: {error}"))?;
     }
     if combined.contains("no such command: `xtask`") {
         return Ok(LaneOutcome::NotApplicable(
@@ -105,8 +141,14 @@ fn classify_loom_output(sentinel_success: bool, combined: &str) -> Result<LaneOu
         .map_or_else(|| unparsed_inventory(combined), |models| Ok(LaneOutcome::Models(models)))
 }
 
+/// Emit raw xtask output when the inventory parser cannot recognize it.
+///
+/// # Errors
+///
+/// Returns an error string when stderr output fails.
 fn unparsed_inventory(combined: &str) -> Result<LaneOutcome, String> {
-    eprintln!("[loom-list] Raw output:\n{combined}");
+    write_stderr_line(format_args!("[loom-list] Raw output:\n{combined}"))
+        .map_err(|error| format!("stderr write failed: {error}"))?;
     Ok(LaneOutcome::NotApplicable("could not parse model inventory from xtask output".to_owned()))
 }
 
@@ -162,4 +204,33 @@ fn is_valid_model_token(token: &str) -> bool {
 
 fn non_empty_names(names: Vec<String>) -> Option<Vec<String>> {
     if names.is_empty() { None } else { Some(names) }
+}
+
+fn exit_after_stderr(args: std::fmt::Arguments<'_>, code: LaneExit) -> ExitCode {
+    match write_stderr_line(args) {
+        Ok(()) => exit(code),
+        Err(_) => exit(LaneExit::Failure),
+    }
+}
+
+/// Write formatted text followed by a newline to stderr.
+///
+/// # Errors
+///
+/// Returns the underlying stderr write error.
+fn write_stderr_line(args: std::fmt::Arguments<'_>) -> io::Result<()> {
+    let mut stderr = io::stderr().lock();
+    stderr.write_fmt(args)?;
+    stderr.write_all(b"\n")
+}
+
+/// Write formatted text followed by a newline to stdout.
+///
+/// # Errors
+///
+/// Returns the underlying stdout write error.
+fn write_stdout_line(args: std::fmt::Arguments<'_>) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    stdout.write_fmt(args)?;
+    stdout.write_all(b"\n")
 }

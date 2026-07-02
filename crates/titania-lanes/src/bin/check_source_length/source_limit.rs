@@ -1,19 +1,29 @@
 use std::path::{Path, PathBuf};
 
-use titania_lanes::{Finding, LaneReport, helpers::relative_path};
+use titania_lanes::{Finding, LaneReport, RuleId, RuleIdError, helpers::relative_path};
 
 use crate::{LEDGER_PATH, SOURCE_LINE_LIMIT, paths::is_test_like_source_path};
 
-pub(crate) fn check_source_line_limit(
+const SRC_LINE_LIMIT_RULE: &str = "SRC_LINE_LIMIT";
+
+/// Check tracked source files against the physical line limit.
+///
+/// # Errors
+///
+/// Returns a rule-id construction error when the source line rule id is
+/// invalid.
+pub(super) fn check_source_line_limit(
     root: &Path,
     files: &[PathBuf],
     ledger: &[String],
     report: &mut LaneReport,
-) {
+) -> Result<(), RuleIdError> {
+    let rule = RuleId::new(SRC_LINE_LIMIT_RULE)?;
     sorted_files(files)
         .into_iter()
-        .filter_map(|file| source_line_violation(root, file, ledger))
+        .filter_map(|file| source_line_violation(root, file, ledger, &rule))
         .for_each(|finding| report.push(finding));
+    Ok(())
 }
 
 fn sorted_files(files: &[PathBuf]) -> Vec<&PathBuf> {
@@ -22,7 +32,12 @@ fn sorted_files(files: &[PathBuf]) -> Vec<&PathBuf> {
     sorted
 }
 
-fn source_line_violation(root: &Path, file: &Path, ledger: &[String]) -> Option<Finding> {
+fn source_line_violation(
+    root: &Path,
+    file: &Path,
+    ledger: &[String],
+    rule: &RuleId,
+) -> Option<Finding> {
     let rel = relative_path(root, file);
     if is_test_like_source_path(&rel) || has_exception(&rel, ledger) {
         return None;
@@ -32,7 +47,7 @@ fn source_line_violation(root: &Path, file: &Path, ledger: &[String]) -> Option<
         return None;
     }
     Some(Finding::new(
-        "SRC-LINE-LIMIT",
+        rule.clone(),
         rel,
         0,
         format!(
