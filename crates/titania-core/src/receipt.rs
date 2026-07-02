@@ -31,7 +31,7 @@ pub enum ReceiptLaneExit {
     Failure,
 }
 
-/// Per-lane digest summary embedded in a [`QualityReceipt`].
+/// Per-lane digest summary embedded in a [`ReceiptEnvelope`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct LaneDigest {
     lane: LaneName,
@@ -141,7 +141,7 @@ impl ReceiptPeriod {
 
 /// Stable quality receipt envelope for one target-project run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct QualityReceipt {
+pub struct ReceiptEnvelope {
     schema_version: u32,
     target_root: RecordedTargetRoot,
     started_at: u64,
@@ -153,7 +153,7 @@ pub struct QualityReceipt {
     toolchain_digest: Digest,
 }
 
-impl QualityReceipt {
+impl ReceiptEnvelope {
     /// Construct a receipt produced by the current schema.
     ///
     /// # Errors
