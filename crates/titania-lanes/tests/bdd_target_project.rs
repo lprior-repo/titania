@@ -7,7 +7,7 @@ use std::{
 
 use tempfile::TempDir;
 use titania_core::{
-    Digest, LaneDigest, LaneName, QualityReceipt, ReceiptDigests, ReceiptLaneExit, ReceiptPeriod,
+    Digest, LaneDigest, LaneName, ReceiptDigests, ReceiptEnvelope, ReceiptLaneExit, ReceiptPeriod,
     TargetProject, TargetProjectError, discover_target,
 };
 
@@ -111,7 +111,7 @@ fn scenario_completed_lane_receipt_records_resolved_target_root() -> TestResult 
 
     // When: a receipt is built for the completed lane.
     let target = discover_target(target_dir.path())?;
-    let receipt = QualityReceipt::new(
+    let receipt = ReceiptEnvelope::new(
         &target,
         ReceiptPeriod::new(1, 2)?,
         vec![LaneDigest::new(LaneName::new("fmt")?, ReceiptLaneExit::Clean, 1, 1, 0)?],

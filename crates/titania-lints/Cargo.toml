@@ -1,0 +1,15 @@
+[package]
+name = "titania-lints"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Titania dylint rule metadata for v1 strict-ai gates."
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
