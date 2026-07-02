@@ -3,8 +3,8 @@
 use std::{env, process::ExitCode};
 
 use serde_json::Value;
-use titania_core::{TargetProject, TargetProjectError, discover_target};
-use titania_lanes::{CommandIn, Finding, LaneError, LaneExit, LaneReport, exit};
+use titania_core::{TargetProject, TargetProjectError};
+use titania_lanes::{CommandIn, CurrentTargetError, Finding, LaneError, LaneExit, LaneReport, current_target_project, exit};
 
 const RULE_FMT: &str = "CARGO-FMT-001";
 const RULE_COMPILE: &str = "CARGO-COMPILE-001";
@@ -86,14 +86,23 @@ fn run(args: Vec<String>) -> LaneExit {
     }
 }
 
+
+
+impl From<CurrentTargetError> for RunCargoError {
+    fn from(e: CurrentTargetError) -> Self {
+        match e {
+            CurrentTargetError::CurrentDir(io) => RunCargoError::CurrentDir(io),
+            CurrentTargetError::Target(tp) => RunCargoError::Target(tp),
+        }
+    }
+}
 fn run_checked(args: Vec<String>) -> Result<LaneReport, RunCargoError> {
     let mut rest = args.into_iter();
     let _program = rest.next();
     let subcommand = rest.next().ok_or_else(|| RunCargoError::Usage(usage_message()))?;
     let lane = CargoLane::parse(&subcommand).map_err(RunCargoError::Usage)?;
     let extra_args: Vec<String> = rest.collect();
-    let cwd = env::current_dir().map_err(RunCargoError::CurrentDir)?;
-    let target = discover_target(&cwd).map_err(RunCargoError::Target)?;
+    let target = current_target_project()?;
     run_lane(&target, lane, &extra_args).map_err(RunCargoError::Command)
 }
 
