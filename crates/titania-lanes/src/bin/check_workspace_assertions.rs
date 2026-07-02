@@ -14,7 +14,7 @@
 //! use a fixed list of forbidden feature names) but reads its expected
 //! member list, package-name map, and feature table from the live titania
 //! workspace. That keeps the lane a pure structural assertion: it does
-//! NOT depend on the velvet-ballistics `vb_*` crate set.
+//! NOT depend on a legacy `vb_*` crate set.
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
