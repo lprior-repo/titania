@@ -13,9 +13,15 @@ pub fn run_local_lane(target: &TargetProject, lane: LocalLane) -> LaneExit {
             return LaneExit::Failure;
         }
     };
-    binary_status(target, binary)
+    binary_status(target, binary.as_path())
 }
 
+/// Returns the path to a sibling binary beside the current executable.
+///
+/// # Errors
+/// Returns `Err(String)` when the current executable's directory
+/// cannot be resolved (`env::current_exe`), or when the binary
+/// is not found (via `missing_binary`).
 fn sibling_binary(binary_name: &str) -> Result<PathBuf, String> {
     let current = env::current_exe().map_err(|error| error.to_string())?;
     let Some(dir) = current.parent() else {
@@ -25,6 +31,10 @@ fn sibling_binary(binary_name: &str) -> Result<PathBuf, String> {
     if binary.is_file() { Ok(binary) } else { missing_binary(binary_name, dir) }
 }
 
+/// Constructs an error message identifying a missing sibling binary.
+///
+/// # Errors
+/// Always returns `Err(String)` with a diagnostic message.
 fn missing_binary(binary_name: &str, dir: &std::path::Path) -> Result<PathBuf, String> {
     let shown = dir.display();
     Err(format!(
@@ -32,7 +42,7 @@ fn missing_binary(binary_name: &str, dir: &std::path::Path) -> Result<PathBuf, S
     ))
 }
 
-fn binary_status(target: &TargetProject, binary: PathBuf) -> LaneExit {
+fn binary_status(target: &TargetProject, binary: &std::path::Path) -> LaneExit {
     let Some(program) = binary.to_str() else {
         eprintln!("[gauntlet] Failure: Titania lane binary path is not valid UTF-8");
         return LaneExit::Failure;
@@ -60,7 +70,16 @@ pub fn run_test(target: &TargetProject, group: &str) -> LaneExit {
 }
 
 pub fn run_kani(target: &TargetProject, harness: &str) -> LaneExit {
-    let args = vec!["kani", "--package", "vb_compile", "--harness", harness, "--quiet"];
+    let args = vec![
+        "kani",
+        "--package",
+        "vb_runtime",
+        "--harness",
+        harness,
+        "--default-unwind",
+        "1",
+        "--quiet",
+    ];
     cargo_status(target, &args)
 }
 
@@ -78,6 +97,11 @@ pub fn run_kani_default_unwind(target: &TargetProject, harness: &str) -> LaneExi
     cargo_status(target, &args)
 }
 
+/// Runs `cargo` with `args` and captures the output.
+///
+/// # Errors
+/// Returns `Err(String)` when `CommandIn::new` cannot spawn `cargo`
+/// or when `run_capture` fails.
 pub fn cargo_capture(
     target: &TargetProject,
     args: &[&str],
@@ -91,10 +115,7 @@ pub fn cargo_capture(
 }
 
 fn cargo_status(target: &TargetProject, args: &[&str]) -> LaneExit {
-    let mut cmd = match CommandIn::new(target, "cargo") {
-        Ok(command) => command,
-        Err(_) => return LaneExit::Violations,
-    };
+    let Ok(mut cmd) = CommandIn::new(target, "cargo") else { return LaneExit::Violations };
     cmd.args(args);
     command_status(&mut cmd)
 }
