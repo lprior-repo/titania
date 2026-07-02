@@ -1,4 +1,4 @@
-//! Verifies StepState enum variants cover VALID_TRANSITIONS matrix fully.
+//! Verifies `StepState` enum variants cover `VALID_TRANSITIONS` matrix fully.
 //!
 //! Rust re-implementation of the bash lane in
 //! `velvet-ballistics/scripts/check-stepstate-matrix.sh`. Run via

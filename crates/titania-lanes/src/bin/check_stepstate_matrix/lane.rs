@@ -196,7 +196,7 @@ fn balanced_block_from_open(text: &str, open_pos: usize) -> Option<String> {
     }
 }
 
-fn next_depth(depth: i32, byte: u8) -> i32 {
+const fn next_depth(depth: i32, byte: u8) -> i32 {
     match byte {
         b'{' => depth.saturating_add(1),
         b'}' => depth.saturating_sub(1),
