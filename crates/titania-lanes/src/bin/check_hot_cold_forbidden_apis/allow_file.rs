@@ -71,7 +71,9 @@ struct AllowEntry<'a> {
 fn validate_allow_entry(entry: &AllowEntry<'_>) -> Result<(), String> {
     if entry.path.contains('*')
         || !entry.path.starts_with("crates/")
-        || !entry.path.ends_with(".rs")
+        || !std::path::Path::new(entry.path)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"))
     {
         return Err(overbroad_allow(entry.index, "path must be exact crates/*/src/*.rs"));
     }

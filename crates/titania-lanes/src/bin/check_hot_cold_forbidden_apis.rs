@@ -9,9 +9,9 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
-#![allow(clippy::filter_map_bool_then)]
-#![allow(clippy::manual_contains)]
-#![allow(clippy::type_complexity)]
+#![allow(clippy::filter_map_bool_then, reason = "boolean filter_map chains read more clearly than the equivalent match in this lane's classification predicates")]
+#![allow(clippy::manual_contains, reason = "match-on-Option is more idiomatic than contains for this lane's existence/role checks")]
+#![allow(clippy::type_complexity, reason = "scanner state carries three typed result vectors; a type alias would obscure push_finding's caller signature")]
 
 #[path = "check_hot_cold_forbidden_apis/allow_file.rs"]
 mod allow_file;
@@ -70,13 +70,15 @@ fn fixture_error(error: String) -> ExitCode {
 }
 
 fn print_scan_results(classified: &[String], justified: &[FindingData]) {
-    classified.iter().for_each(|line| println!("{line}"));
-    justified.iter().for_each(|finding| {
+    for line in classified {
+        println!("{line}");
+    }
+    for finding in justified {
         println!(
             "JustifiedException|{}|{}|line={}",
             finding.class_id, finding.rel_path, finding.line_no
         );
-    });
+    }
 }
 
 fn print_summary(classified: &[String], violations: &[FindingData], justified: &[FindingData]) {
@@ -89,16 +91,24 @@ fn print_summary(classified: &[String], violations: &[FindingData], justified: &
     );
 }
 
+/// Emits classified lines, the `LaneReport` for violations, and the
+/// summary line, then maps the violation set to the lane exit code.
+///
+/// # Errors
+/// This function does not return `Result`; violations become a non-zero
+/// exit code, scan-level errors are routed via the `Err` arm in `run_lane`.
 fn finish_scan(
-    classified: Vec<String>,
-    violations: Vec<FindingData>,
-    justified: Vec<FindingData>,
+    classified: &[String],
+    violations: &[FindingData],
+    justified: &[FindingData],
 ) -> ExitCode {
-    print_scan_results(&classified, &justified);
+    print_scan_results(classified, justified);
     let mut report = LaneReport::new();
-    violations.iter().for_each(|finding| push_finding(&mut report, finding, RULE_VIOLATION));
+    for finding in violations {
+        push_finding(&mut report, finding, RULE_VIOLATION);
+    }
     eprint!("{}", report.render());
-    print_summary(&classified, &violations, &justified);
+    print_summary(classified, violations, justified);
     if violations.is_empty() { exit(LaneExit::Clean) } else { exit(LaneExit::Violations) }
 }
 
@@ -108,7 +118,9 @@ fn run_lane() -> ExitCode {
         Err(error) => return usage_error(error),
     };
     match scan::scan(target.as_std_path()) {
-        Ok((classified, violations, justified)) => finish_scan(classified, violations, justified),
+        Ok((classified, violations, justified)) => {
+            finish_scan(&classified, &violations, &justified)
+        }
         Err(error) => fixture_error(error),
     }
 }

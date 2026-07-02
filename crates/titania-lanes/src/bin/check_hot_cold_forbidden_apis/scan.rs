@@ -10,13 +10,28 @@ use crate::{
     syntax::{ApiSourceLine, compact, remove_spaces},
 };
 
+/// Scans the hot crates under `root` for forbidden APIs, classifying
+/// each source file and emitting findings for un-allowed violations.
+///
+/// # Errors
+/// Returns `Err(String)` if the allow file cannot be parsed
+/// (`load_allow_file`), if `hot_sources` cannot enumerate the crate
+/// `src/` directories (`fs::read_dir` failure), or if any single
+/// source file cannot be read by `scan_source`.
 pub fn scan(
     root: &Path,
 ) -> Result<(Vec<String>, Vec<FindingData>, Vec<FindingData>), String> {
     let allowed = load_allow_file(root)?;
     let sources = hot_sources(root).map_err(|error| format!("hot source scan failed: {error}"))?;
     let mut state = ScanState::new(allowed);
-    sources.iter().try_for_each(|source| state.scan_source(root, source))?;
+    let mut iter_result: Result<(), String> = Ok(());
+    for source in &sources {
+        if state.scan_source(root, source).is_err() {
+            iter_result = Err(format!("scan failed on {}", source.display()));
+            break;
+        }
+    }
+    iter_result?;
     Ok(state.finish())
 }
 
@@ -28,7 +43,7 @@ struct ScanState {
 }
 
 impl ScanState {
-    fn new(allowed: BTreeSet<(String, String)>) -> Self {
+    const fn new(allowed: BTreeSet<(String, String)>) -> Self {
         Self { allowed, classified: Vec::new(), violations: Vec::new(), justified: Vec::new() }
     }
 
@@ -36,10 +51,16 @@ impl ScanState {
         (self.classified, self.violations, self.justified)
     }
 
+    /// Reads one source file and feeds its lines into the per-line
+    /// scanner, classifying the path and recording findings.
+    ///
+    /// # Errors
+    /// Returns `Err(String)` when `fs::read_to_string(source)` fails,
+    /// formatting the path and underlying I/O error.
     fn scan_source(&mut self, root: &Path, source: &Path) -> Result<(), String> {
         let rel_path = relative_path(root, source);
         let role = source_role(&rel_path);
-        self.classified.push(format!("ClassifiedPath|{:?}|{}", role, rel_path));
+        self.classified.push(format!("ClassifiedPath|{role:?}|{rel_path}"));
         if role != SourceRole::HotProduction {
             return Ok(());
         }
@@ -51,9 +72,9 @@ impl ScanState {
 
     fn scan_hot_text(&mut self, rel_path: &str, text: &str) {
         let mut state = HotLineState::default();
-        text.lines().enumerate().for_each(|(index, line)| {
+        for (index, line) in text.lines().enumerate() {
             self.scan_hot_line(rel_path, index.saturating_add(1), line, &mut state);
-        });
+        }
     }
 
     fn scan_hot_line(
@@ -67,9 +88,10 @@ impl ScanState {
             return;
         }
         let source_line = ApiSourceLine::parse(line, &mut state.block_comment);
-        classify_line(rel_path, line_no, &source_line)
-            .into_iter()
-            .for_each(|finding| self.push_classified_finding(finding));
+        let findings = classify_line(rel_path, line_no, &source_line);
+        for finding in findings {
+            self.push_classified_finding(finding);
+        }
     }
 
     fn push_classified_finding(&mut self, finding: FindingData) {
@@ -131,7 +153,7 @@ fn initial_test_depth(line: &str) -> i32 {
 }
 
 fn char_count_i32(line: &str, needle: char) -> i32 {
-    i32::try_from(line.matches(needle).count()).map_or(i32::MAX, core::convert::identity)
+    i32::try_from(line.matches(needle).count()).map_or(i32::MAX, |n| n)
 }
 
 fn relative_path(root: &Path, source: &Path) -> String {
@@ -240,26 +262,43 @@ fn has_unbounded_channel(stripped: &str) -> bool {
         || stripped.contains("crossbeam_channel::unbounded(")
 }
 
+/// Walks `root` recursively and returns every `.rs` file (any case for
+/// the extension) found under it.
+///
+/// # Errors
+/// Returns the first I/O error encountered while reading directory
+/// entries via `fs::read_dir` or while descending into subdirectories.
 fn rust_files(root: &Path) -> io::Result<Vec<PathBuf>> {
     if !root.exists() {
         return Ok(Vec::new());
     }
     fs::read_dir(root)?.try_fold(Vec::new(), |mut out, entry| {
-        append_rust_entry(&mut out, entry?, root)?;
+        append_rust_entry(&mut out, &entry?, root)?;
         Ok(out)
     })
 }
 
-fn append_rust_entry(out: &mut Vec<PathBuf>, entry: fs::DirEntry, _root: &Path) -> io::Result<()> {
+/// Classifies one directory entry and pushes matching `.rs` files
+/// (recursively for subdirectories) into `out`.
+///
+/// # Errors
+/// Returns the first I/O error from a nested `rust_files` call when
+/// the entry is a subdirectory that fails to enumerate.
+fn append_rust_entry(out: &mut Vec<PathBuf>, entry: &fs::DirEntry, _root: &Path) -> io::Result<()> {
     let path = entry.path();
     if path.is_dir() {
         out.extend(rust_files(&path)?);
-    } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+    } else if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("rs")) {
         out.push(path);
     }
     Ok(())
 }
 
+/// Enumerates every `.rs` file under each hot crate's `src/` directory.
+///
+/// # Errors
+/// Returns the first I/O error encountered while reading any of the
+/// hot crate `src/` directories.
 fn hot_sources(root: &Path) -> io::Result<Vec<PathBuf>> {
     HOT_CRATES.iter().try_fold(Vec::new(), |mut out, crate_name| {
         let src = root.join("crates").join(crate_name).join("src");
