@@ -1,4 +1,4 @@
-//! Rejects 'parallel' / 'aggregate' inside STEP_PRIMITIVES + ALLOWED_STEP_FIELDS constants.
+//! Rejects 'parallel' / 'aggregate' inside `STEP_PRIMITIVES` + `ALLOWED_STEP_FIELDS` constants.
 //!
 //! Rust re-implementation of the bash lane in
 //! `velvet-ballistics/scripts/verify-no-legacy-primitives.sh`. Run via
@@ -8,7 +8,7 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
-#![allow(clippy::let_underscore_must_use)]
+#![allow(clippy::let_underscore_must_use, reason = "Lane ignores Result from fs reads; errors are handled via match arms.")]
 
 use std::{fs, io::ErrorKind, path::PathBuf};
 
@@ -54,7 +54,9 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(target: &TargetProject, report: &mut LaneReport) {
-    SOURCES.iter().for_each(|rel| check_file(target, *rel, report));
+    for rel in SOURCES {
+        check_file(target, *rel, report);
+    }
 }
 
 fn print_and_exit(report: &LaneReport) -> std::process::ExitCode {
@@ -105,7 +107,7 @@ fn check_const_body(
         );
         return;
     };
-    FORBIDDEN.iter().for_each(|bad| {
+    for bad in FORBIDDEN {
         if body.contains(bad) {
             report.push(Finding::new(
                 "LEGACY-PRIM",
@@ -114,7 +116,7 @@ fn check_const_body(
                 format!("{label} contains {bad}"),
             ));
         }
-    });
+    }
 }
 
 fn extract_const_body<'a>(text: &'a str, marker: &str) -> Option<&'a str> {
@@ -138,17 +140,21 @@ fn extract_balanced(
     open: char,
     close: char,
 ) -> Option<&str> {
+    let end = find_matching_close(text, open_pos, open, close)?;
+    text.get(start..end)
+}
+
+fn find_matching_close(text: &str, open_pos: usize, open: char, close: char) -> Option<usize> {
     let tail = text.get(open_pos..)?;
     let mut depth: i32 = 0;
     for (offset, ch) in tail.char_indices() {
+        if ch == close && depth == 0 {
+            return Some(open_pos.saturating_add(offset).saturating_add(ch.len_utf8()));
+        }
         if ch == open {
             depth = depth.saturating_add(1);
         } else if ch == close {
             depth = depth.saturating_sub(1);
-            if depth == 0_i32 {
-                let end = open_pos.saturating_add(offset).saturating_add(ch.len_utf8());
-                return text.get(start..end);
-            }
         }
     }
     None
