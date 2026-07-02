@@ -176,7 +176,7 @@ fn find_char_in(text: &str, start: usize, target: char) -> Option<usize> {
 }
 
 fn extract_enum_body(text: &str, enum_name: &str) -> Option<String> {
-    let marker = format!("pub enum {enum_name}");
+    let marker = format!("pub(super) enum {enum_name}");
     let start = text.find(&marker)?;
     let open_pos = find_char_in(text, start, '{')?;
     balanced_block_from_open(text, open_pos)
@@ -196,7 +196,7 @@ fn balanced_block_from_open(text: &str, open_pos: usize) -> Option<String> {
     }
 }
 
-fn next_depth(depth: i32, byte: u8) -> i32 {
+const fn next_depth(depth: i32, byte: u8) -> i32 {
     match byte {
         b'{' => depth.saturating_add(1),
         b'}' => depth.saturating_sub(1),
@@ -258,8 +258,8 @@ fn find_function_body(text: &str, fn_name: &str) -> Option<String> {
 
 fn function_patterns(fn_name: &str) -> [String; 4] {
     [
-        format!("pub fn {fn_name}("),
-        format!("pub fn {fn_name}<"),
+        format!("pub(super) fn {fn_name}("),
+        format!("pub(super) fn {fn_name}<"),
         format!("fn {fn_name}("),
         format!("fn {fn_name}<"),
     ]

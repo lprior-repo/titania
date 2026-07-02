@@ -28,28 +28,60 @@ pub enum ProcessTermination {
 }
 
 impl ProcessTermination {
+    /// Construct an exit-code termination.
+    #[must_use]
+    pub const fn exited(code: i32) -> Self {
+        Self::Exited { code }
+    }
+
+    /// Construct a timeout termination.
+    #[must_use]
+    pub const fn timed_out() -> Self {
+        Self::TimedOut
+    }
+
+    /// Construct a memory-limit termination.
+    #[must_use]
+    pub const fn memory_limit_exceeded() -> Self {
+        Self::MemoryLimitExceeded
+    }
+
+    /// Construct a spawn-failed termination.
+    #[must_use]
+    pub const fn spawn_failed() -> Self {
+        Self::SpawnFailed
+    }
+
     /// Construct a signal-based termination.
     ///
     /// # Errors
     /// - [`FailureError::InvalidSignal`] if the signal is outside 1–31.
     pub fn signaled(signal: i32) -> Result<Self, FailureError> {
-        if !(1..=31).contains(&signal) {
+        if !(1_i32..=31_i32).contains(&signal) {
             return Err(FailureError::InvalidSignal(signal));
         }
-        Ok(ProcessTermination::Signaled { signal })
+        Ok(Self::Signaled { signal })
     }
 
     /// Whether this represents a normal (non-error) exit.
     #[must_use]
-    pub fn is_success(&self) -> bool {
-        matches!(self, ProcessTermination::Exited { code } if *code == 0)
+    pub const fn is_success(self) -> bool {
+        matches!(self, Self::Exited { code } if code == 0)
     }
 
     /// If this is an `Exited` variant, return the exit code.
     #[must_use]
-    pub fn exit_code(&self) -> Option<i32> {
+    pub const fn exit_code(self) -> Option<i32> {
         match self {
-            ProcessTermination::Exited { code } => Some(*code),
+            Self::Exited { code } => Some(code),
+            _ => None,
+        }
+    }
+    /// If this is a `Signaled` variant, return the signal number.
+    #[must_use]
+    pub const fn signal(self) -> Option<i32> {
+        match self {
+            Self::Signaled { signal } => Some(signal),
             _ => None,
         }
     }
@@ -72,26 +104,50 @@ pub enum LaneFailure {
 }
 
 impl LaneFailure {
+    /// Construct an infrastructure failure.
+    #[must_use]
+    pub const fn infra_failure(tool: String, reason: String) -> Self {
+        Self::InfraFailure { tool, reason }
+    }
+
+    /// Construct a tool termination failure.
+    #[must_use]
+    pub const fn tool_failure(tool: String, termination: ProcessTermination) -> Self {
+        Self::ToolFailure { tool, termination }
+    }
+
+    /// Construct a resource failure.
+    #[must_use]
+    pub const fn resource_failure(tool: String, limit: String) -> Self {
+        Self::ResourceFailure { tool, limit }
+    }
+
+    /// Construct a suspicious failure.
+    #[must_use]
+    pub const fn suspicious_failure(tool: String, evidence: String) -> Self {
+        Self::SuspiciousFailure { tool, evidence }
+    }
+
     /// The tool that failed, if known.
     #[must_use]
-    pub fn tool(&self) -> Option<&str> {
+    pub fn tool(&self) -> &str {
         match self {
-            LaneFailure::InfraFailure { tool, .. }
-            | LaneFailure::ToolFailure { tool, .. }
-            | LaneFailure::ResourceFailure { tool, .. }
-            | LaneFailure::SuspiciousFailure { tool, .. } => Some(tool),
+            Self::InfraFailure { tool, .. }
+            | Self::ToolFailure { tool, .. }
+            | Self::ResourceFailure { tool, .. }
+            | Self::SuspiciousFailure { tool, .. } => tool,
         }
     }
 
     /// Whether this is an infrastructure issue (not a code problem).
     #[must_use]
-    pub fn is_infra(&self) -> bool {
-        matches!(self, LaneFailure::InfraFailure { .. })
+    pub const fn is_infra(&self) -> bool {
+        matches!(self, Self::InfraFailure { .. })
     }
 
     /// Whether this is a resource constraint.
     #[must_use]
-    pub fn is_resource(&self) -> bool {
-        matches!(self, LaneFailure::ResourceFailure { .. })
+    pub const fn is_resource(&self) -> bool {
+        matches!(self, Self::ResourceFailure { .. })
     }
 }

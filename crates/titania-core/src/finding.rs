@@ -25,7 +25,8 @@ pub enum FindingEffect {
 }
 
 /// Location where a finding was observed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "variant", rename_all = "snake_case")]
 pub enum Location {
     /// A byte-offset span within a single source file.
     Span { file: WorkspacePath, line_start: u32, col_start: u32, line_end: u32, col_end: u32 },
@@ -65,27 +66,97 @@ impl Location {
         if col_end < col_start {
             return Err(LocationError::ColEndBeforeStart { col_start, col_end });
         }
-        Ok(Location::Span { file, line_start, col_start, line_end, col_end })
+        Ok(Self::Span { file, line_start, col_start, line_end, col_end })
+    }
+    /// Construct a [`Location::Dependency`].
+    #[must_use]
+    pub const fn dependency(crate_name: String, version: String) -> Self {
+        Self::Dependency { crate_name, version }
+    }
+
+    /// Construct a [`Location::Manifest`].
+    #[must_use]
+    pub const fn manifest(file: WorkspacePath) -> Self {
+        Self::Manifest { file }
+    }
+
+    /// Construct a [`Location::Workspace`].
+    #[must_use]
+    pub const fn workspace() -> Self {
+        Self::Workspace
+    }
+
+    /// Construct a [`Location::Tool`].
+    #[must_use]
+    pub const fn tool(name: String, version: String) -> Self {
+        Self::Tool { name, version }
     }
 
     /// Whether this location is a file span.
     #[must_use]
-    pub fn is_span(&self) -> bool {
-        matches!(self, Location::Span { .. })
+    pub const fn is_span(&self) -> bool {
+        matches!(self, Self::Span { .. })
     }
 
     /// If this location is a span, return the workspace path.
     #[must_use]
-    pub fn span_file(&self) -> Option<&WorkspacePath> {
+    pub const fn span_file(&self) -> Option<&WorkspacePath> {
         match self {
-            Location::Span { file, .. } => Some(file),
+            Self::Span { file, .. } => Some(file),
             _ => None,
+        }
+    }
+    /// Return the span file or a typed error if this is not a span location.
+    ///
+    /// # Errors
+    /// Returns [`LocationError::NotSpan`] for non-span variants.
+    pub const fn as_file(&self) -> Result<&WorkspacePath, LocationError> {
+        match self {
+            Self::Span { file, .. } => Ok(file),
+            _ => Err(LocationError::NotSpan),
+        }
+    }
+
+    /// Return the span start line, or `0` for non-span locations.
+    #[must_use]
+    pub const fn line_start(&self) -> u32 {
+        match self {
+            Self::Span { line_start, .. } => *line_start,
+            _ => 0,
+        }
+    }
+
+    /// Return the span start column, or `0` for non-span locations.
+    #[must_use]
+    pub const fn col_start(&self) -> u32 {
+        match self {
+            Self::Span { col_start, .. } => *col_start,
+            _ => 0,
+        }
+    }
+
+    /// Return the span end line, or `0` for non-span locations.
+    #[must_use]
+    pub const fn line_end(&self) -> u32 {
+        match self {
+            Self::Span { line_end, .. } => *line_end,
+            _ => 0,
+        }
+    }
+
+    /// Return the span end column, or `0` for non-span locations.
+    #[must_use]
+    pub const fn col_end(&self) -> u32 {
+        match self {
+            Self::Span { col_end, .. } => *col_end,
+            _ => 0,
         }
     }
 }
 
 /// Machine-actionable repair suggestion for a [`Finding`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "variant", rename_all = "snake_case")]
 pub enum RepairHint {
     /// A byte-range patch to apply to a file.
     Patch { file: String, range: TextRange, replacement: String },
@@ -116,265 +187,126 @@ impl RepairHint {
         if range.width() == 0 {
             return Err(RepairHintError::EmptyRange);
         }
-        Ok(RepairHint::Patch { file, range, replacement })
+        Ok(Self::Patch { file, range, replacement })
+    }
+    /// Construct a [`RepairHint::UseIteratorPipeline`].
+    #[must_use]
+    pub const fn use_iterator_pipeline(suggestion: String) -> Self {
+        Self::UseIteratorPipeline { suggestion }
+    }
+
+    /// Construct a [`RepairHint::FlattenNesting`].
+    #[must_use]
+    pub const fn flatten_nesting(suggestion: String) -> Self {
+        Self::FlattenNesting { suggestion }
+    }
+
+    /// Construct a [`RepairHint::UseCheckedArithmetic`].
+    #[must_use]
+    pub const fn use_checked_arithmetic(op: String) -> Self {
+        Self::UseCheckedArithmetic { op }
+    }
+
+    /// Construct a [`RepairHint::RemoveAllowAttribute`].
+    #[must_use]
+    pub const fn remove_allow_attribute(attr: String) -> Self {
+        Self::RemoveAllowAttribute { attr }
+    }
+
+    /// Construct a [`RepairHint::ReplaceDependency`].
+    #[must_use]
+    pub const fn replace_dependency(from: String, to: String) -> Self {
+        Self::ReplaceDependency { from, to }
+    }
+
+    /// Construct a [`RepairHint::RequiresHumanReview`].
+    #[must_use]
+    pub const fn requires_human_review(note: String) -> Self {
+        Self::RequiresHumanReview { note }
     }
 
     /// Whether this hint can be applied automatically.
     #[must_use]
-    pub fn is_auto_applicable(&self) -> bool {
-        matches!(self, RepairHint::Patch { .. })
+    pub const fn is_auto_applicable(&self) -> bool {
+        matches!(self, Self::Patch { .. })
     }
 }
 
-// Custom serialization for Location (serde derive doesn't work with
-// enum variants that have different fields).
+#[derive(Deserialize)]
+#[serde(tag = "variant", rename_all = "snake_case")]
+enum LocationWire {
+    Span { file: WorkspacePath, line_start: u32, col_start: u32, line_end: u32, col_end: u32 },
+    Dependency { crate_name: String, version: String },
+    Manifest { file: WorkspacePath },
+    Workspace,
+    Tool { name: String, version: String },
+}
 
-impl Serialize for Location {
-    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Location::Span { file, line_start, col_start, line_end, col_end } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("Location", 5)?;
-                s.serialize_field("variant", "span")?;
-                s.serialize_field("file", file)?;
-                s.serialize_field("line_start", line_start)?;
-                s.serialize_field("col_start", col_start)?;
-                s.serialize_field("line_end", line_end)?;
-                s.serialize_field("col_end", col_end)?;
-                s.end()
+impl TryFrom<LocationWire> for Location {
+    type Error = LocationError;
+
+    fn try_from(wire: LocationWire) -> Result<Self, Self::Error> {
+        match wire {
+            LocationWire::Span { file, line_start, col_start, line_end, col_end } => {
+                Self::span(file, line_start, col_start, line_end, col_end)
             }
-            Location::Dependency { crate_name, version } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("Location", 3)?;
-                s.serialize_field("variant", "dependency")?;
-                s.serialize_field("crate_name", crate_name)?;
-                s.serialize_field("version", version)?;
-                s.end()
+            LocationWire::Dependency { crate_name, version } => {
+                Ok(Self::Dependency { crate_name, version })
             }
-            Location::Manifest { file } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("Location", 2)?;
-                s.serialize_field("variant", "manifest")?;
-                s.serialize_field("file", file)?;
-                s.end()
-            }
-            Location::Workspace => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("Location", 1)?;
-                s.serialize_field("variant", "workspace")?;
-                s.end()
-            }
-            Location::Tool { name, version } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("Location", 3)?;
-                s.serialize_field("variant", "tool")?;
-                s.serialize_field("name", name)?;
-                s.serialize_field("version", version)?;
-                s.end()
-            }
+            LocationWire::Manifest { file } => Ok(Self::Manifest { file }),
+            LocationWire::Workspace => Ok(Self::Workspace),
+            LocationWire::Tool { name, version } => Ok(Self::Tool { name, version }),
         }
     }
 }
 
 impl<'de> Deserialize<'de> for Location {
     fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        // Deserialize to JSON value first, inspect variant, then
-        // deserialize into the appropriate wire struct.
-        let value = serde_json::Value::deserialize(de)?;
-        let variant = value
-            .get("variant")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| serde::de::Error::missing_field("variant"))?;
-
-        match variant {
-            "span" => {
-                #[derive(Deserialize)]
-                struct SpanWire {
-                    file: WorkspacePath,
-                    line_start: u32,
-                    col_start: u32,
-                    line_end: u32,
-                    col_end: u32,
-                }
-                let span = SpanWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Self::span(span.file, span.line_start, span.col_start, span.line_end, span.col_end)
-                    .map_err(serde::de::Error::custom)
-            }
-            "dependency" => {
-                #[derive(Deserialize)]
-                struct DepWire {
-                    crate_name: String,
-                    version: String,
-                }
-                let dep = DepWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Ok(Location::Dependency { crate_name: dep.crate_name, version: dep.version })
-            }
-            "manifest" => {
-                #[derive(Deserialize)]
-                struct ManifestWire {
-                    file: WorkspacePath,
-                }
-                let m = ManifestWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Ok(Location::Manifest { file: m.file })
-            }
-            "workspace" => Ok(Location::Workspace),
-            "tool" => {
-                #[derive(Deserialize)]
-                struct ToolWire {
-                    name: String,
-                    version: String,
-                }
-                let t = ToolWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Ok(Location::Tool { name: t.name, version: t.version })
-            }
-            other => Err(serde::de::Error::unknown_variant(
-                other,
-                &["span", "dependency", "manifest", "workspace", "tool"],
-            )),
-        }
+        LocationWire::deserialize(de)?.try_into().map_err(serde::de::Error::custom)
     }
 }
 
-impl Serialize for RepairHint {
-    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
-        match self {
-            RepairHint::Patch { file, range, replacement } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("RepairHint", 4)?;
-                s.serialize_field("variant", "patch")?;
-                s.serialize_field("file", file)?;
-                s.serialize_field("range", range)?;
-                s.serialize_field("replacement", replacement)?;
-                s.end()
+#[derive(Deserialize)]
+#[serde(tag = "variant", rename_all = "snake_case")]
+enum RepairHintWire {
+    Patch { file: String, range: TextRange, replacement: String },
+    UseIteratorPipeline { suggestion: String },
+    FlattenNesting { suggestion: String },
+    UseCheckedArithmetic { op: String },
+    RemoveAllowAttribute { attr: String },
+    ReplaceDependency { from: String, to: String },
+    RequiresHumanReview { note: String },
+}
+
+impl TryFrom<RepairHintWire> for RepairHint {
+    type Error = RepairHintError;
+
+    fn try_from(wire: RepairHintWire) -> Result<Self, Self::Error> {
+        match wire {
+            RepairHintWire::Patch { file, range, replacement } => {
+                Self::patch(file, range, replacement)
             }
-            RepairHint::UseIteratorPipeline { suggestion } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("RepairHint", 2)?;
-                s.serialize_field("variant", "use_iterator_pipeline")?;
-                s.serialize_field("suggestion", suggestion)?;
-                s.end()
+            RepairHintWire::UseIteratorPipeline { suggestion } => {
+                Ok(Self::UseIteratorPipeline { suggestion })
             }
-            RepairHint::FlattenNesting { suggestion } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("RepairHint", 2)?;
-                s.serialize_field("variant", "flatten_nesting")?;
-                s.serialize_field("suggestion", suggestion)?;
-                s.end()
+            RepairHintWire::FlattenNesting { suggestion } => {
+                Ok(Self::FlattenNesting { suggestion })
             }
-            RepairHint::UseCheckedArithmetic { op } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("RepairHint", 2)?;
-                s.serialize_field("variant", "use_checked_arithmetic")?;
-                s.serialize_field("op", op)?;
-                s.end()
+            RepairHintWire::UseCheckedArithmetic { op } => Ok(Self::UseCheckedArithmetic { op }),
+            RepairHintWire::RemoveAllowAttribute { attr } => {
+                Ok(Self::RemoveAllowAttribute { attr })
             }
-            RepairHint::RemoveAllowAttribute { attr } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("RepairHint", 2)?;
-                s.serialize_field("variant", "remove_allow_attribute")?;
-                s.serialize_field("attr", attr)?;
-                s.end()
+            RepairHintWire::ReplaceDependency { from, to } => {
+                Ok(Self::ReplaceDependency { from, to })
             }
-            RepairHint::ReplaceDependency { from, to } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("RepairHint", 3)?;
-                s.serialize_field("variant", "replace_dependency")?;
-                s.serialize_field("from", from)?;
-                s.serialize_field("to", to)?;
-                s.end()
-            }
-            RepairHint::RequiresHumanReview { note } => {
-                use serde::ser::SerializeStruct;
-                let mut s = ser.serialize_struct("RepairHint", 2)?;
-                s.serialize_field("variant", "requires_human_review")?;
-                s.serialize_field("note", note)?;
-                s.end()
-            }
+            RepairHintWire::RequiresHumanReview { note } => Ok(Self::RequiresHumanReview { note }),
         }
     }
 }
 
 impl<'de> Deserialize<'de> for RepairHint {
     fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        let value = serde_json::Value::deserialize(de)?;
-        let variant = value
-            .get("variant")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| serde::de::Error::missing_field("variant"))?;
-
-        match variant {
-            "patch" => {
-                #[derive(Deserialize)]
-                struct PatchWire {
-                    file: String,
-                    range: TextRange,
-                    replacement: String,
-                }
-                let p = PatchWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Self::patch(p.file, p.range, p.replacement).map_err(serde::de::Error::custom)
-            }
-            "use_iterator_pipeline" => {
-                #[derive(Deserialize)]
-                struct SuggWire {
-                    suggestion: String,
-                }
-                let s = SuggWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Ok(RepairHint::UseIteratorPipeline { suggestion: s.suggestion })
-            }
-            "flatten_nesting" => {
-                #[derive(Deserialize)]
-                struct SuggWire {
-                    suggestion: String,
-                }
-                let s = SuggWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Ok(RepairHint::FlattenNesting { suggestion: s.suggestion })
-            }
-            "use_checked_arithmetic" => {
-                #[derive(Deserialize)]
-                struct OpWire {
-                    op: String,
-                }
-                let o = OpWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Ok(RepairHint::UseCheckedArithmetic { op: o.op })
-            }
-            "remove_allow_attribute" => {
-                #[derive(Deserialize)]
-                struct AttrWire {
-                    attr: String,
-                }
-                let a = AttrWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Ok(RepairHint::RemoveAllowAttribute { attr: a.attr })
-            }
-            "replace_dependency" => {
-                #[derive(Deserialize)]
-                struct DepWire {
-                    from: String,
-                    to: String,
-                }
-                let d = DepWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Ok(RepairHint::ReplaceDependency { from: d.from, to: d.to })
-            }
-            "requires_human_review" => {
-                #[derive(Deserialize)]
-                struct NoteWire {
-                    note: String,
-                }
-                let n = NoteWire::deserialize(value).map_err(serde::de::Error::custom)?;
-                Ok(RepairHint::RequiresHumanReview { note: n.note })
-            }
-            other => Err(serde::de::Error::unknown_variant(
-                other,
-                &[
-                    "patch",
-                    "use_iterator_pipeline",
-                    "flatten_nesting",
-                    "use_checked_arithmetic",
-                    "remove_allow_attribute",
-                    "replace_dependency",
-                    "requires_human_review",
-                ],
-            )),
-        }
+        RepairHintWire::deserialize(de)?.try_into().map_err(serde::de::Error::custom)
     }
 }
 
@@ -398,8 +330,7 @@ impl Finding {
     /// Construct a [`Finding`].
     ///
     /// # Errors
-    /// - Any error from validating the [`RuleId`], [`Location`], or
-    ///   [`RepairHint`].
+    /// - [`FindingError::EmptyMessage`] if `message` is empty.
     pub fn new(
         lane: Lane,
         rule_id: RuleId,
@@ -408,21 +339,24 @@ impl Finding {
         repair: RepairHint,
         effect: FindingEffect,
     ) -> Result<Self, FindingError> {
-        Ok(Finding { lane, rule_id, location, message, repair, effect })
+        if message.is_empty() {
+            return Err(FindingError::EmptyMessage);
+        }
+        Ok(Self { lane, rule_id, location, message, repair, effect })
     }
 
     #[must_use]
-    pub fn lane(&self) -> Lane {
+    pub const fn lane(&self) -> Lane {
         self.lane
     }
 
     #[must_use]
-    pub fn rule_id(&self) -> &RuleId {
+    pub const fn rule_id(&self) -> &RuleId {
         &self.rule_id
     }
 
     #[must_use]
-    pub fn location(&self) -> &Location {
+    pub const fn location(&self) -> &Location {
         &self.location
     }
 
@@ -432,12 +366,12 @@ impl Finding {
     }
 
     #[must_use]
-    pub fn repair(&self) -> &RepairHint {
+    pub const fn repair(&self) -> &RepairHint {
         &self.repair
     }
 
     #[must_use]
-    pub fn effect(&self) -> FindingEffect {
+    pub const fn effect(&self) -> FindingEffect {
         self.effect
     }
 
@@ -455,7 +389,7 @@ impl Finding {
 
     /// Whether this finding has an auto-applicable repair.
     #[must_use]
-    pub fn has_auto_repair(&self) -> bool {
+    pub const fn has_auto_repair(&self) -> bool {
         self.repair.is_auto_applicable()
     }
 }

@@ -6,6 +6,8 @@
 //! the matching Moon task in `.moon/tasks/all.yml`.
 //!
 //! Exit codes: 0 = clean, 1 = violations, 2 = usage, 3 = upstream failure.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
@@ -72,7 +74,7 @@ enum LaneInput {
 
 impl From<io::Error> for LaneError {
     fn from(err: io::Error) -> Self {
-        LaneError::Failure(format!("io error: {err}"))
+        Self::Failure(format!("io error: {err}"))
     }
 }
 

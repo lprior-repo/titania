@@ -13,6 +13,8 @@
 //!    version exits 1 unconditionally; we surface `LaneExit::Failure`).
 //! 3. Otherwise `cd` into the proof directory and run `lake build`,
 //!    propagating the child's exit code.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

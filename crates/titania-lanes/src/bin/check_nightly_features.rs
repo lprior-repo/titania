@@ -20,6 +20,8 @@
 //! File enumeration mirrors the bash's `rg --files` call: `*.rs` only,
 //! excluding `target/`, `.git/`, `.beads/`, `vb-*/`, `arch-drift-*/`,
 //! `**/target/**`, `**/generated-build/**`, `**/build-output/**`.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
@@ -174,7 +176,7 @@ fn collect_accumulated_line(
     buf.push(' ');
     buf.push_str(trimmed);
     push_closed_feature(collector.first_line_of_attr, buf, out);
-    if buf.find(")]").is_some() {
+    if buf.contains(")]") {
         collector.accumulating = None;
     }
     true

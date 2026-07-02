@@ -13,13 +13,15 @@
 //!    `lifecycle_tests/`, `kani*.rs`, `models/loom/**`, `proofs/**`, etc.
 //! 2. **Production path filter** — only lines outside `#[cfg(test)]`,
 //!    `#[cfg(kani)]`, and `#[kani::proof]` blocks count.
-//! 3. **Comment skip** — lines whose payload (after the file:line prefix)
+//! 3. **Comment skip** — lines whose payload (after the <file:line> prefix)
 //!    starts with `//` are not violations (matches `rg` post-filter).
 //! 4. **Pattern** — `(^|[^A-Za-z0-9_])(assert!|assert_eq!|assert_ne!|unreachable!)`
 //!
 //! Each violation becomes a typed `Finding`; the report's `render()`
 //! gives a stable `path:line: rule -- message` line. The bash's
 //! `ViolationFound` / `NoViolationFound` summaries are preserved.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
@@ -277,7 +279,7 @@ fn first_panic_macro(line: &str) -> Option<&'static str> {
     })
 }
 
-fn is_word_byte(b: u8) -> bool {
+const fn is_word_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 

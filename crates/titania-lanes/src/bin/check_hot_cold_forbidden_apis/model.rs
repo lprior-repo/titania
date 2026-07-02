@@ -1,8 +1,8 @@
 use std::convert::TryFrom;
 
-pub(super) const HOT_CRATES: &[&str] = &["titania-core", "titania-lanes"];
+pub(crate) const HOT_CRATES: &[&str] = &["titania-core", "titania-lanes"];
 
-pub(super) const COLD_MARKERS: &[&str] = &[
+pub(crate) const COLD_MARKERS: &[&str] = &[
     "diagnostic",
     "diagnostics",
     "fixture",
@@ -21,7 +21,7 @@ pub(super) const COLD_MARKERS: &[&str] = &[
 ];
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(super) struct FindingData {
+pub(crate) struct FindingData {
     pub(super) rel_path: String,
     pub(super) line_no: usize,
     pub(super) class_id: &'static str,
@@ -35,7 +35,7 @@ impl FindingData {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum SourceRole {
+pub(crate) enum SourceRole {
     HotProduction,
     LaneBinary,
     Test,

@@ -253,7 +253,7 @@ impl ForbiddenToken {
     }
 }
 
-fn is_word_byte(b: u8) -> bool {
+const fn is_word_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 

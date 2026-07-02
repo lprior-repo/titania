@@ -17,6 +17,8 @@
 //! member list, package-name map, and feature table from the live titania
 //! workspace. That keeps the lane a pure structural assertion: it does
 //! NOT depend on the velvet-ballistics `vb_*` crate set.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

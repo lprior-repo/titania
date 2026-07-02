@@ -10,7 +10,7 @@ use crate::{
     syntax::{ApiSourceLine, compact, remove_spaces},
 };
 
-pub(super) fn scan(
+pub(crate) fn scan(
     root: &Path,
 ) -> Result<(Vec<String>, Vec<FindingData>, Vec<FindingData>), String> {
     let allowed = load_allow_file(root)?;
@@ -28,7 +28,7 @@ struct ScanState {
 }
 
 impl ScanState {
-    fn new(allowed: BTreeSet<(String, String)>) -> Self {
+    const fn new(allowed: BTreeSet<(String, String)>) -> Self {
         Self { allowed, classified: Vec::new(), violations: Vec::new(), justified: Vec::new() }
     }
 
@@ -39,7 +39,7 @@ impl ScanState {
     fn scan_source(&mut self, root: &Path, source: &Path) -> Result<(), String> {
         let rel_path = relative_path(root, source);
         let role = source_role(&rel_path);
-        self.classified.push(format!("ClassifiedPath|{:?}|{}", role, rel_path));
+        self.classified.push(format!("ClassifiedPath|{role:?}|{rel_path}"));
         if role != SourceRole::HotProduction {
             return Ok(());
         }

@@ -1,19 +1,19 @@
 use std::collections::BTreeSet;
 
-pub(super) fn extract_enum_variants(text: &str, name: &str) -> BTreeSet<String> {
+pub(crate) fn extract_enum_variants(text: &str, name: &str) -> BTreeSet<String> {
     let Some(body) = extract_enum_body(text, name) else {
         return BTreeSet::new();
     };
     body.lines().filter_map(|line| extract_variant(line, name)).collect()
 }
 
-pub(super) fn find_function_body(text: &str, fn_name: &str) -> Option<String> {
+pub(crate) fn find_function_body(text: &str, fn_name: &str) -> Option<String> {
     function_patterns(fn_name).iter().find_map(|pattern| {
         text.find(pattern.as_str()).and_then(|start| balanced_item(text, start))
     })
 }
 
-pub(super) fn collect_qualified_refs(text: &str, type_name: &str) -> BTreeSet<String> {
+pub(crate) fn collect_qualified_refs(text: &str, type_name: &str) -> BTreeSet<String> {
     let needle = format!("{type_name}::");
     let mut out = BTreeSet::new();
     let mut cursor = 0;
@@ -25,7 +25,7 @@ pub(super) fn collect_qualified_refs(text: &str, type_name: &str) -> BTreeSet<St
 }
 
 fn extract_enum_body(text: &str, name: &str) -> Option<String> {
-    let marker = format!("pub enum {name}");
+    let marker = format!("pub(super) enum {name}");
     text.find(&marker).and_then(|start| balanced_item(text, start))
 }
 
@@ -43,7 +43,7 @@ fn balanced_item(text: &str, start: usize) -> Option<String> {
     None
 }
 
-fn consume_body_byte(byte: u8, depth: &mut i32, started: &mut bool) -> bool {
+const fn consume_body_byte(byte: u8, depth: &mut i32, started: &mut bool) -> bool {
     if byte == b'{' {
         *depth = depth.saturating_add(1);
         *started = true;
@@ -73,8 +73,8 @@ fn valid_variant_name(name: &str, enum_name: &str) -> bool {
 
 fn function_patterns(fn_name: &str) -> [String; 4] {
     [
-        format!("pub fn {fn_name}("),
-        format!("pub fn {fn_name}<"),
+        format!("pub(super) fn {fn_name}("),
+        format!("pub(super) fn {fn_name}<"),
         format!("fn {fn_name}("),
         format!("fn {fn_name}<"),
     ]

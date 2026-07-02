@@ -1,4 +1,6 @@
 //! Dispatcher for fast | standard | deep | proof Rust verification lanes.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -224,7 +226,7 @@ fn run_proof_steps(
     merge(drift, admission)
 }
 
-fn label(m: Mode) -> &'static str {
+const fn label(m: Mode) -> &'static str {
     match m {
         Mode::Fast => "fast",
         Mode::Standard => "standard",
@@ -251,15 +253,14 @@ fn step<F: FnOnce() -> LaneExit>(report: &mut LaneReport, label: &str, f: F) -> 
     }
 }
 
-fn merge(left: LaneExit, right: LaneExit) -> LaneExit {
+const fn merge(left: LaneExit, right: LaneExit) -> LaneExit {
     match (left, right) {
         (LaneExit::Failure | LaneExit::Usage, _) | (_, LaneExit::Failure | LaneExit::Usage) => {
             LaneExit::Failure
         }
         (LaneExit::Violations, _) | (_, LaneExit::Violations) => LaneExit::Violations,
-        (LaneExit::Clean, LaneExit::Clean)
-        | (LaneExit::Clean, LaneExit::NotApplicable)
-        | (LaneExit::NotApplicable, LaneExit::Clean) => LaneExit::Clean,
+        (LaneExit::Clean | LaneExit::NotApplicable, LaneExit::Clean)
+        | (LaneExit::Clean, LaneExit::NotApplicable) => LaneExit::Clean,
         (LaneExit::NotApplicable, LaneExit::NotApplicable) => LaneExit::NotApplicable,
     }
 }

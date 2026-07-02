@@ -3,7 +3,7 @@ use std::{io::ErrorKind, path::PathBuf};
 use titania_core::TargetProject;
 
 #[derive(Clone, Copy)]
-pub(super) struct TargetRelativePath {
+pub(crate) struct TargetRelativePath {
     value: &'static str,
 }
 
@@ -21,19 +21,19 @@ impl TargetRelativePath {
     }
 }
 
-pub(super) struct Oracle {
+pub(crate) struct Oracle {
     pub(super) path: TargetRelativePath,
     pub(super) function: &'static str,
 }
 
-pub(super) struct Check {
+pub(crate) struct Check {
     pub(super) type_name: &'static str,
     pub(super) enum_path: TargetRelativePath,
     pub(super) domain_label: &'static str,
     pub(super) oracles: &'static [Oracle],
 }
 
-pub(super) enum DomainFile {
+pub(crate) enum DomainFile {
     Present(String),
     Absent,
     Unreadable(ErrorKind),
@@ -68,7 +68,7 @@ const VALIDATION_ORACLES: &[Oracle] = &[Oracle {
     function: "assert_typed_validation_error",
 }];
 
-pub(super) const CHECKS: &[Check] = &[
+pub(crate) const CHECKS: &[Check] = &[
     Check {
         type_name: "JournalError",
         enum_path: TargetRelativePath::new("crates/vb_storage/src/error/mod.rs"),

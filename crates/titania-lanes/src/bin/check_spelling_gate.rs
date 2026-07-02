@@ -21,6 +21,8 @@
 //!
 //! File extensions match the bash: `*.rs`, `*.toml`, `*.yaml`, `*.yml`,
 //! `*.md`, `*.sh`, `*.py`.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

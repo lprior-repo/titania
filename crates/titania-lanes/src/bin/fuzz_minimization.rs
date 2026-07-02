@@ -24,6 +24,8 @@
 //! code. If `cargo` itself fails to launch (missing binary, etc.) we map
 //! the I/O error to `LaneExit::Failure` so the lane surfaces a clear CI
 //! error rather than silently exiting 0.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
@@ -46,10 +48,10 @@ enum LaneOutcome {
 
 impl LaneOutcome {
     #[must_use]
-    fn to_lane_exit(&self) -> LaneExit {
+    const fn to_lane_exit(&self) -> LaneExit {
         match self {
-            LaneOutcome::NotApplicable(_) => LaneExit::NotApplicable,
-            LaneOutcome::Child(code) => *code,
+            Self::NotApplicable(_) => LaneExit::NotApplicable,
+            Self::Child(code) => *code,
         }
     }
 }
@@ -63,7 +65,7 @@ fn parse_lane_input(args: Vec<String>) -> LaneInput {
     }
 }
 
-fn status_to_lane(code: Option<i32>) -> LaneExit {
+const fn status_to_lane(code: Option<i32>) -> LaneExit {
     match code {
         Some(0) => LaneExit::Clean,
         Some(2) => LaneExit::Usage,

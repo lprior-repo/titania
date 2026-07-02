@@ -32,15 +32,15 @@ pub(super) fn check_workspace_members(root: &Path, report: &mut LaneReport) {
     };
     let actual = quoted_array_values(&manifest, "members");
     report.record_scan();
-    if !actual.is_empty() {
-        eprintln!("[check-workspace-assertions] workspace members: {actual:?}");
-    } else {
+    if actual.is_empty() {
         report.push(Finding::new(
             RULE_MEMBERS,
             "Cargo.toml",
             0,
             "Cargo.toml: workspace.members is empty or missing",
         ));
+    } else {
+        eprintln!("[check-workspace-assertions] workspace members: {actual:?}");
     }
 }
 

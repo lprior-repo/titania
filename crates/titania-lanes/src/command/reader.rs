@@ -73,10 +73,7 @@ pub(super) fn drain_after_termination(
 }
 
 pub(super) fn remaining_budget(started: Instant, budget: Duration) -> Duration {
-    match budget.checked_sub(started.elapsed()) {
-        Some(remaining) => remaining,
-        None => Duration::ZERO,
-    }
+    budget.checked_sub(started.elapsed()).map_or(Duration::ZERO, |remaining| remaining)
 }
 
 pub(super) fn duration_millis(duration: Duration) -> u64 {

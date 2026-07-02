@@ -7,6 +7,8 @@
 
 #![allow(clippy::needless_borrow)]
 #![allow(clippy::useless_vec)]
+#![allow(clippy::default_numeric_fallback)]
+#![allow(clippy::unwrap_used)]
 
 use titania_core::{Digest, RuleId, TextRange, WorkspacePath};
 

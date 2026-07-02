@@ -64,7 +64,7 @@ impl Report {
         if code_findings.is_empty() && gate_failures.is_empty() {
             return Err(ReportError::EmptyReject);
         }
-        Ok(Report::Reject { code_findings, gate_failures, per_lane })
+        Ok(Self::Reject { code_findings, gate_failures, per_lane })
     }
     /// Create a `Report::Pass`.
     ///
@@ -77,7 +77,18 @@ impl Report {
         if per_lane.is_empty() {
             return Err(ReportError::EmptyPerLane);
         }
-        Ok(Report::Pass { receipt, per_lane })
+        Ok(Self::Pass { receipt, per_lane })
+    }
+    /// Create a `Report::PolicyError`.
+    #[must_use]
+    pub const fn policy_error(diagnostics: Box<[PolicyDiagnostic]>) -> Self {
+        Self::PolicyError { diagnostics }
+    }
+
+    /// Create a `Report::InputError`.
+    #[must_use]
+    pub const fn input_error(diagnostics: Box<[InputDiagnostic]>) -> Self {
+        Self::InputError { diagnostics }
     }
 
     /// Classify the reject kind, if this report is a reject.
@@ -87,7 +98,7 @@ impl Report {
     #[must_use]
     pub fn reject_kind(&self) -> Option<RejectKind> {
         match self {
-            Report::Reject { code_findings, gate_failures, .. } => {
+            Self::Reject { code_findings, gate_failures, .. } => {
                 match (code_findings.is_empty(), gate_failures.is_empty()) {
                     (false, true) => Some(RejectKind::CodeOnly),
                     (true, false) => Some(RejectKind::GateOnly),
@@ -101,33 +112,33 @@ impl Report {
 
     /// Whether this report represents a pass.
     #[must_use]
-    pub fn is_pass(&self) -> bool {
-        matches!(self, Report::Pass { .. })
+    pub const fn is_pass(&self) -> bool {
+        matches!(self, Self::Pass { .. })
     }
 
     /// Whether this report represents a reject.
     #[must_use]
-    pub fn is_reject(&self) -> bool {
-        matches!(self, Report::Reject { .. })
+    pub const fn is_reject(&self) -> bool {
+        matches!(self, Self::Reject { .. })
     }
 
     /// Whether this report is a policy error.
     #[must_use]
-    pub fn is_policy_error(&self) -> bool {
-        matches!(self, Report::PolicyError { .. })
+    pub const fn is_policy_error(&self) -> bool {
+        matches!(self, Self::PolicyError { .. })
     }
 
     /// Whether this report is an input error.
     #[must_use]
-    pub fn is_input_error(&self) -> bool {
-        matches!(self, Report::InputError { .. })
+    pub const fn is_input_error(&self) -> bool {
+        matches!(self, Self::InputError { .. })
     }
 
     /// If this is a reject, return the code findings.
     #[must_use]
     pub fn code_findings(&self) -> Option<&[Finding]> {
         match self {
-            Report::Reject { code_findings, .. } => Some(code_findings),
+            Self::Reject { code_findings, .. } => Some(code_findings),
             _ => None,
         }
     }
@@ -136,7 +147,7 @@ impl Report {
     #[must_use]
     pub fn gate_failures(&self) -> Option<&[LaneFailure]> {
         match self {
-            Report::Reject { gate_failures, .. } => Some(gate_failures),
+            Self::Reject { gate_failures, .. } => Some(gate_failures),
             _ => None,
         }
     }

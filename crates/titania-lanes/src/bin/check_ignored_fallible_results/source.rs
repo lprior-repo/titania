@@ -1,14 +1,14 @@
 use std::{iter::Peekable, str::Chars};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum LineKind {
+pub(crate) enum LineKind {
     NonCode,
     Signature,
     Expression,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct SourceLine {
+pub(crate) struct SourceLine {
     code: String,
     kind: LineKind,
 }
@@ -47,13 +47,13 @@ fn classify_kind(trimmed: &str) -> LineKind {
 fn is_signature_line(trimmed: &str) -> bool {
     let looks_like_fn = [
         "fn ",
-        "pub fn ",
-        "pub(crate) fn ",
+        "pub(super) fn ",
+        "pub(super) fn ",
         "pub(super) fn ",
         "async fn ",
-        "pub async fn ",
+        "pub(super) async fn ",
         "const fn ",
-        "pub const fn ",
+        "pub(super) const fn ",
     ]
     .iter()
     .any(|prefix| trimmed.starts_with(prefix));
@@ -83,7 +83,7 @@ impl StripState {
         true
     }
 
-    fn consume_string(&mut self, ch: char) -> bool {
+    const fn consume_string(&mut self, ch: char) -> bool {
         if !self.in_string {
             return false;
         }

@@ -32,21 +32,21 @@ enum NotApplicableReason {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct BindingSummary {
-    pub(crate) strong: u32,
-    pub(crate) weak: u32,
-    pub(crate) not_applicable: u32,
-    pub(crate) vacuum: u32,
+    pub(super) strong: u32,
+    pub(super) weak: u32,
+    pub(super) not_applicable: u32,
+    pub(super) vacuum: u32,
 }
 
 impl BindingSummary {
-    fn record_binding(&mut self, binding: &Binding) {
+    const fn record_binding(&mut self, binding: &Binding) {
         match binding {
             Binding::Strong => self.strong = self.strong.saturating_add(1),
             Binding::Weak => self.weak = self.weak.saturating_add(1),
         }
     }
 
-    fn record_not_applicable(&mut self, reason: &NotApplicableReason) {
+    const fn record_not_applicable(&mut self, reason: &NotApplicableReason) {
         match reason {
             NotApplicableReason::FixtureSmoke | NotApplicableReason::NoVerusDirectory => {
                 self.not_applicable = self.not_applicable.saturating_add(1);
@@ -54,7 +54,7 @@ impl BindingSummary {
         }
     }
 
-    fn record_vacuum(&mut self) {
+    const fn record_vacuum(&mut self) {
         self.vacuum = self.vacuum.saturating_add(1);
     }
 }
@@ -175,7 +175,7 @@ fn record_proof_scan(
     }
 }
 
-fn binding_message(binding: &Binding) -> &'static str {
+const fn binding_message(binding: &Binding) -> &'static str {
     match binding {
         Binding::Strong => "STRONG direct crates/ binding",
         Binding::Weak => "WEAK production_inner/ mirror",
@@ -215,7 +215,7 @@ fn classify(rel: &str, text: &str) -> ProofScan {
             ProofScan::Binding(Binding::Weak)
         }
         (Some(_), true) => ProofScan::Binding(Binding::Weak),
-        (Some(_), false) | (None, true) | (None, false) => ProofScan::Vacuum,
+        (Some(_) | None, false) | (None, true) => ProofScan::Vacuum,
     }
 }
 

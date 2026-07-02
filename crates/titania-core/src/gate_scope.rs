@@ -35,9 +35,9 @@ impl GateScope {
     /// The slice is ordered so that lanes which depend on prior lanes
     /// (e.g. `Test` depends on `Compile`) appear after their prerequisites.
     #[must_use]
-    pub fn lanes(&self) -> &'static [Lane] {
+    pub const fn lanes(self) -> &'static [Lane] {
         match self {
-            GateScope::Edit => &[
+            Self::Edit => &[
                 Lane::Fmt,
                 Lane::Compile,
                 Lane::Clippy,
@@ -46,7 +46,7 @@ impl GateScope {
                 Lane::PanicScan,
                 Lane::PolicyScan,
             ],
-            GateScope::Prepush => &[
+            Self::Prepush => &[
                 Lane::Fmt,
                 Lane::Compile,
                 Lane::Clippy,
@@ -57,7 +57,7 @@ impl GateScope {
                 Lane::Test,
                 Lane::Deny,
             ],
-            GateScope::Release => &[
+            Self::Release => &[
                 Lane::Fmt,
                 Lane::Compile,
                 Lane::Clippy,
@@ -78,9 +78,9 @@ impl core::str::FromStr for GateScope {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "edit" => Ok(GateScope::Edit),
-            "prepush" => Ok(GateScope::Prepush),
-            "release" => Ok(GateScope::Release),
+            "edit" => Ok(Self::Edit),
+            "prepush" => Ok(Self::Prepush),
+            "release" => Ok(Self::Release),
             _ => Err(GateScopeError::UnknownScope(s.to_owned())),
         }
     }

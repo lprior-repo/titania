@@ -7,6 +7,8 @@
 //!
 //! Exit codes: 0 = all benches produced non-empty `.perf.log` files or the
 //! lane is not applicable, 1 = perf log empty, 2 = usage error, 3 = missing perf binary.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

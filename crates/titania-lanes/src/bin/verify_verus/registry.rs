@@ -19,7 +19,7 @@ pub(crate) struct ProofTarget {
 
 impl ProofTarget {
     #[must_use]
-    pub(crate) fn path(&self) -> &str {
+    pub(super) fn path(&self) -> &str {
         &self.path
     }
 }

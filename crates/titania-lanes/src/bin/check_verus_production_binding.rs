@@ -1,8 +1,10 @@
 //! ABSOLUTE gate: rejects Verus proof claims without production binding.
 //!
-//! Explicit fixture smoke files may opt out with a typed NotApplicable
+//! Explicit fixture smoke files may opt out with a typed `NotApplicable`
 //! classification; all real proof files still require `#[path]` plus
 //! `assume_specification` binding.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

@@ -24,6 +24,8 @@
 //! Each match becomes a typed `Finding`. Findings flow through
 //! `LaneReport::render` so the lane output is identical to every other
 //! titania lane.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

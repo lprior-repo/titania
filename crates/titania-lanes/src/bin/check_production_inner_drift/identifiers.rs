@@ -191,7 +191,7 @@ fn strip_noise(text: &str) -> String {
         out.push_str(stripped);
         out.push('\n');
     });
-    out.replace("pub(crate)", "pub").replace("#![from]", "(")
+    out.replace("pub(super)", "pub").replace("#![from]", "(")
 }
 
 fn is_pure_lowercase(s: &str) -> bool {

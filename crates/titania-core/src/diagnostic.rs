@@ -28,8 +28,29 @@ pub struct PolicyDiagnostic {
 impl PolicyDiagnostic {
     /// Construct a new policy diagnostic.
     #[must_use]
-    pub fn new(message: String, file: Option<WorkspacePath>, severity: DiagnosticSeverity) -> Self {
-        PolicyDiagnostic { message, file, severity }
+    pub const fn new(
+        message: String,
+        file: Option<WorkspacePath>,
+        severity: DiagnosticSeverity,
+    ) -> Self {
+        Self { message, file, severity }
+    }
+    /// Diagnostic message.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Optional policy file location.
+    #[must_use]
+    pub const fn file(&self) -> Option<&WorkspacePath> {
+        self.file.as_ref()
+    }
+
+    /// Diagnostic severity.
+    #[must_use]
+    pub const fn severity(&self) -> DiagnosticSeverity {
+        self.severity
     }
 
     /// Whether this is an error-level diagnostic.
@@ -56,8 +77,25 @@ pub struct InputDiagnostic {
 impl InputDiagnostic {
     /// Construct a new input diagnostic.
     #[must_use]
-    pub fn new(message: String, tool: Option<String>, severity: DiagnosticSeverity) -> Self {
-        InputDiagnostic { message, tool, severity }
+    pub const fn new(message: String, tool: Option<String>, severity: DiagnosticSeverity) -> Self {
+        Self { message, tool, severity }
+    }
+    /// Diagnostic message.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Optional tool that produced the diagnostic.
+    #[must_use]
+    pub fn tool(&self) -> Option<&str> {
+        self.tool.as_deref()
+    }
+
+    /// Diagnostic severity.
+    #[must_use]
+    pub const fn severity(&self) -> DiagnosticSeverity {
+        self.severity
     }
 
     /// Whether this is an error-level diagnostic.

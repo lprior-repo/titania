@@ -9,6 +9,10 @@
 #![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::type_complexity)]
 #![allow(clippy::map_identity)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::default_numeric_fallback)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::used_underscore_binding)]
 
 use proptest::prelude::*;
 

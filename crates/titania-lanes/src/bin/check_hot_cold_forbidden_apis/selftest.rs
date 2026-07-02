@@ -6,7 +6,7 @@ use std::{
 
 use crate::scan::scan;
 
-pub(super) fn self_test() -> i32 {
+pub(crate) fn self_test() -> i32 {
     let root = fixture_root();
     if let Err(error) = reset_fixture(&root) {
         eprintln!("FixtureFailure: cleanup failed: {error}");
@@ -56,9 +56,9 @@ fn write_fixtures(root: &Path) -> io::Result<()> {
     let cold = root.join("crates/titania-core/src/diagnostic.rs");
     write_fixture(
         &hot,
-        "pub fn bad() { println!(\"x\"); let _m: HashMap<String, u8> = HashMap::new(); let _c = std::sync::mpsc::channel(); }\n",
+        "pub(super) fn bad() { println!(\"x\"); let _m: HashMap<String, u8> = HashMap::new(); let _c = std::sync::mpsc::channel(); }\n",
     )?;
-    write_fixture(&cold, "pub fn ok() { println!(\"diagnostic only\"); }\n")
+    write_fixture(&cold, "pub(super) fn ok() { println!(\"diagnostic only\"); }\n")
 }
 
 fn missing_required_classes(root: &Path) -> Result<Vec<&'static str>, String> {

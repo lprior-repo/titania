@@ -202,11 +202,11 @@ impl<'a> SpellingRule<'a> {
         Ok(Self { bad, good })
     }
 
-    fn bad(&self) -> &str {
+    const fn bad(&self) -> &str {
         self.bad
     }
 
-    fn good(&self) -> &str {
+    const fn good(&self) -> &str {
         self.good
     }
 }

@@ -7,6 +7,8 @@
 //!
 //! Exit codes: 0 = clean or not applicable, 1 = parse/exec failure,
 //! 2 = usage error.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

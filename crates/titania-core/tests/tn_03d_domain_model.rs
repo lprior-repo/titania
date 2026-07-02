@@ -3,6 +3,8 @@
 //! Covers: serde round-trips, constructor validation, invariants,
 //! Acceptance criteria from bead tn-03d §4.
 
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![allow(clippy::as_conversions)]
 #![allow(clippy::useless_vec)]
 #![allow(clippy::arithmetic_side_effects)]
@@ -34,7 +36,7 @@ fn lane_all_10_variants_constructible() {
     ];
     for name in names {
         let lane = name.parse::<Lane>();
-        assert!(lane.is_ok(), "Lane::{} should parse", name);
+        assert!(lane.is_ok(), "Lane::{name} should parse");
     }
 }
 
@@ -279,7 +281,7 @@ fn make_quality_receipt() -> QualityReceipt {
         digest.clone(),
         digest.clone(),
         digest.clone(),
-        digest.clone(),
+        digest,
         Box::new([]),
     )
 }
@@ -581,7 +583,7 @@ fn quality_receipt_constructs() {
         digest.clone(),
         digest.clone(),
         digest.clone(),
-        digest.clone(),
+        digest,
         Box::new([]),
     );
     assert_eq!(receipt.schema_version, 1);
@@ -614,7 +616,7 @@ fn quality_receipt_serde_round_trip() {
         digest.clone(),
         digest.clone(),
         digest.clone(),
-        digest.clone(),
+        digest,
         Box::new([lr]),
     );
     let json = serde_json::to_string(&receipt).unwrap();

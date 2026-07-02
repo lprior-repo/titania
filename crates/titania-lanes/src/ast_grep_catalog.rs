@@ -178,7 +178,11 @@ pub const fn embedded_rules() -> &'static [AstGrepRule] {
 /// Raw checked-in YAML sources embedded by the binary.
 #[must_use]
 pub const fn embedded_rule_sources() -> &'static [(&'static str, &'static str)] {
-    &[("functional.yml", FUNCTIONAL_YAML), ("bypass.yml", BYPASS_YAML), ("architecture.yml", ARCHITECTURE_YAML)]
+    &[
+        ("functional.yml", FUNCTIONAL_YAML),
+        ("bypass.yml", BYPASS_YAML),
+        ("architecture.yml", ARCHITECTURE_YAML),
+    ]
 }
 
 /// Deterministic scanner for contract fixtures.
@@ -213,7 +217,12 @@ fn finding_message(rule: AstGrepRule) -> String {
     format!("{}; fix: {}", rule.message(), rule.repair_hint())
 }
 
-fn line_matches_rule(path: &str, line: &str, rule: AstGrepRule, policy: ArchitecturePolicy) -> bool {
+fn line_matches_rule(
+    path: &str,
+    line: &str,
+    rule: AstGrepRule,
+    policy: ArchitecturePolicy,
+) -> bool {
     match rule.id() {
         "FUNC_LOOPS_FOR" => contains_code(line, "for ") && line.contains(" in "),
         "FUNC_LOOPS_WHILE" => contains_code(line, "while "),
@@ -224,16 +233,23 @@ fn line_matches_rule(path: &str, line: &str, rule: AstGrepRule, policy: Architec
         "BYPASS_EXPECT_ATTR" => contains_code(line, "#[expect("),
         "FUNC_WILDCARD_IMPORT" => contains_code(line, "::*"),
         "ARCHITECTURE_IMPORT_CORE_INFRA" => policy.is_core_path(path) && infra_import(line, policy),
-        "ARCHITECTURE_IMPORT_CORE_FS" => policy.is_core_path(path) && contains_code(line, "std::fs"),
-        "ARCHITECTURE_IMPORT_CORE_TIME" => policy.is_core_path(path) && contains_code(line, "std::time"),
-        "ARCHITECTURE_IMPORT_CORE_RANDOM" => policy.is_core_path(path) && contains_code(line, "rand::"),
+        "ARCHITECTURE_IMPORT_CORE_FS" => {
+            policy.is_core_path(path) && contains_code(line, "std::fs")
+        }
+        "ARCHITECTURE_IMPORT_CORE_TIME" => {
+            policy.is_core_path(path) && contains_code(line, "std::time")
+        }
+        "ARCHITECTURE_IMPORT_CORE_RANDOM" => {
+            policy.is_core_path(path) && contains_code(line, "rand::")
+        }
         _ => false,
     }
 }
 
 fn infra_import(line: &str, policy: ArchitecturePolicy) -> bool {
     policy.infra_crates.iter().any(|crate_name| {
-        contains_code(line, &format!("use {crate_name}")) || contains_code(line, &format!("{crate_name}::"))
+        contains_code(line, &format!("use {crate_name}"))
+            || contains_code(line, &format!("{crate_name}::"))
     })
 }
 
@@ -251,7 +267,8 @@ fn core_dir_matches(path: &str, dir: &str) -> bool {
 fn matches_core_crate(path: &str) -> bool {
     path.strip_prefix("crates/").is_some_and(|rest| {
         rest.split_once('/').is_some_and(|(crate_name, after_crate)| {
-            crate_name.ends_with("-core") && (after_crate == "src" || after_crate.starts_with("src/"))
+            crate_name.ends_with("-core")
+                && (after_crate == "src" || after_crate.starts_with("src/"))
         })
     })
 }

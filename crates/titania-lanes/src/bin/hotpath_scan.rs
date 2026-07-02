@@ -4,6 +4,8 @@
 //! `velvet-ballistics/scripts/hotpath-scan.sh`. Run via
 //! `cargo run --bin hotpath_scan --` from the repository root or via the
 //! matching Moon task in `.moon/tasks/all.yml`.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

@@ -15,9 +15,9 @@ fn lane_digest() -> Result<LaneDigest, ReceiptError> {
     LaneDigest::new(LaneName::new("fmt")?, ReceiptLaneExit::Clean, 3, 3, 0)
 }
 
-fn receipt(target: TargetProject) -> Result<ReceiptEnvelope, ReceiptError> {
+fn receipt(target: &TargetProject) -> Result<ReceiptEnvelope, ReceiptError> {
     ReceiptEnvelope::new(
-        &target,
+        target,
         ReceiptPeriod::new(10, 12)?,
         vec![lane_digest()?],
         ReceiptDigests::new(
@@ -34,7 +34,7 @@ fn receipt_round_trip_preserves_all_fields() -> TestResult {
     let temp = tempfile::tempdir()?;
     fs::write(temp.path().join("Cargo.toml"), "[package]\nname = \"demo\"\n")?;
     let target = target_project(temp.path())?;
-    let receipt = receipt(target)?;
+    let receipt = receipt(&target)?;
 
     let json = serde_json::to_string(&receipt)?;
     assert!(json.contains("\"schema_version\":2"));
@@ -59,7 +59,7 @@ fn receipt_deserialize_rejects_schema_before_target_root() -> TestResult {
     let temp = tempfile::tempdir()?;
     fs::write(temp.path().join("Cargo.toml"), "[package]\nname = \"demo\"\n")?;
     let target = target_project(temp.path())?;
-    let valid = receipt(target)?;
+    let valid = receipt(&target)?;
     let mut value = serde_json::to_value(valid)?;
     value["schema_version"] = serde_json::Value::from(1_u32);
 
@@ -90,7 +90,7 @@ fn receipt_deserialize_rejects_lane_digest_passed_above_scanned() -> TestResult 
     let temp = tempfile::tempdir()?;
     fs::write(temp.path().join("Cargo.toml"), "[package]\nname = \"demo\"\n")?;
     let target = target_project(temp.path())?;
-    let valid = receipt(target)?;
+    let valid = receipt(&target)?;
     let mut value = serde_json::to_value(valid)?;
     value["lane_results"][0]["scanned"] = serde_json::Value::from(1_u32);
     value["lane_results"][0]["passed"] = serde_json::Value::from(2_u32);

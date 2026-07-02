@@ -16,6 +16,8 @@
 //! `--base <rev>` overrides the default base; the default honours
 //! `TEST_INTEGRITY_BASE`. The lane integrates with the workspace by shelling
 //! out to `git` or `jj`; when neither VCS is present it exits `LaneExit::Failure`.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

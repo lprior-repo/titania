@@ -118,6 +118,8 @@ pub enum LocationError {
     EndBeforeStart { line_start: u32, line_end: u32 },
     #[error("col_end ({col_end}) must be >= col_start ({col_start})")]
     ColEndBeforeStart { col_start: u32, col_end: u32 },
+    #[error("location is not a source span")]
+    NotSpan,
 }
 
 /// Errors produced by [`crate::RepairHint::patch`].
@@ -130,6 +132,8 @@ pub enum RepairHintError {
 /// Errors produced by [`crate::Finding::new`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum FindingError {
+    #[error("finding message must not be empty")]
+    EmptyMessage,
     #[error(transparent)]
     Location(#[from] LocationError),
     #[error(transparent)]
@@ -152,6 +156,8 @@ pub enum OutcomeError {
     Argv0Mismatch { expected: String, found: String },
     #[error("exit status must be Exited(0) for Clean lanes")]
     NonZeroExit,
+    #[error("unknown skip reason: {0}")]
+    UnknownSkipReason(String),
 }
 
 /// Errors produced by [`crate::Report::reject`] and [`crate::Report::pass`].

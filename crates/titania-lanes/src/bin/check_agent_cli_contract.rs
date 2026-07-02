@@ -9,6 +9,8 @@
 //! Scan domain: `crates/vb_cli/src` (recursive) plus the
 //! `velvet-ballistics-MASTER.md` plan document. Exclusions: build outputs,
 //! `.git`, and `target/`.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

@@ -4,6 +4,8 @@
 //! `velvet-ballistics/scripts/check-source-length.sh`. Run via
 //! `cargo run --bin check-source-length --` from the repository root or via the
 //! matching Moon task in `.moon/tasks/all.yml`.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
@@ -81,7 +83,7 @@ mod tests {
     }
 
     fn long_source(lines: usize) -> String {
-        (0..lines).map(|idx| format!("pub const L{idx}: usize = {idx};\n")).collect()
+        (0..lines).map(|idx| format!("pub(crate) const L{idx}: usize = {idx};\n")).collect()
     }
 
     fn long_function() -> String {

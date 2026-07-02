@@ -5,6 +5,8 @@
 //! `cargo run --bin check-hot-cold-forbidden-apis -- [--self-test]` from
 //! the repository root, or via the matching Moon task in
 //! `.moon/tasks/all.yml`.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

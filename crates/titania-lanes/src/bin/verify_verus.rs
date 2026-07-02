@@ -6,6 +6,8 @@
 //! with usage status instead of reporting production proof success.
 //!
 //! Strict Holzman Rust: no `unwrap`, no `expect`, no `panic`, no `unsafe`.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

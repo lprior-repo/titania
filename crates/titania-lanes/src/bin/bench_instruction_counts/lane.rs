@@ -156,7 +156,7 @@ fn requested_benches(args: Vec<String>) -> Result<Vec<String>, String> {
     } else {
         args
     };
-    if requested.iter().any(|bench| bench.is_empty()) {
+    if requested.iter().any(std::string::String::is_empty) {
         Err("empty benchmark name is not allowed".to_owned())
     } else {
         Ok(requested)

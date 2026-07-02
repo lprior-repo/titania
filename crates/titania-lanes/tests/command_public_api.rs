@@ -1,3 +1,6 @@
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use std::{error::Error, io::ErrorKind, time::Duration};
 
 use tempfile::tempdir;

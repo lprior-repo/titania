@@ -54,7 +54,7 @@ impl ObjectScan {
         false
     }
 
-    fn feed_string(&mut self, byte: u8) {
+    const fn feed_string(&mut self, byte: u8) {
         if self.escape {
             self.escape = false;
         } else if byte == b'\\' {
@@ -64,7 +64,7 @@ impl ObjectScan {
         }
     }
 
-    fn open_object(&mut self, abs: usize) {
+    const fn open_object(&mut self, abs: usize) {
         if self.depth == 0 {
             self.object_start = Some(abs);
         }

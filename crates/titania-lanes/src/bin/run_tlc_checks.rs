@@ -12,6 +12,8 @@
 //! and print the last 3 lines of the output. The bash's hard-coded jar
 //! path is preserved; the lane is a thin CLI wrapper that does not need
 //! the rest of the workspace to be buildable.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

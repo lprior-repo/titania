@@ -1,10 +1,10 @@
 use std::{fs, io, path::Path};
 
 pub(crate) struct SummaryStatus<'a> {
-    pub(crate) target_failures: &'a [String],
-    pub(crate) forbidden_count: usize,
-    pub(crate) external_marker_count: usize,
-    pub(crate) external_markers_waived: bool,
+    pub(super) target_failures: &'a [String],
+    pub(super) forbidden_count: usize,
+    pub(super) external_marker_count: usize,
+    pub(super) external_markers_waived: bool,
 }
 
 pub(crate) fn write_summary_header(path: &Path, target_count: usize) -> io::Result<()> {
@@ -93,7 +93,7 @@ fn append_external_status(existing: &mut String, external_marker_count: usize, w
     }
 }
 
-fn registry_ok(status: &SummaryStatus<'_>) -> bool {
+const fn registry_ok(status: &SummaryStatus<'_>) -> bool {
     status.target_failures.is_empty()
         && status.forbidden_count == 0
         && (status.external_marker_count == 0 || status.external_markers_waived)

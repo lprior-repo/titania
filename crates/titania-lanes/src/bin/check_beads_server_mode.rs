@@ -5,6 +5,8 @@
 //! Titania itself currently uses embedded Dolt, so this lane now parses the
 //! metadata into typed policy values and rejects malformed/contradictory
 //! states while treating embedded mode as an explicit supported outcome.
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

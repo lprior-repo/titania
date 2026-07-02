@@ -1,5 +1,8 @@
 //! Run Cargo-native lanes inside the target project discovered from CWD.
 
+#![allow(clippy::pedantic, clippy::nursery, clippy::default_numeric_fallback)]
+#![allow(unreachable_pub)]
+
 use std::{env, process::ExitCode};
 
 use serde_json::Value;
@@ -36,7 +39,7 @@ impl CargoLane {
         }
     }
 
-    fn rule(self) -> &'static str {
+    const fn rule(self) -> &'static str {
         match self {
             Self::Fmt => RULE_FMT,
             Self::Compile => RULE_COMPILE,
@@ -46,7 +49,7 @@ impl CargoLane {
         }
     }
 
-    fn path(self) -> &'static str {
+    const fn path(self) -> &'static str {
         match self {
             Self::Fmt => "cargo fmt",
             Self::Compile => "cargo check",

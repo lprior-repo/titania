@@ -12,7 +12,7 @@ pub struct CommandOutput {
 }
 
 impl CommandOutput {
-    pub(super) fn new(
+    pub(super) const fn new(
         status: ExitStatus,
         stdout: Vec<u8>,
         stderr: Vec<u8>,
@@ -27,6 +27,9 @@ impl CommandOutput {
     }
 
     /// Decode stdout as UTF-8.
+    ///
+    /// # Errors
+    /// Returns [`LaneError::NonUtf8Output`] when stdout is not valid UTF-8.
     pub fn stdout_str(&self) -> Result<&str, LaneError> {
         std::str::from_utf8(&self.stdout).map_err(|_| LaneError::NonUtf8Output {
             program: self.program.clone(),
@@ -35,6 +38,9 @@ impl CommandOutput {
     }
 
     /// Decode stderr as UTF-8.
+    ///
+    /// # Errors
+    /// Returns [`LaneError::NonUtf8Output`] when stderr is not valid UTF-8.
     pub fn stderr_str(&self) -> Result<&str, LaneError> {
         std::str::from_utf8(&self.stderr).map_err(|_| LaneError::NonUtf8Output {
             program: self.program.clone(),
@@ -43,6 +49,10 @@ impl CommandOutput {
     }
 
     /// Convert a non-zero status to [`LaneError::NonZeroExit`].
+    ///
+    /// # Errors
+    /// Returns [`LaneError::NonZeroExit`] for non-zero exit status, or
+    /// [`LaneError::NonUtf8Output`] when stderr cannot be decoded.
     pub fn into_result(self) -> Result<Self, LaneError> {
         if self.status.success() {
             Ok(self)

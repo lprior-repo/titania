@@ -7,7 +7,7 @@ use titania_lanes::{Finding, LaneReport, helpers::line_no_from_idx};
 
 use crate::source::SourceLine;
 
-pub(super) fn scan(root: &Path, allow: &BTreeMap<String, String>, report: &mut LaneReport) {
+pub(crate) fn scan(root: &Path, allow: &BTreeMap<String, String>, report: &mut LaneReport) {
     scan_roots(root).iter().for_each(|file_root| scan_dir(file_root, root, allow, report));
 }
 

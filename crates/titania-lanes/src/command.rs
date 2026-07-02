@@ -153,30 +153,41 @@ impl<'a> CommandIn<'a> {
     }
 
     /// Explicitly inherit the parent environment.
-    pub fn inherit_env(&mut self) -> &mut Self {
+    pub const fn inherit_env(&mut self) -> &mut Self {
         self.env_policy = EnvPolicy::Inherit;
         self
     }
 
     /// Replace the default execution/output budget.
-    pub fn budget(&mut self, budget: CommandBudget) -> &mut Self {
+    pub const fn budget(&mut self, budget: CommandBudget) -> &mut Self {
         self.budget = budget;
         self
     }
 
     /// Run the subprocess, capture stdout/stderr, enforce the execution
     /// budget, and reject non-zero exits.
+    ///
+    /// # Errors
+    /// Returns [`LaneError`] when process startup, output capture, timeout,
+    /// output decoding, or exit-status validation fails.
     pub fn run(&self) -> Result<CommandOutput, LaneError> {
         self.run_capture_raw()?.into_result()
     }
 
     /// Alias for [`CommandIn::run`]: checked captured execution.
+    ///
+    /// # Errors
+    /// See [`CommandIn::run`].
     pub fn run_capture(&self) -> Result<CommandOutput, LaneError> {
         self.run()
     }
 
     /// Run the subprocess, capture stdout/stderr, and enforce execution
     /// and output budgets without checking the exit status.
+    ///
+    /// # Errors
+    /// Returns [`LaneError`] when process startup, output capture, or timeout
+    /// handling fails.
     pub fn run_capture_raw(&self) -> Result<CommandOutput, LaneError> {
         let started = Instant::now();
         let mut cmd = self.base_command();
@@ -188,12 +199,10 @@ impl<'a> CommandIn<'a> {
             spawn_reader(stdout, self.budget.max_stdout, self.program_name(), OutputStream::Stdout);
         let stderr_reader =
             spawn_reader(stderr, self.budget.max_stderr, self.program_name(), OutputStream::Stderr);
-        let status = match child
-            .wait_timeout(self.budget.timeout)
-            .map_err(|source| self.io_error(source))?
-        {
-            Some(status) => status,
-            None => return self.timeout_child(child, stdout_reader, stderr_reader),
+        let Some(status) =
+            child.wait_timeout(self.budget.timeout).map_err(|source| self.io_error(source))?
+        else {
+            return self.timeout_child(child, stdout_reader, stderr_reader);
         };
         let stdout = self.receive_reader(stdout_reader, started)?;
         let stderr = self.receive_reader(stderr_reader, started)?;
@@ -202,17 +211,22 @@ impl<'a> CommandIn<'a> {
 
     /// Run the subprocess with inherited stdout/stderr and enforce the
     /// execution budget without checking the exit status.
+    ///
+    /// # Errors
+    /// Returns [`LaneError`] when process startup, timeout handling, or status
+    /// collection fails.
     pub fn run_status_raw(&self) -> Result<ExitStatus, LaneError> {
         let mut cmd = self.base_command();
         cmd.stdin(Stdio::null()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
         let mut child = cmd.spawn().map_err(|source| self.io_error(source))?;
-        match child.wait_timeout(self.budget.timeout).map_err(|source| self.io_error(source))? {
-            Some(status) => Ok(status),
-            None => {
-                terminate_child_tree(&mut child, self.program_name())?;
-                child.wait().map_err(|source| self.io_error(source))?;
-                Err(self.timeout_error())
-            }
+        if let Some(status) =
+            child.wait_timeout(self.budget.timeout).map_err(|source| self.io_error(source))?
+        {
+            Ok(status)
+        } else {
+            terminate_child_tree(&mut child, self.program_name())?;
+            child.wait().map_err(|source| self.io_error(source))?;
+            Err(self.timeout_error())
         }
     }
 
@@ -223,7 +237,7 @@ impl<'a> CommandIn<'a> {
         if self.env_policy == EnvPolicy::Clear {
             cmd.env_clear();
         }
-        cmd.args(self.args.iter().map(|a| a.as_ref()));
+        cmd.args(self.args.iter().map(std::convert::AsRef::as_ref));
         cmd.envs(self.env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())));
         for key in &self.env_remove {
             cmd.env_remove(key.as_ref());

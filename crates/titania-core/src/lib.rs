@@ -60,7 +60,7 @@ pub use report::{RejectKind, Report};
 pub use rule_id::RuleId;
 pub use target_project::TargetProject;
 pub use text_range::TextRange;
-/// Re-export as QualityReceipt for compatibility with the v1-spec naming.
+/// Re-export as `QualityReceipt` for compatibility with the v1-spec naming.
 pub use v1_receipt::QualityReceiptV1 as QualityReceipt;
 pub use v1_receipt::{LaneReceipt, QualityReceiptV1};
 pub use workspace_path::WorkspacePath;

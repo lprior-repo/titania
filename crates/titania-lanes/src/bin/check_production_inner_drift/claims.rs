@@ -9,8 +9,8 @@ pub(crate) enum ClaimClass {
 
 #[derive(Debug)]
 pub(crate) struct Claim {
-    pub(crate) klass: ClaimClass,
-    pub(crate) range: String,
+    pub(super) klass: ClaimClass,
+    pub(super) range: String,
 }
 
 pub(crate) fn parse_claims(text: &str) -> Vec<Claim> {

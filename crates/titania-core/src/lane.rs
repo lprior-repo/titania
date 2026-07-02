@@ -1,9 +1,9 @@
 //! Execution lanes in the titania-check pipeline.
 //!
 //! Each lane corresponds to a single tool or analysis pass. The set of lanes
-//! is fixed for v1 and serialised to PascalCase JSON.
+//! is fixed for v1 and serialised to `PascalCase` JSON.
 //!
-//! Construction is total: [`Lane::from_str`] parses a PascalCase string into
+//! Construction is total: [`Lane::from_str`] parses a `PascalCase` string into
 //! the matching variant, or returns a [`LaneError`].
 
 use core::{fmt, str::FromStr};
@@ -15,7 +15,7 @@ use crate::error::LaneError;
 /// Execution lane in the titania-check pipeline.
 ///
 /// Each variant names a single tool or analysis pass. Serialized to
-/// PascalCase JSON.
+/// `PascalCase` JSON.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum Lane {
@@ -44,25 +44,25 @@ pub enum Lane {
 impl Lane {
     /// Uppercase-Pascal display name matching the serde representation.
     #[must_use]
-    pub fn name(&self) -> &'static str {
+    pub const fn name(self) -> &'static str {
         match self {
-            Lane::Fmt => "Fmt",
-            Lane::Compile => "Compile",
-            Lane::Clippy => "Clippy",
-            Lane::AstGrep => "AstGrep",
-            Lane::Dylint => "Dylint",
-            Lane::PanicScan => "PanicScan",
-            Lane::PolicyScan => "PolicyScan",
-            Lane::Test => "Test",
-            Lane::Deny => "Deny",
-            Lane::Build => "Build",
+            Self::Fmt => "Fmt",
+            Self::Compile => "Compile",
+            Self::Clippy => "Clippy",
+            Self::AstGrep => "AstGrep",
+            Self::Dylint => "Dylint",
+            Self::PanicScan => "PanicScan",
+            Self::PolicyScan => "PolicyScan",
+            Self::Test => "Test",
+            Self::Deny => "Deny",
+            Self::Build => "Build",
         }
     }
 }
 
 impl fmt::Display for Lane {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
+        f.write_str((*self).name())
     }
 }
 
@@ -71,16 +71,16 @@ impl FromStr for Lane {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Fmt" => Ok(Lane::Fmt),
-            "Compile" => Ok(Lane::Compile),
-            "Clippy" => Ok(Lane::Clippy),
-            "AstGrep" => Ok(Lane::AstGrep),
-            "Dylint" => Ok(Lane::Dylint),
-            "PanicScan" => Ok(Lane::PanicScan),
-            "PolicyScan" => Ok(Lane::PolicyScan),
-            "Test" => Ok(Lane::Test),
-            "Deny" => Ok(Lane::Deny),
-            "Build" => Ok(Lane::Build),
+            "Fmt" => Ok(Self::Fmt),
+            "Compile" => Ok(Self::Compile),
+            "Clippy" => Ok(Self::Clippy),
+            "AstGrep" => Ok(Self::AstGrep),
+            "Dylint" => Ok(Self::Dylint),
+            "PanicScan" => Ok(Self::PanicScan),
+            "PolicyScan" => Ok(Self::PolicyScan),
+            "Test" => Ok(Self::Test),
+            "Deny" => Ok(Self::Deny),
+            "Build" => Ok(Self::Build),
             _ => Err(LaneError::UnknownLane(s.to_owned())),
         }
     }
