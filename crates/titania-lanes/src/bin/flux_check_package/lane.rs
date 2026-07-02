@@ -14,11 +14,11 @@ struct Invocation {
     forwarded: Vec<String>,
 }
 
-pub fn main_exit(args: Vec<String>) -> ExitCode {
-    if help_requested(&args) {
+pub fn main_exit(args: &[String]) -> ExitCode {
+    if help_requested(args) {
         return print_help();
     }
-    let invocation = match parse_invocation(&args) {
+    let invocation = match parse_invocation(args) {
         Ok(invocation) => invocation,
         Err(code) => return code,
     };
@@ -42,6 +42,12 @@ fn print_help() -> ExitCode {
     exit(LaneExit::Usage)
 }
 
+/// Parse the first positional argument as a package name; validate
+/// forwarded arguments against the list of rejected target selectors.
+///
+/// # Errors
+/// Returns `LaneExit::Usage` when no package argument is provided, or
+/// when forwarded arguments contain a rejected target selector.
 fn parse_invocation(args: &[String]) -> Result<Invocation, ExitCode> {
     let Some((package, forwarded)) = args.split_first() else {
         return Err(usage_exit("usage: flux-check-package <package> [cargo-flux options]"));
@@ -50,23 +56,34 @@ fn parse_invocation(args: &[String]) -> Result<Invocation, ExitCode> {
     Ok(Invocation { package: package.clone(), forwarded: forwarded.to_vec() })
 }
 
+/// Validate that forwarded arguments do not contain rejected target
+/// selectors (`--lib`, `--test`, `--tests`, `--benches`, `--all-targets`).
+///
+/// # Errors
+/// Returns `LaneExit::Usage` when any rejected selector is found in
+/// the forwarded arguments.
 fn reject_unsupported_selectors(args: &[String]) -> Result<(), ExitCode> {
     let mut report = LaneReport::new();
-    args.iter().filter(|arg| is_rejected_selector(arg)).for_each(|arg| {
+    for arg in args.iter().filter(|arg| is_rejected_selector(arg)) {
         report.push(Finding::new(
             RULE_REJECTED,
             "argv",
             0,
             format!("unsupported cargo-flux target selector for installed cargo-flux: {arg}"),
         ));
-    });
-    if report.is_clean() { Ok(()) } else { Err(render_exit(report, LaneExit::Usage)) }
+    }
+    if report.is_clean() { Ok(()) } else { Err(render_exit(&report, LaneExit::Usage)) }
 }
 
 fn is_rejected_selector(arg: &str) -> bool {
     REJECTED_SELECTORS.contains(&arg)
 }
 
+/// Discover the current target project via the shared utility.
+///
+/// # Errors
+/// Returns `LaneExit::Usage` when `current_target_project()` fails
+/// to locate or validate a target manifest.
 fn discover_target_project() -> Result<TargetProject, ExitCode> {
     current_target_project().map_err(|error| {
         let mut report = LaneReport::new();
@@ -76,14 +93,14 @@ fn discover_target_project() -> Result<TargetProject, ExitCode> {
             0,
             format!("target discovery failed: {error}"),
         ));
-        render_exit(report, LaneExit::Usage)
+        render_exit(&report, LaneExit::Usage)
     })
 }
 
 fn usage_exit(message: &str) -> ExitCode {
     let mut report = LaneReport::new();
     report.push(Finding::new(RULE_USAGE, "argv", 0, message));
-    render_exit(report, LaneExit::Usage)
+    render_exit(&report, LaneExit::Usage)
 }
 
 fn run_flux(target: &TargetProject, invocation: &Invocation) -> ExitCode {
@@ -91,10 +108,10 @@ fn run_flux(target: &TargetProject, invocation: &Invocation) -> ExitCode {
     let path = rustup_first_path();
     let mut command = match prepare_command(target, path.as_deref()) {
         Ok(command) => command,
-        Err(error) => return cargo_missing_exit(error),
+        Err(error) => return cargo_missing_exit(&error),
     };
     append_args(&mut command, &cargo_args);
-    run_command(command)
+    run_command(&command)
 }
 
 fn build_cargo_args(invocation: &Invocation) -> Vec<String> {
@@ -109,6 +126,13 @@ fn build_cargo_args(invocation: &Invocation) -> Vec<String> {
     args
 }
 
+/// Prepare a `CommandIn` for running `cargo flux` in the target
+/// project, optionally shadowing `PATH` with a rustup-provided
+/// `.cargo/bin`.
+///
+/// # Errors
+/// Returns an error string when `CommandIn::new` fails to prepare
+/// the subprocess for the given program.
 fn prepare_command<'a>(
     target: &'a TargetProject,
     path: Option<&'a str>,
@@ -121,7 +145,7 @@ fn prepare_command<'a>(
     Ok(command)
 }
 
-fn run_command(command: CommandIn<'_>) -> ExitCode {
+fn run_command(command: &CommandIn<'_>) -> ExitCode {
     match command.run_status_raw() {
         Ok(status) => exit(match status.code() {
             Some(0) => LaneExit::Clean,
@@ -129,11 +153,11 @@ fn run_command(command: CommandIn<'_>) -> ExitCode {
             Some(2) => LaneExit::Usage,
             Some(_) | None => LaneExit::Failure,
         }),
-        Err(error) => cargo_missing_exit(error.to_string()),
+        Err(error) => cargo_missing_exit(&error.to_string()),
     }
 }
 
-fn cargo_missing_exit(error: String) -> ExitCode {
+fn cargo_missing_exit(error: &str) -> ExitCode {
     let mut report = LaneReport::new();
     report.push(Finding::new(
         RULE_FLUX_MISSING,
@@ -141,18 +165,18 @@ fn cargo_missing_exit(error: String) -> ExitCode {
         0,
         format!("cargo flux failed to start: {error}"),
     ));
-    render_exit(report, LaneExit::Failure)
+    render_exit(&report, LaneExit::Failure)
 }
 
-fn render_exit(report: LaneReport, code: LaneExit) -> ExitCode {
+fn render_exit(report: &LaneReport, code: LaneExit) -> ExitCode {
     eprint!("{}", report.render());
     exit(code)
 }
 
 fn append_args<'a>(command: &mut CommandIn<'a>, args: &'a [String]) {
-    args.iter().for_each(|arg| {
+    for arg in args.iter() {
         command.arg(arg.as_str());
-    });
+    }
 }
 
 fn rustup_first_path() -> Option<String> {
