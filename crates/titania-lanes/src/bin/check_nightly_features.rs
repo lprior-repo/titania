@@ -98,34 +98,28 @@ fn scan_file(path: &Path, report: &mut LaneReport) {
     let display = path.display().to_string();
     let is_perf_scoped = is_perf_scoped_path(&display);
     let has_marker = content.contains(PERF_MARKER);
+    let scope = FeatureScope { is_perf_scoped, has_marker };
 
     // Phase 1: collect the body of each `#![feature(...)]` attribute,
     // including multi-line forms that span until `)]`. Each yield
-    // becomes one `feature_line` + comma-separated `names`.
-    for (line_no, names, line_no_for_message) in collect_features(&content) {
-        for name in names {
-            let trimmed = name.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
+    // becomes one `feature_line` + comma-separated `names`. Empty
+    // names (trailing comma, blank line) are filtered before the
+    // per-feature check to keep nesting depth at two.
+    for (line_no, names, report_line) in collect_features(&content) {
+        for name in names.iter().map(|n| n.trim()).filter(|n| !n.is_empty()) {
             check_feature(FeatureCheck {
                 file: &display,
                 feature_line: line_no,
-                name: trimmed,
-                scope: FeatureScope { is_perf_scoped, has_marker },
+                name,
+                scope,
                 report,
-                report_line: line_no_for_message,
+                report_line,
             });
         }
     }
 }
 
-/// Yield `(feature_line, names, first_occurrence_line)` tuples. The
-/// first occurrence line is what the bash reports; subsequent lines in
-/// a multi-line attribute are tracked but produce no extra message
-/// (the bash's behavior: status flips once and the original line is
-/// referenced). For this Rust port we surface one finding per
-/// individual feature, so we attach the first line of the attribute.
+/// Per-feature record: `(#![feature(...)]` line, names, line for finding).
 type FeatureUse = (u32, Vec<String>, u32);
 
 struct FeatureCollector {
@@ -136,9 +130,9 @@ struct FeatureCollector {
 fn collect_features(content: &str) -> Vec<FeatureUse> {
     let mut out: Vec<FeatureUse> = Vec::new();
     let mut collector = FeatureCollector { first_line_of_attr: 0, accumulating: None };
-    content.lines().enumerate().for_each(|(idx, line)| {
+    for (idx, line) in content.lines().enumerate() {
         collect_feature_line(&mut collector, feature_line_no(idx), line.trim(), &mut out);
-    });
+    }
     if let Some(buf) = collector.accumulating {
         eprintln!("unterminated unstable feature attribute starting with `{buf}`");
     }
@@ -174,7 +168,7 @@ fn collect_accumulated_line(
     buf.push(' ');
     buf.push_str(trimmed);
     push_closed_feature(collector.first_line_of_attr, buf, out);
-    if buf.find(")]").is_some() {
+    if buf.contains(")]") {
         collector.accumulating = None;
     }
     true
@@ -227,7 +221,7 @@ fn is_perf_scoped_path(file: &str) -> bool {
     }
     normalized.starts_with("benches/")
 }
-
+#[derive(Clone, Copy)]
 struct FeatureScope {
     is_perf_scoped: bool,
     has_marker: bool,
