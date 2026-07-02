@@ -159,8 +159,8 @@ fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
     let mut cfg_depth: u32 = 0;
     let mut kani_proof_depth: u32 = 0;
     let mut global_depth: u32 = 0;
-    let mut cfg_open_depths: Vec<u32> = Vec::new();
-    let mut kani_open_depths: Vec<u32> = Vec::new();
+    let mut cfg_depth_stack: Vec<u32> = Vec::new();
+    let mut kani_depth_stack: Vec<u32> = Vec::new();
     // Block-comment carry-over: a `/* … */` that opens on one line
     // and closes on a later line must skip every line in between.
     let mut block_comment: bool = false;
@@ -194,11 +194,11 @@ fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
             // The cfg block's `{` will land on a later line; we treat
             // the current global depth + 1 as the depth the matching
             // `}` will eventually return us to.
-            cfg_open_depths.push(global_depth.saturating_add(1));
+            cfg_depth_stack.push(global_depth.saturating_add(1));
         }
         if opened_kani_proof_here {
             kani_proof_depth = kani_proof_depth.saturating_add(1);
-            kani_open_depths.push(global_depth.saturating_add(1));
+            kani_depth_stack.push(global_depth.saturating_add(1));
         }
 
         let inside_test_or_kani = cfg_depth > 0 || kani_proof_depth > 0;
@@ -221,17 +221,17 @@ fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
         // We close only on strict `<` so the cfg block's own `{` does
         // not pop the scope prematurely.
         if !opened_cfg_here
-            && let Some(&target) = cfg_open_depths.last()
+            && let Some(&target) = cfg_depth_stack.last()
             && global_depth < target
         {
-            cfg_open_depths.pop();
+            cfg_depth_stack.pop();
             cfg_depth = cfg_depth.saturating_sub(1);
         }
         if !opened_kani_proof_here
-            && let Some(&target) = kani_open_depths.last()
+            && let Some(&target) = kani_depth_stack.last()
             && global_depth < target
         {
-            kani_open_depths.pop();
+            kani_depth_stack.pop();
             kani_proof_depth = kani_proof_depth.saturating_sub(1);
         }
     }
