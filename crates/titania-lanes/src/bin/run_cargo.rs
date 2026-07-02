@@ -22,6 +22,11 @@ enum CargoLane {
 }
 
 impl CargoLane {
+    /// Parse a lane name from the user's subcommand argument.
+    ///
+    /// # Errors
+    /// Returns a [`String`] usage message if `raw` contains whitespace
+    /// or is not one of `fmt`, `compile`, `clippy`, `test`, or `build`.
     fn parse(raw: &str) -> Result<Self, String> {
         if raw.trim() != raw {
             return Err(usage_message());
@@ -36,7 +41,7 @@ impl CargoLane {
         }
     }
 
-    fn rule(self) -> &'static str {
+    const fn rule(self) -> &'static str {
         match self {
             Self::Fmt => RULE_FMT,
             Self::Compile => RULE_COMPILE,
@@ -46,7 +51,7 @@ impl CargoLane {
         }
     }
 
-    fn path(self) -> &'static str {
+    const fn path(self) -> &'static str {
         match self {
             Self::Fmt => "cargo fmt",
             Self::Compile => "cargo check",
@@ -86,6 +91,15 @@ fn run(args: Vec<String>) -> LaneExit {
     }
 }
 
+/// Execute the chosen cargo subcommand against the target project.
+///
+/// # Errors
+/// Returns [`RunCargoError::Usage`] when no subcommand is provided or it is
+/// unrecognised; [`RunCargoError::CurrentDir`] when the working directory
+/// cannot be read; [`RunCargoError::Target`] when no Cargo project is
+/// discovered from CWD; [`RunCargoError::Command`] when the cargo
+/// subprocess fails to spawn, times out, produces non-UTF-8 output, or
+/// exits non-zero.
 fn run_checked(args: Vec<String>) -> Result<LaneReport, RunCargoError> {
     let mut rest = args.into_iter();
     let _program = rest.next();
@@ -97,6 +111,12 @@ fn run_checked(args: Vec<String>) -> Result<LaneReport, RunCargoError> {
     run_lane(&target, lane, &extra_args).map_err(RunCargoError::Command)
 }
 
+/// Run a single cargo lane and collect findings.
+///
+/// # Errors
+/// Propagates [`LaneError`] from the underlying cargo command (spawn,
+/// timeout, pipe capture, or non-UTF-8 output) and from decoding
+/// stdout/stderr as UTF-8.
 fn run_lane(
     target: &TargetProject,
     lane: CargoLane,
@@ -117,6 +137,12 @@ fn run_lane(
     Ok(report)
 }
 
+/// Execute the cargo command for the given lane and capture output.
+///
+/// # Errors
+/// Returns [`LaneError`] when the cargo subprocess fails to spawn, times
+/// out during execution, fails to capture output, or produces non-UTF-8
+/// stdout/stderr.
 fn cargo_output(
     target: &TargetProject,
     lane: CargoLane,
@@ -181,15 +207,15 @@ fn collect_findings(lane: CargoLane, stdout: &str, stderr: &str, report: &mut La
 }
 
 fn collect_fmt_findings(stdout: &str, stderr: &str, report: &mut LaneReport) {
-    let mut path = "cargo fmt";
+    let mut path: String = String::from("cargo fmt");
     let mut saw_diff_header = false;
     for line in stdout.lines().chain(stderr.lines()) {
         if let Some(rest) = line.strip_prefix("Diff in ") {
-            path = rest.strip_suffix(':').unwrap_or(rest);
+            path = rest.strip_suffix(':').map_or_else(|| rest.to_owned(), ToOwned::to_owned);
             saw_diff_header = true;
-            report.push(Finding::new(RULE_FMT, path, 0, "rustfmt diff hunk"));
+            report.push(Finding::new(RULE_FMT, &path, 0, "rustfmt diff hunk"));
         } else if line.starts_with("@@") && !saw_diff_header {
-            report.push(Finding::new(RULE_FMT, path, 0, "rustfmt diff hunk"));
+            report.push(Finding::new(RULE_FMT, &path, 0, "rustfmt diff hunk"));
         }
     }
 }
@@ -244,9 +270,7 @@ fn message_text(message: &Value) -> String {
         .get("rendered")
         .and_then(Value::as_str)
         .or_else(|| message.get("message").and_then(Value::as_str))
-        .unwrap_or("cargo clippy diagnostic")
-        .trim()
-        .to_owned()
+        .map_or_else(|| String::from("cargo clippy diagnostic"), |s| s.trim().to_owned())
 }
 
 fn message_location(message: &Value) -> (String, u32) {
@@ -262,13 +286,12 @@ fn message_location(message: &Value) -> (String, u32) {
                 let path = span
                     .get("file_name")
                     .and_then(Value::as_str)
-                    .unwrap_or("cargo clippy")
-                    .to_owned();
+                    .map_or_else(|| String::from("cargo clippy"), ToOwned::to_owned);
                 let line_no = span
                     .get("line_start")
                     .and_then(Value::as_u64)
                     .and_then(|n| u32::try_from(n).ok())
-                    .unwrap_or(0);
+                    .map_or(0, |n| n);
                 (path, line_no)
             },
         )
@@ -279,8 +302,7 @@ fn fallback_message(stdout: &str, stderr: &str) -> String {
         .lines()
         .chain(stdout.lines())
         .find(|line| !line.trim().is_empty())
-        .unwrap_or("cargo command failed without output")
-        .to_owned()
+        .map_or_else(|| String::from("cargo command failed without output"), ToOwned::to_owned)
 }
 
 fn usage_message() -> String {
