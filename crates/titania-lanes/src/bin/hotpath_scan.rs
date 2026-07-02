@@ -62,9 +62,9 @@ fn main() -> std::process::ExitCode {
 fn run(target: &TargetProject, report: &mut LaneReport) {
     let root = target.as_std_path();
     let allow = load_allow(root, report);
-    HOT_ROOTS.iter().map(|hot| root.join(hot)).filter(|dir| dir.is_dir()).for_each(|dir| {
+    for dir in HOT_ROOTS.iter().map(|hot| root.join(hot)).filter(|dir| dir.is_dir()) {
         scan_dir(&dir, root, &allow, report);
-    });
+    }
 }
 
 fn print_and_exit(report: &LaneReport) -> std::process::ExitCode {
@@ -144,7 +144,11 @@ fn validate_allow_row(row: &AllowRow<'_>) -> Option<String> {
 }
 
 fn is_overbroad_allow_path(path: &str) -> bool {
-    path.contains('*') || !path.starts_with("crates/") || !path.ends_with(".rs")
+    path.contains('*')
+        || !path.starts_with("crates/")
+        || !std::path::Path::new(path)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"))
 }
 
 fn has_required_allow_metadata(row: &AllowRow<'_>) -> bool {
@@ -176,11 +180,13 @@ fn scan_dir(dir: &Path, root: &Path, allow: &BTreeSet<(String, String)>, report:
         let p = entry.path();
         if p.is_dir() {
             scan_dir(&p, root, allow, report);
-        } else if p.extension().and_then(|e| e.to_str()) == Some("rs") {
-            let rel = rel_str(root, &p);
-            if is_cold_path(&rel) {
-                continue;
-            }
+            continue;
+        }
+        if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("rs")) {
+            continue;
+        }
+        let rel = rel_str(root, &p);
+        if !is_cold_path(&rel) {
             scan_file(&p, &rel, allow, report);
         }
     }
@@ -193,6 +199,8 @@ fn rel_str(root: &Path, p: &Path) -> String {
     )
 }
 
+/// Scans a single `.rs` file line-by-line, recording a finding for
+/// every hot-path token that appears outside the allowlist.
 fn scan_file(file: &Path, rel: &str, allow: &BTreeSet<(String, String)>, report: &mut LaneReport) {
     let Ok(text) = std::fs::read_to_string(file) else {
         return;
@@ -200,20 +208,33 @@ fn scan_file(file: &Path, rel: &str, allow: &BTreeSet<(String, String)>, report:
     for (idx, raw) in text.lines().enumerate() {
         let line_no = line_no_from_idx(idx);
         let no_comment = strip_comment(raw);
-        for token in TOKENS {
-            if !no_comment.contains(token) {
-                continue;
-            }
-            if allow.contains(&(rel.to_string(), token.to_string())) {
-                continue;
-            }
-            report.push(Finding::new(
-                "HOTPATH",
-                rel,
-                line_no,
-                format!("token {token} on hot path"),
-            ));
+        record_line_violations(no_comment, rel, allow, line_no, report);
+    }
+}
+
+/// Walks every token in `TOKENS` and pushes one `HOTPATH` finding
+/// per token whose `(rel, token)` pair is not in the allowlist.
+/// Extracted to keep `scan_file` at one level of nesting.
+fn record_line_violations(
+    no_comment: &str,
+    rel: &str,
+    allow: &BTreeSet<(String, String)>,
+    line_no: u32,
+    report: &mut LaneReport,
+) {
+    for token in TOKENS {
+        if !no_comment.contains(token) {
+            continue;
         }
+        if allow.contains(&(rel.to_owned(), token.to_string())) {
+            continue;
+        }
+        report.push(Finding::new(
+            "HOTPATH",
+            rel,
+            line_no,
+            format!("token {token} on hot path"),
+        ));
     }
 }
 
