@@ -62,6 +62,7 @@ enum TestEvidence {
 }
 
 type ParsedCommand<'a> = (&'a str, &'a [String]);
+type LineParser = fn(&str) -> Option<u32>;
 
 fn parse_lane_input(args: Vec<String>) -> LaneInput {
     let cmd: Vec<String> = match args.iter().position(|arg| arg == "--") {
@@ -71,6 +72,14 @@ fn parse_lane_input(args: Vec<String>) -> LaneInput {
     if cmd.is_empty() { LaneInput::MissingCommand } else { LaneInput::Run(cmd) }
 }
 
+/// Execute the guard-zero-tests lane: parse the command, run it,
+/// parse the combined output, and enforce that at least one applicable
+/// test executed.
+///
+/// # Errors
+/// Returns an error string when `parse_command_args`, `run_test_command`,
+/// `reject_failed_command`, or `parse_test_count` encounters an I/O,
+/// spawn, or parse failure.
 fn run_lane(target: &titania_core::TargetProject, cmd_args: &[String]) -> Result<(), String> {
     eprintln!("[guard-zero-tests] running: {}", cmd_args.join(" "));
     let (program, passthrough) = parse_command_args(cmd_args)?;
@@ -80,6 +89,10 @@ fn run_lane(target: &titania_core::TargetProject, cmd_args: &[String]) -> Result
     report_test_evidence(parse_test_count(&combined)?)
 }
 
+/// Split `cmd_args` into the program name and a passthrough slice.
+///
+/// # Errors
+/// Returns an error string when `cmd_args` is empty.
 fn parse_command_args(cmd_args: &[String]) -> Result<ParsedCommand<'_>, String> {
     cmd_args
         .split_first()
@@ -87,6 +100,11 @@ fn parse_command_args(cmd_args: &[String]) -> Result<ParsedCommand<'_>, String> 
         .ok_or_else(|| "guard-zero-tests: empty command".to_string())
 }
 
+/// Spawn a test runner and capture its stdout and stderr.
+///
+/// # Errors
+/// Returns an error string when `CommandIn::new` or `run_capture_raw`
+/// fails to spawn the given program in the target project.
 fn run_test_command<'a>(
     target: &'a titania_core::TargetProject,
     program: &'a str,
@@ -95,12 +113,17 @@ fn run_test_command<'a>(
     let mut command =
         CommandIn::new(target, program).map_err(|e| format!("failed to spawn {program}: {e}"))?;
     command.inherit_env();
-    passthrough.iter().for_each(|arg| {
+    for arg in passthrough {
         command.arg(arg.as_str());
-    });
+    }
     command.run_capture_raw().map_err(|e| format!("failed to spawn {program}: {e}"))
 }
 
+/// Reject the command output when it did not exit successfully.
+///
+/// # Errors
+/// Returns an error string when the command exited with a non-zero
+/// status code or was terminated by a signal.
 fn reject_failed_command(output: &CommandOutput, combined: &str) -> Result<(), String> {
     match output.status.code() {
         Some(0) => Ok(()),
@@ -109,6 +132,10 @@ fn reject_failed_command(output: &CommandOutput, combined: &str) -> Result<(), S
     }
 }
 
+/// Reject a command that exited with a non-zero status.
+///
+/// # Errors
+/// Always returns `Err` with the exit status in the message.
 fn reject_nonzero_command(code: i32, combined: &str) -> Result<(), String> {
     eprintln!("[guard-zero-tests] cargo test exited {code} — treating as tooling failure");
     if let Some(n) = extract_applicable_count(combined) {
@@ -118,12 +145,21 @@ fn reject_nonzero_command(code: i32, combined: &str) -> Result<(), String> {
     Err(format!("command exited with status {code}"))
 }
 
+/// Reject a command that was terminated by a signal.
+///
+/// # Errors
+/// Always returns `Err` with a signal-termination message.
 fn reject_signaled_command(combined: &str) -> Result<(), String> {
     eprintln!("[guard-zero-tests] command terminated by signal");
     eprintln!("{combined}");
     Err("command terminated by signal".to_string())
 }
 
+/// Parse the applicable test count from the combined cargo output.
+///
+/// # Errors
+/// Returns an error string when no test-count pattern is recognised
+/// in the combined output.
 fn parse_test_count(combined: &str) -> Result<u32, String> {
     extract_applicable_count(combined).ok_or_else(|| {
         eprintln!("[guard-zero-tests] FAIL: could not parse test count from cargo output.");
@@ -132,6 +168,10 @@ fn parse_test_count(combined: &str) -> Result<u32, String> {
     })
 }
 
+/// Classify the parsed test count as applicable or not.
+///
+/// # Errors
+/// Always returns `Ok(())` when `count > 0`, `Err` otherwise.
 fn report_test_evidence(count: u32) -> Result<(), String> {
     match classify_evidence(count) {
         TestEvidence::Applicable(count) => {
@@ -147,7 +187,7 @@ fn report_test_evidence(count: u32) -> Result<(), String> {
     }
 }
 
-fn classify_evidence(count: u32) -> TestEvidence {
+const fn classify_evidence(count: u32) -> TestEvidence {
     if count == 0 { TestEvidence::NotApplicable } else { TestEvidence::Applicable(count) }
 }
 
@@ -184,7 +224,7 @@ fn running_line_count(line: &str) -> Option<u32> {
         return None;
     }
     let after = trimmed.strip_prefix("running ")?;
-    let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
 }
 
@@ -233,7 +273,7 @@ fn extract_cargo_test_filtered(text: &str) -> Option<u32> {
     })
 }
 
-fn sum_line_counts(text: &str, parse: fn(&str) -> Option<u32>) -> Option<u32> {
+fn sum_line_counts(text: &str, parse: LineParser) -> Option<u32> {
     let (seen, total) = text
         .lines()
         .filter_map(parse)
