@@ -1,6 +1,8 @@
 #![allow(
     clippy::disallowed_methods,
     clippy::disallowed_macros,
+    clippy::literal_string_with_formatting_args,
+    clippy::too_many_lines,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,

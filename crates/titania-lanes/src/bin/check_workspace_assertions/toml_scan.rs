@@ -137,6 +137,14 @@ pub fn binary_names(manifest: &str) -> BTreeSet<String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::disallowed_macros,
+        clippy::missing_errors_doc,
+        clippy::missing_panics_doc,
+        clippy::panic_in_result_fn,
+        reason = "Test harness uses assert! and assert_eq! macros in Result-returning test functions."
+    )]
+
     use super::{array_open_after, quoted_array_values};
 
     #[test]

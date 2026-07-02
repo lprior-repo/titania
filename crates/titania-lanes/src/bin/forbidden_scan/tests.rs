@@ -1,6 +1,8 @@
 #![allow(
     clippy::disallowed_methods,
     clippy::disallowed_macros,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
     clippy::panic_in_result_fn,
     reason = "Test harness uses Result-returning test functions with assert! macros and process::Command."
 )]
@@ -11,6 +13,12 @@ use titania_lanes::LaneReport;
 
 use super::{ForbiddenToken, collect_source_files, default_forbidden_set, scan_file};
 
+/// Parse a forbidden token pattern, returning an error if the name is
+/// empty or malformed.
+///
+/// # Errors
+/// Returns a descriptive error string when `ForbiddenToken::parse`
+/// cannot parse the provided `name`.
 fn macro_token(name: &str) -> Result<ForbiddenToken, String> {
     ForbiddenToken::parse(name).ok_or_else(|| format!("token parse failed for {name}"))
 }
@@ -99,9 +107,9 @@ fn production_tests_rs_is_scanned_under_tests_checkout_path() -> Result<(), Box<
 
     let mut report = LaneReport::new();
     let forbidden = default_forbidden_set();
-    collect_source_files(&root)
-        .iter()
-        .for_each(|source| scan_file(&root, source, &forbidden, &mut report));
+    for source in &collect_source_files(&root) {
+        scan_file(&root, source, &forbidden, &mut report);
+    }
 
     assert!(report.findings().iter().any(|finding| {
         finding.path() == "crates/example/src/tests.rs" && finding.rule() == "FORBIDDEN-001"

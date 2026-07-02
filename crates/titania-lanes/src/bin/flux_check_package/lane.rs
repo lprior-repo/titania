@@ -174,7 +174,7 @@ fn render_exit(report: &LaneReport, code: LaneExit) -> ExitCode {
 }
 
 fn append_args<'a>(command: &mut CommandIn<'a>, args: &'a [String]) {
-    for arg in args.iter() {
+    for arg in args {
         command.arg(arg.as_str());
     }
 }
@@ -182,7 +182,7 @@ fn append_args<'a>(command: &mut CommandIn<'a>, args: &'a [String]) {
 fn rustup_first_path() -> Option<String> {
     let current = env::var_os("PATH")?;
     let home = env::var_os("HOME")?;
-    let cargo_bin = PathBuf::from(home).join(".cargo").join("bin");
+    let cargo_bin = PathBuf::from(home).join(".cargo").join(".bin");
     if !cargo_bin.is_dir() {
         return current.into_string().ok();
     }

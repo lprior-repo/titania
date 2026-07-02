@@ -165,25 +165,27 @@ fn clippy_thresholds_reject_weakened_fixture() {
 }
 
 fn assert_scalar_lints(entries: &BTreeMap<&str, &str>, required: &[(&str, &str)]) {
-    required.iter().for_each(|(key, level)| {
-        assert_eq!(scalar_lint(entries, key), Some(*level), "{key} must be {level}");
-    });
+    for (key, level) in required {
+        assert!(
+            scalar_lint(entries, key) == Some(*level),
+            "{key} must be {level}"
+        );
+    }
 }
 
 fn assert_table_lints(entries: &BTreeMap<&str, &str>, required: &[(&str, &str, &str)]) {
-    required.iter().for_each(|(key, level, priority)| {
-        assert_eq!(
-            table_lint(entries, key),
-            Some((*level, *priority)),
+    for (key, level, priority) in required {
+        assert!(
+            table_lint(entries, key) == Some((*level, *priority)),
             "{key} must be {level}/{priority}"
         );
-    });
+    }
 }
 
 fn assert_entries(entries: &BTreeMap<&str, &str>, required: &[(&str, &str)]) {
-    required.iter().for_each(|(key, value)| {
-        assert_eq!(entries.get(key), Some(value), "{key} must be {value}");
-    });
+    for (key, value) in required {
+        assert!(entries.get(key) == Some(value), "{key} must be {value}");
+    }
 }
 
 fn scalar_lint<'a>(entries: &'a BTreeMap<&str, &'a str>, key: &str) -> Option<&'a str> {

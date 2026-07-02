@@ -132,6 +132,14 @@ fn argument_value(args: &[String], flag: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::disallowed_macros,
+        clippy::missing_errors_doc,
+        clippy::missing_panics_doc,
+        clippy::panic_in_result_fn,
+        reason = "Test harness uses assert! and assert_eq! macros in Result-returning test functions."
+    )]
+
     use std::{fs, process::Command};
 
     use tempfile::TempDir;
@@ -168,7 +176,7 @@ mod tests {
             "#[test]\n#[ignore]\nfn tracks_behavior() {\n    assert_eq!(2 + 2, 4);\n}\n",
         )?;
 
-        assert_eq!(check(&target, "HEAD", Vcs::Git)?, 1_i32);
+        assert!(check(&target, "HEAD", Vcs::Git)? == 1);
         Ok(())
     }
 }

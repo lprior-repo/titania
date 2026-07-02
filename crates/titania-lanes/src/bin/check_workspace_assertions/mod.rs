@@ -68,6 +68,14 @@ fn run(target: &TargetProject) -> LaneExit {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::disallowed_macros,
+        clippy::missing_errors_doc,
+        clippy::missing_panics_doc,
+        clippy::panic_in_result_fn,
+        reason = "Test harness uses assert! in test functions."
+    )]
+
     use super::FORBIDDEN_FEATURE_NAMES;
 
     #[test]
