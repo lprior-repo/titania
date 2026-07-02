@@ -47,6 +47,14 @@ pub fn main_exit() -> ExitCode {
     run_for_root(target.as_std_path(), &rule)
 }
 
+/// Parses the static `WRONG_SPELLING` / `CANONICAL_SPELLING` constants
+/// into a [`SpellingRule`], mapping the two `SpellingRuleError` cases
+/// to the right `LaneExit` codes.
+///
+/// # Errors
+/// Returns `Err(ExitCode)` matching `not_applicable_rule_exit` when the
+/// wrong/canonical terms are identical, or `invalid_rule_exit` when
+/// either term is empty/whitespace.
 fn spelling_rule() -> Result<SpellingRule<'static>, ExitCode> {
     SpellingRule::parse(WRONG_SPELLING, CANONICAL_SPELLING).map_err(|error| match error {
         SpellingRuleError::IdenticalTerms => not_applicable_rule_exit(),
@@ -67,7 +75,9 @@ fn invalid_rule_exit() -> ExitCode {
 fn run_for_root(root: &Path, rule: &SpellingRule<'_>) -> ExitCode {
     eprintln!("=== Spelling Gate: {} vs {} ===", rule.bad(), rule.good());
     let mut report = LaneReport::new();
-    collect_files(root).iter().for_each(|file| scan_file(file, rule, &mut report));
+    for file in collect_files(root) {
+        scan_file(&file, rule, &mut report);
+    }
     eprintln!("=== Spelling Gate complete: {} violations ===", report.finding_count());
     eprint!("{}", report.render());
     if report.is_clean() { exit(LaneExit::Clean) } else { spelling_violations_exit(rule) }
@@ -100,7 +110,9 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
-    entries.filter_map(Result::ok).map(|entry| entry.path()).for_each(|path| visit_path(path, out));
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        visit_path(path, out);
+    }
 }
 
 fn visit_path(path: PathBuf, out: &mut Vec<PathBuf>) {
@@ -118,7 +130,9 @@ fn is_heavy_tree(path: &Path) -> bool {
 }
 
 fn is_scanned_file(path: &Path) -> bool {
-    path.extension().and_then(|e| e.to_str()).is_some_and(|ext| SCAN_EXTENSIONS.contains(&ext))
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| SCAN_EXTENSIONS.contains(&ext))
 }
 
 fn is_path_excluded(file: &Path) -> bool {
@@ -160,10 +174,9 @@ fn scan_file(file: &Path, rule: &SpellingRule<'_>, report: &mut LaneReport) {
         return;
     };
     let display = file.display().to_string();
-    content
-        .lines()
-        .enumerate()
-        .for_each(|(idx, line)| scan_line(line, idx, &display, rule, report));
+    for (idx, line) in content.lines().enumerate() {
+        scan_line(line, idx, &display, rule, report);
+    }
 }
 
 fn scan_line(
@@ -192,6 +205,13 @@ struct SpellingRule<'a> {
 }
 
 impl<'a> SpellingRule<'a> {
+    /// Parses a (bad, good) spelling pair. Both must be non-empty and
+    /// must not be identical.
+    ///
+    /// # Errors
+    /// Returns `SpellingRuleError::EmptyTerm` when either term is
+    /// empty/whitespace, or `SpellingRuleError::IdenticalTerms` when
+    /// `bad == good`.
     fn parse(bad: &'a str, good: &'a str) -> Result<Self, SpellingRuleError> {
         if bad.trim().is_empty() || good.trim().is_empty() {
             return Err(SpellingRuleError::EmptyTerm);
@@ -202,11 +222,11 @@ impl<'a> SpellingRule<'a> {
         Ok(Self { bad, good })
     }
 
-    fn bad(&self) -> &str {
+    const fn bad(&self) -> &str {
         self.bad
     }
 
-    fn good(&self) -> &str {
+    const fn good(&self) -> &str {
         self.good
     }
 }
