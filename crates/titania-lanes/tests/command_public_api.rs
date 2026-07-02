@@ -1,3 +1,28 @@
+#![allow(
+    clippy::disallowed_methods,
+    clippy::disallowed_macros,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::string_slice,
+    clippy::arithmetic_side_effects,
+    clippy::missing_panics_doc,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::doc_markdown,
+    clippy::excessive_nesting,
+    clippy::many_single_char_names,
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    clippy::missing_errors_doc,
+    clippy::type_complexity,
+    clippy::needless_borrow,
+    clippy::useless_vec,
+    clippy::map_identity,
+    reason = "Tests are exempt from the strict production deny list per project doctrine."
+)]
+//! command_public_api: integration test.
 use std::{error::Error, io::ErrorKind, time::Duration};
 
 use tempfile::tempdir;

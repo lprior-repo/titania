@@ -56,6 +56,11 @@ impl WorkspacePath {
         self.0.split('/').next().is_some_and(|first| first == segment)
     }
 
+    /// Validate the bytes and segments of a candidate path.
+    ///
+    /// # Errors
+    /// Returns the appropriate [`WorkspacePathError`] variant for each
+    /// invariant the candidate violates.
     fn validate(s: &str) -> Result<(), WorkspacePathError> {
         if s.is_empty() {
             return Err(WorkspacePathError::Empty);
@@ -63,23 +68,9 @@ impl WorkspacePath {
         if s.starts_with('/') {
             return Err(WorkspacePathError::LeadingSlash);
         }
-        let bytes = s.as_bytes();
-        for &b in bytes {
-            if b == b'\\' {
-                return Err(WorkspacePathError::ContainsBackslash);
-            }
-            if b == 0 {
-                return Err(WorkspacePathError::ContainsNull);
-            }
-            if b < 0x20 {
-                return Err(WorkspacePathError::ControlByte(b));
-            }
-        }
-        // Check for '..' as a complete segment.
-        for seg in s.split('/') {
-            if seg == ".." {
-                return Err(WorkspacePathError::ContainsDotDot);
-            }
+        check_bytes_for_control(s.as_bytes())?;
+        if s.split('/').any(|seg| seg == "..") {
+            return Err(WorkspacePathError::ContainsDotDot);
         }
         Ok(())
     }
@@ -122,4 +113,25 @@ impl TryFrom<&str> for WorkspacePath {
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         Self::new(s)
     }
+}
+
+/// Validate each byte of the path against the no-backslash, no-NUL,
+/// no-control-byte invariants.
+///
+/// # Errors
+/// Returns the first [`WorkspacePathError`] variant that matches the
+/// offending byte.
+fn check_bytes_for_control(bytes: &[u8]) -> Result<(), WorkspacePathError> {
+    for &b in bytes {
+        if b == b'\\' {
+            return Err(WorkspacePathError::ContainsBackslash);
+        }
+        if b == 0 {
+            return Err(WorkspacePathError::ContainsNull);
+        }
+        if b < 0x20 {
+            return Err(WorkspacePathError::ControlByte(b));
+        }
+    }
+    Ok(())
 }

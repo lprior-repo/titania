@@ -71,6 +71,10 @@ fn print_and_exit(report: &LaneReport) -> std::process::ExitCode {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::disallowed_macros,
+        reason = "Tests use the standard `assert!` macro for behavior assertions."
+    )]
     use super::*;
 
     fn fixture_file(root: &Path, rel: &str, text: &str) -> Result<(), Box<dyn std::error::Error>> {

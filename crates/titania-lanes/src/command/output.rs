@@ -5,13 +5,18 @@ use super::{LaneError, OutputStream};
 /// The result of a captured subprocess run.
 #[derive(Debug)]
 pub struct CommandOutput {
+    /// Exit status reported by the OS for the child.
     pub status: ExitStatus,
+    /// Captured stdout bytes.
     pub stdout: Vec<u8>,
+    /// Captured stderr bytes.
     pub stderr: Vec<u8>,
+    /// Program name for diagnostic context.
     program: String,
 }
 
 impl CommandOutput {
+    /// Build a `CommandOutput` from already-collected pieces.
     pub(super) const fn new(
         status: ExitStatus,
         stdout: Vec<u8>,
@@ -21,6 +26,7 @@ impl CommandOutput {
         Self { status, stdout, stderr, program }
     }
 
+    /// Whether the subprocess exited successfully (status code 0).
     #[must_use]
     pub fn success(&self) -> bool {
         self.status.success()
@@ -31,9 +37,12 @@ impl CommandOutput {
     /// # Errors
     /// Returns [`LaneError::NonUtf8Output`] when stdout is not UTF-8.
     pub fn stdout_str(&self) -> Result<&str, LaneError> {
-        std::str::from_utf8(&self.stdout).map_err(|_| LaneError::NonUtf8Output {
-            program: self.program.clone(),
-            stream: OutputStream::Stdout,
+        std::str::from_utf8(&self.stdout).map_err(|e| {
+            let _ = e;
+            LaneError::NonUtf8Output {
+                program: self.program.clone(),
+                stream: OutputStream::Stdout,
+            }
         })
     }
 
@@ -42,9 +51,12 @@ impl CommandOutput {
     /// # Errors
     /// Returns [`LaneError::NonUtf8Output`] when stderr is not UTF-8.
     pub fn stderr_str(&self) -> Result<&str, LaneError> {
-        std::str::from_utf8(&self.stderr).map_err(|_| LaneError::NonUtf8Output {
-            program: self.program.clone(),
-            stream: OutputStream::Stderr,
+        std::str::from_utf8(&self.stderr).map_err(|e| {
+            let _ = e;
+            LaneError::NonUtf8Output {
+                program: self.program.clone(),
+                stream: OutputStream::Stderr,
+            }
         })
     }
 

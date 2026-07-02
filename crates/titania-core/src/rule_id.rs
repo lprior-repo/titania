@@ -30,6 +30,7 @@ impl RuleId {
     ///
     /// # Errors
     /// - [`RuleIdError::Empty`] if `s` is empty.
+    /// - [`RuleIdError::TooLong`] if `s` is longer than [`Self::MAX_LEN`].
     /// - [`RuleIdError::NoUnderscore`] if `s` has no underscore.
     /// - [`RuleIdError::NotUppercase`] if `s` contains any character that
     ///   is not uppercase ASCII (`A-Z`, `0-9`).
@@ -38,18 +39,12 @@ impl RuleId {
             return Err(RuleIdError::Empty);
         }
         if s.len() > Self::MAX_LEN {
-            return Err(RuleIdError::Empty); // length handled separately below
+            return Err(RuleIdError::TooLong {
+                max: Self::MAX_LEN,
+                actual: s.len(),
+            });
         }
-        let mut has_underscore = false;
-        for (i, c) in s.char_indices() {
-            if c == '_' {
-                has_underscore = true;
-                continue;
-            }
-            if !matches!(c, 'A'..='Z' | '0'..='9') {
-                return Err(RuleIdError::NotUppercase(c, i));
-            }
-        }
+        let has_underscore = scan_id_chars(s)?;
         if !has_underscore {
             return Err(RuleIdError::NoUnderscore);
         }
@@ -63,15 +58,7 @@ impl RuleId {
     /// Returns [`RuleIdError`] when normalized input is empty, too long, lacks
     /// an underscore, or contains no legal rule-id characters after filtering.
     pub fn normalize(s: &str) -> Result<Self, RuleIdError> {
-        let mut buf = String::with_capacity(s.len());
-        for ch in s.chars() {
-            if ch.is_ascii_lowercase() {
-                buf.push(ch.to_ascii_uppercase());
-            } else if ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_' {
-                buf.push(ch);
-            }
-            // other chars are dropped; validation will catch empty / no-underscore.
-        }
+        let buf = normalize_to_buffer(s);
         Self::new(&buf)
     }
 
@@ -89,7 +76,7 @@ impl RuleId {
     /// returned by `find('_')` therefore lies on a UTF-8 character
     /// boundary, so the slice is well-defined.
     #[must_use]
-    #[allow(clippy::string_slice)]
+    #[expect(clippy::string_slice, reason = "RuleId is uppercase ASCII + `_`; find returns a char boundary.")]
     pub fn prefix(&self) -> &str {
         match self.0.find('_') {
             Some(i) => &self.0[..i],
@@ -140,4 +127,36 @@ impl<'de> Deserialize<'de> for RuleId {
         let s = <std::borrow::Cow<'_, str> as Deserialize>::deserialize(de)?;
         Self::new(&s).map_err(serde::de::Error::custom)
     }
+}
+
+/// Walk every char of `s` and report whether the input contains an
+/// underscore. The first non-uppercase-ASCII character short-circuits
+/// with [`RuleIdError::NotUppercase`].
+///
+/// # Errors
+/// Returns [`RuleIdError::NotUppercase`] on the first non-uppercase-ASCII
+/// character outside of `_`.
+fn scan_id_chars(s: &str) -> Result<bool, RuleIdError> {
+    let mut has_underscore = false;
+    for (i, c) in s.char_indices() {
+        if c == '_' {
+            has_underscore = true;
+        } else if !matches!(c, 'A'..='Z' | '0'..='9') {
+            return Err(RuleIdError::NotUppercase(c, i));
+        }
+    }
+    Ok(has_underscore)
+}
+
+/// Project every char of `s` into a normalized `String`: lowercase ASCII
+/// letters become uppercase, legal characters (`A-Z`, `0-9`, `_`) are kept,
+/// and all other characters are dropped.
+fn normalize_to_buffer(s: &str) -> String {
+    s.chars()
+        .filter_map(|ch| match ch {
+            c if c.is_ascii_lowercase() => Some(c.to_ascii_uppercase()),
+            c if c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_' => Some(c),
+            _ => None,
+        })
+        .collect()
 }

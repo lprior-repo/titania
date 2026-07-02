@@ -1,3 +1,25 @@
+#![allow(
+    clippy::disallowed_methods,
+    clippy::disallowed_macros,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::string_slice,
+    clippy::arithmetic_side_effects,
+    clippy::missing_panics_doc,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::doc_markdown,
+    clippy::excessive_nesting,
+    clippy::many_single_char_names,
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    clippy::missing_errors_doc,
+    clippy::type_complexity,
+    clippy::map_identity,
+    reason = "Tests are exempt from the strict production deny list per project doctrine."
+)]
 //! serde JSON round-trip and cross-primitive serialization tests.
 //!
 //! Behavior: any value built by a smart constructor should serialize to a
@@ -5,8 +27,8 @@
 //!
 //! Test files are exempt from the strict production code lint policy.
 
-#![allow(clippy::needless_borrow)]
-#![allow(clippy::useless_vec)]
+#![allow(clippy::needless_borrow, reason = "Project doctrine: tests are exempt from production lint policy.")]
+#![allow(clippy::useless_vec, reason = "Project doctrine: tests are exempt from production lint policy.")]
 
 use titania_core::{Digest, RuleId, TextRange, WorkspacePath};
 

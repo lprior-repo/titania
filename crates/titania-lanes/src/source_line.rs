@@ -34,7 +34,10 @@ use std::{iter::Peekable, str::Chars};
 /// scanner can skip it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SourceLine {
+    /// Line carried surviving code runes after stripping comments and
+    /// string contents (string contents were blanked to spaces).
     Code(String),
+    /// Line was entirely comments or string contents.
     NonCode,
 }
 
@@ -66,16 +69,25 @@ impl SourceLine {
     }
 }
 
+/// Result of running the source-line parser.
 struct ParsedLine {
+    /// The classified source line.
     line: SourceLine,
+    /// Whether the parser is still inside an unclosed block comment.
     block_comment: bool,
 }
 
+/// Incremental state machine for stripping comments and string contents.
 struct SourceLineParser<'a> {
+    /// Character iterator with one-character lookahead.
     chars: Peekable<Chars<'a>>,
+    /// Output buffer of surviving code runes.
     code: String,
+    /// Whether we are inside an unclosed `/* … */` block comment.
     block_comment: bool,
+    /// Whether the parser is inside a string literal.
     in_string: bool,
+    /// Whether the next character is escaped inside a string literal.
     escaped: bool,
 }
 
@@ -90,22 +102,16 @@ impl<'a> SourceLineParser<'a> {
         }
     }
 
+    /// Walk every character of the input and classify the line. Returns
+    /// the resulting [`SourceLine`] together with the carry-over
+    /// block-comment flag for the next line.
     fn parse(mut self) -> ParsedLine {
-        while let Some(ch) = self.chars.next() {
-            if self.consume_block_comment(ch) || self.consume_string(ch) {
-                continue;
-            }
-            if self.starts_line_comment(ch) {
-                break;
-            }
-            if self.starts_block_comment(ch) {
-                continue;
-            }
-            self.consume_code(ch);
-        }
+        walk_to_eol(&mut self);
         self.finish()
     }
 
+    /// Consume a character while we are inside a `/* … */` block. Returns
+    /// `true` if the character was consumed, `false` otherwise.
     fn consume_block_comment(&mut self, ch: char) -> bool {
         if !self.block_comment {
             return false;
@@ -163,8 +169,41 @@ impl<'a> SourceLineParser<'a> {
     }
 }
 
+/// Classify one character: consume block-comment, string, or block-comment
+/// start; bail out on a line comment. Returns `true` when the parser
+/// should stop iterating.
+fn classify_char(parser: &mut SourceLineParser<'_>, ch: char) -> bool {
+    if parser.consume_block_comment(ch) || parser.consume_string(ch) || parser.starts_block_comment(ch) {
+        return false;
+    }
+    if parser.starts_line_comment(ch) {
+        return true;
+    }
+    parser.consume_code(ch);
+    false
+}
+
+/// Iterate every remaining character of the input, classifying it via
+/// [`classify_char`]. Stops as soon as a line comment is encountered.
+fn walk_to_eol(parser: &mut SourceLineParser<'_>) {
+    while let Some(ch) = parser.chars.next() {
+        if classify_char(parser, ch) {
+            break;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::disallowed_macros,
+        clippy::disallowed_methods,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::missing_panics_doc,
+        reason = "Inline tests in the lib are exempt from the strict production deny list per project doctrine."
+    )]
     use super::SourceLine;
 
     fn parse_lines(text: &str) -> Vec<SourceLine> {
@@ -201,7 +240,7 @@ mod tests {
         let line2 = SourceLine::parse("more lines */ let x = 1;", &mut block_comment);
         assert!(!block_comment, "block_comment should be closed");
         assert!(line2.code().contains("let x = 1;"));
-        let _ = line1;
+        drop(line1);
     }
 
     #[test]

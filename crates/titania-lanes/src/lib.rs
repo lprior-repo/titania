@@ -39,8 +39,10 @@ pub use source_line::SourceLine;
 /// Errors produced while resolving the target project from the process CWD.
 #[derive(Debug, Error)]
 pub enum CurrentTargetError {
+    /// CWD could not be read.
     #[error("cannot read current directory")]
     CurrentDir(#[source] io::Error),
+    /// CWD was read but no valid Cargo target project was discovered.
     #[error(transparent)]
     Target(#[from] TargetProjectError),
 }
@@ -73,6 +75,7 @@ pub struct Finding {
 }
 
 impl Finding {
+    /// Construct a new [`Finding`] from its rule, path, line, and message.
     #[must_use]
     pub fn new(
         rule: &'static str,
@@ -83,21 +86,25 @@ impl Finding {
         Self { rule, path: path.into(), line, message: message.into() }
     }
 
+    /// Borrow the rule id (e.g. `"DISCARD-001"`).
     #[must_use]
     pub const fn rule(&self) -> &'static str {
         self.rule
     }
 
+    /// Borrow the repository-relative path.
     #[must_use]
     pub fn path(&self) -> &str {
         &self.path
     }
 
+    /// 1-indexed line number. `0` means the finding is file-level.
     #[must_use]
     pub const fn line(&self) -> u32 {
         self.line
     }
 
+    /// Borrow the human-readable message.
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
@@ -107,40 +114,50 @@ impl Finding {
 /// Lane output: collected findings plus summary counters.
 #[derive(Debug, Default, Clone)]
 pub struct LaneReport {
+    /// All findings accumulated so far.
     findings: Vec<Finding>,
+    /// Total items scanned by the lane.
     scanned: u32,
+    /// Items accepted as clean.
     passed: u32,
 }
 
 impl LaneReport {
+    /// Construct an empty report.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Whether the report carries zero findings.
     #[must_use]
     pub fn is_clean(&self) -> bool {
         self.findings.is_empty()
     }
 
+    /// Append a finding to the report.
     pub fn push(&mut self, finding: Finding) {
         self.findings.push(finding);
     }
 
+    /// Borrow the list of findings.
     #[must_use]
     pub fn findings(&self) -> &[Finding] {
         &self.findings
     }
 
+    /// Number of findings currently in the report.
     #[must_use]
     pub fn finding_count(&self) -> usize {
         self.findings.len()
     }
 
+    /// Mark one item as having passed; saturates at `u32::MAX`.
     pub const fn record_pass(&mut self) {
         self.passed = self.passed.saturating_add(1);
     }
 
+    /// Mark one item as having been scanned; saturates at `u32::MAX`.
     pub const fn record_scan(&mut self) {
         self.scanned = self.scanned.saturating_add(1);
     }
@@ -159,16 +176,19 @@ impl LaneReport {
 /// Typed process/disposition convention used by every lane binary.
 ///
 /// `LaneExit::Clean` and `LaneExit::NotApplicable` both map to process exit
-/// code `0`, but they remain distinct lane/report dispositions: CI process
-/// success differs from the receipt/report meaning that a lane had no valid
-/// subject to judge. Other codes are `1` = violations, `2` = usage/config
-/// error, `3` = upstream dependency missing or fixture self-test failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneExit {
+    /// Lane scanned and emitted zero findings; process exit 0.
     Clean,
+    /// Lane had no valid subject to judge; process exit 0 (distinct from
+    /// [`LaneExit::Clean`] for report/receipt semantics).
     NotApplicable,
+    /// Lane emitted at least one finding; process exit 1.
     Violations,
+    /// Lane was invoked with bad arguments or config; process exit 2.
     Usage,
+    /// Lane could not run because of an upstream or fixture failure;
+    /// process exit 3.
     Failure,
 }
 
@@ -195,6 +215,15 @@ pub fn exit(code: LaneExit) -> std::process::ExitCode {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::disallowed_macros,
+        clippy::disallowed_methods,
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::missing_panics_doc,
+        reason = "Inline tests in the lib are exempt from the strict production deny list per project doctrine."
+    )]
     use super::LaneExit;
 
     #[test]

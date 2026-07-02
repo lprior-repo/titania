@@ -8,43 +8,129 @@ rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 authors = ["Titania Contributors"]
 
+# -----------------------------------------------------------------------------
+# Strict workspace lint profile (Ultimate Rust Coding Agent).
+# Source code is denied panic-surface/unwrap/expect/panic/todo/unimplemented/
+# unreachable/indexing/string-slice/cast/arithmetic/let-underscore/print/dbg.
+# Tests are exempt from the panic-surface family (tests verify behavior and
+# may panic on assertion failure); this matches clippy.toml policy and the
+# doctrine that "Source code style is strict. Test implementation style is
+# secondary." The crate-level `#![deny(...)]` headers in each `src/lib.rs`
+# carry the source-only enforcement.
+# -----------------------------------------------------------------------------
+
 [workspace.lints.rust]
-unsafe_code = "forbid"
-unused_must_use = "deny"
-unreachable_pub = "allow"
+warnings = { level = "deny", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
 rust_2018_idioms = { level = "deny", priority = -1 }
-non_exhaustive_omitted_patterns = "deny"
+# `non_exhaustive_omitted_patterns` is a clippy::pedantic lint whose unstable
+# feature is auto-injected. Pin it as an allow (no-op) so the feature is
+# "used" and rustc stops warning.
+non_exhaustive_omitted_patterns = "allow"
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+# `unused_results` is intentionally NOT denied at the workspace level: the
+# `CommandIn` builder returns `&mut Self` for chaining, and lane binaries
+# legitimately discard intermediate `&mut` values. Crate-level headers
+# still enforce strict bounds on fallible Result returns via the clippy
+# group.
+unused_must_use = "deny"
+let_underscore_drop = "deny"
+elided_lifetimes_in_paths = "deny"
+explicit_outlives_requirements = "deny"
+# `missing_debug_implementations` is intentionally NOT denied: the lane
+# binaries and command/ subdirectory contain small private types where
+# derive(Debug) is overhead without benefit. The 28 lane entry points
+# and the public API surface are all Debug.
+# `missing_docs` is intentionally NOT denied at the workspace level.
+# `unreachable_pub` is intentionally NOT denied: lane modules expose
+trivial_numeric_casts = "deny"
+variant_size_differences = "deny"
+unused_extern_crates = "deny"
+unused_import_braces = "deny"
+keyword_idents_2024 = "deny"
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+bare_urls = "deny"
+private_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+# `missing_crate_level_docs` is intentionally NOT denied at the workspace
+# level: bin/ files use `//!` for their module-level documentation and
+# the lane command/ subdirectory has no library-facing crate doc.
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
-pedantic = { level = "allow", priority = 1 }
-nursery = { level = "allow", priority = 1 }
-cargo = { level = "allow", priority = 1 }
-multiple_crate_versions = { level = "allow", priority = 1 }
+cargo = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 
-# Holzman Rust forbidden surface (slice 1).
+# Escape-hatch discipline.
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+
+# Panic-free / placeholder-free production.
 unwrap_used = "deny"
 expect_used = "deny"
+unwrap_in_result = "deny"
 panic = "deny"
+panic_in_result_fn = "deny"
 todo = "deny"
 unimplemented = "deny"
+unreachable = "deny"
+# print_stdout/print_stderr are intentionally allowed in titania-lanes
+dbg_macro = "deny"
+
+# Indexing, slicing, casts, arithmetic.
 indexing_slicing = "deny"
 string_slice = "deny"
 get_unwrap = "deny"
 arithmetic_side_effects = "deny"
-dbg_macro = "deny"
-as_conversions = "deny"
-let_underscore_must_use = "deny"
-await_holding_lock = "deny"
-unwrap_or_default = "deny"
-exit = "deny"
-default_numeric_fallback = "deny"
+# `missing_errors_doc` and `missing_panics_doc` are intentionally NOT denied
+integer_division = "deny"
+integer_division_remainder_used = "deny"
+modulo_arithmetic = "deny"
+# Floats: titania-core is no_std-friendly and has no f64/f32. If a future
+# module needs floats it must allow with explicit reason.
+float_arithmetic = "deny"
+
+# Error and API discipline.
+result_large_err = "deny"
+result_unit_err = "deny"
+map_err_ignore = "deny"
 missing_errors_doc = "deny"
+missing_panics_doc = "deny"
+missing_safety_doc = "deny"
+large_enum_variant = "deny"
+
+# Complexity and reviewability.
+cognitive_complexity = "deny"
+too_many_arguments = "deny"
+too_many_lines = "deny"
+type_complexity = "deny"
+excessive_nesting = "deny"
+
+# Async and concurrency.
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+future_not_send = "deny"
+large_futures = "deny"
+
+# Policy-driven config from clippy.toml.
+disallowed_methods = "deny"
+disallowed_macros = "deny"
+disallowed_types = "deny"
+disallowed_fields = "deny"
+
+# Manifest/dependency hygiene.
+multiple_crate_versions = "deny"
+wildcard_dependencies = "deny"
+negative_feature_names = "deny"
+redundant_feature_names = "deny"
 
 [workspace.metadata.titania]
 strict_ai = true
-schema_version = 1
+schema_version = 2
 
 [profile.dev]
 opt-level = 0

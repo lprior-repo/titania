@@ -1,11 +1,10 @@
-//! 64-character lowercase hex content digest. Backed by a `String` because
-//! the byte representation is 64 ASCII chars; `String` keeps the API safe
-//! (no `unsafe` needed) and the allocation cost is amortized at
-//! construction.
+//! 64-character lowercase hex content digest, backed by `String`.
 //!
-//! Construction is total: [`Digest::from_hex`] returns `Result`, and
-//! [`Digest::from_bytes`] is infallible because blake3's hex output is
-//! contractually 64 lowercase hex characters.
+//! The byte representation is 64 ASCII chars; `String` keeps the API safe
+//! (no `unsafe` needed) and the allocation cost is amortized at construction.
+//!
+//! [`Digest::from_hex`] returns `Result`; [`Digest::from_bytes`] is infallible
+//! because blake3's hex output is contractually 64 lowercase hex characters.
 
 use core::{fmt, str::FromStr};
 
@@ -40,15 +39,14 @@ impl Digest {
     /// - [`DigestError::NonHexChar`] at the first non-`[0-9a-f]` byte.
     pub fn from_hex(hex: &str) -> Result<Self, DigestError> {
         let bytes = hex.as_bytes();
-        if bytes.len() != DIGEST_HEX_LEN {
+        let Some(()) = length_check(bytes.len()) else {
             return Err(DigestError::WrongLength(bytes.len()));
-        }
-        for (i, &b) in bytes.iter().enumerate() {
-            if !is_lower_hex(b) {
-                return Err(DigestError::NonHexChar(i));
-            }
-        }
-        Ok(Self(hex.to_owned()))
+        };
+        bytes
+            .iter()
+            .enumerate()
+            .try_for_each(|(i, &b)| check_lower_hex_byte(i, b))
+            .map(|()| Self(hex.to_owned()))
     }
 
     /// Borrow the underlying lowercase-hex string.
@@ -94,4 +92,21 @@ impl<'de> Deserialize<'de> for Digest {
 #[must_use]
 const fn is_lower_hex(b: u8) -> bool {
     matches!(b, b'0'..=b'9' | b'a'..=b'f')
+}
+
+/// Validate one byte of a hex digest, returning the byte offset on failure.
+///
+/// # Errors
+/// Returns [`DigestError::NonHexChar`] when `b` is not a lowercase hex byte.
+const fn check_lower_hex_byte(i: usize, b: u8) -> Result<(), DigestError> {
+    if is_lower_hex(b) {
+        Ok(())
+    } else {
+        Err(DigestError::NonHexChar(i))
+    }
+}
+
+/// Verify the byte length of an incoming hex digest.
+const fn length_check(len: usize) -> Option<()> {
+    if len == DIGEST_HEX_LEN { Some(()) } else { None }
 }

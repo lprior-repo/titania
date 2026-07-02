@@ -20,33 +20,54 @@ pub use target_root::RecordedTargetRoot;
 
 /// Receipt-local subprocess outcome.
 ///
-/// This mirrors the lane exit-code contract without making `titania-core`
-/// depend on the `titania-lanes` crate.
+/// Mirrors the lane exit-code contract without making `titania-core` depend
+/// on the `titania-lanes` crate. `Clean` and `NotApplicable` are both
+/// process-success dispositions but carry distinct report meaning: a clean
+/// lane scanned and passed; a non-applicable lane had no valid subject
+/// to judge. `Violations`, `Usage`, and `Failure` map to non-zero process
+/// exits with distinct semantics (findings, config error, upstream failure).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReceiptLaneExit {
+    /// Lane scanned and emitted zero findings.
     Clean,
+    /// Lane had no valid subject to judge; process exit still 0.
+    NotApplicable,
+    /// Lane emitted at least one finding; process exit 1.
     Violations,
+    /// Lane was invoked with bad arguments or config; process exit 2.
     Usage,
+    /// Lane could not run because of an upstream or fixture failure;
+    /// process exit 3.
     Failure,
 }
 
 /// Per-lane digest summary embedded in a [`QualityReceipt`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct LaneDigest {
+    /// Stable lane name this digest summarizes.
     lane: LaneName,
+    /// Process/disposition outcome the lane reported.
     exit: ReceiptLaneExit,
+    /// Number of items the lane scanned.
     scanned: u32,
+    /// Number of items the lane accepted as clean.
     passed: u32,
+    /// Number of findings the lane emitted.
     finding_count: u32,
 }
 
 #[derive(Deserialize)]
 struct LaneDigestWire {
+    /// Stable lane name this digest summarizes.
     lane: LaneName,
+    /// Process/disposition outcome the lane reported.
     exit: ReceiptLaneExit,
+    /// Number of items the lane scanned.
     scanned: u32,
+    /// Number of items the lane accepted as clean.
     passed: u32,
+    /// Number of findings the lane emitted.
     finding_count: u32,
 }
 
@@ -58,6 +79,11 @@ impl<'de> Deserialize<'de> for LaneDigest {
     }
 }
 
+/// Verify that `passed <= scanned`, returning `Some(())` on success.
+#[must_use]
+const fn passed_le_scanned(passed: u32, scanned: u32) -> Option<()> {
+    if passed <= scanned { Some(()) } else { None }
+}
 impl LaneDigest {
     /// Construct a validated per-lane receipt summary.
     ///
@@ -70,10 +96,16 @@ impl LaneDigest {
         passed: u32,
         finding_count: u32,
     ) -> Result<Self, ReceiptError> {
-        if passed > scanned {
+        let Some(()) = passed_le_scanned(passed, scanned) else {
             return Err(ReceiptError::PassedExceedsScanned { passed, scanned });
-        }
-        Ok(Self { lane, exit, scanned, passed, finding_count })
+        };
+        Ok(Self {
+            lane,
+            exit,
+            scanned,
+            passed,
+            finding_count,
+        })
     }
 
     /// Lane name.
@@ -110,20 +142,35 @@ impl LaneDigest {
 /// Validated start and finish timestamps for a receipt run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReceiptPeriod {
+    /// Unix-second timestamp at run start.
     started_at: u64,
+    /// Unix-second timestamp at run finish; guaranteed `>= started_at`.
     finished_at: u64,
 }
 
+/// Verify that `finished_at >= started_at`, returning `Some(())` on success.
+#[must_use]
+const fn finished_ge_started(finished_at: u64, started_at: u64) -> Option<()> {
+    if finished_at >= started_at { Some(()) } else { None }
+}
+/// Accessors that take `&self` for call-site uniformity.
 impl ReceiptPeriod {
+    #![allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "Accessors take &self for call-site uniformity with the rest of the public API."
+    )]
     /// Construct receipt timing from Unix-second timestamps.
     ///
     /// # Errors
     /// - [`ReceiptError::FinishedBeforeStarted`] if `finished_at < started_at`.
     pub const fn new(started_at: u64, finished_at: u64) -> Result<Self, ReceiptError> {
-        if finished_at < started_at {
-            return Err(ReceiptError::FinishedBeforeStarted { started_at, finished_at });
+        match finished_ge_started(finished_at, started_at) {
+            Some(()) => Ok(Self { started_at, finished_at }),
+            None => Err(ReceiptError::FinishedBeforeStarted {
+                started_at,
+                finished_at,
+            }),
         }
-        Ok(Self { started_at, finished_at })
     }
 
     /// Run start time, in Unix seconds.
@@ -139,17 +186,32 @@ impl ReceiptPeriod {
     }
 }
 
+/// Confirm a deserialized schema version matches the current schema.
+#[must_use]
+const fn schema_matches(version: u32) -> Option<()> {
+    if version == RECEIPT_SCHEMA_VERSION { Some(()) } else { None }
+}
+
 /// Stable quality receipt envelope for one target-project run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct QualityReceipt {
+    /// Schema version this receipt was serialized with.
     schema_version: u32,
+    /// Target project root that was judged.
     target_root: RecordedTargetRoot,
+    /// Unix-second timestamp at run start.
     started_at: u64,
+    /// Unix-second timestamp at run finish.
     finished_at: u64,
+    /// Per-lane digest summaries, in execution order.
     lane_results: Vec<LaneDigest>,
+    /// blake3 digest of the source tree at evaluation time.
     source_digest: Digest,
+    /// blake3 digest of the resolved `Cargo.lock`.
     lock_digest: Digest,
+    /// blake3 digest of the policy/profiles content.
     policy_digest: Digest,
+    /// blake3 digest of the toolchain manifest content.
     toolchain_digest: Digest,
 }
 
@@ -173,6 +235,12 @@ impl QualityReceipt {
         )
     }
 
+    /// Build a [`QualityReceipt`] from already-validated parts. Used by
+    /// `new` and by the deserializer round-trip path.
+    ///
+    /// # Errors
+    /// Returns [`ReceiptError::UnsupportedSchemaVersion`] when the supplied
+    /// schema version does not match [`RECEIPT_SCHEMA_VERSION`].
     fn from_parts(
         schema_version: u32,
         target_root: RecordedTargetRoot,
@@ -180,9 +248,9 @@ impl QualityReceipt {
         lane_results: Vec<LaneDigest>,
         digests: ReceiptDigests,
     ) -> Result<Self, ReceiptError> {
-        if schema_version != RECEIPT_SCHEMA_VERSION {
+        let Some(()) = schema_matches(schema_version) else {
             return Err(ReceiptError::UnsupportedSchemaVersion(schema_version));
-        }
+        };
         let ReceiptPeriod { started_at, finished_at } = period;
         let (source_digest, lock_digest, policy_digest, toolchain_digest) = digests.into_parts();
         Ok(Self {

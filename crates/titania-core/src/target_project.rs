@@ -71,24 +71,49 @@ impl TargetProject {
     }
 }
 
+/// Reject empty paths.
+///
+/// # Errors
+/// Returns [`TargetProjectError::Empty`] if `path` is empty.
 fn validate_not_empty(path: &Utf8Path) -> Result<(), TargetProjectError> {
     if path.as_str().is_empty() { Err(TargetProjectError::Empty) } else { Ok(()) }
 }
 
+/// Reject non-absolute paths.
+///
+/// # Errors
+/// Returns [`TargetProjectError::NonAbsolute`] with the candidate path
+/// when the path is not absolute.
 fn validate_absolute(path: &Utf8Path) -> Result<(), TargetProjectError> {
     if path.is_absolute() { Ok(()) } else { Err(TargetProjectError::NonAbsolute(path.to_string())) }
 }
 
+/// Reject paths that do not exist or are not directories.
+///
+/// # Errors
+/// Returns [`TargetProjectError::NotFound`] when the path is missing and
+/// [`TargetProjectError::NotADirectory`] when it exists but is not a directory.
 fn validate_root_directory(path: &Utf8Path) -> Result<(), TargetProjectError> {
     let metadata = metadata_or(path, TargetProjectError::NotFound)?;
     if metadata.is_dir() { Ok(()) } else { Err(TargetProjectError::NotADirectory) }
 }
 
+/// Reject paths whose `Cargo.toml` is missing or is not a file.
+///
+/// # Errors
+/// Returns [`TargetProjectError::NoCargoToml`] when the manifest is
+/// missing and [`TargetProjectError::CargoTomlNotFile`] when the path
+/// exists but is not a regular file.
 fn validate_manifest_file(path: &Utf8Path) -> Result<(), TargetProjectError> {
     let metadata = metadata_or(path, TargetProjectError::NoCargoToml)?;
     if metadata.is_file() { Ok(()) } else { Err(TargetProjectError::CargoTomlNotFile) }
 }
 
+/// Read filesystem metadata, classifying `NotFound` into the caller's error.
+///
+/// # Errors
+/// Returns `missing` for `NotFound` and
+/// [`TargetProjectError::Io`] for any other I/O error.
 fn metadata_or(
     path: &Utf8Path,
     missing: TargetProjectError,

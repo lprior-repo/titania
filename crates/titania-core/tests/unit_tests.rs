@@ -1,3 +1,26 @@
+#![allow(
+    clippy::disallowed_methods,
+    clippy::disallowed_macros,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::string_slice,
+    clippy::arithmetic_side_effects,
+    clippy::missing_panics_doc,
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    clippy::doc_markdown,
+    clippy::excessive_nesting,
+    clippy::many_single_char_names,
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    clippy::missing_errors_doc,
+    clippy::needless_borrow,
+    clippy::useless_vec,
+    clippy::map_identity,
+    reason = "Tests are exempt from the strict production deny list per project doctrine."
+)]
 //! Unit tests for `titania-core` primitives.
 //!
 //! These live in `tests/` (rather than `#[cfg(test)] mod tests` in
@@ -5,7 +28,7 @@
 //! not flag `assert!`/`assert_eq!` calls. The tests exercise the
 //! `pub` API surface end-to-end.
 
-#![allow(clippy::as_conversions)] // ASCII byte round-trip is exact in tests.
+#![allow(clippy::as_conversions, reason = "Project doctrine: tests are exempt from production lint policy.")] // ASCII byte round-trip is exact in tests.
 
 use titania_core::{Digest, DigestError, RuleId, RuleIdError};
 
@@ -98,7 +121,6 @@ fn digest_fromstr_round_trip() {
 }
 
 #[test]
-#[allow(clippy::type_complexity)]
 fn digest_distinct_inputs_produce_distinct_digests_sampled() {
     type BytePair = (&'static [u8], &'static [u8]);
     let pairs: &[BytePair] =
@@ -145,7 +167,7 @@ fn rule_id_rejects_no_underscore() {
 }
 
 #[test]
-#[allow(clippy::as_conversions)]
+#[expect(clippy::as_conversions, reason = "Project doctrine: tests are exempt from production lint policy.")]
 fn rule_id_rejects_lowercase_letter_at_each_position() {
     let bases = ["FUNC_LOOPS_FOR", "CLIPPY_UNWRAP_USED", "RULE_X"];
     for base in bases {

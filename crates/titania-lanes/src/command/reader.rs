@@ -1,20 +1,38 @@
 use std::{
     io::Read,
-    sync::mpsc::{self, Receiver, RecvTimeoutError},
+    sync::mpsc::{self, RecvTimeoutError},
     thread,
     time::{Duration, Instant},
 };
 
 use super::{LaneError, OutputStream, TERMINATION_GRACE};
 
+/// Background reader handle paired with a typed channel.
+///
+/// The reader runs on a dedicated thread and pushes a `Result<Vec<u8>, LaneError>`
+/// back to the main lane when it finishes (or when it hits the byte cap).
 pub(super) struct ReaderHandle {
+    /// Join handle for the reader thread.
     thread: thread::JoinHandle<()>,
-    rx: Receiver<Result<Vec<u8>, LaneError>>,
+    /// Typed channel from the reader thread.
+    rx: ReaderChannel,
+    /// Program name for diagnostic context.
     program: String,
+    /// Which stream this reader is draining.
     stream: OutputStream,
 }
 
+/// Result type produced by the reader thread.
+type ReadOutcome = Result<Vec<u8>, LaneError>;
+
+/// Typed channel from the reader thread.
+type ReaderChannel = mpsc::Receiver<ReadOutcome>;
 impl ReaderHandle {
+    /// Wait up to `timeout` for the reader to finish, then join the thread.
+    ///
+    /// # Errors
+    /// Returns [`LaneError::Timeout`] on channel timeout, [`LaneError::ReaderThread`]
+    /// if the reader thread panicked, and whatever the reader produced otherwise.
     pub(super) fn recv_timeout(self, timeout: Duration) -> Result<Vec<u8>, LaneError> {
         match self.rx.recv_timeout(timeout) {
             Ok(result) => {
@@ -33,6 +51,11 @@ impl ReaderHandle {
     }
 }
 
+/// Take the pipe out of an `Option`, returning [`LaneError::PipeUnavailable`] if
+/// the OS did not provide one.
+///
+/// # Errors
+/// Returns [`LaneError::PipeUnavailable`] when the pipe is `None`.
 pub(super) fn take_pipe<T>(
     pipe: &mut Option<T>,
     program: String,
@@ -41,6 +64,8 @@ pub(super) fn take_pipe<T>(
     pipe.take().ok_or(LaneError::PipeUnavailable { program, stream })
 }
 
+/// Spawn a thread that reads up to `limit` bytes from `pipe` and reports the
+/// result through a channel.
 pub(super) fn spawn_reader<R>(
     pipe: R,
     limit: usize,
@@ -54,13 +79,16 @@ where
     let reader_program = program.clone();
     let thread = thread::spawn(move || {
         let result = read_limited(pipe, limit, reader_program, stream);
-        match tx.send(result) {
-            Ok(()) | Err(_) => (),
-        }
+        drop(tx.send(result));
     });
     ReaderHandle { thread, rx, program, stream }
 }
 
+/// Drain any pending reader output after the child has been terminated.
+///
+/// # Errors
+/// Returns the supplied `timeout_error` when the reader has not finished in
+/// time, or the reader's own error otherwise.
 pub(super) fn drain_after_termination(
     reader: ReaderHandle,
     timeout_error: LaneError,
@@ -72,25 +100,35 @@ pub(super) fn drain_after_termination(
     }
 }
 
+/// Remaining wall-clock budget for the subprocess, clamped to zero.
+#[must_use]
 pub(super) fn remaining_budget(started: Instant, budget: Duration) -> Duration {
     budget.checked_sub(started.elapsed()).map_or(Duration::ZERO, |remaining| remaining)
 }
 
+/// Convert a [`Duration`] to milliseconds, saturating to `u64::MAX` on overflow.
+#[must_use]
 pub(super) fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).map_or(u64::MAX, |ms| ms)
 }
 
+/// Read up to `limit + 1` bytes from `pipe`; reject if the read overflows
+/// the cap.
+///
+/// # Errors
+/// Returns [`LaneError::OutputLimitExceeded`] when the read overflows the
+/// cap, or [`LaneError::Io`] on any underlying I/O failure.
 fn read_limited<R: Read>(
     pipe: R,
     limit: usize,
     program: String,
     stream: OutputStream,
-) -> Result<Vec<u8>, LaneError> {
+) -> ReadOutcome {
     let read_limit = u64::try_from(limit.saturating_add(1))
-        .map_err(|_| LaneError::OutputLimitExceeded { program: program.clone(), stream, limit })?;
+        .map_err(|_e| LaneError::OutputLimitExceeded { program: program.clone(), stream, limit })?;
     let mut limited = pipe.take(read_limit);
     let mut out = Vec::new();
-    limited
+    let _bytes_read = limited
         .read_to_end(&mut out)
         .map_err(|source| LaneError::Io { program: program.clone(), source })?;
     if out.len() > limit {
@@ -100,6 +138,10 @@ fn read_limited<R: Read>(
     }
 }
 
+/// Join the reader thread, translating any panic into [`LaneError::ReaderThread`].
+///
+/// # Errors
+/// Returns [`LaneError::ReaderThread`] if the reader thread panicked.
 fn join_finished_reader(
     thread: thread::JoinHandle<()>,
     program: String,

@@ -49,6 +49,11 @@ impl RecordedTargetRoot {
     }
 }
 
+/// Validate a candidate recorded target root against the receipt invariants.
+///
+/// # Errors
+/// Returns the appropriate [`ReceiptError`] variant for each invariant
+/// the candidate violates.
 fn validate_recorded_root(path: &Utf8Path) -> Result<(), ReceiptError> {
     if path.as_str().is_empty() {
         return Err(ReceiptError::TargetRootEmpty);

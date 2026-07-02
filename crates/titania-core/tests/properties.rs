@@ -1,15 +1,30 @@
+#![allow(
+    clippy::arithmetic_side_effects,
+    clippy::as_conversions,
+    clippy::cognitive_complexity,
+    clippy::disallowed_macros,
+    clippy::disallowed_methods,
+    clippy::doc_markdown,
+    clippy::excessive_nesting,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    clippy::many_single_char_names,
+    clippy::map_identity,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::needless_borrow,
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    clippy::string_slice,
+    clippy::type_complexity,
+    clippy::unwrap_used,
+    clippy::useless_vec,
+    reason = "Project doctrine: tests are exempt from production lint policy."
+)]
 //! Property tests using `proptest`. Each property is a hypothesis about
 //! the invariants of the primitive types — exercised at scale.
-//!
-//! Test files are exempt from the strict production code lint policy;
-//! they may use `as`, assertions, and complex types. The Holzman gate
-//! ensures these never leak into crate source.
-
-#![allow(clippy::as_conversions)]
-#![allow(clippy::arithmetic_side_effects)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::map_identity)]
-
 use proptest::prelude::*;
 
 use titania_core::{Digest, RuleId, TextRange, WorkspacePath};

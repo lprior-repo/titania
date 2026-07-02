@@ -1,14 +1,105 @@
-# Holzman Rust thresholds (v1-spec §9.3)
-too-many-lines-threshold = 40
-too-many-arguments-threshold = 5
-max-fn-params-bools = 1
-type-complexity-threshold = 150
-cognitive-complexity-threshold = 10
-# Tests are exempt from the unwrap/expect/panic surface ban. The
-# Holzman gate forbids these in production source; tests verify behavior
-# with exact assertions and may panic on assertion failure.
-allow-unwrap-in-tests = true
-allow-expect-in-tests = true
-allow-panic-in-tests = true
-allow-indexing-slicing-in-tests = true
+# Titania strictest-usable Clippy policy (Ultimate Rust Coding Agent).
+# Tests are exempt from the unwrap/expect/panic surface ban per the project
+# doctrine ("Source code style is strict. Test implementation style is
+# secondary unless the project explicitly requires panic-free tests.").
+# Production source is enforced via the crate-level `#![deny(...)]` headers
+# plus the deny-by-default workspace lints in Cargo.toml. This file adds the
+# policy bans Clippy cannot encode through workspace lints.
+
+# Lint private items so internal helpers stay under the same rules.
+check-private-items = true
 avoid-breaking-exported-api = false
+
+# Reviewability thresholds. Smaller = stricter.
+cognitive-complexity-threshold = 8
+excessive-nesting-threshold = 3
+too-many-arguments-threshold = 5
+too-many-lines-threshold = 40
+type-complexity-threshold = 120
+single-char-binding-names-threshold = 2
+
+# Layout / allocation thresholds.
+enum-variant-size-threshold = 128
+large-error-threshold = 64
+future-size-threshold = 4096
+stack-size-threshold = 262144
+array-size-threshold = 4096
+too-large-for-stack = 128
+pass-by-value-size-limit = 128
+trivial-copy-size-limit = 16
+vec-box-size-threshold = 1024
+unnecessary-box-size = 64
+
+# Literal / name / doc hygiene.
+upper-case-acronyms-aggressive = true
+unreadable-literal-lint-fractions = true
+doc-valid-idents = ["API", "CPU", "DTO", "FFI", "ID", "IR", "I/O", "JPL", "NASA", "SIMD", "WAL", ".."]
+
+# Tests are exempt from the panic-surface ban. Doctests are treated as
+# source (no exemption); write doctests that do not panic.
+allow-dbg-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-unwrap-in-tests = true
+allow-useless-vec-in-tests = true
+allow-large-stack-frames-in-tests = true
+
+# No compile-time unwrap.
+allow-unwrap-in-consts = false
+allow-unwrap-types = []
+
+# Catch blocking lock guards held across await.
+await-holding-invalid-types = [
+  { path = "std::sync::MutexGuard", reason = "Do not hold a blocking MutexGuard across await." },
+  { path = "std::sync::RwLockReadGuard", reason = "Do not hold a blocking RwLockReadGuard across await." },
+  { path = "std::sync::RwLockWriteGuard", reason = "Do not hold a blocking RwLockWriteGuard across await." },
+]
+
+# Ban happy-path lies and silent fallbacks in production source.
+disallowed-methods = [
+  { path = "std::option::Option::unwrap", reason = "Use match, ok_or_else, or typed boundary parsing." },
+  { path = "std::option::Option::expect", reason = "Use typed error conversion or explicit match." },
+  { path = "std::option::Option::unwrap_or", reason = "Do not hide absence with a default. Use map_or_else or a domain default type." },
+  { path = "std::option::Option::unwrap_or_else", reason = "Do not hide absence with a default. Use map_or_else or typed recovery." },
+  { path = "std::option::Option::unwrap_or_default", reason = "Do not hide absence with Default. Use explicit domain recovery." },
+  { path = "std::option::Option::unwrap_unchecked", reason = "Unsafe happy-path lie. Requires explicit unsafe waiver." },
+
+  { path = "std::result::Result::unwrap", reason = "Preserve recoverable errors as typed errors." },
+  { path = "std::result::Result::expect", reason = "Preserve recoverable errors as typed errors with context." },
+  { path = "std::result::Result::unwrap_err", reason = "Pattern-match expected errors explicitly." },
+  { path = "std::result::Result::unwrap_or", reason = "Do not hide errors with a default. Use map_or_else or typed recovery." },
+  { path = "std::result::Result::unwrap_or_else", reason = "Do not hide errors with a default. Preserve the cause." },
+  { path = "std::result::Result::unwrap_or_default", reason = "Do not hide errors with Default. Preserve the cause." },
+  { path = "std::result::Result::unwrap_unchecked", reason = "Unsafe happy-path lie. Requires explicit unsafe waiver." },
+
+  { path = "std::mem::forget", reason = "Leaking destructors is a resource-safety decision requiring explicit design." },
+  { path = "std::mem::transmute", reason = "Unsafe layout reinterpretation requires explicit unsafe waiver." },
+  { path = "std::mem::zeroed", reason = "Invalid bit-pattern risk requires explicit unsafe waiver." },
+  { path = "std::process::exit", reason = "Bypasses destructors and normal error reporting. Return typed errors to main." },
+]
+
+# Ban panicking/debug macros and source-level assertions. The lane
+# binaries use eprintln! to emit findings; that macro is intentionally
+# allowed because titania-lanes IS the shell. eprint/println/print are
+# likewise allowed for lane output. Tests keep their panic surface.
+disallowed-macros = [
+  { path = "std::dbg", reason = "Debug macro must not ship." },
+  { path = "std::panic", reason = "Return typed errors." },
+  { path = "std::todo", reason = "No placeholders in committed Rust." },
+  { path = "std::unimplemented", reason = "No placeholders in committed Rust." },
+  { path = "std::unreachable", reason = "Use exhaustive typestates or typed impossible-state errors." },
+  { path = "std::assert", reason = "Production assertions are panic paths. Use typed validation/errors." },
+  { path = "std::assert_eq", reason = "Production assertions are panic paths. Use typed validation/errors." },
+  { path = "std::assert_ne", reason = "Production assertions are panic paths. Use typed validation/errors." },
+]
+
+# Ban non-auditable ownership or bad hot-path layout.
+disallowed-types = [
+  { path = "std::collections::LinkedList", reason = "Pointer-heavy layout. Use Vec, VecDeque, indexes, or arena-backed dense storage." },
+  { path = "std::rc::Rc", reason = "Prefer explicit ownership, Arc in shell, or indexes into dense storage." },
+  { path = "std::cell::RefCell", reason = "Prefer compile-time borrowing, typestates, or explicit state transitions." },
+  { path = "std::sync::Mutex", reason = "Use typed concurrency boundary, sharding, message passing, or async-aware lock when appropriate." },
+  { path = "std::sync::RwLock", reason = "Use typed concurrency boundary, sharding, message passing, or async-aware lock when appropriate." },
+]

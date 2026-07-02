@@ -35,7 +35,9 @@ const TERMINATION_GRACE: Duration = Duration::from_secs(1);
 /// Which captured stream failed a command-output invariant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputStream {
+    /// Standard output of the child.
     Stdout,
+    /// Standard error of the child.
     Stderr,
 }
 
@@ -53,8 +55,11 @@ pub enum EnvPolicy {
 /// Bounded execution policy for a spawned command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommandBudget {
+    /// Maximum wall-clock runtime for the child.
     pub timeout: Duration,
+    /// Maximum bytes the child may write to stdout.
     pub max_stdout: usize,
+    /// Maximum bytes the child may write to stderr.
     pub max_stderr: usize,
 }
 
@@ -71,41 +76,94 @@ impl Default for CommandBudget {
 /// Errors produced by [`CommandIn`].
 #[derive(Debug, Error)]
 pub enum LaneError {
+    /// Program name was the empty string.
     #[error("command program must not be empty")]
     EmptyProgram,
+    /// Program name contained a NUL byte.
     #[error("command program must not contain NUL bytes")]
     InvalidProgram,
+    /// Underlying I/O error from spawning or talking to the child.
     #[error("I/O error running {program}: {source}")]
     Io {
+        /// Program name for diagnostic context.
         program: String,
+        /// Underlying I/O error.
         #[source]
         source: io::Error,
     },
+    /// Child exited with a non-zero code; stderr is captured for context.
     #[error("subprocess {program} exited with code {code:?}: {stderr}")]
-    NonZeroExit { program: String, code: Option<i32>, stderr: String },
+    NonZeroExit {
+        /// Program name for diagnostic context.
+        program: String,
+        /// Exit code if the OS provided one.
+        code: Option<i32>,
+        /// Captured stderr output.
+        stderr: String,
+    },
+    /// Subprocess emitted bytes that are not valid UTF-8.
     #[error("subprocess {program} produced non-UTF-8 {stream:?}")]
-    NonUtf8Output { program: String, stream: OutputStream },
+    NonUtf8Output {
+        /// Program name for diagnostic context.
+        program: String,
+        /// Which stream failed the UTF-8 check.
+        stream: OutputStream,
+    },
+    /// Subprocess exceeded the configured wall-clock timeout.
     #[error("subprocess {program} timed out after {timeout_ms} ms")]
-    Timeout { program: String, timeout_ms: u64 },
+    Timeout {
+        /// Program name for diagnostic context.
+        program: String,
+        /// Timeout in milliseconds.
+        timeout_ms: u64,
+    },
+    /// Subprocess wrote more bytes than the configured per-stream cap.
     #[error("subprocess {program} exceeded {stream:?} output limit of {limit} bytes")]
-    OutputLimitExceeded { program: String, stream: OutputStream, limit: usize },
+    OutputLimitExceeded {
+        /// Program name for diagnostic context.
+        program: String,
+        /// Which stream overflowed.
+        stream: OutputStream,
+        /// Configured cap in bytes.
+        limit: usize,
+    },
+    /// The child did not provide a pipe for the requested stream.
     #[error("subprocess {program} {stream:?} pipe was unavailable")]
-    PipeUnavailable { program: String, stream: OutputStream },
+    PipeUnavailable {
+        /// Program name for diagnostic context.
+        program: String,
+        /// Which stream was unavailable.
+        stream: OutputStream,
+    },
+    /// The reader thread for the requested stream returned an error.
     #[error("subprocess {program} {stream:?} reader thread failed")]
-    ReaderThread { program: String, stream: OutputStream },
+    ReaderThread {
+        /// Program name for diagnostic context.
+        program: String,
+        /// Which stream's reader thread failed.
+        stream: OutputStream,
+    },
 }
 
 /// A typed builder for `std::process::Command` rooted at a target project.
 type EnvPair<'a> = (Cow<'a, str>, Cow<'a, str>);
 
+/// Builder state for a `std::process::Command` rooted at a target project.
 #[derive(Debug)]
 pub struct CommandIn<'a> {
+    /// Working directory the command is rooted in.
     cwd: &'a TargetProject,
+    /// Program name (the first non-flag argument).
     program: Cow<'a, str>,
+    /// Positional arguments to pass to the program.
     args: SmallVec<[Cow<'a, str>; 8]>,
+    /// Explicit environment pairs to apply.
     env: SmallVec<[EnvPair<'a>; 4]>,
+    /// Environment variables to remove.
     env_remove: SmallVec<[Cow<'a, str>; 4]>,
+    /// Whether to inherit the parent process environment.
     env_policy: EnvPolicy,
+    /// Bounded execution policy.
     budget: CommandBudget,
 }
 
@@ -127,7 +185,6 @@ impl<'a> CommandIn<'a> {
             budget: CommandBudget::default(),
         })
     }
-
     /// Append a single argument. Returns `&mut self` for chaining.
     pub fn arg(&mut self, a: &'a str) -> &mut Self {
         self.args.push(Cow::Borrowed(a));
@@ -191,7 +248,9 @@ impl<'a> CommandIn<'a> {
     pub fn run_capture_raw(&self) -> Result<CommandOutput, LaneError> {
         let started = Instant::now();
         let mut cmd = self.base_command();
-        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let _ = cmd.stdin(Stdio::null());
+        let _ = cmd.stdout(Stdio::piped());
+        let _ = cmd.stderr(Stdio::piped());
         let mut child = cmd.spawn().map_err(|source| self.io_error(source))?;
         let stdout = take_pipe(&mut child.stdout, self.program_name(), OutputStream::Stdout)?;
         let stderr = take_pipe(&mut child.stderr, self.program_name(), OutputStream::Stderr)?;
@@ -217,13 +276,15 @@ impl<'a> CommandIn<'a> {
     /// termination fails.
     pub fn run_status_raw(&self) -> Result<ExitStatus, LaneError> {
         let mut cmd = self.base_command();
-        cmd.stdin(Stdio::null()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
+        let _ = cmd.stdin(Stdio::null());
+        let _ = cmd.stdout(Stdio::inherit());
+        let _ = cmd.stderr(Stdio::inherit());
         let mut child = cmd.spawn().map_err(|source| self.io_error(source))?;
         let Some(status) =
             child.wait_timeout(self.budget.timeout).map_err(|source| self.io_error(source))?
         else {
             terminate_child_tree(&mut child, self.program_name())?;
-            child.wait().map_err(|source| self.io_error(source))?;
+            let _ = child.wait().map_err(|source| self.io_error(source))?;
             return Err(self.timeout_error());
         };
         Ok(status)
@@ -232,18 +293,23 @@ impl<'a> CommandIn<'a> {
     fn base_command(&self) -> Command {
         let mut cmd = Command::new(self.program.as_ref());
         configure_process_group(&mut cmd);
-        cmd.current_dir(self.cwd.as_std_path());
+        let _ = cmd.current_dir(self.cwd.as_std_path());
         if self.env_policy == EnvPolicy::Clear {
-            cmd.env_clear();
+            let _ = cmd.env_clear();
         }
-        cmd.args(self.args.iter().map(std::convert::AsRef::as_ref));
-        cmd.envs(self.env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())));
+        let _ = cmd.args(self.args.iter().map(std::convert::AsRef::as_ref));
+        let _ = cmd.envs(self.env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())));
         for key in &self.env_remove {
-            cmd.env_remove(key.as_ref());
+            let _ = cmd.env_remove(key.as_ref());
         }
         cmd
     }
 
+    /// Terminate the child on timeout, drain readers, and report the timeout.
+    ///
+    /// # Errors
+    /// Returns [`LaneError::Io`] on kill failure, [`LaneError::Timeout`] if
+    /// the readers don't drain, or the readers' own error otherwise.
     fn timeout_child(
         &self,
         mut child: Child,
@@ -251,12 +317,17 @@ impl<'a> CommandIn<'a> {
         stderr_reader: ReaderHandle,
     ) -> Result<CommandOutput, LaneError> {
         terminate_child_tree(&mut child, self.program_name())?;
-        child.wait().map_err(|source| self.io_error(source))?;
+        let _ = child.wait().map_err(|source| self.io_error(source))?;
         drain_after_termination(stdout_reader, self.timeout_error())?;
         drain_after_termination(stderr_reader, self.timeout_error())?;
         Err(self.timeout_error())
     }
 
+    /// Drain a single reader, mapping a timeout into the lane's timeout error.
+    ///
+    /// # Errors
+    /// Returns the lane's timeout error if the reader times out, or whatever
+    /// the reader produced otherwise.
     fn receive_reader(&self, reader: ReaderHandle, started: Instant) -> Result<Vec<u8>, LaneError> {
         match reader.recv_timeout(remaining_budget(started, self.budget.timeout)) {
             Ok(out) => Ok(out),
@@ -265,6 +336,7 @@ impl<'a> CommandIn<'a> {
         }
     }
 
+    /// Build the [`LaneError::Timeout`] for this run.
     fn timeout_error(&self) -> LaneError {
         LaneError::Timeout {
             program: self.program_name(),
@@ -272,16 +344,24 @@ impl<'a> CommandIn<'a> {
         }
     }
 
+    /// Wrap an [`io::Error`] with this lane's program name.
     fn io_error(&self, source: io::Error) -> LaneError {
         LaneError::Io { program: self.program_name(), source }
     }
 
+    /// Borrow the program name as an owned `String` for error context.
     fn program_name(&self) -> String {
         self.program.to_string()
     }
 }
 
+/// Validate that the program name is non-empty and contains no NUL byte.
+///
+/// # Errors
+/// Returns [`LaneError::EmptyProgram`] when `program` is empty and
+/// [`LaneError::InvalidProgram`] when `program` contains a NUL byte.
 fn validate_program(program: &str) -> Result<(), LaneError> {
+
     if program.is_empty() {
         Err(LaneError::EmptyProgram)
     } else if program.contains('\0') {
