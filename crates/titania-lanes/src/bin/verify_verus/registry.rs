@@ -30,6 +30,11 @@ pub fn registry_path_is_nonempty(path: &Path) -> bool {
     meta.is_file() && meta.len() != 0
 }
 
+/// Parse a registry YAML file and return the list of proof targets it declares.
+///
+/// # Errors
+///
+/// - Fails if the registry file cannot be read (I/O error).
 pub fn parse_registry_targets(
     path: &Path,
     target: &TargetProject,
