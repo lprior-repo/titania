@@ -23,9 +23,9 @@ pub fn check_file(root: &Path, file: &Path, report: &mut LaneReport) {
 
 fn scan_functions(text: &str, rel: &str, report: &mut LaneReport) {
     let mut state = ScanState::Outside;
-    text.lines().enumerate().for_each(|(idx, raw)| {
+    for (idx, raw) in text.lines().enumerate() {
         state = state.advance(raw, line_no_from_idx(idx), rel, report);
-    });
+    }
 }
 
 impl ScanState {
@@ -78,17 +78,13 @@ fn is_fn_header(line: &str) -> bool {
     if trimmed.starts_with("//") || !line.contains("fn ") || !line.contains('(') {
         return false;
     }
-    match line.find("fn ").and_then(|idx| line.get(..idx)) {
-        Some(before) => is_fn_boundary(before),
-        None => false,
-    }
+    line.find("fn ")
+        .and_then(|idx| line.get(..idx))
+        .is_some_and(is_fn_boundary)
 }
 
 fn is_fn_boundary(before: &str) -> bool {
-    match before.chars().last() {
-        Some(prev) => !(prev.is_alphanumeric() || prev == '_'),
-        None => true,
-    }
+    before.chars().next_back().is_none_or(|prev| !(prev.is_alphanumeric() || prev == '_'))
 }
 
 fn is_logical_line(line: &str) -> bool {

@@ -31,10 +31,8 @@ pub fn is_titania_hot_source(root: &Path, file: &Path) -> bool {
 }
 
 pub fn tracked_set(root: &Path) -> HashSet<String> {
-    match tracked_rust_files(root) {
-        Some(files) => files.iter().map(|p| relative_path(root, p)).collect(),
-        None => HashSet::new(),
-    }
+    tracked_rust_files(root)
+        .map_or_else(HashSet::new, |files| files.iter().map(|p| relative_path(root, p)).collect())
 }
 
 pub fn tracked_rust_files(root: &Path) -> Option<Vec<PathBuf>> {
@@ -66,10 +64,9 @@ fn walk_vb_crates(root: &Path, crates_dir: &Path, out: &mut Vec<PathBuf>) -> Opt
 }
 
 fn is_scanned_crate(path: &Path) -> bool {
-    match path.file_name().and_then(|name| name.to_str()) {
-        Some(name) => name.starts_with("vb_") || name == "vb_cli",
-        None => false,
-    }
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("vb_") || name == "vb_cli")
 }
 
 fn is_bad_prefix(file: &str) -> bool {

@@ -55,10 +55,9 @@ fn run(root: &Path, report: &mut LaneReport) {
 }
 
 fn check_hot_functions(root: &Path, files: &[std::path::PathBuf], report: &mut LaneReport) {
-    files
-        .iter()
-        .filter(|file| paths::is_titania_hot_source(root, file))
-        .for_each(|file| function_scan::check_file(root, file, report));
+    for file in files.iter().filter(|file| paths::is_titania_hot_source(root, file)) {
+        function_scan::check_file(root, file, report);
+    }
 }
 
 fn print_and_exit(report: &LaneReport) -> std::process::ExitCode {
@@ -72,11 +71,35 @@ fn print_and_exit(report: &LaneReport) -> std::process::ExitCode {
 #[cfg(test)]
 mod tests {
     #![allow(
+        clippy::disallowed_methods,
         clippy::disallowed_macros,
-        reason = "Tests use the standard `assert!` macro for behavior assertions."
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        clippy::string_slice,
+        clippy::arithmetic_side_effects,
+        clippy::missing_panics_doc,
+        clippy::missing_errors_doc,
+        clippy::panic_in_result_fn,
+        clippy::cognitive_complexity,
+        clippy::doc_markdown,
+        clippy::excessive_nesting,
+        clippy::many_single_char_names,
+        clippy::integer_division,
+        clippy::integer_division_remainder_used,
+        clippy::needless_borrow,
+        clippy::needless_pass_by_value,
+        clippy::format_collect,
+        reason = "Tests are exempt from the strict production deny list per project doctrine."
     )]
     use super::*;
 
+    /// Writes a single fixture file under `root`/`rel`, creating parent
+    /// directories as needed.
+    ///
+    /// # Errors
+    /// Returns the underlying I/O error from `create_dir_all` or `write`.
     fn fixture_file(root: &Path, rel: &str, text: &str) -> Result<(), Box<dyn std::error::Error>> {
         let path = root.join(rel);
         if let Some(parent) = path.parent() {
@@ -87,12 +110,20 @@ mod tests {
     }
 
     fn long_source(lines: usize) -> String {
-        (0..lines).map(|idx| format!("pub const L{idx}: usize = {idx};\n")).collect()
+        use std::fmt::Write as _;
+        let mut out = String::new();
+        for idx in 0..lines {
+            writeln!(out, "pub const L{idx}: usize = {idx};").expect("writing to String is infallible");
+        }
+        out
     }
 
     fn long_function() -> String {
-        let body: String =
-            (0_usize..26_usize).map(|idx| format!("    let _v{idx} = {idx};\n")).collect();
+        use std::fmt::Write as _;
+        let mut body = String::new();
+        for idx in 0_usize..26_usize {
+            writeln!(body, "    let _v{idx} = {idx};").expect("writing to String is infallible");
+        }
         format!("fn oversized() {{\n{body}}}\n")
     }
 

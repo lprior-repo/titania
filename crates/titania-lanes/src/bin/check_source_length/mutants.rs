@@ -9,7 +9,9 @@ const MARKER_PREFIX: &str = "changed by ";
 const MARKER_SUFFIX: &str = "cargo-mutants";
 
 pub fn check_mutants_residue(root: &Path, report: &mut LaneReport) {
-    rust_files_in_crates(root).iter().for_each(|file| check_mutant_file(root, file, report));
+    for file in rust_files_in_crates(root) {
+        check_mutant_file(root, &file, report);
+    }
 }
 
 fn rust_files_in_crates(root: &Path) -> Vec<PathBuf> {
@@ -18,14 +20,17 @@ fn rust_files_in_crates(root: &Path) -> Vec<PathBuf> {
         return Vec::new();
     };
     let mut all = Vec::new();
-    read.filter_map(Result::ok)
+    for src in read
+        .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .filter_map(source_dir)
-        .for_each(|src| walk_rs_files(&src, root, &mut all));
+        .filter_map(|path| source_dir(&path))
+    {
+        walk_rs_files(&src, root, &mut all);
+    }
     all
 }
 
-fn source_dir(path: PathBuf) -> Option<PathBuf> {
+fn source_dir(path: &Path) -> Option<PathBuf> {
     if !path.is_dir() {
         return None;
     }
@@ -37,10 +42,11 @@ fn check_mutant_file(root: &Path, file: &Path, report: &mut LaneReport) {
     let Ok(text) = std::fs::read_to_string(file) else {
         return;
     };
-    text.lines()
-        .enumerate()
-        .filter(|(_, line)| has_mutants_marker(line))
-        .for_each(|(idx, _)| push_mutants_finding(root, file, idx, report));
+    for (idx, line) in text.lines().enumerate() {
+        if has_mutants_marker(line) {
+            push_mutants_finding(root, file, idx, report);
+        }
+    }
 }
 
 fn has_mutants_marker(line: &str) -> bool {

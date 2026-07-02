@@ -16,7 +16,9 @@ pub fn check_compile_split_sources(root: &Path, report: &mut LaneReport) {
         return;
     }
     check_impl_body(root, &compile_dir, report);
-    SPLIT_MODULES.iter().for_each(|name| check_split_module(root, &compile_dir, name, report));
+    for name in SPLIT_MODULES {
+        check_split_module(root, &compile_dir, name, report);
+    }
 }
 
 fn check_impl_body(root: &Path, compile_dir: &Path, report: &mut LaneReport) {

@@ -88,7 +88,9 @@ fn invalid_relative_path(file: &str) -> bool {
 }
 
 fn rust_file_error(file: &str) -> Option<String> {
-    if !file.ends_with(".rs") {
+    if !std::path::Path::new(file)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("rs")) {
         return Some(format!("path is not a Rust source file: {file}"));
     }
     if is_excluded_source_path(file) {
