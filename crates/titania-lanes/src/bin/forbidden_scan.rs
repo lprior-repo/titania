@@ -1,7 +1,6 @@
 //! Walks `crates/*/src` for the Holzman Rust forbidden surface.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/forbidden-scan.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/forbidden-scan.sh`. Run via
 //! `cargo run --bin forbidden-scan --` from the repository root or via
 //! the matching Moon task in `.moon/tasks/all.yml`.
 //!

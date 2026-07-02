@@ -1,7 +1,6 @@
 //! Enforces per-function logical line cap + tracked source length limit with ledger.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/check-source-length.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/check-source-length.sh`. Run via
 //! `cargo run --bin check-source-length --` from the repository root or via the
 //! matching Moon task in `.moon/tasks/all.yml`.
 #![deny(clippy::unwrap_used)]

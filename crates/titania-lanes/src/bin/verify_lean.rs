@@ -1,7 +1,6 @@
 //! Optional `lake build` runner for `proofs/lean/`.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/verify-lean.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/verify-lean.sh`. Run via
 //! `cargo run --bin verify-lean --` from the repository root or via the
 //! matching Moon task in `.moon/tasks/all.yml`.
 //!

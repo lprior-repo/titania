@@ -1,7 +1,6 @@
 //! Diffs `cargo public-api` for every `vb_*` package against `origin/main`.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/check-public-api-diff.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/check-public-api-diff.sh`. Run via
 //! `cargo run --bin check-public-api-diff --` from the repository root or via
 //! the matching Moon task in `.moon/tasks/all.yml`.
 #![deny(clippy::unwrap_used)]

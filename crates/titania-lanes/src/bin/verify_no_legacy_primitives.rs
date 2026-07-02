@@ -1,7 +1,6 @@
 //! Rejects 'parallel' / 'aggregate' inside `STEP_PRIMITIVES` + `ALLOWED_STEP_FIELDS` constants.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/verify-no-legacy-primitives.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/verify-no-legacy-primitives.sh`. Run via
 //! `cargo run --bin verify-no-legacy-primitives --` from the repository root or via the
 //! matching Moon task in `.moon/tasks/all.yml`.
 #![deny(clippy::unwrap_used)]

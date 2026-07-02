@@ -1,8 +1,7 @@
 //! Scans `*.rs` for `#![feature(...)]` attributes and rejects disallowed
 //! unstable feature names.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/check-nightly-features.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/check-nightly-features.sh`. Run via
 //! `cargo run --bin check-nightly-features --` from the repository root
 //! or via the matching Moon task in `.moon/tasks/all.yml`.
 //!

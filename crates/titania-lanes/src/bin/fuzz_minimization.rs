@@ -1,7 +1,6 @@
 //! cargo fuzz run wrapper for libfuzzer minimization.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/fuzz-minimization.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/fuzz-minimization.sh`. Run via
 //! `cargo run --bin fuzz-minimization -- <target> [extra args...]` from the
 //! repository root or via the matching Moon task in `.moon/tasks/all.yml`.
 //!

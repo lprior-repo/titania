@@ -1,7 +1,6 @@
 //! Fail-closed wrapper: refuses cargo test runs that executed zero applicable tests.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/guard-zero-tests.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/guard-zero-tests.sh`. Run via
 //! `cargo run --bin guard_zero_tests -- -- <cargo-test-args...>` from the
 //! repository root or via the matching Moon task in `.moon/tasks/all.yml`.
 //!

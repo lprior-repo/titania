@@ -1,7 +1,6 @@
 //! Identifier-diff verifier for `verification/verus/production_inner` mirrors + BINDING LEDGERs.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/check-production-inner-drift.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/check-production-inner-drift.sh`. Run via
 //! `cargo run --bin check_production_inner_drift --` from the repository root or via the
 //! matching Moon task in `.moon/tasks/all.yml`.
 #![deny(clippy::unwrap_used)]

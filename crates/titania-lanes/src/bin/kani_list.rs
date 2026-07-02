@@ -1,7 +1,6 @@
 //! Enumerates cargo kani harnesses for one or more packages, writes per-pkg JSON.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/kani-list.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/kani-list.sh`. Run via
 //! `cargo run --bin kani_list -- <package>...` from the repository root or via
 //! the matching Moon task in `.moon/tasks/all.yml`.
 //!

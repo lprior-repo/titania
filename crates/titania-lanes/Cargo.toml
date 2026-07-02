@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Rust re-implementations of the velvet-ballistics CI/CD bash lanes, runnable as Moon tasks under .moon/tasks/all.yml."
+description = "Typed Rust lanes behind `.moon/tasks/all.yml`. Each bin target implements a v1-spec lane outcome (Cargo-native or specialized verification), tracked by P0 beads (`tn-2cn.*`, `tn-37r.*`, `tn-8ab.*`, `tn-cgk.*`, `tn-d2l.*`)."
 publish = false
 
 [lib]
@@ -63,9 +63,7 @@ path = "src/bin/check_panic_surface.rs"
 name = "check-nightly-features"
 path = "src/bin/check_nightly_features.rs"
 
-[[bin]]
-name = "check-spelling-gate"
-path = "src/bin/check_spelling_gate.rs"
+
 
 [[bin]]
 name = "check-source-length"

@@ -1,7 +1,6 @@
 //! Scans `crates/*/src` for production panic/assert macros.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/check-panic-surface.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/check-panic-surface.sh`. Run via
 //! `cargo run --bin check-panic-surface --` from the repository root or
 //! via the matching Moon task in `.moon/tasks/all.yml`.
 //!

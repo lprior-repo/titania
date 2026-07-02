@@ -1,7 +1,6 @@
 //! Rejects HashMap/IndexMap/mpsc tokens on hot paths outside allowlist.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/hotpath-scan.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/hotpath-scan.sh`. Run via
 //! `cargo run --bin hotpath_scan --` from the repository root or via the
 //! matching Moon task in `.moon/tasks/all.yml`.
 #![deny(clippy::unwrap_used)]

@@ -1,8 +1,7 @@
 //! Runs TLC model checker over every `verification/tla/*.tla` with matching
 //! `.cfg` companion.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/run-tlc-checks.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/run-tlc-checks.sh`. Run via
 //! `cargo run --bin run-tlc-checks --` from the repository root or via
 //! the matching Moon task in `.moon/tasks/all.yml`.
 //!

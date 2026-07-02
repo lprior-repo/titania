@@ -8,12 +8,13 @@
 # Holzman Rust posture: source code ZERO clippy tolerance, tests compile
 # with exact assertions but lenient on style. See moon-v2 skill.
 #
-# `titania-lanes` is a single workspace crate (`crates/titania-lanes`)
-# with 28 cargo bin targets. Each bin is a Rust re-implementation of a
-# bash CI lane that lived in the `velvet-ballistics` repo. The
-# corresponding Moon task runs the cargo binary directly so the lane
-# is cacheable by content hash and feeds the same typed artifacts
-# the bash originals produced.
+titania-lanes is a single workspace crate (`crates/titania-lanes`).
+Each bin target implements a typed Rust lane that produces a
+`LaneReport` (findings + lane exit). v1 P0 beads (`tn-2cn.*`,
+`tn-37r.*`, `tn-8ab.*`, `tn-cgk.*`, `tn-d2l.*`) replace these legacy
+adapters with v1-spec.md lanes (Fmt/Compile/Clippy/AstGrep/Dylint/
+PanicScan/PolicyScan/Test/Deny/Build). Keep the bin targets functional
+until each bead lands.
 
 tasks:
   # ---------- Cargo-native lanes ----------
@@ -139,7 +140,7 @@ tasks:
       - 'crates/titania-lanes/src/bin/check_agent_cli_contract.rs'
       - 'crates/titania-lanes/src/lib.rs'
       - 'crates/**/*.rs'
-      - 'velvet-ballistics-MASTER.md'
+
 
   lane-check-public-api-diff:
     command: 'cargo run --quiet -p titania-lanes --bin check-public-api-diff'
@@ -416,7 +417,7 @@ tasks:
     inputs:
       - 'crates/titania-lanes/src/bin/bench_instruction_counts.rs'
       - 'crates/titania-lanes/src/lib.rs'
-      - 'crates/velvet-ballistics-workspace-tests/benches/**'
+
 
   lane-verify-verus:
     command: 'cargo run --quiet -p titania-lanes --bin verify-verus'

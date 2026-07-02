@@ -1,7 +1,6 @@
 //! DISCARD-001..006 scanner for fallible-call ignores across crates/*/src + xtask/src.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/check-ignored-fallible-results.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/check-ignored-fallible-results.sh`. Run via
 //! `cargo run --bin check_ignored_fallible_results --` from the repository root or via the
 //! matching Moon task in `.moon/tasks/all.yml`.
 #![deny(clippy::unwrap_used)]

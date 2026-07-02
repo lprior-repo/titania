@@ -1,7 +1,7 @@
 //! Checks `.beads/metadata.json` mode without assuming every target project
 //! must use the same Beads backend topology.
 //!
-//! The original velvet-ballistics lane required server-mode Dolt everywhere.
+//! The original CI lane required server-mode Dolt everywhere.
 //! Titania itself currently uses embedded Dolt, so this lane now parses the
 //! metadata into typed policy values and rejects malformed/contradictory
 //! states while treating embedded mode as an explicit supported outcome.

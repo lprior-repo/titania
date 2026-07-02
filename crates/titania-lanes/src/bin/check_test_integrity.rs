@@ -1,8 +1,7 @@
 //! Enforces the test-integrity rule: every behavior test must keep a
 //! matching non-`#[ignore]` exact assertion across revisions.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/check-test-integrity.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/check-test-integrity.sh`. Run via
 //! `cargo run --bin check-test-integrity -- [--self-test] [--base <rev>]`
 //! from the repository root, or via the matching Moon task in
 //! `.moon/tasks/all.yml`.

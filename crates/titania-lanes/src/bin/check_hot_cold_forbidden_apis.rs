@@ -1,7 +1,6 @@
 //! Walks `crates/*/src` for forbidden API surface in hot paths.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/check-hot-cold-forbidden-apis.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/check-hot-cold-forbidden-apis.sh`. Run via
 //! `cargo run --bin check-hot-cold-forbidden-apis -- [--self-test]` from
 //! the repository root, or via the matching Moon task in
 //! `.moon/tasks/all.yml`.

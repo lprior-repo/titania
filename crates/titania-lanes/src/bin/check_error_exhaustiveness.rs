@@ -1,7 +1,6 @@
 //! Compares fuzz oracle function bodies vs production error enum definitions.
 //!
-//! Rust re-implementation of the bash lane in
-//! `velvet-ballistics/scripts/check-error-exhaustiveness.sh`. Run via
+//! Rust re-implementation of the bash lane `scripts/check-error-exhaustiveness.sh`. Run via
 //! `cargo run --bin check-error-exhaustiveness --` from the repository root or via the
 //! matching Moon task in `.moon/tasks/all.yml`.
 #![deny(clippy::unwrap_used)]
