@@ -19,14 +19,8 @@ use titania_lanes::{
 const DEFAULT_FORBIDDEN: &[&str] =
     &["panic!", "unwrap", "expect", "todo!", "unimplemented!", "dbg!"];
 const FORBIDDEN_FLAG: &str = "--forbidden=";
-pub fn main_exit(args: Vec<String>) -> ExitCode {
-    let forbidden = match parse_forbidden(&args) {
-        Ok(set) => set,
-        Err(message) => {
-            eprintln!("[forbidden-scan] {message}");
-            return exit(LaneExit::Usage);
-        }
-    };
+pub fn main_exit(args: &[String]) -> ExitCode {
+    let forbidden = parse_forbidden(args);
     let root = match target_root() {
         Ok(root) => root,
         Err(code) => return code,
@@ -35,6 +29,12 @@ pub fn main_exit(args: Vec<String>) -> ExitCode {
     scan_and_exit(&root, &forbidden)
 }
 
+/// Resolve the target project root directory.
+///
+/// # Errors
+/// Returns [`LaneExit::Usage`] when the current directory cannot be read
+/// or no valid Cargo target project can be discovered from it
+/// (see [`current_target_project`]).
 fn target_root() -> Result<PathBuf, ExitCode> {
     current_target_project().map(|target| target.as_std_path().to_path_buf()).map_err(|error| {
         eprintln!("[forbidden-scan] cannot resolve target project: {error}");
@@ -53,9 +53,9 @@ fn emit_scan_header(root: &Path, forbidden: &[ForbiddenToken]) {
 
 fn scan_and_exit(root: &Path, forbidden: &[ForbiddenToken]) -> ExitCode {
     let mut report = LaneReport::new();
-    collect_source_files(root)
-        .iter()
-        .for_each(|file| scan_file(root, file, forbidden, &mut report));
+    for file in collect_source_files(root) {
+        scan_file(root, &file, forbidden, &mut report);
+    }
     eprint!("{}", report.render());
     if report.is_clean() { clean_exit() } else { violations_exit() }
 }
@@ -70,15 +70,15 @@ fn violations_exit() -> ExitCode {
     exit(LaneExit::Violations)
 }
 
-fn parse_forbidden(args: &[String]) -> Result<Vec<ForbiddenToken>, String> {
+fn parse_forbidden(args: &[String]) -> Vec<ForbiddenToken> {
     let override_set = args
         .iter()
         .find(|arg| arg.starts_with(FORBIDDEN_FLAG))
         .map(|arg| parse_override_set(arg.as_str()));
-    Ok(match override_set {
+    match override_set {
         Some(set) if !set.is_empty() => set,
         Some(_) | None => default_forbidden_set(),
-    })
+    }
 }
 
 fn parse_override_set(arg: &str) -> Vec<ForbiddenToken> {
@@ -117,10 +117,9 @@ fn append_rust_files(top: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf
     let Ok(entries) = std::fs::read_dir(top) else {
         return;
     };
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .for_each(|path| record_path(path, stack, out));
+    for entry in entries.filter_map(Result::ok).map(|e| e.path()) {
+        record_path(entry, stack, out);
+    }
 }
 
 fn record_path(path: PathBuf, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
@@ -147,10 +146,10 @@ fn scan_content(
     report: &mut LaneReport,
 ) {
     let mut block_comment = false;
-    content.lines().enumerate().for_each(|(idx, line)| {
+    for (idx, line) in content.lines().enumerate() {
         let source_line = SourceLine::parse(line, &mut block_comment);
         scan_source_line(&source_line, idx, display, forbidden, report);
-    });
+    }
 }
 
 fn scan_source_line(
@@ -207,53 +206,60 @@ impl ForbiddenToken {
         &self.name
     }
 
-    fn is_present_in(&self, code: &str) -> bool {
-        let mut search_start = 0usize;
-        while let Some(idx) =
-            code.get(search_start..).and_then(|tail| tail.find(self.name.as_str()))
-        {
-            let abs_idx = search_start.saturating_add(idx);
-            if self.matches_at(code, abs_idx) {
-                return true;
-            }
-            // Advance past the match to find the next occurrence.
-            search_start = abs_idx.saturating_add(1);
-        }
-        false
-    }
-
-    /// Decide whether the match at `idx` is a real surface occurrence
+    /// Check whether the match at `idx` is a real surface occurrence
     /// (per [`TokenKind`]) rather than a substring of a larger
     /// identifier.
     fn matches_at(&self, code: &str, idx: usize) -> bool {
-        let bytes = code.as_bytes();
-        let name_bytes = self.name.as_bytes();
-        let name_len = name_bytes.len();
-        let after = idx.saturating_add(name_len);
-        match self.kind {
-            TokenKind::Macro => {
-                // Reject identifier-prefix matches: the byte before
-                // the match (if any) must not be alphanumeric/underscore.
-                idx == 0 || bytes.get(idx.wrapping_sub(1)).is_none_or(|b| !is_word_byte(*b))
+        matches_token(code, &self.name, self.kind, idx)
+    }
+
+    /// Check whether this token is present anywhere in `code`.
+    #[expect(
+        clippy::excessive_nesting,
+        reason = "Simple linear search loop with early return; extracted matches_token to limit nesting of the check itself."
+    )]
+    fn is_present_in(&self, code: &str) -> bool {
+        let mut search_start = 0usize;
+        while let Some(idx) = code.get(search_start..).and_then(|tail| tail.find(&self.name)) {
+            if self.matches_at(code, idx) {
+                return true;
             }
-            TokenKind::Method => {
-                // Require a method-call receiver directly before:
-                // `.unwrap` or `::unwrap` (e.g. `Result::unwrap(...)`).
-                // Reject identifier-prefix matches so `myexpect` is not
-                // flagged.
-                let before_ok = match bytes.get(idx.wrapping_sub(1)) {
-                    Some(b'.' | b':') => true,
-                    Some(b) if is_word_byte(*b) => return false,
-                    _ => idx == 0,
-                };
-                let after_ok = bytes.get(after).is_some_and(|b| *b == b'(');
-                before_ok && after_ok
-            }
+            search_start = idx.saturating_add(1);
+        }
+        false
+    }
+}
+
+/// Decide whether the match at `idx` is a real surface occurrence
+/// (per [`TokenKind`]) rather than a substring of a larger
+/// identifier.
+fn matches_token(code: &str, name: &str, kind: TokenKind, idx: usize) -> bool {
+    let bytes = code.as_bytes();
+    let name_len = name.len();
+    let after = idx.saturating_add(name_len);
+    match kind {
+        TokenKind::Macro => {
+            // Reject identifier-prefix matches: the byte before
+            // the match (if any) must not be alphanumeric/underscore.
+            idx == 0 || bytes.get(idx.wrapping_sub(1)).is_none_or(|b| !is_word_byte(*b))
+        }
+        TokenKind::Method => {
+            // Require a method-call receiver directly before:
+            // `.unwrap` or `::unwrap` (e.g. `Result::unwrap(...)`).
+            // Reject identifier-prefix matches so `myexpect` is not
+            // flagged.
+            let before_ok = match bytes.get(idx.wrapping_sub(1)) {
+                Some(b'.' | b':') => true,
+                Some(b) if is_word_byte(*b) => return false,
+                _ => idx == 0,
+            };
+            let after_ok = bytes.get(after).is_some_and(|b| *b == b'(');
+            before_ok && after_ok
         }
     }
 }
 
-fn is_word_byte(b: u8) -> bool {
+const fn is_word_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
