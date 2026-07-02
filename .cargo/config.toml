@@ -1,2 +1,3 @@
 [build]
 rustflags = ["-Zcrate-attr=feature(non_exhaustive_omitted_patterns_lint)"]
+rustdocflags = ["-Zcrate-attr=feature(non_exhaustive_omitted_patterns_lint)"]

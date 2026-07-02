@@ -217,3 +217,22 @@ fn verify_verus_smoke_only_fixture_returns_usage_not_registry_ok() -> TestResult
     assert!(!summary.contains("VERUS_REGISTRY_OK"));
     Ok(())
 }
+
+#[test]
+fn verify_verus_summary_uses_target_relative_default_evidence_dir() -> TestResult {
+    let target = target_project_with_registry(
+        "version: 1\ntargets:\n  - path: verification/verus/passing.rs\n",
+    )?;
+    write_project_file(target.path(), "verification/verus/passing.rs", "fn main() {}\n")?;
+    let fake_bin = fake_successful_verus_bin()?;
+
+    let output = run_verify_verus(target.path(), fake_bin.path())?;
+    let summary = fs::read_to_string(target.path().join(".evidence/verus/summary.txt"))?;
+    let absolute_target = target.path().display().to_string();
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(summary.contains("VERUS_REGISTRY evidence=.evidence/verus"));
+    assert!(!summary.contains(&absolute_target));
+    assert!(summary.contains("VERUS_REGISTRY_OK"));
+    Ok(())
+}

@@ -7,11 +7,11 @@ pub(crate) struct SummaryStatus<'a> {
     pub(super) external_markers_waived: bool,
 }
 
-pub(crate) fn write_summary_header(path: &Path, target_count: usize) -> io::Result<()> {
-    let evidence = match path.parent() {
-        Some(parent) => parent.display().to_string(),
-        None => ".".to_owned(),
-    };
+pub(crate) fn write_summary_header(
+    path: &Path,
+    evidence: &str,
+    target_count: usize,
+) -> io::Result<()> {
     let body = format!("VERUS_REGISTRY evidence={evidence}\nVERUS_TARGET_COUNT {target_count}\n");
     fs::write(path, body)
 }

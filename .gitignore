@@ -18,6 +18,9 @@
 **/*.rmeta
 **/*.rlib
 
+# Kani writes this workspace-root scratch file during harness discovery.
+/kani-list.json
+
 # Cargo.lock is committed for this workspace (slice 2 adds a bin
 # crate, after which Cargo.lock is required for reproducible builds).
 # Keep tracking it; uncomment if the project becomes pure-library-only.

@@ -67,6 +67,8 @@ tasks:
     # Lenient: tests verify behavior. No strict clippy enforcement.
     command: 'cargo test --workspace --all-features'
     toolchains: [rust]
+    env:
+      RUSTDOCFLAGS: '-Zcrate-attr=feature(non_exhaustive_omitted_patterns_lint)'
     options:
       runInCI: true
     inputs:
@@ -142,7 +144,7 @@ tasks:
       - 'crates/titania-lanes/src/bin/check_agent_cli_contract.rs'
       - 'crates/titania-lanes/src/lib.rs'
       - 'crates/**/*.rs'
-      - 'velvet-ballistics-MASTER.md'
+      - 'velvet-ballistics-*.md'
 
   lane-check-public-api-diff:
     command: 'cargo run --quiet -p titania-lanes --bin check-public-api-diff'
@@ -185,7 +187,7 @@ tasks:
     inputs:
       - 'crates/titania-lanes/src/bin/check_hot_cold_forbidden_apis.rs'
       - 'crates/titania-lanes/src/lib.rs'
-      - 'scripts/hot-cold-forbidden-apis.allow'
+      - 'scripts/**'
       - 'crates/**/*.rs'
 
   lane-flux-check-package:
@@ -207,7 +209,7 @@ tasks:
       - 'crates/titania-lanes/src/bin/forbidden_scan.rs'
       - 'crates/titania-lanes/src/lib.rs'
       - 'crates/**/*.rs'
-      - 'xtask/src/forbidden_scan.rs'
+      - 'xtask/**'
 
   lane-fuzz-minimization:
     command: 'cargo run --quiet -p titania-lanes --bin fuzz-minimization'
@@ -217,7 +219,7 @@ tasks:
     inputs:
       - 'crates/titania-lanes/src/bin/fuzz_minimization.rs'
       - 'crates/titania-lanes/src/lib.rs'
-      - 'fuzz/Cargo.toml'
+      - 'fuzz/**'
 
   lane-run-tlc-checks:
     command: 'cargo run --quiet -p titania-lanes --bin run-tlc-checks'
@@ -284,7 +286,7 @@ tasks:
       - 'crates/titania-lanes/src/bin/check_source_length.rs'
       - 'crates/titania-lanes/src/lib.rs'
       - 'crates/**/*.rs'
-      - '.config/source-length-exceptions.txt'
+      - '.config/**'
 
   lane-check-stepstate-matrix:
     command: 'cargo run --quiet -p titania-lanes --bin check-stepstate-matrix'
@@ -314,8 +316,7 @@ tasks:
     inputs:
       - 'crates/titania-lanes/src/bin/verify_no_legacy_primitives.rs'
       - 'crates/titania-lanes/src/lib.rs'
-      - 'crates/vb_validate/src/schema.rs'
-      - 'crates/vb_validate/src/schema_fields.rs'
+      - 'crates/vb_validate/src/**/*.rs'
 
   lane-check-error-exhaustiveness:
     command: 'cargo run --quiet -p titania-lanes --bin check-error-exhaustiveness'
@@ -326,9 +327,9 @@ tasks:
       - 'crates/titania-lanes/src/bin/check_error_exhaustiveness.rs'
       - 'crates/titania-lanes/src/lib.rs'
       - 'fuzz/**'
-      - 'crates/vb_storage/src/error/mod.rs'
-      - 'crates/vb_ipc/src/error.rs'
-      - 'crates/vb_validate/src/lib.rs'
+      - 'crates/vb_storage/src/error/**/*.rs'
+      - 'crates/vb_ipc/src/**/*.rs'
+      - 'crates/vb_validate/src/**/*.rs'
 
   lane-check-ignored-fallible-results:
     command: 'cargo run --quiet -p titania-lanes --bin check-ignored-fallible-results'
@@ -340,7 +341,7 @@ tasks:
       - 'crates/titania-lanes/src/lib.rs'
       - 'crates/**/src/**/*.rs'
       - 'xtask/src/**/*.rs'
-      - 'scripts/ignored-fallible-results.allow'
+      - 'scripts/**'
 
   lane-hotpath-scan:
     command: 'cargo run --quiet -p titania-lanes --bin hotpath-scan'
@@ -354,7 +355,7 @@ tasks:
       - 'crates/vb_runtime/src/**/*.rs'
       - 'crates/vb_storage/src/**/*.rs'
       - 'crates/vb_ipc/src/**/*.rs'
-      - 'scripts/hotpath-scan.allow'
+      - 'scripts/**'
 
   lane-check-production-inner-drift:
     command: 'cargo run --quiet -p titania-lanes --bin check-production-inner-drift'
@@ -370,6 +371,8 @@ tasks:
   lane-kani-list:
     command: 'cargo run --quiet -p titania-lanes --bin kani-list'
     toolchains: [rust]
+    env:
+      RUSTFLAGS: '-Zcrate-attr=feature(non_exhaustive_omitted_patterns_lint)'
     options:
       runInCI: true
     inputs:
@@ -381,8 +384,11 @@ tasks:
   lane-kani-core:
     command: 'cargo kani -p titania-core --harness lane_name_rejects_empty_string --harness lane_name_rejects_nul_byte --harness lane_digest_rejects_passed_greater_than_scanned --harness lane_digest_accepts_passed_not_greater_than_scanned --harness recorded_target_root_rejects_empty_string --harness recorded_target_root_rejects_relative_path --harness recorded_target_root_rejects_nul_byte --harness recorded_target_root_accepts_absolute_path --default-unwind 16 -j 1'
     toolchains: [rust]
+    env:
+      RUSTFLAGS: '-Zcrate-attr=feature(non_exhaustive_omitted_patterns_lint)'
     options:
       runInCI: true
+      cache: false
     inputs:
       - 'Cargo.lock'
       - 'Cargo.toml'
@@ -400,11 +406,13 @@ tasks:
     inputs:
       - 'crates/titania-lanes/src/bin/loom_list.rs'
       - 'crates/titania-lanes/src/lib.rs'
-      - 'xtask/src/main.rs'
+      - 'xtask/**'
 
   lane-guard-zero-tests:
     command: 'cargo run --quiet -p titania-lanes --bin guard-zero-tests -- cargo test --workspace --all-features'
     toolchains: [rust]
+    env:
+      RUSTDOCFLAGS: '-Zcrate-attr=feature(non_exhaustive_omitted_patterns_lint)'
     options:
       runInCI: true
     inputs:
@@ -493,6 +501,8 @@ tasks:
       - '~:titania-clippy'
       - '~:titania-lint'
       - '~:titania-ast-grep'
+    inputs:
+      - '.moon/tasks/all.yml'
     options:
       runInCI: true
 
@@ -504,6 +514,8 @@ tasks:
       - '~:lane-flux-check-package'
       - '~:lane-kani-core'
       - '~:lane-verify-verus'
+    inputs:
+      - '.moon/tasks/all.yml'
     options:
       runInCI: true
 
@@ -518,6 +530,8 @@ tasks:
       - '~:audit'
       - '~:deny'
       - '~:geiger'
+    inputs:
+      - '.moon/tasks/all.yml'
     options:
       runInCI: true
 
@@ -527,6 +541,8 @@ tasks:
       - '~:fmt'
       - '~:lint-src'
       - '~:check'
+    inputs:
+      - '.moon/tasks/all.yml'
     options:
       runInCI: false
 
@@ -538,5 +554,7 @@ tasks:
       - '~:test'
       - '~:audit'
       - '~:geiger'
+    inputs:
+      - '.moon/tasks/all.yml'
     options:
       runInCI: true

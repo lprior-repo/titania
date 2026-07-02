@@ -115,7 +115,7 @@ fn prepare_inputs(
     let targets = load_registry_targets(target, &paths.registry)?;
     ensure_targets_present(&targets, &paths.registry)?;
     let summary_path = paths.evidence_dir.join(SUMMARY_FILE);
-    write_initial_summary(&summary_path, targets.len())?;
+    write_initial_summary(target, &summary_path, &paths.evidence_dir, targets.len())?;
     Ok(VerificationInputs { targets, summary_path })
 }
 
@@ -166,13 +166,27 @@ fn ensure_targets_present(targets: &[ProofTarget], registry: &Path) -> Result<()
     }
 }
 
-fn write_initial_summary(summary_path: &Path, target_count: usize) -> Result<(), LaneExit> {
-    match evidence::write_summary_header(summary_path, target_count) {
+fn write_initial_summary(
+    target: &TargetProject,
+    summary_path: &Path,
+    evidence_dir: &Path,
+    target_count: usize,
+) -> Result<(), LaneExit> {
+    let evidence = evidence_display(target, evidence_dir);
+    match evidence::write_summary_header(summary_path, &evidence, target_count) {
         Ok(()) => Ok(()),
         Err(e) => {
             eprintln!("[verify-verus] cannot write summary: {e}");
             Err(LaneExit::Failure)
         }
+    }
+}
+
+fn evidence_display(target: &TargetProject, evidence_dir: &Path) -> String {
+    match evidence_dir.strip_prefix(target.as_std_path()) {
+        Ok(relative) if !relative.as_os_str().is_empty() => relative.display().to_string(),
+        Ok(_) => ".".to_owned(),
+        Err(_) => evidence_dir.display().to_string(),
     }
 }
 
