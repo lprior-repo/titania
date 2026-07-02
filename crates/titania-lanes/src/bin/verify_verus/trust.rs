@@ -19,37 +19,56 @@ pub fn trusted_base_waiver_exists(evidence_dir: &Path) -> bool {
 #[must_use]
 pub fn scan_forbidden_trust(target: &TargetProject, report: &mut LaneReport) -> Vec<String> {
     let mut findings = Vec::new();
-    trust_scan_roots(target).iter().for_each(|dir| {
+    for dir in &trust_scan_roots(target) {
         walk_rs_lines(dir, target.as_std_path(), |line, path, line_no| {
-            if is_forbidden_trust_line(line) {
-                findings.push(format!("{path}:{line_no}: {line}"));
-                report.push(Finding::new(
-                    FORBIDDEN_RULE,
-                    path.to_owned(),
-                    line_no,
-                    "forbidden `assume(` or `axiom` outside comments",
-                ));
-            }
+            check_forbidden_line(line, path, line_no, &mut findings, report);
         });
-    });
+    }
     findings
+}
+
+fn check_forbidden_line(
+    line: &str,
+    path: &str,
+    line_no: u32,
+    findings: &mut Vec<String>,
+    report: &mut LaneReport,
+) {
+    if is_forbidden_trust_line(line) {
+        findings.push(format!("{path}:{line_no}: {line}"));
+        report.push(Finding::new(
+            FORBIDDEN_RULE,
+            path.to_owned(),
+            line_no,
+            "forbidden `assume(` or `axiom` outside comments",
+        ));
+    }
 }
 
 #[must_use]
 pub fn scan_external_markers(target: &TargetProject) -> Vec<String> {
     let mut findings = Vec::new();
-    trust_scan_roots(target).iter().for_each(|dir| {
+    for dir in &trust_scan_roots(target) {
         walk_rs_lines(dir, target.as_std_path(), |line, path, line_no| {
-            if is_external_marker_line(line) {
-                findings.push(format!("{path}:{line_no}: {line}"));
-            }
+            check_external_line(line, path, line_no, &mut findings);
         });
-    });
+    }
     findings
 }
 
+fn check_external_line(
+    line: &str,
+    path: &str,
+    line_no: u32,
+    findings: &mut Vec<String>,
+) {
+    if is_external_marker_line(line) {
+        findings.push(format!("{path}:{line_no}: {line}"));
+    }
+}
+
 pub fn report_unwaived_external_markers(report: &mut LaneReport, lines: &[String]) {
-    lines.iter().for_each(|line| {
+    for line in lines {
         let (path, line_no) = parse_finding_location(line);
         report.push(Finding::new(
             EXTERNAL_RULE,
@@ -57,7 +76,7 @@ pub fn report_unwaived_external_markers(report: &mut LaneReport, lines: &[String
             line_no,
             "Verus external marker requires explicit trusted-base waiver artifact",
         ));
-    });
+    }
 }
 
 fn trust_scan_roots(target: &TargetProject) -> [std::path::PathBuf; 2] {
