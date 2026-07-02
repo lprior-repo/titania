@@ -89,9 +89,8 @@ fn has_lakefile(proof_dir: &Path) -> bool {
 fn lake_on_path(target: &titania_core::TargetProject) -> bool {
     // `which`-equivalent: try to spawn `lake --version`. The child writes
     // to captured buffers; we only care about the spawn outcome.
-    let mut command = match CommandIn::new(target, "lake") {
-        Ok(command) => command,
-        Err(_) => return false,
+    let Ok(mut command) = CommandIn::new(target, "lake") else {
+        return false;
     };
     command.inherit_env().arg("--version");
     command.run_capture_raw().is_ok_and(|output| output.status.success())
@@ -119,8 +118,7 @@ fn run_lake_build(
             Some(0) => exit(LaneExit::Clean),
             Some(2) => exit(LaneExit::Usage),
             Some(1) => exit(LaneExit::Violations),
-            Some(_) => exit(LaneExit::Failure),
-            None => exit(LaneExit::Failure),
+            Some(_) | None => exit(LaneExit::Failure),
         },
         Err(io_err) => {
             eprintln!("[verify:lean] failed to spawn lake: {io_err}");
