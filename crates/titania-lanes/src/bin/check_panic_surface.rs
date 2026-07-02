@@ -13,7 +13,7 @@
 //!    `lifecycle_tests/`, `kani*.rs`, `models/loom/**`, `proofs/**`, etc.
 //! 2. **Production path filter** — only lines outside `#[cfg(test)]`,
 //!    `#[cfg(kani)]`, and `#[kani::proof]` blocks count.
-//! 3. **Comment skip** — lines whose payload (after the file:line prefix)
+//! 3. **Comment skip** — lines whose payload (after the `<file:line>` prefix)
 //!    starts with `//` are not violations (matches `rg` post-filter).
 //! 4. **Pattern** — `(^|[^A-Za-z0-9_])(assert!|assert_eq!|assert_ne!|unreachable!)`
 //!
@@ -108,16 +108,22 @@ fn walk_rust_files(dir: PathBuf) -> Vec<PathBuf> {
             continue;
         };
         for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "rs") {
-                out.push(path);
-            }
+            push_rust_entry(&mut stack, &mut out, entry.path());
         }
     }
     out.sort();
     out
+}
+
+/// Pushes a single directory entry onto the walk stack or into the
+/// result list, keeping the per-entry logic out of `walk_rust_files` to
+/// keep the outer `while let` body at two nesting levels.
+fn push_rust_entry(stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>, path: PathBuf) {
+    if path.is_dir() {
+        stack.push(path);
+    } else if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("rs")) {
+        out.push(path);
+    }
 }
 
 /// Replicate the bash `--glob '!...'`. The list mirrors
@@ -142,6 +148,14 @@ fn is_excluded_path(path: &Path) -> bool {
     false
 }
 
+/// Scans one source file, recording panic/assert findings for any
+/// production line that mentions a flagged macro outside a test/kani
+/// scope. Brace tracking keeps track of nested `#[cfg(...)]` blocks.
+///
+/// # Errors
+/// This function does not return `Result`; unreadable files are
+/// silently skipped and surfaced as missing-scan records in the lane
+/// report rather than as a hard error.
 fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
     report.record_scan();
     let Ok(content) = std::fs::read_to_string(path) else {
@@ -149,88 +163,102 @@ fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
     };
 
     let display = rel_str(root, path);
-    // Stacks of (synthetic_open_added, global_brace_depth_at_open).
-    // `cfg_open` is +1 because the cfg attribute itself has no `{`; the
-    // matching `{` lands on the `mod tests {` / `fn proof_fn() {` line
-    // that follows. The scope closes when the global brace depth drops
-    // back to the snapshotted depth.
-    let mut cfg_depth: u32 = 0;
-    let mut kani_proof_depth: u32 = 0;
-    let mut global_depth: u32 = 0;
-    let mut cfg_open_depths: Vec<u32> = Vec::new();
-    let mut kani_open_depths: Vec<u32> = Vec::new();
-    // Block-comment carry-over: a `/* … */` that opens on one line
-    // and closes on a later line must skip every line in between.
-    let mut block_comment: bool = false;
+    let mut state = ScanState::default();
 
     for (idx, raw) in content.lines().enumerate() {
         let line_no = line_no_from_idx(idx);
-        // The SourceLine parser strips line/block comments and
-        // blanks string contents. We still operate on `raw` for
-        // brace tracking and panic-macro detection, but we use
-        // `parsed.is_non_code()` to detect lines that are entirely
-        // comments or strings (which the panic-macro check should
-        // not flag) and `parsed.code()` to look for the macros in
-        // rune form (so an `assert!` inside a string literal does
-        // not leak through).
-        let parsed = SourceLine::parse(raw, &mut block_comment);
+        state.process_line(raw, line_no, &display, report);
+    }
+}
+
+#[derive(Default)]
+struct ScanState {
+    cfg_depth: u32,
+    kani_proof_depth: u32,
+    global_depth: u32,
+    cfg_open_depths: Vec<u32>,
+    kani_open_depths: Vec<u32>,
+    block_comment: bool,
+}
+
+impl ScanState {
+    /// Tracks a single source line: opens/closes `#[cfg(test|kani)]` and
+    /// `#[kani::proof]` scopes, records brace depth, and emits a finding
+    /// for any production-line panic/assert macro.
+    fn process_line(
+        &mut self,
+        raw: &str,
+        line_no: u32,
+        display: &str,
+        report: &mut LaneReport,
+    ) {
+        let parsed = SourceLine::parse(raw, &mut self.block_comment);
         if parsed.is_non_code() {
-            // Even all-comment lines can affect the global brace
-            // counter if they contain a stray `{` or `}` (which is
-            // rare but legal in a line-comment-adjacent character).
-            // Track braces in the raw line to keep the count honest.
-            global_depth = global_depth.saturating_add_signed(line_brace_delta(raw.trim_start()));
-            continue;
+            // All-comment lines can still affect the global brace
+            // counter if they contain a stray `{` or `}`.
+            self.global_depth = self
+                .global_depth
+                .saturating_add_signed(line_brace_delta(raw.trim_start()));
+            return;
         }
         let trimmed = raw.trim_start();
-        let line_brace_delta_val = line_brace_delta(trimmed);
         let opened_cfg_here = is_cfg_attr_open(trimmed, &["test", "kani"]);
         let opened_kani_proof_here = !opened_cfg_here && trimmed.starts_with("#[kani::proof]");
+        self.open_scopes(trimmed, opened_cfg_here, opened_kani_proof_here);
+        self.record_panic_finding(parsed.code(), line_no, display, report);
+        self.global_depth = self.global_depth.saturating_add_signed(line_brace_delta(trimmed));
+        self.try_close_scopes(opened_cfg_here, opened_kani_proof_here);
+    }
 
-        if opened_cfg_here {
-            cfg_depth = cfg_depth.saturating_add(1);
-            // The cfg block's `{` will land on a later line; we treat
-            // the current global depth + 1 as the depth the matching
-            // `}` will eventually return us to.
-            cfg_open_depths.push(global_depth.saturating_add(1));
+    fn open_scopes(&mut self, _trimmed: &str, opened_cfg: bool, opened_kani_proof: bool) {
+        if opened_cfg {
+            self.cfg_depth = self.cfg_depth.saturating_add(1);
+            // The cfg block's `{` lands on a later line; snapshot
+            // `global_depth + 1` as the depth the matching `}` will
+            // eventually return us to.
+            self.cfg_open_depths.push(self.global_depth.saturating_add(1));
         }
-        if opened_kani_proof_here {
-            kani_proof_depth = kani_proof_depth.saturating_add(1);
-            kani_open_depths.push(global_depth.saturating_add(1));
+        if opened_kani_proof {
+            self.kani_proof_depth = self.kani_proof_depth.saturating_add(1);
+            self.kani_open_depths.push(self.global_depth.saturating_add(1));
         }
+    }
 
-        let inside_test_or_kani = cfg_depth > 0 || kani_proof_depth > 0;
-        if !inside_test_or_kani && let Some(macro_name) = first_panic_macro(parsed.code()) {
+    fn record_panic_finding(
+        &self,
+        code: &str,
+        line_no: u32,
+        display: &str,
+        report: &mut LaneReport,
+    ) {
+        let inside_test_or_kani = self.cfg_depth > 0 || self.kani_proof_depth > 0;
+        if !inside_test_or_kani && let Some(macro_name) = first_panic_macro(code) {
             report.push(Finding::new(
                 "PANIC-SURFACE-001",
-                display.clone(),
+                display.to_owned(),
                 line_no,
                 format!("production panic/assert macro `{macro_name}` is forbidden"),
             ));
         }
+    }
 
-        // Apply this line's brace delta to the global counter.
-        global_depth = global_depth.saturating_add_signed(line_brace_delta_val);
-
-        // Pop cfg/kani scopes whose synthetic open depth we have
-        // returned to. The snapshot is `global_depth_at_open + 1`, so
-        // the matching `{` (e.g. `mod tests {`) brings the global
-        // counter to the snapshot; the matching `}` brings it below.
-        // We close only on strict `<` so the cfg block's own `{` does
-        // not pop the scope prematurely.
-        if !opened_cfg_here
-            && let Some(&target) = cfg_open_depths.last()
-            && global_depth < target
+    /// Pop cfg/kani scopes whose synthetic open depth we have
+    /// returned to. Close only on strict `<` so the cfg block's
+    /// own `{` does not pop the scope prematurely.
+    fn try_close_scopes(&mut self, opened_cfg: bool, opened_kani_proof: bool) {
+        if !opened_cfg
+            && let Some(&target) = self.cfg_open_depths.last()
+            && self.global_depth < target
         {
-            cfg_open_depths.pop();
-            cfg_depth = cfg_depth.saturating_sub(1);
+            self.cfg_open_depths.pop();
+            self.cfg_depth = self.cfg_depth.saturating_sub(1);
         }
-        if !opened_kani_proof_here
-            && let Some(&target) = kani_open_depths.last()
-            && global_depth < target
+        if !opened_kani_proof
+            && let Some(&target) = self.kani_open_depths.last()
+            && self.global_depth < target
         {
-            kani_open_depths.pop();
-            kani_proof_depth = kani_proof_depth.saturating_sub(1);
+            self.kani_open_depths.pop();
+            self.kani_proof_depth = self.kani_proof_depth.saturating_sub(1);
         }
     }
 }
@@ -277,14 +305,13 @@ fn first_panic_macro(line: &str) -> Option<&'static str> {
     })
 }
 
-fn is_word_byte(b: u8) -> bool {
+const fn is_word_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
-/// Convert a 0-indexed line offset into a 1-indexed `u32` line number,
-/// saturating at `u32::MAX` on overflow. Equivalent to
-/// `titania_lanes::helpers::line_no_from_idx` but kept local so the bin
-/// does not need to know about the helpers module.
+/// Convert a 0-indexed line offset to a 1-indexed `u32` line number,
+/// saturating at `u32::MAX` on overflow. Local duplicate of the
+/// `titania_lanes::helpers::line_no_from_idx` helper.
 fn line_no_from_idx(idx: usize) -> u32 {
     u32::try_from(idx.saturating_add(1)).map_or(u32::MAX, |value| value)
 }
