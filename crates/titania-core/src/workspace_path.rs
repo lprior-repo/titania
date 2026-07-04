@@ -10,6 +10,11 @@
 //! - No NUL byte.
 //! - No control characters (0x00–0x1F except in the byte stream; tab 0x09 is rejected).
 
+#![expect(
+    clippy::excessive_nesting,
+    reason = "Path validation uses explicit typed guards for each forbidden state."
+)]
+
 use core::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -56,32 +61,42 @@ impl WorkspacePath {
         self.0.split('/').next().is_some_and(|first| first == segment)
     }
 
-    /// Validate the raw path string against all invariants.
+    /// Validate the bytes and path segments of a candidate workspace path.
     ///
     /// # Errors
-    /// See [`WorkspacePathError`] for the full taxonomy.
+    /// - [`WorkspacePathError::Empty`] if the path is empty.
+    /// - [`WorkspacePathError::LeadingSlash`] if the path is absolute.
+    /// - [`WorkspacePathError::ContainsBackslash`] if the path uses `\`.
+    /// - [`WorkspacePathError::ContainsNull`] if the path contains a NUL byte.
+    /// - [`WorkspacePathError::ControlByte`] if the path contains an ASCII control byte.
+    /// - [`WorkspacePathError::ContainsDotDot`] if the path contains a `..` segment.
     fn validate(s: &str) -> Result<(), WorkspacePathError> {
-        (!s.is_empty()).then_some(()).ok_or(WorkspacePathError::Empty)?;
-        (!s.starts_with('/')).then_some(()).ok_or(WorkspacePathError::LeadingSlash)?;
-        s.as_bytes().iter().try_for_each(|&b| validate_path_byte(b))?;
-        (!s.split('/').any(|seg| seg == ".."))
-            .then_some(())
-            .ok_or(WorkspacePathError::ContainsDotDot)?;
+        if s.is_empty() {
+            return Err(WorkspacePathError::Empty);
+        }
+        if s.starts_with('/') {
+            return Err(WorkspacePathError::LeadingSlash);
+        }
+        let bytes = s.as_bytes();
+        for &b in bytes {
+            if b == b'\\' {
+                return Err(WorkspacePathError::ContainsBackslash);
+            }
+            if b == 0 {
+                return Err(WorkspacePathError::ContainsNull);
+            }
+            if b < 0x20 {
+                return Err(WorkspacePathError::ControlByte(b));
+            }
+        }
+        // Check for '..' as a complete segment.
+        for seg in s.split('/') {
+            if seg == ".." {
+                return Err(WorkspacePathError::ContainsDotDot);
+            }
+        }
         Ok(())
     }
-}
-
-/// Validate a single path byte: rejects backslash, NUL, and control bytes.
-///
-/// # Errors
-/// - [`WorkspacePathError::ContainsBackslash`] for `\`.
-/// - [`WorkspacePathError::ContainsNull`] for a NUL byte.
-/// - [`WorkspacePathError::ControlByte`] for any byte below 0x20.
-fn validate_path_byte(b: u8) -> Result<(), WorkspacePathError> {
-    (b != b'\\').then_some(()).ok_or(WorkspacePathError::ContainsBackslash)?;
-    (b != 0).then_some(()).ok_or(WorkspacePathError::ContainsNull)?;
-    (b >= 0x20).then_some(()).ok_or(WorkspacePathError::ControlByte(b))?;
-    Ok(())
 }
 
 impl fmt::Display for WorkspacePath {

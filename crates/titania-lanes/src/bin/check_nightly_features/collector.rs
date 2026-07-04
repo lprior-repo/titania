@@ -1,6 +1,6 @@
 //! Multi-line `#![feature(...)]` attribute collection.
 //!
-//! The collector is an explicit two-state machine ([`CollectorState`]):
+//! The collector is an explicit two-state machine (`CollectorState`):
 //! `Idle` (no attribute in progress) or `Collecting { first_line, buf }`
 //! (accumulating a multi-line attribute body until `)]` closes it). The
 //! `first_line` is only meaningful while collecting, which the enum

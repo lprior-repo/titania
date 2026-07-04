@@ -20,29 +20,47 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
+mod diagnostic;
 mod digest;
 mod discover;
 mod error;
+mod failure;
+mod finding;
+mod gate_scope;
+#[cfg(kani)]
+mod kani;
+mod lane;
+mod outcome;
 mod receipt;
+mod report;
 mod rule_id;
 mod target_project;
 mod text_range;
+mod v1_receipt;
 mod workspace_path;
 
-#[cfg(kani)]
-mod kani;
-
+pub use diagnostic::{DiagnosticSeverity, InputDiagnostic, PolicyDiagnostic};
 pub use digest::Digest;
 pub use discover::discover_target;
 pub use error::{
-    CoreError, DigestError, ReceiptError, RuleIdError, TargetProjectError, TextRangeError,
-    WorkspacePathError,
+    CoreError, DigestError, FailureError, FindingError, GateScopeError, LaneError, LocationError,
+    OutcomeError, ReceiptError, RepairHintError, ReportError, RuleIdError, TargetProjectError,
+    TextRangeError, WorkspacePathError,
 };
+pub use failure::{LaneFailure, ProcessTermination};
+pub use finding::{Finding, FindingEffect, Location, RepairHint};
+pub use gate_scope::GateScope;
+pub use lane::Lane;
+pub use outcome::{CommandEvidence, LaneEvidence, LaneOutcome, SkipReason};
 pub use receipt::{
-    LaneDigest, LaneName, QualityReceipt, RECEIPT_SCHEMA_VERSION, ReceiptDigests, ReceiptLaneExit,
+    LaneDigest, LaneName, RECEIPT_SCHEMA_VERSION, ReceiptDigests, ReceiptEnvelope, ReceiptLaneExit,
     ReceiptPeriod, RecordedTargetRoot,
 };
+pub use report::{RejectKind, Report};
 pub use rule_id::RuleId;
 pub use target_project::TargetProject;
 pub use text_range::TextRange;
+/// Re-export as `QualityReceipt` for compatibility with the v1-spec naming.
+pub use v1_receipt::QualityReceiptV1 as QualityReceipt;
+pub use v1_receipt::{LaneReceipt, QualityReceiptV1};
 pub use workspace_path::WorkspacePath;

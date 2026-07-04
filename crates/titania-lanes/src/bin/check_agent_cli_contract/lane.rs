@@ -10,8 +10,8 @@ use titania_lanes::{
     Finding, LaneExit, LaneReport, RuleId, RuleIdError, current_target_project, exit,
 };
 
-const CLI_SRC: TargetRelativePath = TargetRelativePath::new("crates/vb_cli/src");
-const MASTER_DOC: TargetRelativePath = TargetRelativePath::new("velvet-ballistics-MASTER.md");
+const CLI_SRC: TargetRelativePath = TargetRelativePath::new("src");
+const MASTER_DOC: TargetRelativePath = TargetRelativePath::new("AGENTS.md");
 const RULE_REQUIRED: &str = "AGENT_CLI_REQUIRED_001";
 const RULE_REJECTED: &str = "AGENT_CLI_REJECTED_001";
 
@@ -117,7 +117,7 @@ fn run(target: &TargetProject, rules: &AgentCliRules) -> std::io::Result<LaneRep
 /// Returns the underlying stderr write error.
 fn print_not_applicable(target: &TargetProject) -> std::io::Result<()> {
     write_stderr_line(format_args!(
-        "[check-agent-cli-contract] not applicable: {} is absent under {}; skipping vb_cli contract lane",
+        "[check-agent-cli-contract] not applicable: {} is absent under {}; skipping agent CLI contract lane",
         CLI_SRC.as_str(),
         target
     ))

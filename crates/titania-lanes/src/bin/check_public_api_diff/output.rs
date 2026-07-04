@@ -77,9 +77,7 @@ fn render_report_or(report: &LaneReport, code: LaneExit) -> LaneExit {
 }
 
 fn report_no_packages() -> LaneExit {
-    match write_stderr_line(
-        "NotApplicable: no vb_* or velvet-ballistics packages discovered in workspace metadata",
-    ) {
+    match write_stderr_line("NotApplicable: no Cargo packages discovered in workspace metadata") {
         Ok(()) => LaneExit::NotApplicable,
         Err(_) => LaneExit::Failure,
     }

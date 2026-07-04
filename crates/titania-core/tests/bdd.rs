@@ -3,8 +3,6 @@
 //! These tests exercise the API as a real consumer would: construct a
 //! value, serialize it, deserialize it, and observe a stable outcome.
 
-#![expect(clippy::disallowed_methods, reason = "test helpers may unwrap/expect")]
-
 use titania_core::{Digest, RuleId, TextRange, WorkspacePath};
 
 // ----------------------------------------------------------------------

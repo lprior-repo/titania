@@ -480,12 +480,21 @@ name = "titania-lanes"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde",
  "serde_json",
  "smallvec",
  "tempfile",
  "thiserror",
  "titania-core",
+ "titania-policy",
  "wait-timeout",
+]
+
+[[package]]
+name = "titania-policy"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

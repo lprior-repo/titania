@@ -1,0 +1,18 @@
+[package]
+name = "titania-policy"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Strict-ai policy defaults for titania-check. Embedded, no filesystem I/O required."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
+[lints]
+workspace = true

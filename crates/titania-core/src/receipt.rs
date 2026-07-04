@@ -4,6 +4,11 @@
 //! project was judged and which digests/results were observed. Construction
 //! keeps invalid lane summaries and unsupported schemas out of the domain.
 
+#![expect(
+    clippy::excessive_nesting,
+    reason = "Receipt constructors and serde adapters keep schema guards next to receipt invariants."
+)]
+
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{Digest, TargetProject, error::ReceiptError};
@@ -25,17 +30,17 @@ pub use target_root::RecordedTargetRoot;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReceiptLaneExit {
-    /// Lane ran and reported no violations.
+    /// Lane completed with no violations.
     Clean,
-    /// Lane ran and reported one or more violations.
+    /// Lane completed and found policy violations.
     Violations,
-    /// Lane exited with a usage/argument error.
+    /// Lane could not run because invocation or CLI usage was invalid.
     Usage,
-    /// Lane failed to run (infrastructure or internal error).
+    /// Lane execution failed before a verdict could be produced.
     Failure,
 }
 
-/// Per-lane digest summary embedded in a [`QualityReceipt`].
+/// Per-lane digest summary embedded in a [`ReceiptEnvelope`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct LaneDigest {
     lane: LaneName,
@@ -74,9 +79,9 @@ impl LaneDigest {
         passed: u32,
         finding_count: u32,
     ) -> Result<Self, ReceiptError> {
-        (passed <= scanned)
-            .then_some(())
-            .ok_or(ReceiptError::PassedExceedsScanned { passed, scanned })?;
+        if passed > scanned {
+            return Err(ReceiptError::PassedExceedsScanned { passed, scanned });
+        }
         Ok(Self { lane, exit, scanned, passed, finding_count })
     }
 
@@ -123,10 +128,10 @@ impl ReceiptPeriod {
     ///
     /// # Errors
     /// - [`ReceiptError::FinishedBeforeStarted`] if `finished_at < started_at`.
-    pub fn new(started_at: u64, finished_at: u64) -> Result<Self, ReceiptError> {
-        (started_at <= finished_at)
-            .then_some(())
-            .ok_or(ReceiptError::FinishedBeforeStarted { started_at, finished_at })?;
+    pub const fn new(started_at: u64, finished_at: u64) -> Result<Self, ReceiptError> {
+        if finished_at < started_at {
+            return Err(ReceiptError::FinishedBeforeStarted { started_at, finished_at });
+        }
         Ok(Self { started_at, finished_at })
     }
 
@@ -145,7 +150,7 @@ impl ReceiptPeriod {
 
 /// Stable quality receipt envelope for one target-project run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct QualityReceipt {
+pub struct ReceiptEnvelope {
     schema_version: u32,
     target_root: RecordedTargetRoot,
     started_at: u64,
@@ -157,7 +162,7 @@ pub struct QualityReceipt {
     toolchain_digest: Digest,
 }
 
-impl QualityReceipt {
+impl ReceiptEnvelope {
     /// Construct a receipt produced by the current schema.
     ///
     /// # Errors
@@ -177,11 +182,11 @@ impl QualityReceipt {
         )
     }
 
-    /// Build a receipt from already-validated parts, re-checking the schema.
+    /// Construct a receipt from explicit schema and normalized parts.
     ///
     /// # Errors
-    /// - [`ReceiptError::UnsupportedSchemaVersion`] if `schema_version` is
-    ///   not the current schema.
+    /// - [`ReceiptError::UnsupportedSchemaVersion`] if `schema_version` is not current.
+    /// - [`ReceiptError::FinishedBeforeStarted`] if `period` has invalid ordering.
     fn from_parts(
         schema_version: u32,
         target_root: RecordedTargetRoot,
@@ -189,9 +194,9 @@ impl QualityReceipt {
         lane_results: Vec<LaneDigest>,
         digests: ReceiptDigests,
     ) -> Result<Self, ReceiptError> {
-        (schema_version == RECEIPT_SCHEMA_VERSION)
-            .then_some(())
-            .ok_or(ReceiptError::UnsupportedSchemaVersion(schema_version))?;
+        if schema_version != RECEIPT_SCHEMA_VERSION {
+            return Err(ReceiptError::UnsupportedSchemaVersion(schema_version));
+        }
         let ReceiptPeriod { started_at, finished_at } = period;
         let (source_digest, lock_digest, policy_digest, toolchain_digest) = digests.into_parts();
         Ok(Self {

@@ -24,7 +24,7 @@ fn append_compile_args<'a>(
     extra: &'a [&'a str],
 ) {
     let _ = cmd.arg("run").arg(RUSTUP_TOOLCHAIN).arg("cargo").arg("bench");
-    let _ = cmd.args(&["-p", BENCH_PACKAGE]).arg("--bench").arg(bench);
+    let _ = cmd.arg("--bench").arg(bench);
     let _ = cmd.args(&["--all-features"]).arg("--no-run");
     let _ = cmd.env("CARGO_TARGET_DIR", target_dir).args(extra);
 }
@@ -57,7 +57,7 @@ fn append_perf_args<'a>(
 ) {
     let _ = cmd.args(&["stat", "-x,", "-e", "instructions", "-o"]).arg(log_file);
     let _ = cmd.arg("--").arg("rustup").arg("run").arg(RUSTUP_TOOLCHAIN);
-    let _ = cmd.arg("cargo").arg("bench").args(&["-p", BENCH_PACKAGE]);
-    let _ = cmd.arg("--bench").arg(bench).args(&["--all-features"]);
+    let _ = cmd.arg("cargo").arg("bench").arg("--bench").arg(bench);
+    let _ = cmd.args(&["--all-features"]);
     let _ = cmd.arg("--").arg("--bench").env("CARGO_TARGET_DIR", target_dir);
 }

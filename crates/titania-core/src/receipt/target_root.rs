@@ -20,10 +20,10 @@ impl RecordedTargetRoot {
     /// - [`ReceiptError::TargetRootEmpty`] if the path is empty.
     /// - [`ReceiptError::TargetRootNonAbsolute`] if the path is relative.
     /// - [`ReceiptError::TargetRootContainsNul`] if the path contains NUL.
-    pub fn new(path: &str) -> Result<Self, ReceiptError> {
-        let path_buf = camino::Utf8PathBuf::from(path);
-        validate_recorded_root(&path_buf)?;
-        Ok(Self(path_buf))
+    pub fn new(path: impl Into<Utf8PathBuf>) -> Result<Self, ReceiptError> {
+        let path = path.into();
+        validate_recorded_root(&path)?;
+        Ok(Self(path))
     }
 
     pub(crate) fn from_target_project(target: &TargetProject) -> Self {
@@ -49,12 +49,12 @@ impl RecordedTargetRoot {
     }
 }
 
-/// Validate a recorded target root for emptiness, relativity, and NUL bytes.
+/// Validate a recorded target root before storing it in a receipt.
 ///
 /// # Errors
-/// - [`ReceiptError::TargetRootEmpty`] if the path is empty.
-/// - [`ReceiptError::TargetRootNonAbsolute`] if the path is relative.
-/// - [`ReceiptError::TargetRootContainsNul`] if the path contains NUL.
+/// - [`ReceiptError::TargetRootEmpty`] if the root is empty.
+/// - [`ReceiptError::TargetRootNonAbsolute`] if the root is not absolute.
+/// - [`ReceiptError::TargetRootContainsNul`] if the root contains a NUL byte.
 fn validate_recorded_root(path: &Utf8Path) -> Result<(), ReceiptError> {
     if path.as_str().is_empty() {
         return Err(ReceiptError::TargetRootEmpty);
@@ -89,6 +89,6 @@ impl Serialize for RecordedTargetRoot {
 impl<'de> Deserialize<'de> for RecordedTargetRoot {
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         let s = <std::borrow::Cow<'_, str> as Deserialize>::deserialize(de)?;
-        Self::new(s.as_ref()).map_err(serde::de::Error::custom)
+        Self::new(Utf8PathBuf::from(s.into_owned())).map_err(serde::de::Error::custom)
     }
 }

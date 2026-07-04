@@ -1,5 +1,5 @@
 [workspace]
-members  = [ "crates/titania-core", "crates/titania-lanes" ]
+members  = [ "crates/titania-core", "crates/titania-lanes", "crates/titania-policy" ]
 resolver = "3"
 
 [workspace.package]
@@ -19,15 +19,12 @@ unsafe_op_in_unsafe_fn = "deny"
 
 unused_must_use = "deny"
 unused_results = "deny"
+missing_docs = "deny"
+unreachable_pub = "deny"
 let_underscore_drop = "deny"
 
 elided_lifetimes_in_paths = "deny"
 explicit_outlives_requirements = "deny"
-# `non-exhaustive-omitted-patterns` is a clippy::pedantic lint whose unstable
-# feature is auto-injected. Pin it as an allow (no-op) so the feature is
-# "used" and rustc stops warning. NOTE: rustc -W help shows the name with
-# hyphens; the underscored form is unknown on this nightly.
-non-exhaustive-omitted-patterns = "allow"
 trivial_casts = "deny"
 trivial_numeric_casts = "deny"
 variant_size_differences = "deny"

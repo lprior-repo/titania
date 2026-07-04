@@ -5,8 +5,7 @@
 //! not flag `assert!`/`assert_eq!` calls. The tests exercise the
 //! `pub` API surface end-to-end.
 
-#![expect(clippy::disallowed_methods, reason = "test helpers may unwrap/expect")]
-#![expect(clippy::excessive_nesting, reason = "imperative test fixtures over sampled inputs")]
+#![allow(clippy::as_conversions)] // ASCII byte round-trip is exact in tests.
 
 use titania_core::{TextRange, TextRangeError, WorkspacePath, WorkspacePathError};
 
@@ -178,7 +177,7 @@ fn text_range_accepts_full_u32_range() {
 
 #[test]
 fn text_range_width_is_non_negative_for_all_valid_inputs() {
-    for start in [0u32, 1, 100, 0x7FFF_FFFFu32, u32::MAX] {
+    for start in [0u32, 1, 100, u32::MAX / 2, u32::MAX] {
         let candidates = [start, start.saturating_add(1), start.saturating_add(100), u32::MAX];
         for end in candidates {
             if end < start {
@@ -237,10 +236,10 @@ fn text_range_serde_rejects_inverted_input() {
 
 #[test]
 fn text_range_ordering_matches_byte_position() {
-    let lower = TextRange::new(0, 5).unwrap();
-    let upper = TextRange::new(5, 10).unwrap();
-    let span = TextRange::new(0, 10).unwrap();
-    assert!(lower < upper);
-    assert!(lower < span);
-    assert_eq!(lower.cmp(&span), std::cmp::Ordering::Less);
+    let a = TextRange::new(0, 5).unwrap();
+    let b = TextRange::new(5, 10).unwrap();
+    let c = TextRange::new(0, 10).unwrap();
+    assert!(a < b);
+    assert!(a < c);
+    assert_eq!(a.cmp(&c), std::cmp::Ordering::Less);
 }

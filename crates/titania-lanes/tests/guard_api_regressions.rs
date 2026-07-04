@@ -150,7 +150,7 @@ fn check_public_api_diff_reports_missing_public_api_as_failure() {
 }
 
 #[test]
-fn check_public_api_diff_does_not_fallback_to_legacy_packages() {
+fn check_public_api_diff_runs_plain_packages_without_product_filter() {
     let workspace = must!(fixture_workspace(), "create fixture workspace");
     let fake_bin = must!(fake_bin_dir(), "create fake bin dir");
     let log = fake_bin.path().join("rustup.log");
@@ -179,9 +179,67 @@ fn check_public_api_diff_does_not_fallback_to_legacy_packages() {
         "run check-public-api-diff"
     );
     assert_eq!(output.status.code(), Some(0_i32));
-    assert!(
-        must!(stderr_text(&output), "decode stderr")
-            .contains("NotApplicable: no vb_* or velvet-ballistics packages")
-    );
-    assert!(!log.exists());
+    let invoked = must!(fs::read_to_string(log), "read rustup invocation log");
+    assert!(invoked.contains("-p plain diff origin/main..HEAD"));
+}
+
+/// Scan all production crate source files under `crates/` for legacy
+/// `velvet-ballistics` / `velvet_ballistics` strings.  Fails while any
+/// `.rs` file (outside `tests/` directories) contains these tokens so that
+/// the removal is tracked as a regression guard, not a one-off fix.
+#[test]
+fn no_velvet_ballistics_legacy_refs_in_crate_source() {
+    // CARGO_MANIFEST_DIR is crates/titania-lanes; its parent IS the workspace
+    // `crates/` directory.  Do not append another "crates" segment.
+    let crates_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("titania-lanes sits inside a `crates/` workspace")
+        .to_path_buf();
+
+    fn collect_legacy_refs(dir: &std::path::Path, out: &mut Vec<String>) {
+        for entry in match std::fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(_) => return,
+        } {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if entry.file_type().map_or(false, |ft| ft.is_dir()) {
+                // Skip test directories — they may contain test fixtures that
+                // intentionally reference legacy names.
+                if entry.file_name() == "tests" {
+                    continue;
+                }
+                collect_legacy_refs(&path, out);
+            } else if path.extension().map_or(false, |ext| ext == "rs") {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    for (line_no, line) in content.lines().enumerate() {
+                        if line.contains("velvet-ballistics") || line.contains("velvet_ballistics")
+                        {
+                            out.push(format!(
+                                "{}:{}: {}",
+                                path.display(),
+                                line_no + 1,
+                                line.trim()
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut refs: Vec<String> = Vec::new();
+    collect_legacy_refs(&crates_dir, &mut refs);
+
+    if !refs.is_empty() {
+        panic!(
+            "Production crate code still references legacy `velvet-ballistics`\n\
+             / `velvet_ballistics` tokens.  Remove all such references so that\n\
+             lane artifacts remain project-neutral:\n\n{}\n",
+            refs.join("\n")
+        );
+    }
 }

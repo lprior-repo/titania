@@ -54,12 +54,7 @@ impl PubApiRules {
 }
 
 fn filter_packages(discovered: Vec<String>) -> Vec<String> {
-    let mut selected: Vec<String> = discovered
-        .into_iter()
-        .filter(|name| {
-            name.starts_with("vb_") || name == "velvet-ballistics" || name == "velvet_ballistics"
-        })
-        .collect();
+    let mut selected: Vec<String> = discovered.into_iter().collect();
     selected.sort();
     selected.dedup();
     selected

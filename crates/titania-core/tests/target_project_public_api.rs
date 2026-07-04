@@ -1,6 +1,4 @@
-//! `TargetProject` public-API smoke tests.
-
-#![expect(clippy::disallowed_methods, reason = "test helpers may unwrap/expect")]
+//! Public API tests for target project discovery.
 
 use std::path::{Path, PathBuf};
 

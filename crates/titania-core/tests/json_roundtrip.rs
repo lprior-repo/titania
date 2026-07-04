@@ -5,7 +5,8 @@
 //!
 //! Test files are exempt from the strict production code lint policy.
 
-#![expect(clippy::disallowed_methods, reason = "test helpers may unwrap/expect")]
+#![allow(clippy::needless_borrow)]
+#![allow(clippy::useless_vec)]
 
 use titania_core::{Digest, RuleId, TextRange, WorkspacePath};
 
@@ -93,7 +94,7 @@ fn workspace_path_deserialize_rejects_garbage() {
 fn text_range_json_round_trip_preserves_value() {
     let r = TextRange::new(42, 100).unwrap();
     let v: serde_json::Value = serde_json::to_value(r).unwrap();
-    assert_eq!(v, serde_json::json!({"start_byte": 42_u32, "end_byte": 100_u32}));
+    assert_eq!(v, serde_json::json!({"start_byte": 42, "end_byte": 100}));
     let back: TextRange = serde_json::from_value(v).unwrap();
     assert_eq!(r, back);
 }

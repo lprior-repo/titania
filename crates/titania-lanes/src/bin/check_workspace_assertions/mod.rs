@@ -18,8 +18,7 @@ const RULE_FORBIDDEN_DEP: &str = "WS_FORBIDDEN_DEP_001";
 const RULE_GENERATED_BOUNDARY: &str = "WS_GENERATED_BOUNDARY_001";
 const RULE_UNREADABLE: &str = "WS_UNREADABLE_001";
 
-const FORBIDDEN_FEATURE_NAMES: &[&str] =
-    &["json", "serde-json", "generated", "maxperf", "velvet-ballistics", "velvet_ballistics"];
+const FORBIDDEN_FEATURE_NAMES: &[&str] = &["json", "serde-json", "generated", "maxperf"];
 
 struct WsRules {
     invalid_invocation: RuleId,

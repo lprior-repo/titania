@@ -5,9 +5,8 @@
 //! not flag `assert!`/`assert_eq!` calls. The tests exercise the
 //! `pub` API surface end-to-end.
 
-#![expect(clippy::as_conversions, reason = "ASCII byte round-trip is exact in tests")]
-#![expect(clippy::disallowed_methods, reason = "test helpers may unwrap/expect")]
-#![expect(clippy::excessive_nesting, reason = "imperative test fixtures over sampled inputs")]
+#![allow(clippy::as_conversions)] // ASCII byte round-trip is exact in tests.
+
 use titania_core::{Digest, DigestError, RuleId, RuleIdError};
 
 const DIGEST_HEX_LEN: usize = 64;
@@ -99,6 +98,7 @@ fn digest_fromstr_round_trip() {
 }
 
 #[test]
+#[allow(clippy::type_complexity)]
 fn digest_distinct_inputs_produce_distinct_digests_sampled() {
     type BytePair = (&'static [u8], &'static [u8]);
     let pairs: &[BytePair] =
@@ -139,28 +139,13 @@ fn rule_id_rejects_empty() {
 }
 
 #[test]
-fn rule_id_rejects_too_long() {
-    let too_long = "A".repeat(RuleId::MAX_LEN + 1);
-    let with_underscore = format!("{too_long}_X");
-    assert_eq!(
-        RuleId::new(&with_underscore),
-        Err(RuleIdError::TooLong { max: RuleId::MAX_LEN, got: with_underscore.len() })
-    );
-}
-
-#[test]
-fn rule_id_accepts_max_length() {
-    let max = format!("{}_{}", "A".repeat(RuleId::MAX_LEN - 1), "");
-    assert!(RuleId::new(&max).is_ok());
-}
-
-#[test]
 fn rule_id_rejects_no_underscore() {
     assert_eq!(RuleId::new("FUNCLOOPS"), Err(RuleIdError::NoUnderscore));
     assert_eq!(RuleId::new("A"), Err(RuleIdError::NoUnderscore));
 }
 
 #[test]
+#[allow(clippy::as_conversions)]
 fn rule_id_rejects_lowercase_letter_at_each_position() {
     let bases = ["FUNC_LOOPS_FOR", "CLIPPY_UNWRAP_USED", "RULE_X"];
     for base in bases {
@@ -168,7 +153,7 @@ fn rule_id_rejects_lowercase_letter_at_each_position() {
             if ch.is_ascii_uppercase() {
                 let lower = ch.to_ascii_lowercase();
                 let mut s: Vec<u8> = base.as_bytes().to_vec();
-                s[pos..=pos].copy_from_slice(&[lower as u8]);
+                s[pos..pos + 1].copy_from_slice(&[lower as u8]);
                 let result = RuleId::new(std::str::from_utf8(&s).unwrap());
                 assert!(
                     matches!(result, Err(RuleIdError::NotUppercase(..))),

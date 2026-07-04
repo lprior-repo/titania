@@ -1,10 +1,15 @@
+#![expect(
+    clippy::excessive_nesting,
+    reason = "Lane-name validation keeps empty and NUL guards at the constructor boundary."
+)]
+
 use core::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::error::ReceiptError;
 
-/// Stable lane name stored in a [`QualityReceipt`](super::QualityReceipt).
+/// Stable lane name stored in a [`super::ReceiptEnvelope`].
 ///
 /// Empty names and NUL bytes are rejected so JSON receipts remain stable,
 /// human-readable, and safe to pass through line-oriented tooling.
@@ -19,8 +24,12 @@ impl LaneName {
     /// - [`ReceiptError::InvalidLaneName`] if `name` contains a NUL byte.
     pub fn new(name: impl Into<String>) -> Result<Self, ReceiptError> {
         let name = name.into();
-        (!name.is_empty()).then_some(()).ok_or(ReceiptError::EmptyLaneName)?;
-        (!name.as_bytes().contains(&b'\0')).then_some(()).ok_or(ReceiptError::InvalidLaneName)?;
+        if name.is_empty() {
+            return Err(ReceiptError::EmptyLaneName);
+        }
+        if name.as_bytes().contains(&b'\0') {
+            return Err(ReceiptError::InvalidLaneName);
+        }
         Ok(Self(name))
     }
 
@@ -52,6 +61,6 @@ impl Serialize for LaneName {
 impl<'de> Deserialize<'de> for LaneName {
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         let name = <std::borrow::Cow<'_, str> as Deserialize>::deserialize(de)?;
-        Self::new(name.as_ref()).map_err(serde::de::Error::custom)
+        Self::new(name.into_owned()).map_err(serde::de::Error::custom)
     }
 }

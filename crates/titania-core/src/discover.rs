@@ -55,12 +55,11 @@ pub fn discover_target(cwd: &Path) -> Result<TargetProject, TargetProjectError> 
     TargetProject::try_from_path(&target)
 }
 
-/// Read and classify the `Cargo.toml` at `root`, if present.
+/// Read one ancestor manifest, returning `Ok(None)` when it is absent.
 ///
 /// # Errors
-/// Returns [`TargetProjectError::Io`] on a non-NotFound metadata or read
-/// failure, and [`TargetProjectError::CargoTomlNotFile`] when the manifest
-/// path exists but is not a file.
+/// - [`TargetProjectError::Io`] for non-NotFound filesystem failures.
+/// - [`TargetProjectError::CargoTomlNotFile`] if `Cargo.toml` exists but is not a file.
 fn read_manifest_observation(
     root: &Path,
 ) -> Result<Option<ManifestObservation>, TargetProjectError> {
@@ -89,11 +88,11 @@ fn read_manifest_observation(
     }))
 }
 
-/// Select the target root from observed ancestor manifests.
+/// Select the target root from ordered ancestor manifest observations.
 ///
 /// # Errors
-/// Returns [`TargetProjectError::NoCargoToml`] when no workspace or package
-/// manifest was observed.
+/// - [`TargetProjectError::NoCargoToml`] if no usable manifest was observed.
+/// - [`TargetProjectError::MalformedCargoToml`] if the selected manifest is malformed.
 fn select_target_root(observations: &[ManifestObservation]) -> Result<PathBuf, TargetProjectError> {
     if let Some(workspace) = observations.iter().find(|o| o.status == ManifestStatus::Workspace) {
         return Ok(workspace.root.clone());
@@ -104,11 +103,11 @@ fn select_target_root(observations: &[ManifestObservation]) -> Result<PathBuf, T
         .map_or(Err(TargetProjectError::NoCargoToml), selected_target_root)
 }
 
-/// Resolve the target root for a single observation.
+/// Convert one selected manifest observation into its target root.
 ///
 /// # Errors
-/// Returns [`TargetProjectError::MalformedCargoToml`] for a malformed
-/// manifest, or [`TargetProjectError::NoCargoToml`] for an inert manifest.
+/// - [`TargetProjectError::MalformedCargoToml`] if the selected manifest is malformed.
+/// - [`TargetProjectError::NoCargoToml`] if the observation is not a package or workspace.
 fn selected_target_root(observation: &ManifestObservation) -> Result<PathBuf, TargetProjectError> {
     match observation.status {
         ManifestStatus::Workspace | ManifestStatus::Package => Ok(observation.root.clone()),
@@ -128,7 +127,7 @@ fn manifest_status(toml_text: &str) -> ManifestStatus {
     }
 }
 
-/// Whether the given Cargo.toml document has an explicit table.
+/// Returns `true` if the given Cargo.toml document has an explicit table.
 ///
 /// TOML parsing prevents comments, strings, arrays, and implicit parent
 /// tables such as `[workspace.metadata]` from being treated as roots.

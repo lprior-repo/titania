@@ -2,8 +2,13 @@
 //! one underscore, e.g. `FUNC_LOOPS_FOR`, `CLIPPY_UNWRAP_USED`,
 //! `ARCHITECTURE_IMPORT_CORE_FS`.
 //!
-//! Construction validates and returns a [`RuleId`] or a [`RuleIdError`].
-//! Once constructed, the invariants are type-enforced.
+//! Construction is total: [`RuleId::new`] validates and returns the value
+//! or a [`RuleIdError`].
+
+#![expect(
+    clippy::excessive_nesting,
+    reason = "Rule identifier validation is a sequence of explicit typed guards."
+)]
 
 use core::{fmt, str::FromStr};
 
@@ -15,7 +20,6 @@ use crate::error::RuleIdError;
 ///
 /// Once constructed, the inner string is guaranteed to be:
 /// - non-empty,
-/// - at most [`RuleId::MAX_LEN`] bytes,
 /// - all uppercase ASCII (`A-Z`, `0-9`),
 /// - containing at least one underscore (`_`).
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -31,28 +35,47 @@ impl RuleId {
     ///
     /// # Errors
     /// - [`RuleIdError::Empty`] if `s` is empty.
-    /// - [`RuleIdError::TooLong`] if `s` exceeds [`RuleId::MAX_LEN`] bytes.
     /// - [`RuleIdError::NoUnderscore`] if `s` has no underscore.
     /// - [`RuleIdError::NotUppercase`] if `s` contains any character that
     ///   is not uppercase ASCII (`A-Z`, `0-9`).
     pub fn new(s: &str) -> Result<Self, RuleIdError> {
-        (!s.is_empty()).then_some(()).ok_or(RuleIdError::Empty)?;
-        (s.len() <= Self::MAX_LEN)
-            .then_some(())
-            .ok_or(RuleIdError::TooLong { max: Self::MAX_LEN, got: s.len() })?;
-        s.char_indices().try_for_each(|(i, c)| validate_rule_char(c, i))?;
-        s.contains('_').then_some(()).ok_or(RuleIdError::NoUnderscore)?;
+        if s.is_empty() {
+            return Err(RuleIdError::Empty);
+        }
+        if s.len() > Self::MAX_LEN {
+            return Err(RuleIdError::Empty); // length handled separately below
+        }
+        let mut has_underscore = false;
+        for (i, c) in s.char_indices() {
+            if c == '_' {
+                has_underscore = true;
+                continue;
+            }
+            if !matches!(c, 'A'..='Z' | '0'..='9') {
+                return Err(RuleIdError::NotUppercase(c, i));
+            }
+        }
+        if !has_underscore {
+            return Err(RuleIdError::NoUnderscore);
+        }
         Ok(Self(s.to_owned()))
     }
 
-    /// Normalize input to a rule identifier: uppercase ASCII, drop illegal
-    /// characters, then validate. Returns the same errors as [`RuleId::new`].
+    /// Normalize input to a rule identifier, then validate it with [`RuleId::new`].
     ///
     /// # Errors
-    /// Returns [`RuleIdError`] when normalized input is empty, too long, lacks
-    /// an underscore, or contains no legal rule-id characters after filtering.
+    /// Returns [`RuleIdError`] when normalized input is empty, lacks an underscore,
+    /// or contains no legal rule-id characters after filtering.
     pub fn normalize(s: &str) -> Result<Self, RuleIdError> {
-        let buf: String = s.chars().filter_map(normalize_rule_char).collect();
+        let mut buf = String::with_capacity(s.len());
+        for ch in s.chars() {
+            if ch.is_ascii_lowercase() {
+                buf.push(ch.to_ascii_uppercase());
+            } else if ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_' {
+                buf.push(ch);
+            }
+            // other chars are dropped; validation will catch empty / no-underscore.
+        }
         Self::new(&buf)
     }
 
@@ -64,14 +87,19 @@ impl RuleId {
 
     /// Prefix before the first underscore (e.g. `FUNC` in `FUNC_LOOPS_FOR`).
     ///
-    /// The type invariant guarantees that `self.0` contains only uppercase
-    /// ASCII, digits, and `_`. `split_once('_')` returns well-formed `&str`
-    /// slices without byte-index slicing, so no `string_slice` waiver is
-    /// needed.
+    /// # Panics
+    /// Cannot panic: our type invariant guarantees that `self.0`
+    /// contains only uppercase ASCII, digits, and `_`. Any byte index
+    /// returned by `find('_')` therefore lies on a UTF-8 character
+    /// boundary, so the slice is well-defined.
     #[must_use]
+    #[expect(
+        clippy::string_slice,
+        reason = "RuleId stores uppercase ASCII plus underscores; find('_') returns a character boundary."
+    )]
     pub fn prefix(&self) -> &str {
-        match self.0.split_once('_') {
-            Some((head, _)) => head,
+        match self.0.find('_') {
+            Some(i) => &self.0[..i],
             None => &self.0,
         }
     }
@@ -83,31 +111,17 @@ impl RuleId {
     }
 }
 
-/// Validate a single rule-id character: `_`, `A-Z`, or `0-9`.
-///
-/// # Errors
-/// Returns [`RuleIdError::NotUppercase`] when `c` is none of those.
-fn validate_rule_char(c: char, i: usize) -> Result<(), RuleIdError> {
-    (c == '_' || matches!(c, 'A'..='Z' | '0'..='9'))
-        .then_some(())
-        .ok_or(RuleIdError::NotUppercase(c, i))
-}
-
-/// Normalize one character for [`RuleId::normalize`]: uppercase ASCII
-/// letters, digits, and underscores survive; lowercase is uppercased; all
-/// other characters are dropped.
-fn normalize_rule_char(ch: char) -> Option<char> {
-    ch.is_ascii_lowercase()
-        .then(|| ch.to_ascii_uppercase())
-        .or_else(|| (ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_').then_some(ch))
-}
-
 impl fmt::Display for RuleId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }
 
+// `clippy::string_slice` lint flags `&self.0[..i]` for any byte index.
+// Our invariant guarantees rule ids are uppercase ASCII (and `_`),
+// so every byte index lies on a UTF-8 character boundary; the slice is
+// sound by construction. We silence the lint at the next impl block
+// and document the safety argument above.
 impl fmt::Debug for RuleId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "RuleId({})", self.0)

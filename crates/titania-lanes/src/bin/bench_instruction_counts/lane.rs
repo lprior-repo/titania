@@ -19,9 +19,6 @@ const DEFAULT_BENCHES: &[&str] = &["ir_traversal", "action_dispatch", "timer_whe
 /// Toolchain pinned to the bash original.
 const RUSTUP_TOOLCHAIN: &str = "nightly-2026-04-28";
 
-/// `-p` target that owns the criterion benches.
-const BENCH_PACKAGE: &str = "velvet-ballistics-workspace-tests";
-
 const USAGE: &str = "usage: bench_instruction_counts [bench-name ...]\n  \
      default benches: ir_traversal, action_dispatch, timer_wheel_tick";
 
@@ -180,9 +177,9 @@ fn empty_log_exit(log_file: &Path) -> LaneExit {
 ///
 /// Returns an error when requested benchmark names are invalid.
 fn bench_plan(target: &TargetProject, args: Vec<String>) -> Result<BenchPlan, String> {
-    if !package_manifest(target).is_file() {
+    if bench_roots(target).is_empty() {
         return Ok(BenchPlan::NotApplicable(
-            "benchmark package velvet-ballistics-workspace-tests is absent".to_owned(),
+            "target project has no instruction-count bench directories".to_owned(),
         ));
     }
     let requested = requested_benches(args)?;
@@ -196,8 +193,16 @@ fn bench_plan(target: &TargetProject, args: Vec<String>) -> Result<BenchPlan, St
     }
 }
 
-fn package_manifest(target: &TargetProject) -> PathBuf {
-    target.as_std_path().join("crates/velvet-ballistics-workspace-tests/Cargo.toml")
+fn bench_roots(target: &TargetProject) -> Vec<PathBuf> {
+    let root = target.as_std_path();
+    let workspace_benches = std::iter::once(root.join("benches"));
+    let crate_benches = fs::read_dir(root.join("crates"))
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join("benches"));
+    workspace_benches.chain(crate_benches).filter(|path| path.is_dir()).collect()
 }
 
 /// # Errors
@@ -217,11 +222,12 @@ fn requested_benches(args: Vec<String>) -> Result<Vec<String>, String> {
 }
 
 fn available_benches(target: &TargetProject, requested: Vec<String>) -> Vec<String> {
-    let benches_root =
-        target.as_std_path().join("crates/velvet-ballistics-workspace-tests/benches");
+    let roots = bench_roots(target);
     requested
         .into_iter()
-        .filter(|bench| benches_root.join(format!("{bench}.rs")).is_file())
+        .filter(|bench| {
+            roots.iter().any(|benches_root| benches_root.join(format!("{bench}.rs")).is_file())
+        })
         .collect()
 }
 

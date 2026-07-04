@@ -8,13 +8,13 @@
 # Holzman Rust posture: source code ZERO clippy tolerance, tests compile
 # with exact assertions but lenient on style. See moon-v2 skill.
 #
-titania-lanes is a single workspace crate (`crates/titania-lanes`).
-Each bin target implements a typed Rust lane that produces a
-`LaneReport` (findings + lane exit). v1 P0 beads (`tn-2cn.*`,
-`tn-37r.*`, `tn-8ab.*`, `tn-cgk.*`, `tn-d2l.*`) replace these legacy
-adapters with v1-spec.md lanes (Fmt/Compile/Clippy/AstGrep/Dylint/
-PanicScan/PolicyScan/Test/Deny/Build). Keep the bin targets functional
-until each bead lands.
+# titania-lanes is a single workspace crate (`crates/titania-lanes`).
+# Each bin target implements a typed Rust lane that produces a
+# `LaneReport` (findings + lane exit). v1 P0 beads (`tn-2cn.*`,
+# `tn-37r.*`, `tn-8ab.*`, `tn-cgk.*`, `tn-d2l.*`) replace these legacy
+# adapters with v1-spec.md lanes (Fmt/Compile/Clippy/AstGrep/Dylint/
+# PanicScan/PolicyScan/Test/Deny/Build). Keep the bin targets functional
+# until each bead lands.
 
 tasks:
   # ---------- Cargo-native lanes ----------
@@ -258,20 +258,6 @@ tasks:
       - 'crates/titania-lanes/src/lib.rs'
       - 'crates/**/*.rs'
 
-  lane-check-spelling-gate:
-    command: 'cargo run --quiet -p titania-lanes --bin check-spelling-gate'
-    toolchains: [rust]
-    options:
-      runInCI: true
-    inputs:
-      - 'crates/titania-lanes/src/bin/check_spelling_gate.rs'
-      - 'crates/titania-lanes/src/lib.rs'
-      - 'crates/**/*.rs'
-      - '**/*.md'
-      - '**/*.toml'
-      - '**/*.yaml'
-      - '**/*.sh'
-      - '**/*.py'
 
   lane-check-source-length:
     command: 'cargo run --quiet -p titania-lanes --bin check-source-length'

@@ -1,12 +1,9 @@
-//! `QualityReceipt` public-API smoke tests.
-
-#![expect(clippy::panic_in_result_fn, reason = "test helpers assert inside Result fns")]
-#![expect(clippy::cognitive_complexity, reason = "end-to-end receipt scenarios")]
+//! Public API tests for receipt serialization and construction.
 
 use std::{error::Error, fs, path::Path};
 
 use titania_core::{
-    Digest, LaneDigest, LaneName, QualityReceipt, RECEIPT_SCHEMA_VERSION, ReceiptDigests,
+    Digest, LaneDigest, LaneName, RECEIPT_SCHEMA_VERSION, ReceiptDigests, ReceiptEnvelope,
     ReceiptLaneExit, ReceiptPeriod, TargetProject,
 };
 
@@ -27,7 +24,7 @@ fn quality_receipt_public_api_round_trips_target_root_and_lane_results() -> Test
     let target = target_project(temp.path())?;
     let lane = LaneDigest::new(LaneName::new("cargo_fmt")?, ReceiptLaneExit::Clean, 4, 4, 0)?;
 
-    let receipt = QualityReceipt::new(
+    let receipt = ReceiptEnvelope::new(
         &target,
         ReceiptPeriod::new(100, 105)?,
         vec![lane],
@@ -40,7 +37,7 @@ fn quality_receipt_public_api_round_trips_target_root_and_lane_results() -> Test
     )?;
 
     let encoded = serde_json::to_string(&receipt)?;
-    let decoded: QualityReceipt = serde_json::from_str(&encoded)?;
+    let decoded: ReceiptEnvelope = serde_json::from_str(&encoded)?;
 
     assert_eq!(decoded.schema_version(), RECEIPT_SCHEMA_VERSION);
     assert_eq!(decoded.started_at(), 100);
@@ -63,7 +60,7 @@ fn quality_receipt_public_api_round_trips_target_root_and_lane_results() -> Test
 fn quality_receipt_public_api_rejects_legacy_schema() -> TestResult {
     let temp = tempfile::tempdir()?;
     let target = target_project(temp.path())?;
-    let receipt = QualityReceipt::new(
+    let receipt = ReceiptEnvelope::new(
         &target,
         ReceiptPeriod::new(100, 100)?,
         vec![],
@@ -77,7 +74,7 @@ fn quality_receipt_public_api_rejects_legacy_schema() -> TestResult {
     let mut value = serde_json::to_value(receipt)?;
     value["schema_version"] = serde_json::Value::from(1_u32);
 
-    let err = serde_json::from_value::<QualityReceipt>(value)
+    let err = serde_json::from_value::<ReceiptEnvelope>(value)
         .err()
         .ok_or_else(|| std::io::Error::other("legacy schema was accepted"))?;
     assert!(err.to_string().contains("unsupported receipt schema version 1"));
@@ -88,7 +85,7 @@ fn quality_receipt_public_api_rejects_legacy_schema() -> TestResult {
 fn quality_receipt_public_api_rejects_future_schema() -> TestResult {
     let temp = tempfile::tempdir()?;
     let target = target_project(temp.path())?;
-    let receipt = QualityReceipt::new(
+    let receipt = ReceiptEnvelope::new(
         &target,
         ReceiptPeriod::new(100, 100)?,
         vec![],
@@ -102,7 +99,7 @@ fn quality_receipt_public_api_rejects_future_schema() -> TestResult {
     let mut value = serde_json::to_value(receipt)?;
     value["schema_version"] = serde_json::Value::from(RECEIPT_SCHEMA_VERSION + 1);
 
-    let err = serde_json::from_value::<QualityReceipt>(value)
+    let err = serde_json::from_value::<ReceiptEnvelope>(value)
         .err()
         .ok_or_else(|| std::io::Error::other("future schema was accepted"))?;
     assert!(

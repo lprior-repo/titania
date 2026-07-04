@@ -74,53 +74,56 @@ impl TargetProject {
 /// Reject an empty target path.
 ///
 /// # Errors
-/// Returns [`TargetProjectError::Empty`] when `path` is empty.
+/// - [`TargetProjectError::Empty`] if `path` is empty.
 fn validate_not_empty(path: &Utf8Path) -> Result<(), TargetProjectError> {
     if path.as_str().is_empty() { Err(TargetProjectError::Empty) } else { Ok(()) }
 }
 
-/// Require an absolute target path.
+/// Reject a relative target path.
 ///
 /// # Errors
-/// Returns [`TargetProjectError::NonAbsolute`] when `path` is relative.
+/// - [`TargetProjectError::NonAbsolute`] if `path` is relative.
 fn validate_absolute(path: &Utf8Path) -> Result<(), TargetProjectError> {
     if path.is_absolute() { Ok(()) } else { Err(TargetProjectError::NonAbsolute(path.to_string())) }
 }
 
-/// Require the target path to be an existing directory.
+/// Verify the target root exists and is a directory.
 ///
 /// # Errors
-/// Returns [`TargetProjectError::NotFound`] when missing, or
-/// [`TargetProjectError::NotADirectory`] when it is not a directory.
+/// - [`TargetProjectError::NotFound`] if the path is missing.
+/// - [`TargetProjectError::NotADirectory`] if the path is not a directory.
+/// - [`TargetProjectError::Io`] for other filesystem errors.
 fn validate_root_directory(path: &Utf8Path) -> Result<(), TargetProjectError> {
-    let metadata = metadata_or(path, TargetProjectError::NotFound)?;
+    let metadata = metadata_or(path, &TargetProjectError::NotFound)?;
     if metadata.is_dir() { Ok(()) } else { Err(TargetProjectError::NotADirectory) }
 }
 
-/// Require a `Cargo.toml` regular file at `path`.
+/// Verify the target manifest exists and is a file.
 ///
 /// # Errors
-/// Returns [`TargetProjectError::NoCargoToml`] when missing, or
-/// [`TargetProjectError::CargoTomlNotFile`] when it is not a file.
+/// - [`TargetProjectError::NoCargoToml`] if the manifest path is missing.
+/// - [`TargetProjectError::CargoTomlNotFile`] if the manifest path is not a file.
+/// - [`TargetProjectError::Io`] for other filesystem errors.
 fn validate_manifest_file(path: &Utf8Path) -> Result<(), TargetProjectError> {
-    let metadata = metadata_or(path, TargetProjectError::NoCargoToml)?;
+    let metadata = metadata_or(path, &TargetProjectError::NoCargoToml)?;
     if metadata.is_file() { Ok(()) } else { Err(TargetProjectError::CargoTomlNotFile) }
 }
 
-/// Read filesystem metadata for `path`, mapping `NotFound` to `missing`.
+/// Read filesystem metadata or map errors into target-project errors.
 ///
 /// # Errors
-/// Returns `missing` on `NotFound`, otherwise a [`TargetProjectError::Io`].
+/// - `missing` when the path is absent.
+/// - [`TargetProjectError::Io`] for other filesystem errors.
 fn metadata_or(
     path: &Utf8Path,
-    missing: TargetProjectError,
+    missing: &TargetProjectError,
 ) -> Result<std::fs::Metadata, TargetProjectError> {
     std::fs::metadata(path.as_std_path()).map_err(|e| classify_io(&e, path.as_str(), missing))
 }
 
-fn classify_io(e: &std::io::Error, path: &str, missing: TargetProjectError) -> TargetProjectError {
+fn classify_io(e: &std::io::Error, path: &str, missing: &TargetProjectError) -> TargetProjectError {
     if e.kind() == std::io::ErrorKind::NotFound {
-        missing
+        missing.clone()
     } else {
         TargetProjectError::Io { path: path.to_owned(), kind: e.kind() }
     }

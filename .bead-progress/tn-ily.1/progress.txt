@@ -1,0 +1,27 @@
+# tn-ily.1 Black-Hat Review Progress
+
+## Phase 1-5: Scope, Library, Bin Files, Configs, Forbidden Scan
+- [x] All phases completed
+
+## Phase 6: Cross-Check with BlackHatReview-2 Peer
+- [x] IRC message sent to BlackHatReview-2
+- [x] Cross-checked findings
+
+## Phase 7: Report Writing (Initial)
+- [x] Wrote report with VERDICT: FAIL
+- [x] 4 CRITICAL + 1 HIGH findings documented
+
+## Phase 8: Stale Finding Verification (Main IRC)
+- [x] Read command.rs:115-298 to verify CRITICAL findings are stale
+- [x] Confirmed tn-amk fix: reject_arg_nul lazy-flag pattern in CommandIn
+- [x] Confirmed LaneError::InvalidArg variant added
+- [x] Zero panic!() calls in command.rs confirmed via read
+- [x] Verified source_line.rs:147-154 — SourceLineParser HIGH finding still valid
+- [x] Rewrote report: removed 4 stale CRITICAL findings, kept 1 HIGH
+- [x] Updated verdict: FAIL (one HIGH finding only)
+- [x] Noted tn-ahg (P2 bug) as linked fix for SourceLineParser
+
+## Final State
+- Report: .beads/tn-ily.1/black-hat-report.md — VERDICT: FAIL (1 HIGH)
+- Progress: .bead-progress/tn-ily.1/progress.txt — updated
+- IRC: Main informed of stale findings update

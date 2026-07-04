@@ -127,6 +127,7 @@ path = "src/bin/run_cargo.rs"
 
 [dependencies]
 titania-core = { version = "0.1.0", path = "../titania-core" }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 smallvec = "1.15.2"
 wait-timeout = "0.2.1"
@@ -138,3 +139,4 @@ workspace = true
 [dev-dependencies]
 tempfile = "3.27.0"
 anyhow = "1"
+titania-policy = { version = "0.1.0", path = "../titania-policy" }

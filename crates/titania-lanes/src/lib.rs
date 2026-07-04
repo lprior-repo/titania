@@ -28,6 +28,7 @@ use std::{env, io, path::Path};
 use thiserror::Error;
 use titania_core::{TargetProject, TargetProjectError, discover_target};
 
+pub mod artifact_writer;
 pub mod command;
 pub mod helpers;
 pub mod source_line;

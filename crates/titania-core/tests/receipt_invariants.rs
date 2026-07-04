@@ -1,13 +1,9 @@
-//! `QualityReceipt` construction and serialization invariant tests.
-
-#![expect(clippy::disallowed_methods, reason = "test helpers may unwrap/expect")]
-#![expect(clippy::panic_in_result_fn, reason = "test helpers assert inside Result fns")]
-#![expect(clippy::cognitive_complexity, reason = "end-to-end receipt scenarios")]
+//! Invariant tests for receipt constructors and rejected inputs.
 
 use std::{error::Error, fs, path::Path};
 
 use titania_core::{
-    Digest, DigestError, LaneDigest, LaneName, QualityReceipt, ReceiptDigests, ReceiptError,
+    Digest, DigestError, LaneDigest, LaneName, ReceiptDigests, ReceiptEnvelope, ReceiptError,
     ReceiptLaneExit, ReceiptPeriod, TargetProject, TargetProjectError,
 };
 
@@ -21,9 +17,9 @@ fn lane_digest() -> Result<LaneDigest, ReceiptError> {
     LaneDigest::new(LaneName::new("fmt")?, ReceiptLaneExit::Clean, 3, 3, 0)
 }
 
-fn receipt(target: &TargetProject) -> Result<QualityReceipt, ReceiptError> {
-    QualityReceipt::new(
-        target,
+fn receipt(target: TargetProject) -> Result<ReceiptEnvelope, ReceiptError> {
+    ReceiptEnvelope::new(
+        &target,
         ReceiptPeriod::new(10, 12)?,
         vec![lane_digest()?],
         ReceiptDigests::new(
@@ -40,7 +36,7 @@ fn receipt_round_trip_preserves_all_fields() -> TestResult {
     let temp = tempfile::tempdir()?;
     fs::write(temp.path().join("Cargo.toml"), "[package]\nname = \"demo\"\n")?;
     let target = target_project(temp.path())?;
-    let receipt = receipt(&target)?;
+    let receipt = receipt(target)?;
 
     let json = serde_json::to_string(&receipt)?;
     assert!(json.contains("\"schema_version\":2"));
@@ -51,7 +47,7 @@ fn receipt_round_trip_preserves_all_fields() -> TestResult {
     assert!(json.contains("\"policy_digest\""));
     assert!(json.contains("\"toolchain_digest\""));
 
-    let decoded: QualityReceipt = serde_json::from_str(&json)?;
+    let decoded: ReceiptEnvelope = serde_json::from_str(&json)?;
     assert_eq!(decoded, receipt);
     assert_eq!(
         decoded.target_root().manifest_path().as_str(),
@@ -65,11 +61,11 @@ fn receipt_deserialize_rejects_schema_before_target_root() -> TestResult {
     let temp = tempfile::tempdir()?;
     fs::write(temp.path().join("Cargo.toml"), "[package]\nname = \"demo\"\n")?;
     let target = target_project(temp.path())?;
-    let valid = receipt(&target)?;
+    let valid = receipt(target)?;
     let mut value = serde_json::to_value(valid)?;
     value["schema_version"] = serde_json::Value::from(1_u32);
 
-    let err = serde_json::from_value::<QualityReceipt>(value)
+    let err = serde_json::from_value::<ReceiptEnvelope>(value)
         .err()
         .ok_or_else(|| std::io::Error::other("schema v1 receipt was accepted"))?;
     assert!(err.to_string().contains("unsupported receipt schema version 1"));
@@ -84,7 +80,7 @@ fn receipt_deserialize_rejects_schema_before_missing_current_fields() -> TestRes
         "finished_at": 12_u64
     });
 
-    let err = serde_json::from_value::<QualityReceipt>(value)
+    let err = serde_json::from_value::<ReceiptEnvelope>(value)
         .err()
         .ok_or_else(|| std::io::Error::other("schema v1 receipt was accepted"))?;
     assert!(err.to_string().contains("unsupported receipt schema version 1"));
@@ -96,12 +92,12 @@ fn receipt_deserialize_rejects_lane_digest_passed_above_scanned() -> TestResult 
     let temp = tempfile::tempdir()?;
     fs::write(temp.path().join("Cargo.toml"), "[package]\nname = \"demo\"\n")?;
     let target = target_project(temp.path())?;
-    let valid = receipt(&target)?;
+    let valid = receipt(target)?;
     let mut value = serde_json::to_value(valid)?;
     value["lane_results"][0]["scanned"] = serde_json::Value::from(1_u32);
     value["lane_results"][0]["passed"] = serde_json::Value::from(2_u32);
 
-    let err = serde_json::from_value::<QualityReceipt>(value)
+    let err = serde_json::from_value::<ReceiptEnvelope>(value)
         .err()
         .ok_or_else(|| std::io::Error::other("invalid lane digest was accepted"))?;
     assert!(err.to_string().contains("lane passed count 2 exceeds scanned count 1"));
