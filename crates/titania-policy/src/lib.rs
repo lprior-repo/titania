@@ -20,6 +20,12 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
+mod exceptions;
+mod profile;
+
+pub use exceptions::{Exception, ExceptionError, parse_exceptions};
+pub use profile::{PolicyArchitecture, PolicyProfile, ProfileError, parse_profile};
+
 use serde::{Deserialize, Serialize};
 
 /// Embedded architecture policy for the strict-ai profile.
