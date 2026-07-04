@@ -1,0 +1,97 @@
+# Embedded ast-grep architecture-rule catalog for Titania v1.
+# These rules apply only to core/domain production Rust paths.
+
+id: ARCHITECTURE_IMPORT_CORE_INFRA
+language: Rust
+severity: error
+message: "ARCHITECTURE_IMPORT_CORE_INFRA: core/domain code must not import infrastructure crates"
+files:
+  - "src/core/**/*.rs"
+  - "src/domain/**/*.rs"
+  - "crates/*-core/src/**/*.rs"
+  - "crates/*-domain/src/**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "use tokio::*;"
+    - pattern: "use axum::*;"
+    - pattern: "use sqlx::*;"
+    - pattern: "use reqwest::*;"
+    - regex: "\\buse\\s+(tokio|axum|sqlx|reqwest)::"
+metadata:
+  effect: Reject
+  repair_hint: ReplaceDependency
+---
+id: ARCHITECTURE_IMPORT_CORE_FS
+language: Rust
+severity: error
+message: "ARCHITECTURE_IMPORT_CORE_FS: core/domain code must use typed ports instead of direct filesystem, environment, or network I/O"
+files:
+  - "src/core/**/*.rs"
+  - "src/domain/**/*.rs"
+  - "crates/*-core/src/**/*.rs"
+  - "crates/*-domain/src/**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "use std::fs::*;"
+    - pattern: "use std::env::*;"
+    - pattern: "use std::net::*;"
+    - regex: "\\buse\\s+std::(fs|env|net)::"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview
+---
+id: ARCHITECTURE_IMPORT_CORE_TIME
+language: Rust
+severity: error
+message: "ARCHITECTURE_IMPORT_CORE_TIME: core/domain code must accept time through an injected clock port"
+files:
+  - "src/core/**/*.rs"
+  - "src/domain/**/*.rs"
+  - "crates/*-core/src/**/*.rs"
+  - "crates/*-domain/src/**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "use std::time::SystemTime;"
+    - pattern: "use std::time::Instant;"
+    - regex: "\\buse\\s+std::time::(SystemTime|Instant)\\b"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview
+---
+id: ARCHITECTURE_IMPORT_CORE_RANDOM
+language: Rust
+severity: error
+message: "ARCHITECTURE_IMPORT_CORE_RANDOM: core/domain code must accept entropy through an injected random source"
+files:
+  - "src/core/**/*.rs"
+  - "src/domain/**/*.rs"
+  - "crates/*-core/src/**/*.rs"
+  - "crates/*-domain/src/**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "use rand::thread_rng;"
+    - pattern: "use rand::Rng;"
+    - regex: "\\buse\\s+rand::(thread_rng|Rng)\\b"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview

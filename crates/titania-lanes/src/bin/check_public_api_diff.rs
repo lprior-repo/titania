@@ -26,7 +26,7 @@ const RULE_METADATA: &str = "PUBAPI_METADATA_001";
 const RULE_PUBLIC_API_DIFF: &str = "PUBAPI_DIFF_001";
 const RULE_PUBLIC_API_TOOL: &str = "PUBAPI_TOOL_001";
 const RULE_TARGET: &str = "PUBAPI_TARGET_001";
-const TOOLCHAIN: &str = "nightly-2026-04-28";
+const TOOLCHAIN: &str = "nightly-2026-04-27";
 
 struct PubApiRules {
     cargo_missing: RuleId,
@@ -54,7 +54,8 @@ impl PubApiRules {
 }
 
 fn filter_packages(discovered: Vec<String>) -> Vec<String> {
-    let mut selected: Vec<String> = discovered.into_iter().collect();
+    let mut selected: Vec<String> =
+        discovered.into_iter().filter(|package| package.starts_with("vb_")).collect();
     selected.sort();
     selected.dedup();
     selected
@@ -98,32 +99,27 @@ enum PublicApiDiff {
 
 struct DiffContext<'a> {
     target: &'a TargetProject,
-    manifest: &'a str,
     rules: &'a PubApiRules,
 }
 
-fn run_public_api_diff<'a>(
-    target: &'a TargetProject,
-    package: &'a str,
-    manifest: &'a str,
-) -> PublicApiDiff {
+fn run_public_api_diff(target: &TargetProject, package: &str) -> PublicApiDiff {
     let mut command = match CommandIn::new(target, "rustup") {
         Ok(command) => command,
         Err(error) => return PublicApiDiff::Failure(format!("rustup command invalid: {error}")),
     };
     let _ = command.inherit_env();
-    add_public_api_args(&mut command, package, manifest);
+    let _ = command.env_remove("RUSTC_WRAPPER");
+    let _ = command.env("SCCACHE_DISABLE", "1");
+    add_public_api_args(&mut command, package);
     classify_public_api_output(package, command.run_capture_raw())
 }
 
-fn add_public_api_args<'a>(command: &mut CommandIn<'a>, package: &'a str, manifest: &'a str) {
+fn add_public_api_args<'a>(command: &mut CommandIn<'a>, package: &'a str) {
     let _ = command
         .arg("run")
         .arg(TOOLCHAIN)
         .arg("cargo")
         .arg("public-api")
-        .arg("--manifest-path")
-        .arg(manifest)
         .arg("-p")
         .arg(package)
         .arg("diff")
@@ -170,12 +166,11 @@ fn is_public_api_missing(message: &str) -> bool {
 fn run_package_diffs(
     target: &TargetProject,
     packages: &[String],
-    manifest: &str,
     rules: &PubApiRules,
     report: &mut LaneReport,
 ) -> LaneExit {
     let mut exit_code = LaneExit::Clean;
-    let context = DiffContext { target, manifest, rules };
+    let context = DiffContext { target, rules };
     for package in packages {
         exit_code = apply_public_api_diff(&context, package, report, exit_code);
     }
@@ -188,7 +183,7 @@ fn apply_public_api_diff(
     report: &mut LaneReport,
     current_exit: LaneExit,
 ) -> LaneExit {
-    match run_public_api_diff(context.target, package, context.manifest) {
+    match run_public_api_diff(context.target, package) {
         PublicApiDiff::Clean => current_exit,
         PublicApiDiff::Violation(message) => {
             report.push(Finding::new(context.rules.public_api_diff.clone(), package, 0, message));

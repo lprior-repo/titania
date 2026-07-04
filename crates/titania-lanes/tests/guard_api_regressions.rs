@@ -92,7 +92,7 @@ fn check_public_api_diff_runs_cargo_public_api_diff_command() {
             fake_bin.path(),
             "rustup",
             &format!(
-                "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\nprintf 'public api diff failed\\n' >&2\nexit 17\n",
+                "#!/bin/sh\nprintf 'args=%s\\nrustc=%s\\nsccache=%s\\n' \"$*\" \"$RUSTC_WRAPPER\" \"$SCCACHE_DISABLE\" > '{}'\nprintf 'public api diff failed\\n' >&2\nexit 17\n",
                 log.display()
             ),
         ),
@@ -103,6 +103,7 @@ fn check_public_api_diff_runs_cargo_public_api_diff_command() {
         Command::new(env!("CARGO_BIN_EXE_check-public-api-diff"))
             .current_dir(workspace.path())
             .env("PATH", fake_bin.path())
+            .env("RUSTC_WRAPPER", "sccache")
             .output(),
         "run check-public-api-diff"
     );
@@ -110,7 +111,10 @@ fn check_public_api_diff_runs_cargo_public_api_diff_command() {
     assert_eq!(output.status.code(), Some(1_i32));
     assert!(must!(stderr_text(&output), "decode stderr").contains("public api diff failed"));
     let invoked = must!(fs::read_to_string(log), "read rustup invocation log");
-    assert!(invoked.contains("run nightly-2026-04-28 cargo public-api"));
+    assert!(invoked.contains("args=run nightly-2026-04-27 cargo public-api"));
+    assert!(!invoked.contains("--manifest-path"));
+    assert!(invoked.contains("rustc=\n"));
+    assert!(invoked.contains("sccache=1"));
     assert!(invoked.contains("-p vb_alpha diff origin/main..HEAD"));
 }
 
@@ -150,7 +154,7 @@ fn check_public_api_diff_reports_missing_public_api_as_failure() {
 }
 
 #[test]
-fn check_public_api_diff_runs_plain_packages_without_product_filter() {
+fn check_public_api_diff_skips_plain_packages_without_vb_prefix() {
     let workspace = must!(fixture_workspace(), "create fixture workspace");
     let fake_bin = must!(fake_bin_dir(), "create fake bin dir");
     let log = fake_bin.path().join("rustup.log");
@@ -178,9 +182,10 @@ fn check_public_api_diff_runs_plain_packages_without_product_filter() {
             .output(),
         "run check-public-api-diff"
     );
+    let stderr = must!(stderr_text(&output), "decode stderr");
     assert_eq!(output.status.code(), Some(0_i32));
-    let invoked = must!(fs::read_to_string(log), "read rustup invocation log");
-    assert!(invoked.contains("-p plain diff origin/main..HEAD"));
+    assert!(stderr.contains("no applicable vb_* Cargo packages"));
+    assert!(!log.exists(), "rustup must not run when no vb_* packages exist");
 }
 
 /// Scan all production crate source files under `crates/` for legacy

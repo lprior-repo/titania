@@ -20,9 +20,11 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
+mod digest;
 mod exceptions;
 mod profile;
 
+pub use digest::PolicyDigest;
 pub use exceptions::{Exception, ExceptionError, parse_exceptions};
 pub use profile::{PolicyArchitecture, PolicyProfile, PolicyValue, ProfileError, parse_profile};
 

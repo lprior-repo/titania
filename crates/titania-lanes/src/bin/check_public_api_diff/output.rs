@@ -77,7 +77,9 @@ fn render_report_or(report: &LaneReport, code: LaneExit) -> LaneExit {
 }
 
 fn report_no_packages() -> LaneExit {
-    match write_stderr_line("NotApplicable: no Cargo packages discovered in workspace metadata") {
+    match write_stderr_line(
+        "NotApplicable: no applicable vb_* Cargo packages discovered in workspace metadata",
+    ) {
         Ok(()) => LaneExit::NotApplicable,
         Err(_) => LaneExit::Failure,
     }
@@ -89,8 +91,7 @@ fn run_diffs_and_emit(
     report: &mut LaneReport,
     rules: &PubApiRules,
 ) -> LaneExit {
-    let manifest = target.manifest_path();
-    let exit_code = run_package_diffs(target, packages, manifest.as_str(), rules, report);
+    let exit_code = run_package_diffs(target, packages, rules, report);
     if exit_code != LaneExit::Clean && write_stderr(&report.render()).is_err() {
         return LaneExit::Failure;
     }
