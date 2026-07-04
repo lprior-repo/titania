@@ -248,6 +248,23 @@ tasks:
       - 'crates/titania-lanes/src/lib.rs'
       - 'crates/**/*.rs'
 
+
+  lane-policy-scan:
+    command: 'cargo run --quiet -p titania-lanes --bin policy-scan'
+    toolchains: [rust]
+    options:
+      runInCI: false
+    inputs:
+      - 'crates/titania-lanes/src/bin/policy_scan.rs'
+      - 'crates/titania-lanes/src/lib.rs'
+      - 'crates/titania-lanes/src/policy_scan.rs'
+      - 'crates/titania-lanes/src/policy_scan/**/*.rs'
+      - 'Cargo.toml'
+      - 'crates/**/Cargo.toml'
+      - '.cargo/config'
+      - '.cargo/config.toml'
+      - '.titania/profiles/strict-ai/policy.toml'
+      - '.titania/profiles/strict-ai/exceptions.toml'
   lane-check-nightly-features:
     command: 'cargo run --quiet -p titania-lanes --bin check-nightly-features'
     toolchains: [rust]

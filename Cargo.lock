@@ -496,6 +496,7 @@ dependencies = [
  "thiserror",
  "titania-core",
  "titania-policy",
+ "toml_edit",
  "wait-timeout",
 ]
 

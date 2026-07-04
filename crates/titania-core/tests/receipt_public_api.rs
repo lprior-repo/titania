@@ -86,11 +86,11 @@ fn quality_receipt_v1_schema_version_is_one_and_fields_exact() -> TestResult {
         "LaneReceipt must have exactly [clean, evidence_digest, lane]"
     );
 
-    // 5. scope must serialise as snake_case "edit"
+    // 5. scope must serialise as the v1 enum wire name "Edit"
     assert_eq!(
         obj.get("scope").and_then(|v| v.as_str()),
-        Some("edit"),
-        "GateScope::Edit must serialise as \"edit\""
+        Some("Edit"),
+        "GateScope::Edit must serialise as \"Edit\""
     );
 
     Ok(())
@@ -106,7 +106,7 @@ fn quality_receipt_v1_rejects_schema_version_two() -> TestResult {
     let v2_json = r#"
     {
         "schema_version": 2,
-        "scope": "edit",
+        "scope": "Edit",
         "source_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "cargo_lock_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "policy_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",

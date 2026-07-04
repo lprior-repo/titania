@@ -33,6 +33,7 @@ pub mod clippy_normalizer;
 pub mod command;
 pub mod deny_normalizer;
 pub mod helpers;
+pub mod policy_scan;
 pub mod source_line;
 
 pub use command::{CommandBudget, CommandIn, CommandOutput, EnvPolicy, LaneError, OutputStream};

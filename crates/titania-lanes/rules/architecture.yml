@@ -46,6 +46,8 @@ rule:
     - pattern: "use std::env::*;"
     - pattern: "use std::net::*;"
     - regex: "\\buse\\s+std::(fs|env|net)::"
+    - regex: "\\buse\\s+std::(fs|env|net)\\b"
+    - regex: "\\buse\\s+std::\\{[^}]*\\b(fs|env|net)\\b"
 metadata:
   effect: Reject
   repair_hint: RequiresHumanReview
@@ -69,6 +71,7 @@ rule:
     - pattern: "use std::time::SystemTime;"
     - pattern: "use std::time::Instant;"
     - regex: "\\buse\\s+std::time::(SystemTime|Instant)\\b"
+    - regex: "\\buse\\s+std::time::\\{[^}]*\\b(SystemTime|Instant)\\b"
 metadata:
   effect: Reject
   repair_hint: RequiresHumanReview
@@ -92,6 +95,7 @@ rule:
     - pattern: "use rand::thread_rng;"
     - pattern: "use rand::Rng;"
     - regex: "\\buse\\s+rand::(thread_rng|Rng)\\b"
+    - regex: "\\buse\\s+rand::\\{[^}]*\\b(thread_rng|Rng)\\b"
 metadata:
   effect: Reject
   repair_hint: RequiresHumanReview

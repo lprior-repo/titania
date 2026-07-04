@@ -43,16 +43,20 @@ const FIXTURE_NAMES: &[&[&str]] = &[
     &[
         "architecture_import_core_fs_violation.rs",
         "architecture_import_core_fs_direct_violation.rs",
+        "architecture_import_core_fs_grouped_violation.rs",
+        "architecture_import_core_fs_module_violation.rs",
         "allowed_no_core_fs_import.rs",
     ],
     &[
         "architecture_import_core_time_violation.rs",
         "architecture_import_core_time_direct_violation.rs",
+        "architecture_import_core_time_grouped_violation.rs",
         "allowed_no_core_time_import.rs",
     ],
     &[
         "architecture_import_core_random_violation.rs",
         "architecture_import_core_random_direct_violation.rs",
+        "architecture_import_core_random_grouped_violation.rs",
         "allowed_no_core_random_import.rs",
     ],
 ];
@@ -205,12 +209,28 @@ fn ast_grep_architecture_direct_import_patterns_present() {
         "Filesystem rule must catch direct fs/env/net imports",
     );
     assert!(
+        ARCHITECTURE_YAML.contains(r"std::(fs|env|net)\\b"),
+        "Filesystem rule must catch module imports such as use std::fs",
+    );
+    assert!(
+        ARCHITECTURE_YAML.contains(r"std::\\{"),
+        "Filesystem rule must catch grouped std imports",
+    );
+    assert!(
         ARCHITECTURE_YAML.contains("std::time::(SystemTime|Instant)"),
         "Time rule must catch direct SystemTime and Instant imports",
     );
     assert!(
+        ARCHITECTURE_YAML.contains(r"std::time::\\{"),
+        "Time rule must catch grouped SystemTime and Instant imports",
+    );
+    assert!(
         ARCHITECTURE_YAML.contains("rand::(thread_rng|Rng)"),
         "Random rule must catch direct rand imports",
+    );
+    assert!(
+        ARCHITECTURE_YAML.contains(r"rand::\\{"),
+        "Random rule must catch grouped rand imports",
     );
 }
 
@@ -331,6 +351,17 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
             && fs_direct.contains("use std::net::TcpStream"),
         "architecture_import_core_fs_direct_violation.rs must contain direct std fs/env/net imports",
     );
+    let fs_grouped =
+        read_fixture(&fixtures_dir, "architecture_import_core_fs_grouped_violation.rs");
+    assert!(
+        fs_grouped.contains("use std::{env, fs, net}"),
+        "architecture_import_core_fs_grouped_violation.rs must contain grouped std imports",
+    );
+    let fs_module = read_fixture(&fixtures_dir, "architecture_import_core_fs_module_violation.rs");
+    assert!(
+        fs_module.contains("use std::fs;"),
+        "architecture_import_core_fs_module_violation.rs must contain module std::fs import",
+    );
 
     // Core-time violation: must contain a SystemTime or Instant import
     let time = read_fixture(&fixtures_dir, "architecture_import_core_time_violation.rs");
@@ -344,6 +375,12 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
         time_direct.contains("use std::time::Instant"),
         "architecture_import_core_time_direct_violation.rs must import Instant",
     );
+    let time_grouped =
+        read_fixture(&fixtures_dir, "architecture_import_core_time_grouped_violation.rs");
+    assert!(
+        time_grouped.contains("use std::time::{Duration, Instant, SystemTime}"),
+        "architecture_import_core_time_grouped_violation.rs must contain grouped time imports",
+    );
 
     // Core-random violation: must contain rand::thread_rng import
     let random = read_fixture(&fixtures_dir, "architecture_import_core_random_violation.rs");
@@ -356,6 +393,12 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
     assert!(
         random_direct.contains("use rand::Rng"),
         "architecture_import_core_random_direct_violation.rs must import rand::Rng",
+    );
+    let random_grouped =
+        read_fixture(&fixtures_dir, "architecture_import_core_random_grouped_violation.rs");
+    assert!(
+        random_grouped.contains("use rand::{Rng, thread_rng}"),
+        "architecture_import_core_random_grouped_violation.rs must contain grouped rand imports",
     );
 }
 

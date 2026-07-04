@@ -46,7 +46,7 @@ fn quality_receipt_deserialization_rejects_lane_missing_evidence_digest()
 -> Result<(), Box<dyn Error>> {
     let json = serde_json::json!({
         "schema_version": 1_u16,
-        "scope": "edit",
+        "scope": "Edit",
         "source_digest": "aa".repeat(32),
         "cargo_lock_digest": "bb".repeat(32),
         "policy_digest": "cc".repeat(32),
