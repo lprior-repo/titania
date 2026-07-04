@@ -6,11 +6,6 @@
 //! - `start_byte <= end_byte`
 //! - both fields are `u32`, so the maximum range is 4 GiB.
 
-#![expect(
-    clippy::excessive_nesting,
-    reason = "Range validation is a single typed guard at the smart constructor boundary."
-)]
-
 use core::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -32,11 +27,10 @@ impl TextRange {
     ///
     /// # Errors
     /// [`TextRangeError::EndBeforeStart`] if `end < start`.
-    pub const fn new(start_byte: u32, end_byte: u32) -> Result<Self, TextRangeError> {
-        if end_byte < start_byte {
-            return Err(TextRangeError::EndBeforeStart { start: start_byte, end: end_byte });
-        }
-        Ok(Self { start_byte, end_byte })
+    pub fn new(start_byte: u32, end_byte: u32) -> Result<Self, TextRangeError> {
+        (end_byte >= start_byte)
+            .then_some(Self { start_byte, end_byte })
+            .ok_or(TextRangeError::EndBeforeStart { start: start_byte, end: end_byte })
     }
 
     /// Inclusive start byte position.

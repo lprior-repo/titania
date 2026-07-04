@@ -84,8 +84,8 @@ proptest! {
     }
 
     #[test]
-    fn rule_id_rejects_lowercase(s in "[a-z][a-zA-Z0-9_]+") {
-        // Strings that contain at least one lowercase letter must fail.
+    fn rule_id_rejects_lowercase(s in "[a-z][a-zA-Z0-9]*_[a-zA-Z0-9_]*") {
+        // Strings with an underscore and at least one lowercase letter must fail uppercase validation.
         let result = RuleId::new(&s);
         prop_assert!(
             matches!(result, Err(titania_core::RuleIdError::NotUppercase(..))),

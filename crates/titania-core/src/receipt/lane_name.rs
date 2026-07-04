@@ -1,8 +1,3 @@
-#![expect(
-    clippy::excessive_nesting,
-    reason = "Lane-name validation keeps empty and NUL guards at the constructor boundary."
-)]
-
 use core::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -24,12 +19,8 @@ impl LaneName {
     /// - [`ReceiptError::InvalidLaneName`] if `name` contains a NUL byte.
     pub fn new(name: impl Into<String>) -> Result<Self, ReceiptError> {
         let name = name.into();
-        if name.is_empty() {
-            return Err(ReceiptError::EmptyLaneName);
-        }
-        if name.as_bytes().contains(&b'\0') {
-            return Err(ReceiptError::InvalidLaneName);
-        }
+        check_lane_name_not_empty(&name)?;
+        check_lane_name_no_nul(&name)?;
         Ok(Self(name))
     }
 
@@ -38,6 +29,22 @@ impl LaneName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// Check a lane name is not empty.
+///
+/// # Errors
+/// Returns [`ReceiptError::EmptyLaneName`] when `name` is empty.
+fn check_lane_name_not_empty(name: &str) -> Result<(), ReceiptError> {
+    (!name.is_empty()).then_some(()).ok_or(ReceiptError::EmptyLaneName)
+}
+
+/// Check a lane name contains no NUL bytes.
+///
+/// # Errors
+/// Returns [`ReceiptError::InvalidLaneName`] when `name` contains NUL.
+fn check_lane_name_no_nul(name: &str) -> Result<(), ReceiptError> {
+    (!name.as_bytes().contains(&b'\0')).then_some(()).ok_or(ReceiptError::InvalidLaneName)
 }
 
 impl fmt::Display for LaneName {

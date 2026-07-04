@@ -9,10 +9,9 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
-#[path = "flux_check_package/lane.rs"]
-mod lane;
+include!("flux_check_package/lane.rs");
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    lane::main_exit(&args)
+    main_exit(&args)
 }

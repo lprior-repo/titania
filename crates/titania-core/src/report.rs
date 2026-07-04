@@ -3,11 +3,6 @@
 //! A `Report` is the final output: either a pass (with a receipt), a reject
 //! (with findings and failures), or an error (policy or input diagnostics).
 
-#![expect(
-    clippy::excessive_nesting,
-    reason = "Report constructors keep aggregate invariants local to the variant construction."
-)]
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -77,9 +72,12 @@ enum ReportWire {
         per_lane: Box<[LaneOutcome]>,
     },
     Reject {
-        code_findings: Box<[Finding]>,
-        gate_failures: Box<[LaneFailure]>,
-        per_lane: Box<[LaneOutcome]>,
+        #[serde(rename = "code_findings")]
+        code: Box<[Finding]>,
+        #[serde(rename = "gate_failures")]
+        gate: Box<[LaneFailure]>,
+        #[serde(rename = "per_lane")]
+        lane: Box<[LaneOutcome]>,
     },
     PolicyError {
         diagnostics: Box<[PolicyDiagnostic]>,
@@ -98,9 +96,7 @@ impl ReportWire {
     fn into_report<E: serde::de::Error>(self) -> Result<Report, E> {
         match self {
             Self::Pass { receipt, per_lane } => Report::pass(receipt, per_lane).map_err(E::custom),
-            Self::Reject { code_findings, gate_failures, per_lane } => {
-                Report::reject(code_findings, gate_failures, per_lane).map_err(E::custom)
-            }
+            Self::Reject { code, gate, lane } => reject::<E>(code, gate, lane),
             Self::PolicyError { diagnostics } => Ok(Report::PolicyError { diagnostics }),
             Self::InputError { diagnostics } => Ok(Report::InputError { diagnostics }),
         }
@@ -111,6 +107,57 @@ impl<'de> Deserialize<'de> for Report {
     fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         ReportWire::deserialize(de)?.into_report()
     }
+}
+
+/// Build a reject report from deserialized wire fields.
+///
+/// # Errors
+/// Returns `E` when the reject invariant is invalid.
+fn reject<E: serde::de::Error>(
+    code_findings: Box<[Finding]>,
+    gate_failures: Box<[LaneFailure]>,
+    per_lane: Box<[LaneOutcome]>,
+) -> Result<Report, E> {
+    Report::reject(code_findings, gate_failures, per_lane).map_err(E::custom)
+}
+
+/// Check a reject report contains at least one finding or failure.
+///
+/// # Errors
+/// Returns [`ReportError::EmptyReject`] when both reject collections are empty.
+fn check_reject_not_empty(
+    code_findings: &[Finding],
+    gate_failures: &[LaneFailure],
+) -> Result<(), ReportError> {
+    (!code_findings.is_empty() || !gate_failures.is_empty())
+        .then_some(())
+        .ok_or(ReportError::EmptyReject)
+}
+
+/// Check a pass report carries per-lane evidence.
+///
+/// # Errors
+/// Returns [`ReportError::EmptyPerLane`] when `per_lane` is empty.
+fn check_per_lane_not_empty(per_lane: &[LaneOutcome]) -> Result<(), ReportError> {
+    (!per_lane.is_empty()).then_some(()).ok_or(ReportError::EmptyPerLane)
+}
+
+#[must_use]
+const fn reject_kind_from_empty(code_empty: bool, gate_empty: bool) -> Option<RejectKind> {
+    match (code_empty, gate_empty) {
+        (false, true) => Some(RejectKind::CodeOnly),
+        (true, false) => Some(RejectKind::GateOnly),
+        (false, false) => Some(RejectKind::Mixed),
+        (true, true) => None,
+    }
+}
+
+#[must_use]
+const fn reject_kind_for(
+    code_findings: &[Finding],
+    gate_failures: &[LaneFailure],
+) -> Option<RejectKind> {
+    reject_kind_from_empty(code_findings.is_empty(), gate_failures.is_empty())
 }
 
 impl Report {
@@ -124,9 +171,7 @@ impl Report {
         gate_failures: Box<[LaneFailure]>,
         per_lane: Box<[LaneOutcome]>,
     ) -> Result<Self, ReportError> {
-        if code_findings.is_empty() && gate_failures.is_empty() {
-            return Err(ReportError::EmptyReject);
-        }
+        check_reject_not_empty(&code_findings, &gate_failures)?;
         Ok(Self::Reject { code_findings, gate_failures, per_lane })
     }
     /// Create a `Report::Pass`.
@@ -137,9 +182,7 @@ impl Report {
         receipt: QualityReceipt,
         per_lane: Box<[LaneOutcome]>,
     ) -> Result<Self, ReportError> {
-        if per_lane.is_empty() {
-            return Err(ReportError::EmptyPerLane);
-        }
+        check_per_lane_not_empty(&per_lane)?;
         Ok(Self::Pass { receipt, per_lane })
     }
 
@@ -150,14 +193,7 @@ impl Report {
     #[must_use]
     pub fn reject_kind(&self) -> Option<RejectKind> {
         match self {
-            Self::Reject { code_findings, gate_failures, .. } => {
-                match (code_findings.is_empty(), gate_failures.is_empty()) {
-                    (false, true) => Some(RejectKind::CodeOnly),
-                    (true, false) => Some(RejectKind::GateOnly),
-                    (false, false) => Some(RejectKind::Mixed),
-                    (true, true) => None, // invariant violation
-                }
-            }
+            Self::Reject { code_findings: c, gate_failures: g, .. } => reject_kind_for(c, g),
             _ => None,
         }
     }

@@ -51,7 +51,6 @@ fn error_message(error: RunCargoError) -> String {
         RunCargoError::RuleId(error) => format!("rule id configuration error: {error}"),
         RunCargoError::Artifact(error) => format!("artifact write failed: {error}"),
         RunCargoError::Outcome(error) => format!("lane outcome construction failed: {error}"),
-        RunCargoError::Finding(error) => format!("finding construction failed: {error}"),
         RunCargoError::ToolVersion(error) => format!("tool version capture failed: {error}"),
     }
 }

@@ -1,8 +1,3 @@
-#![expect(
-    clippy::redundant_pub_crate,
-    reason = "lane entrypoint is called by the private bench_instruction_counts wrapper module"
-)]
-
 use std::{
     fs,
     io::{self, Write},
@@ -27,7 +22,7 @@ enum BenchPlan {
     NotApplicable(String),
 }
 
-pub(super) fn main_exit(args: Vec<String>) -> ExitCode {
+fn main_exit(args: Vec<String>) -> ExitCode {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         return exit_after_stderr(format_args!("{USAGE}"), LaneExit::Clean);
     }

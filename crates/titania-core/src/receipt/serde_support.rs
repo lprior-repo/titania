@@ -1,8 +1,3 @@
-#![expect(
-    clippy::excessive_nesting,
-    reason = "Serde schema validation keeps version checks adjacent to wire conversion."
-)]
-
 use serde::{Deserialize, Deserializer};
 
 use super::{
@@ -34,11 +29,7 @@ impl<'de> Deserialize<'de> for ReceiptEnvelope {
         let value = serde_json::Value::deserialize(de)?;
         let schema =
             ReceiptEnvelopeSchemaWire::deserialize(&value).map_err(serde::de::Error::custom)?;
-        if !is_supported_receipt_schema_version(schema.schema_version) {
-            return Err(serde::de::Error::custom(ReceiptError::UnsupportedSchemaVersion(
-                schema.schema_version,
-            )));
-        }
+        check_receipt_schema_version(schema.schema_version).map_err(serde::de::Error::custom)?;
         let wire = ReceiptEnvelopeWire::deserialize(value).map_err(serde::de::Error::custom)?;
         Self::from_parts(
             wire.schema_version,
@@ -55,4 +46,15 @@ impl<'de> Deserialize<'de> for ReceiptEnvelope {
         )
         .map_err(serde::de::Error::custom)
     }
+}
+
+/// Validate the receipt schema version before deserializing the full payload.
+///
+/// # Errors
+/// Returns [`ReceiptError::UnsupportedSchemaVersion`] when `schema_version`
+/// is not supported by this crate.
+fn check_receipt_schema_version(schema_version: u32) -> Result<(), ReceiptError> {
+    is_supported_receipt_schema_version(schema_version)
+        .then_some(())
+        .ok_or(ReceiptError::UnsupportedSchemaVersion(schema_version))
 }

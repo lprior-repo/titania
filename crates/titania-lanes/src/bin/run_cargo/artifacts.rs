@@ -1,6 +1,6 @@
 use titania_core::{
-    CommandEvidence, Digest, Finding as CoreFinding, FindingEffect, GateScope, Lane, LaneEvidence,
-    LaneFailure, LaneOutcome, Location, ProcessTermination, RepairHint, TargetProject,
+    CommandEvidence, Digest, Finding as CoreFinding, GateScope, Lane, LaneEvidence, LaneFailure,
+    LaneOutcome, Location, ProcessTermination, RepairHint, TargetProject,
 };
 use titania_lanes::{
     CommandIn, CommandOutput, Finding, LaneError, LaneReport, artifact_writer::write_lane_artifact,
@@ -59,7 +59,7 @@ fn write_artifact(
 ///
 /// # Errors
 ///
-/// Returns a typed error when command evidence or findings cannot be built.
+/// Returns a typed error when command evidence cannot be built.
 fn lane_outcome(
     target: &TargetProject,
     lane: CargoLane,
@@ -73,7 +73,7 @@ fn lane_outcome(
     if report.is_clean() {
         return Ok(LaneOutcome::Failed(tool_failure(output)));
     }
-    findings_outcome(lane, report)
+    Ok(findings_outcome(lane, report))
 }
 
 /// Build a clean outcome with command evidence.
@@ -98,34 +98,21 @@ fn clean_outcome(
 }
 
 /// Convert legacy lane findings into a v1 findings outcome.
-///
-/// # Errors
-///
-/// Returns a typed error when a finding cannot be represented in core v1.
-fn findings_outcome(lane: CargoLane, report: &LaneReport) -> Result<LaneOutcome, RunCargoError> {
-    report
-        .findings()
-        .iter()
-        .map(|finding| core_finding(lane, finding))
-        .collect::<Result<Box<[_]>, _>>()
-        .map(|findings| LaneOutcome::Findings { findings })
+fn findings_outcome(lane: CargoLane, report: &LaneReport) -> LaneOutcome {
+    let findings =
+        report.findings().iter().map(|finding| core_finding(lane, finding)).collect::<Box<[_]>>();
+    LaneOutcome::Findings { findings }
 }
 
 /// Convert one legacy lane finding into a core v1 finding.
-///
-/// # Errors
-///
-/// Returns a typed error when core finding construction rejects the value.
-fn core_finding(lane: CargoLane, finding: &Finding) -> Result<CoreFinding, RunCargoError> {
-    CoreFinding::new(
+fn core_finding(lane: CargoLane, finding: &Finding) -> CoreFinding {
+    CoreFinding::reject(
         core_lane(lane),
         finding.rule().clone(),
         Location::Workspace,
         finding.message().to_owned(),
         RepairHint::RequiresHumanReview { note: finding.path().to_owned() },
-        FindingEffect::Reject,
     )
-    .map_err(RunCargoError::Finding)
 }
 
 /// Build command evidence for the selected Cargo lane.
@@ -192,7 +179,7 @@ const fn gate_scope(lane: CargoLane) -> GateScope {
 }
 
 fn tool_failure(output: &CommandOutput) -> LaneFailure {
-    LaneFailure::ToolFailure {
+    LaneFailure::Tool {
         tool: String::from("cargo"),
         termination: process_termination(output.status()),
     }
@@ -207,18 +194,17 @@ fn process_termination(status: std::process::ExitStatus) -> ProcessTermination {
 fn failure_for_error(error: &LaneError) -> LaneFailure {
     match error {
         LaneError::Io { source, .. } => {
-            LaneFailure::InfraFailure { tool: String::from("cargo"), reason: source.to_string() }
+            LaneFailure::Infra { tool: String::from("cargo"), reason: source.to_string() }
         }
-        LaneError::Timeout { .. } => LaneFailure::ToolFailure {
+        LaneError::Timeout { .. } => LaneFailure::Tool {
             tool: String::from("cargo"),
             termination: ProcessTermination::TimedOut,
         },
         LaneError::OutputLimitExceeded { limit, .. } => {
-            LaneFailure::ResourceFailure { tool: String::from("cargo"), limit: limit.to_string() }
+            LaneFailure::Resource { tool: String::from("cargo"), limit: limit.to_string() }
         }
-        _other => LaneFailure::SuspiciousFailure {
-            tool: String::from("cargo"),
-            evidence: error.to_string(),
-        },
+        _other => {
+            LaneFailure::Suspicious { tool: String::from("cargo"), evidence: error.to_string() }
+        }
     }
 }

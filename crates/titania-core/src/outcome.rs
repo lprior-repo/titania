@@ -3,11 +3,6 @@
 //! Each lane produces exactly one [`LaneOutcome`]: clean, findings, failure,
 //! or skipped.
 
-#![expect(
-    clippy::excessive_nesting,
-    reason = "Outcome constructors keep typed error guards adjacent to the values they validate."
-)]
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -52,10 +47,10 @@ impl LaneEvidence {
         exit_status: ProcessTermination,
         parsed_result_digest: Digest,
     ) -> Result<Self, OutcomeError> {
-        if !exit_status.is_success() {
-            return Err(OutcomeError::NonZeroExit);
-        }
-        Ok(Self { command, tool_version, exit_status, parsed_result_digest })
+        exit_status
+            .is_success()
+            .then_some(Self { command, tool_version, exit_status, parsed_result_digest })
+            .ok_or(OutcomeError::NonZeroExit)
     }
 
     /// Command evidence captured for the clean lane.
@@ -97,15 +92,9 @@ impl CommandEvidence {
     /// - [`OutcomeError::EmptyArgv`] if `argv` is empty.
     /// - [`OutcomeError::Argv0Mismatch`] if `argv.first()` does not equal `executable`.
     pub fn new(executable: String, argv: Box<[String]>) -> Result<Self, OutcomeError> {
-        if argv.is_empty() {
-            return Err(OutcomeError::EmptyArgv);
-        }
         match argv.first() {
             Some(first) if first == &executable => Ok(Self { executable, argv }),
-            Some(found) => {
-                Err(OutcomeError::Argv0Mismatch { expected: executable, found: found.clone() })
-            }
-            // Cannot reach: argv is non-empty (checked above)
+            Some(found) => Err(argv0_mismatch(executable, found)),
             None => Err(OutcomeError::EmptyArgv),
         }
     }
@@ -121,6 +110,10 @@ impl CommandEvidence {
     pub fn argv(&self) -> &[String] {
         &self.argv
     }
+}
+
+fn argv0_mismatch(expected: String, found: &str) -> OutcomeError {
+    OutcomeError::Argv0Mismatch { expected, found: found.to_owned() }
 }
 
 /// Outcome of a single lane execution.

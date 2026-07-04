@@ -1,8 +1,3 @@
-#![expect(
-    clippy::redundant_pub_crate,
-    reason = "lane entrypoint is called by the private loom_list wrapper module"
-)]
-
 use std::{
     io::{self, Write},
     process::ExitCode,
@@ -21,7 +16,7 @@ enum LaneOutcome {
     NotApplicable(String),
 }
 
-pub(super) fn main_exit(args: &[String]) -> ExitCode {
+fn main_exit(args: &[String]) -> ExitCode {
     if let Some(code) = usage_exit(args) {
         return code;
     }

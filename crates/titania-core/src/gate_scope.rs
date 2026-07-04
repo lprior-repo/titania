@@ -29,6 +29,41 @@ pub enum GateScope {
     Release,
 }
 
+const EDIT_LANES: &[Lane] = &[
+    Lane::Fmt,
+    Lane::Compile,
+    Lane::Clippy,
+    Lane::AstGrep,
+    Lane::Dylint,
+    Lane::PanicScan,
+    Lane::PolicyScan,
+];
+
+const PREPUSH_LANES: &[Lane] = &[
+    Lane::Fmt,
+    Lane::Compile,
+    Lane::Clippy,
+    Lane::AstGrep,
+    Lane::Dylint,
+    Lane::PanicScan,
+    Lane::PolicyScan,
+    Lane::Test,
+    Lane::Deny,
+];
+
+const RELEASE_LANES: &[Lane] = &[
+    Lane::Fmt,
+    Lane::Compile,
+    Lane::Clippy,
+    Lane::AstGrep,
+    Lane::Dylint,
+    Lane::PanicScan,
+    Lane::PolicyScan,
+    Lane::Test,
+    Lane::Deny,
+    Lane::Build,
+];
+
 impl GateScope {
     /// Ordered slice of lanes this scope exercises.
     ///
@@ -37,38 +72,9 @@ impl GateScope {
     #[must_use]
     pub const fn lanes(self) -> &'static [Lane] {
         match self {
-            Self::Edit => &[
-                Lane::Fmt,
-                Lane::Compile,
-                Lane::Clippy,
-                Lane::AstGrep,
-                Lane::Dylint,
-                Lane::PanicScan,
-                Lane::PolicyScan,
-            ],
-            Self::Prepush => &[
-                Lane::Fmt,
-                Lane::Compile,
-                Lane::Clippy,
-                Lane::AstGrep,
-                Lane::Dylint,
-                Lane::PanicScan,
-                Lane::PolicyScan,
-                Lane::Test,
-                Lane::Deny,
-            ],
-            Self::Release => &[
-                Lane::Fmt,
-                Lane::Compile,
-                Lane::Clippy,
-                Lane::AstGrep,
-                Lane::Dylint,
-                Lane::PanicScan,
-                Lane::PolicyScan,
-                Lane::Test,
-                Lane::Deny,
-                Lane::Build,
-            ],
+            Self::Edit => EDIT_LANES,
+            Self::Prepush => PREPUSH_LANES,
+            Self::Release => RELEASE_LANES,
         }
     }
 }

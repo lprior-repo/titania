@@ -1,8 +1,6 @@
 use std::env;
 
-use titania_core::{
-    FindingError, OutcomeError, TargetProject, TargetProjectError, discover_target,
-};
+use titania_core::{OutcomeError, TargetProject, TargetProjectError, discover_target};
 use titania_lanes::{
     CommandIn, CommandOutput, Finding, LaneError, LaneReport, RuleId, RuleIdError,
     artifact_writer::ArtifactWriterError,
@@ -68,7 +66,6 @@ pub(crate) enum RunCargoError {
     RuleId(RuleIdError),
     Artifact(ArtifactWriterError),
     Outcome(OutcomeError),
-    Finding(FindingError),
     ToolVersion(String),
 }
 

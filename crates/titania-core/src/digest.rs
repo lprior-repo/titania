@@ -7,11 +7,6 @@
 //! [`Digest::from_bytes`] is infallible because blake3's hex output is
 //! contractually 64 lowercase hex characters.
 
-#![expect(
-    clippy::excessive_nesting,
-    reason = "Small validation guards return typed errors directly; helper extraction would hide the invariant checks."
-)]
-
 use core::{fmt, str::FromStr};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -45,14 +40,8 @@ impl Digest {
     /// - [`DigestError::NonHexChar`] at the first non-`[0-9a-f]` byte.
     pub fn from_hex(hex: &str) -> Result<Self, DigestError> {
         let bytes = hex.as_bytes();
-        if bytes.len() != DIGEST_HEX_LEN {
-            return Err(DigestError::WrongLength(bytes.len()));
-        }
-        for (i, &b) in bytes.iter().enumerate() {
-            if !is_lower_hex(b) {
-                return Err(DigestError::NonHexChar(i));
-            }
-        }
+        check_digest_len(bytes)?;
+        check_digest_hex(bytes)?;
         Ok(Self(hex.to_owned()))
     }
 
@@ -94,6 +83,25 @@ impl<'de> Deserialize<'de> for Digest {
         let s = <std::borrow::Cow<'_, str> as Deserialize>::deserialize(de)?;
         Self::from_hex(&s).map_err(serde::de::Error::custom)
     }
+}
+
+/// Check the byte length of a hex digest string.
+///
+/// # Errors
+/// Returns [`DigestError::WrongLength`] when the length is not 64 bytes.
+fn check_digest_len(bytes: &[u8]) -> Result<(), DigestError> {
+    (bytes.len() == DIGEST_HEX_LEN).then_some(()).ok_or(DigestError::WrongLength(bytes.len()))
+}
+
+/// Check all digest bytes are lowercase hex.
+///
+/// # Errors
+/// Returns [`DigestError::NonHexChar`] at the first non-hex byte.
+fn check_digest_hex(bytes: &[u8]) -> Result<(), DigestError> {
+    bytes
+        .iter()
+        .position(|&b| !is_lower_hex(b))
+        .map_or(Ok(()), |index| Err(DigestError::NonHexChar(index)))
 }
 
 #[must_use]

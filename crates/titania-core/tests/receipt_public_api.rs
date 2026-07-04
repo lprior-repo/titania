@@ -8,7 +8,7 @@
 
 use std::error::Error;
 
-use titania_core::{Digest, GateScope, Lane, LaneReceipt, QualityReceipt};
+use titania_core::{Digest, GateScope, Lane, LaneReceipt, QualityReceipt, ReceiptDigests};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -22,10 +22,12 @@ fn digest(seed: &'static [u8]) -> Digest {
 fn quality_receipt_v1_schema_version_is_one_and_fields_exact() -> TestResult {
     let receipt = QualityReceipt::new(
         GateScope::Edit,
-        digest(b"source"),
-        digest(b"lock"),
-        digest(b"policy"),
-        digest(b"toolchain"),
+        ReceiptDigests::new(
+            digest(b"source"),
+            digest(b"lock"),
+            digest(b"policy"),
+            digest(b"toolchain"),
+        ),
         Box::new([LaneReceipt::new(Lane::Fmt, digest(b"evidence"), true)]),
     )?;
 

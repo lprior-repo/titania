@@ -16,9 +16,8 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
-#[path = "run_tlc_checks/lane.rs"]
-mod lane;
+include!("run_tlc_checks/lane.rs");
 
 fn main() -> std::process::ExitCode {
-    lane::main_exit()
+    main_exit()
 }

@@ -11,9 +11,8 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
-#[path = "bench_instruction_counts/lane.rs"]
-mod lane;
+include!("bench_instruction_counts/lane.rs");
 
 fn main() -> std::process::ExitCode {
-    lane::main_exit(std::env::args().skip(1).collect())
+    main_exit(std::env::args().skip(1).collect())
 }

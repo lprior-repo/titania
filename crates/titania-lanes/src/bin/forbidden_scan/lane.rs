@@ -1,8 +1,3 @@
-#![expect(
-    clippy::redundant_pub_crate,
-    reason = "lane entrypoint is called by the private forbidden_scan wrapper module"
-)]
-
 use std::{
     io::{self, Write as _},
     path::{Path, PathBuf},
@@ -14,10 +9,6 @@ use titania_lanes::{
     helpers::{line_no_from_idx, relative_path},
 };
 
-#[path = "tokens.rs"]
-mod tokens;
-
-use tokens::ForbiddenToken;
 
 /// Default forbidden tokens (Holzman Rust slice 1).
 const DEFAULT_FORBIDDEN: &[&str] =
@@ -25,7 +16,7 @@ const DEFAULT_FORBIDDEN: &[&str] =
 const FORBIDDEN_FLAG: &str = "--forbidden=";
 const FORBIDDEN_RULE: &str = "FORBIDDEN_001";
 
-pub(super) fn main_exit(args: &[String]) -> ExitCode {
+fn main_exit(args: &[String]) -> ExitCode {
     let forbidden = parse_forbidden(args);
     if forbidden.is_empty() {
         return exit_after_io(

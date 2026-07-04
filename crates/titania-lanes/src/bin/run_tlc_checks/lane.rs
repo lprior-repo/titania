@@ -1,8 +1,3 @@
-#![expect(
-    clippy::redundant_pub_crate,
-    reason = "lane entrypoint is called by the private run_tlc_checks wrapper module"
-)]
-
 use std::{
     ffi::OsStr,
     fs,
@@ -33,7 +28,7 @@ impl RunSummary {
     }
 }
 
-pub(super) fn main_exit() -> ExitCode {
+fn main_exit() -> ExitCode {
     let target = match current_target_project() {
         Ok(target) => target,
         Err(err) => {

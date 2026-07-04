@@ -24,7 +24,7 @@ mod exceptions;
 mod profile;
 
 pub use exceptions::{Exception, ExceptionError, parse_exceptions};
-pub use profile::{PolicyArchitecture, PolicyProfile, ProfileError, parse_profile};
+pub use profile::{PolicyArchitecture, PolicyProfile, PolicyValue, ProfileError, parse_profile};
 
 use serde::{Deserialize, Serialize};
 

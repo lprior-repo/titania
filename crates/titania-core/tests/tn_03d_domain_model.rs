@@ -10,8 +10,8 @@
 use titania_core::{
     CommandEvidence, DiagnosticSeverity, Digest, Finding, FindingEffect, GateScope,
     InputDiagnostic, Lane, LaneEvidence, LaneFailure, LaneOutcome, LaneReceipt, Location,
-    PolicyDiagnostic, ProcessTermination, QualityReceipt, ReceiptError, RejectKind, RepairHint,
-    Report, RuleId, SkipReason, TextRange, WorkspacePath,
+    PolicyDiagnostic, ProcessTermination, QualityReceipt, ReceiptDigests, ReceiptError, RejectKind,
+    RepairHint, Report, RuleId, SkipReason, TextRange, WorkspacePath,
 };
 
 // ===========================================================================
@@ -147,7 +147,7 @@ fn gate_scope_serde_round_trip() {
 // ===========================================================================
 
 fn make_valid_finding() -> Finding {
-    Finding::new(
+    Finding::reject(
         Lane::Clippy,
         RuleId::new("CLIPPY_UNWRAP_USED").unwrap(),
         Location::Span {
@@ -159,9 +159,7 @@ fn make_valid_finding() -> Finding {
         },
         "unwrap() used".to_string(),
         RepairHint::UseIteratorPipeline { suggestion: "use .into_iter()".to_string() },
-        FindingEffect::Reject,
     )
-    .unwrap()
 }
 
 #[test]
@@ -276,10 +274,7 @@ fn make_quality_receipt() -> Result<QualityReceipt, ReceiptError> {
     let digest = Digest::from_bytes(b"test");
     QualityReceipt::new(
         GateScope::Edit,
-        digest.clone(),
-        digest.clone(),
-        digest.clone(),
-        digest.clone(),
+        ReceiptDigests::new(digest.clone(), digest.clone(), digest.clone(), digest.clone()),
         Box::new([LaneReceipt::new(Lane::Fmt, digest, true)]),
     )
 }
@@ -321,7 +316,7 @@ fn report_reject_code_only() {
 #[test]
 fn report_reject_gate_only() {
     let failure =
-        LaneFailure::InfraFailure { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
+        LaneFailure::Infra { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
     let report = Report::reject(Box::new([]), Box::new([failure]), Box::new([])).unwrap();
     assert_eq!(report.reject_kind(), Some(RejectKind::GateOnly));
 }
@@ -330,7 +325,7 @@ fn report_reject_gate_only() {
 fn report_reject_mixed() {
     let finding = make_valid_finding();
     let failure =
-        LaneFailure::InfraFailure { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
+        LaneFailure::Infra { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
     let report = Report::reject(Box::new([finding]), Box::new([failure]), Box::new([])).unwrap();
     assert_eq!(report.reject_kind(), Some(RejectKind::Mixed));
 }
@@ -413,7 +408,7 @@ fn lane_outcome_findings() {
 #[test]
 fn lane_outcome_failed() {
     let failure =
-        LaneFailure::InfraFailure { tool: "dylint".to_string(), reason: "not found".to_string() };
+        LaneFailure::Infra { tool: "dylint".to_string(), reason: "not found".to_string() };
     let outcome = LaneOutcome::Failed(failure);
     assert!(matches!(outcome, LaneOutcome::Failed { .. }));
 }
@@ -494,37 +489,34 @@ fn process_termination_serde_round_trip() {
 
 #[test]
 fn lane_failure_variants() {
-    let infra =
-        LaneFailure::InfraFailure { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
-    assert!(matches!(infra, LaneFailure::InfraFailure { .. }));
+    let infra = LaneFailure::Infra { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
+    assert!(matches!(infra, LaneFailure::Infra { .. }));
 
-    let tool = LaneFailure::ToolFailure {
+    let tool = LaneFailure::Tool {
         tool: "clippy".to_string(),
         termination: ProcessTermination::Exited { code: 1 },
     };
-    assert!(matches!(tool, LaneFailure::ToolFailure { .. }));
+    assert!(matches!(tool, LaneFailure::Tool { .. }));
 
     let resource =
-        LaneFailure::ResourceFailure { tool: "dylint".to_string(), limit: "timeout".to_string() };
-    assert!(matches!(resource, LaneFailure::ResourceFailure { .. }));
+        LaneFailure::Resource { tool: "dylint".to_string(), limit: "timeout".to_string() };
+    assert!(matches!(resource, LaneFailure::Resource { .. }));
 
-    let suspicious = LaneFailure::SuspiciousFailure {
-        tool: "ast-grep".to_string(),
-        evidence: "tampered".to_string(),
-    };
-    assert!(matches!(suspicious, LaneFailure::SuspiciousFailure { .. }));
+    let suspicious =
+        LaneFailure::Suspicious { tool: "ast-grep".to_string(), evidence: "tampered".to_string() };
+    assert!(matches!(suspicious, LaneFailure::Suspicious { .. }));
 }
 
 #[test]
 fn lane_failure_serde_round_trip() {
     let failures = [
-        LaneFailure::InfraFailure { tool: "a".to_string(), reason: "r".to_string() },
-        LaneFailure::ToolFailure {
+        LaneFailure::Infra { tool: "a".to_string(), reason: "r".to_string() },
+        LaneFailure::Tool {
             tool: "b".to_string(),
             termination: ProcessTermination::Exited { code: 1 },
         },
-        LaneFailure::ResourceFailure { tool: "c".to_string(), limit: "l".to_string() },
-        LaneFailure::SuspiciousFailure { tool: "d".to_string(), evidence: "e".to_string() },
+        LaneFailure::Resource { tool: "c".to_string(), limit: "l".to_string() },
+        LaneFailure::Suspicious { tool: "d".to_string(), evidence: "e".to_string() },
     ];
     for f in &failures {
         let json = serde_json::to_string(f).unwrap();
@@ -582,10 +574,7 @@ fn quality_receipt_constructs() {
     let digest = Digest::from_bytes(b"test");
     let receipt = QualityReceipt::new(
         GateScope::Edit,
-        digest.clone(),
-        digest.clone(),
-        digest.clone(),
-        digest.clone(),
+        ReceiptDigests::new(digest.clone(), digest.clone(), digest.clone(), digest.clone()),
         Box::new([LaneReceipt::new(Lane::Fmt, digest, true)]),
     )
     .unwrap();
@@ -616,10 +605,7 @@ fn quality_receipt_serde_round_trip() {
     let lr = LaneReceipt::new(Lane::Fmt, digest.clone(), true);
     let receipt = QualityReceipt::new(
         GateScope::Edit,
-        digest.clone(),
-        digest.clone(),
-        digest.clone(),
-        digest.clone(),
+        ReceiptDigests::new(digest.clone(), digest.clone(), digest.clone(), digest.clone()),
         Box::new([lr]),
     )
     .unwrap();

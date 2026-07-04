@@ -4,11 +4,6 @@
 //! project was judged and which digests/results were observed. Construction
 //! keeps invalid lane summaries and unsupported schemas out of the domain.
 
-#![expect(
-    clippy::excessive_nesting,
-    reason = "Receipt constructors and serde adapters keep schema guards next to receipt invariants."
-)]
-
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{Digest, TargetProject, error::ReceiptError};
@@ -79,9 +74,7 @@ impl LaneDigest {
         passed: u32,
         finding_count: u32,
     ) -> Result<Self, ReceiptError> {
-        if passed > scanned {
-            return Err(ReceiptError::PassedExceedsScanned { passed, scanned });
-        }
+        check_passed_not_above_scanned(passed, scanned)?;
         Ok(Self { lane, exit, scanned, passed, finding_count })
     }
 
@@ -116,6 +109,14 @@ impl LaneDigest {
     }
 }
 
+/// Check that a lane did not pass more items than it scanned.
+///
+/// # Errors
+/// Returns [`ReceiptError::PassedExceedsScanned`] when `passed > scanned`.
+fn check_passed_not_above_scanned(passed: u32, scanned: u32) -> Result<(), ReceiptError> {
+    (passed <= scanned).then_some(()).ok_or(ReceiptError::PassedExceedsScanned { passed, scanned })
+}
+
 /// Validated start and finish timestamps for a receipt run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReceiptPeriod {
@@ -128,11 +129,10 @@ impl ReceiptPeriod {
     ///
     /// # Errors
     /// - [`ReceiptError::FinishedBeforeStarted`] if `finished_at < started_at`.
-    pub const fn new(started_at: u64, finished_at: u64) -> Result<Self, ReceiptError> {
-        if finished_at < started_at {
-            return Err(ReceiptError::FinishedBeforeStarted { started_at, finished_at });
-        }
-        Ok(Self { started_at, finished_at })
+    pub fn new(started_at: u64, finished_at: u64) -> Result<Self, ReceiptError> {
+        (finished_at >= started_at)
+            .then_some(Self { started_at, finished_at })
+            .ok_or(ReceiptError::FinishedBeforeStarted { started_at, finished_at })
     }
 
     /// Run start time, in Unix seconds.
@@ -160,6 +160,17 @@ pub struct ReceiptEnvelope {
     lock_digest: Digest,
     policy_digest: Digest,
     toolchain_digest: Digest,
+}
+
+/// Check receipt schema support.
+///
+/// # Errors
+/// Returns [`ReceiptError::UnsupportedSchemaVersion`] when the schema version
+/// is not the current v1 receipt schema.
+fn check_supported_schema_version(schema_version: u32) -> Result<(), ReceiptError> {
+    (schema_version == RECEIPT_SCHEMA_VERSION)
+        .then_some(())
+        .ok_or(ReceiptError::UnsupportedSchemaVersion(schema_version))
 }
 
 impl ReceiptEnvelope {
@@ -194,9 +205,7 @@ impl ReceiptEnvelope {
         lane_results: Vec<LaneDigest>,
         digests: ReceiptDigests,
     ) -> Result<Self, ReceiptError> {
-        if schema_version != RECEIPT_SCHEMA_VERSION {
-            return Err(ReceiptError::UnsupportedSchemaVersion(schema_version));
-        }
+        check_supported_schema_version(schema_version)?;
         let ReceiptPeriod { started_at, finished_at } = period;
         let (source_digest, lock_digest, policy_digest, toolchain_digest) = digests.into_parts();
         Ok(Self {

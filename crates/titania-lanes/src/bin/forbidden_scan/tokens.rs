@@ -9,7 +9,7 @@
 /// like `myexpect`.
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ForbiddenToken {
+struct ForbiddenToken {
     name: String,
     kind: TokenKind,
 }
@@ -28,15 +28,15 @@ enum TokenKind {
 }
 
 impl ForbiddenToken {
-    pub(super) fn parse(raw: &str) -> Option<Self> {
+    fn parse(raw: &str) -> Option<Self> {
         parse_token(raw)
     }
 
-    pub(super) fn as_str(&self) -> &str {
+    fn as_str(&self) -> &str {
         &self.name
     }
 
-    pub(super) fn is_present_in(&self, code: &str) -> bool {
+    fn is_present_in(&self, code: &str) -> bool {
         token_present(&self.name, self.kind, code)
     }
 }
@@ -118,7 +118,7 @@ const fn is_word_byte(b: u8) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+mod token_tests {
     use super::ForbiddenToken;
     fn macro_token(name: &str) -> ForbiddenToken {
         let kind =

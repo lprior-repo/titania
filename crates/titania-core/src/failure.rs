@@ -3,11 +3,6 @@
 //! When a lane does not produce a clean or finding outcome, the failure is
 //! categorized so that the aggregator can decide how to report it.
 
-#![expect(
-    clippy::excessive_nesting,
-    reason = "Signal validation is a single typed guard; keeping it local preserves the constructor contract."
-)]
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::FailureError;
@@ -44,10 +39,10 @@ impl ProcessTermination {
     /// # Errors
     /// - [`FailureError::InvalidSignal`] if the signal is outside 1–31.
     pub fn signaled(signal: i32) -> Result<Self, FailureError> {
-        if !(1..=31).contains(&signal) {
-            return Err(FailureError::InvalidSignal(signal));
-        }
-        Ok(Self::Signaled { signal })
+        (1..=31)
+            .contains(&signal)
+            .then_some(Self::Signaled { signal })
+            .ok_or(FailureError::InvalidSignal(signal))
     }
 
     /// Whether this represents a normal (non-error) exit.
@@ -68,28 +63,27 @@ impl ProcessTermination {
 
 /// Classification of a lane failure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[expect(
-    clippy::enum_variant_names,
-    reason = "The Failure suffix is v1 wire vocabulary and keeps JSON variants explicit."
-)]
 #[serde(rename_all = "snake_case")]
 pub enum LaneFailure {
     /// Infrastructure problem — tool binary missing, ABI mismatch, etc.
-    InfraFailure {
+    #[serde(rename = "infra_failure")]
+    Infra {
         /// Tool that could not be invoked or trusted.
         tool: String,
         /// Stable reason explaining the infrastructure failure.
         reason: String,
     },
     /// Tool ran but terminated abnormally.
-    ToolFailure {
+    #[serde(rename = "tool_failure")]
+    Tool {
         /// Tool that ran and returned an abnormal termination.
         tool: String,
         /// Termination status observed from the tool process.
         termination: ProcessTermination,
     },
     /// Resource constraint hit — memory limit, file descriptor limit, etc.
-    ResourceFailure {
+    #[serde(rename = "resource_failure")]
+    Resource {
         /// Tool that exceeded a resource limit.
         tool: String,
         /// Resource limit that was exceeded.
@@ -97,7 +91,8 @@ pub enum LaneFailure {
     },
     /// Tool failed but the cause is suspicious (e.g. intermittent,
     /// non-reproducible). The `evidence` field contains additional context.
-    SuspiciousFailure {
+    #[serde(rename = "suspicious_failure")]
+    Suspicious {
         /// Tool that produced suspicious failure evidence.
         tool: String,
         /// Additional evidence explaining why the failure is suspicious.
@@ -110,22 +105,22 @@ impl LaneFailure {
     #[must_use]
     pub fn tool(&self) -> &str {
         match self {
-            Self::InfraFailure { tool, .. }
-            | Self::ToolFailure { tool, .. }
-            | Self::ResourceFailure { tool, .. }
-            | Self::SuspiciousFailure { tool, .. } => tool,
+            Self::Infra { tool, .. }
+            | Self::Tool { tool, .. }
+            | Self::Resource { tool, .. }
+            | Self::Suspicious { tool, .. } => tool,
         }
     }
 
     /// Whether this is an infrastructure issue (not a code problem).
     #[must_use]
     pub const fn is_infra(&self) -> bool {
-        matches!(self, Self::InfraFailure { .. })
+        matches!(self, Self::Infra { .. })
     }
 
     /// Whether this is a resource constraint.
     #[must_use]
     pub const fn is_resource(&self) -> bool {
-        matches!(self, Self::ResourceFailure { .. })
+        matches!(self, Self::Resource { .. })
     }
 }

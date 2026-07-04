@@ -227,7 +227,7 @@ fn suspicious_candidate(is_clean: bool, malformed_lines: usize) -> Option<LaneFa
 }
 
 fn suspicious_failure(malformed_lines: usize) -> LaneFailure {
-    LaneFailure::SuspiciousFailure {
+    LaneFailure::Suspicious {
         tool: TOOL.to_owned(),
         evidence: format!("malformed clippy JSON lines: {malformed_lines}"),
     }

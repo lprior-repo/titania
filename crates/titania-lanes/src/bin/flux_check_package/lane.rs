@@ -1,8 +1,3 @@
-#![expect(
-    clippy::redundant_pub_crate,
-    reason = "lane entrypoint is called by the private flux_check_package wrapper module"
-)]
-
 use std::{
     env,
     io::{self, Write},
@@ -47,7 +42,7 @@ struct Invocation {
     forwarded: Vec<String>,
 }
 
-pub(super) fn main_exit(args: &[String]) -> ExitCode {
+fn main_exit(args: &[String]) -> ExitCode {
     if help_requested(args) {
         return print_help();
     }

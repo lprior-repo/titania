@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Digest, GateScope, Lane, error::ReceiptError};
+use crate::{Digest, GateScope, Lane, error::ReceiptError, receipt::ReceiptDigests};
 
 /// Per-lane receipt summary inside a [`QualityReceiptV1`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -36,10 +36,12 @@ impl<'de> Deserialize<'de> for QualityReceiptV1 {
         validate_schema_version::<D::Error>(wire.schema_version)?;
         Self::new(
             wire.scope,
-            wire.source_digest,
-            wire.cargo_lock_digest,
-            wire.policy_digest,
-            wire.toolchain_digest,
+            ReceiptDigests::new(
+                wire.source_digest,
+                wire.cargo_lock_digest,
+                wire.policy_digest,
+                wire.toolchain_digest,
+            ),
             wire.lanes,
         )
         .map_err(serde::de::Error::custom)
@@ -89,33 +91,26 @@ pub struct QualityReceiptV1 {
     /// Per-lane receipt summaries.
     pub lanes: Box<[LaneReceipt]>,
 }
-
 impl QualityReceiptV1 {
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "The v1 receipt schema has four independent digest fields plus scope and lane summaries."
-    )]
     /// Construct a v1 [`QualityReceiptV1`]. Always uses `schema_version = 1`.
     ///
     /// # Errors
     /// - [`ReceiptError::EmptyLaneReceiptList`] if `lanes` is empty.
     pub fn new(
         scope: GateScope,
-        source_digest: Digest,
-        cargo_lock_digest: Digest,
-        policy_digest: Digest,
-        toolchain_digest: Digest,
+        digests: ReceiptDigests,
         lanes: Box<[LaneReceipt]>,
     ) -> Result<Self, ReceiptError> {
+        let (source, lock, policy, toolchain) = digests.into_parts();
         let lanes =
             (!lanes.is_empty()).then_some(lanes).ok_or(ReceiptError::EmptyLaneReceiptList)?;
         Ok(Self {
             schema_version: RECEIPT_SCHEMA_VERSION,
             scope,
-            source_digest,
-            cargo_lock_digest,
-            policy_digest,
-            toolchain_digest,
+            source_digest: source,
+            cargo_lock_digest: lock,
+            policy_digest: policy,
+            toolchain_digest: toolchain,
             lanes,
         })
     }

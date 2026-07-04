@@ -10,8 +10,8 @@
 #![allow(clippy::useless_vec)]
 
 use titania_core::{
-    Digest, Finding, FindingEffect, GateScope, Lane, LaneFailure, LaneOutcome, Location,
-    ProcessTermination, RepairHint, Report, RuleId, SkipReason, TextRange, WorkspacePath,
+    Digest, Finding, GateScope, Lane, LaneFailure, LaneOutcome, Location, ProcessTermination,
+    RepairHint, Report, RuleId, SkipReason, TextRange, WorkspacePath,
 };
 
 fn digest(seed: &'static [u8]) -> Digest {
@@ -380,10 +380,12 @@ fn json_roundtrip_golden() {
 fn report_pass_constructs_and_round_trips() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let receipt = titania_core::QualityReceipt::new(
         GateScope::Edit,
-        digest(b"source"),
-        digest(b"lock"),
-        digest(b"policy"),
-        digest(b"toolchain"),
+        titania_core::ReceiptDigests::new(
+            digest(b"source"),
+            digest(b"lock"),
+            digest(b"policy"),
+            digest(b"toolchain"),
+        ),
         Box::new([titania_core::LaneReceipt::new(Lane::Fmt, digest(b"evidence"), true)]),
     )?;
 
@@ -414,14 +416,13 @@ fn report_reject_constructs_and_round_trips() -> std::result::Result<(), Box<dyn
     let location = Location::span(file, 42, 5, 42, 30).unwrap();
     let repair =
         RepairHint::UseIteratorPipeline { suggestion: "items.iter().map(|item| ...)".to_owned() };
-    let finding = Finding::new(
+    let finding = Finding::reject(
         Lane::AstGrep,
         rule,
         location,
         "Imperative for loop in production source".to_owned(),
         repair,
-        FindingEffect::Reject,
-    )?;
+    );
 
     let code_findings: Box<[Finding]> = Box::new([finding]);
     let gate_failures: Box<[titania_core::LaneFailure]> = Box::new([]);
@@ -460,17 +461,17 @@ fn lane_outcome_skipped_all_reasons() -> std::result::Result<(), Box<dyn std::er
 
 #[test]
 fn lane_failure_all_variants() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let infra = titania_core::LaneFailure::InfraFailure {
+    let infra = titania_core::LaneFailure::Infra {
         tool: "dylint".to_owned(),
         reason: "binary not found".to_owned(),
     };
     let json = serde_json::to_string(&infra)?;
     assert!(json.contains("infra_failure"));
     let parsed: titania_core::LaneFailure = serde_json::from_str(&json)?;
-    assert!(matches!(parsed, titania_core::LaneFailure::InfraFailure { .. }));
+    assert!(matches!(parsed, titania_core::LaneFailure::Infra { .. }));
     assert!(infra.is_infra());
 
-    let tool_fail = titania_core::LaneFailure::ToolFailure {
+    let tool_fail = titania_core::LaneFailure::Tool {
         tool: "cargo-clippy".to_owned(),
         termination: ProcessTermination::Exited { code: 1 },
     };
@@ -478,7 +479,7 @@ fn lane_failure_all_variants() -> std::result::Result<(), Box<dyn std::error::Er
     let parsed: titania_core::LaneFailure = serde_json::from_str(&json)?;
     assert_eq!(tool_fail, parsed);
 
-    let resource = titania_core::LaneFailure::ResourceFailure {
+    let resource = titania_core::LaneFailure::Resource {
         tool: "cargo-test".to_owned(),
         limit: "memory".to_owned(),
     };
@@ -486,7 +487,7 @@ fn lane_failure_all_variants() -> std::result::Result<(), Box<dyn std::error::Er
     let parsed: titania_core::LaneFailure = serde_json::from_str(&json)?;
     assert_eq!(resource, parsed);
 
-    let suspicious = titania_core::LaneFailure::SuspiciousFailure {
+    let suspicious = titania_core::LaneFailure::Suspicious {
         tool: "cargo-test".to_owned(),
         evidence: "intermittent timeout".to_owned(),
     };

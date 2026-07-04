@@ -85,7 +85,7 @@ pub fn normalize_deny_json(input: &str) -> DenyNormalization {
 #[must_use]
 pub fn deny_missing_binary() -> DenyNormalization {
     DenyNormalization::InfraFailure {
-        failure: LaneFailure::InfraFailure {
+        failure: LaneFailure::Infra {
             tool: TOOL.to_owned(),
             reason: String::from("cargo-deny binary is unavailable"),
         },
@@ -223,7 +223,7 @@ fn label_line(label: &Value) -> u32 {
 }
 
 fn suspicious_candidate(is_clean: bool, malformed_lines: usize) -> Option<LaneFailure> {
-    (is_clean && malformed_lines > 0).then(|| LaneFailure::SuspiciousFailure {
+    (is_clean && malformed_lines > 0).then(|| LaneFailure::Suspicious {
         tool: TOOL.to_owned(),
         evidence: format!("malformed cargo-deny JSON lines: {malformed_lines}"),
     })

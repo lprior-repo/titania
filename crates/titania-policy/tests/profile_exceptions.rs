@@ -1,6 +1,6 @@
 //! Policy and exception parser behavior tests.
 
-use titania_policy::{ExceptionError, ProfileError, parse_exceptions, parse_profile};
+use titania_policy::{ExceptionError, PolicyValue, ProfileError, parse_exceptions, parse_profile};
 
 #[test]
 fn valid_policy_minimal_parses_architecture() {
@@ -13,7 +13,10 @@ infra_crates = ["tokio", "sqlx"]
     )
     .expect("valid policy parses");
 
-    assert_eq!(policy.architecture.core_dirs, ["src/core", "src/domain"]);
+    let core_dirs =
+        policy.architecture.core_dirs.iter().map(|path| path.as_str()).collect::<Vec<_>>();
+
+    assert_eq!(core_dirs, ["src/core", "src/domain"]);
     assert_eq!(policy.architecture.infra_crates, ["tokio", "sqlx"]);
     assert!(policy.lints.is_empty());
     assert!(policy.thresholds.is_empty());
@@ -41,8 +44,11 @@ multiple_versions = "deny"
     .expect("valid policy parses");
 
     assert_eq!(policy.lints.get("clippy::needless_return").map(String::as_str), Some("allow"));
-    assert!(policy.thresholds.contains_key("too_many_lines"));
-    assert!(policy.supply_chain.contains_key("multiple_versions"));
+    assert_eq!(policy.thresholds.get("too_many_lines"), Some(&PolicyValue::Integer(40)));
+    assert_eq!(
+        policy.supply_chain.get("multiple_versions"),
+        Some(&PolicyValue::String("deny".into()))
+    );
 }
 
 #[test]
@@ -97,6 +103,98 @@ fn malformed_policy_toml_returns_parse_error() {
 }
 
 #[test]
+fn policy_unknown_root_key_returns_parse_error() {
+    let err = parse_profile(
+        r#"
+unknown = true
+
+[architecture]
+core_dirs = ["src/core"]
+infra_crates = ["tokio"]
+"#,
+    )
+    .expect_err("unknown root key must fail");
+
+    let ProfileError::ParseError { message } = err else {
+        panic!("expected parse error");
+    };
+    assert!(message.contains("unknown field"));
+}
+
+#[test]
+fn policy_invalid_lint_level_fails() {
+    let err = parse_profile(
+        r#"
+[lints]
+"clippy::needless_return" = "sometimes"
+
+[architecture]
+core_dirs = ["src/core"]
+infra_crates = ["tokio"]
+"#,
+    )
+    .expect_err("invalid lint level must fail");
+
+    assert_invalid_profile_field(err, "lints");
+}
+
+#[test]
+fn policy_whitespace_core_dir_fails() {
+    let err = parse_profile(
+        r#"
+[architecture]
+core_dirs = [" src/core"]
+infra_crates = ["tokio"]
+"#,
+    )
+    .expect_err("whitespace-padded core dir must fail");
+
+    assert_invalid_profile_field(err, "architecture.core_dirs");
+}
+
+#[test]
+fn policy_absolute_core_dir_fails() {
+    let err = parse_profile(
+        r#"
+[architecture]
+core_dirs = ["/src/core"]
+infra_crates = ["tokio"]
+"#,
+    )
+    .expect_err("absolute core dir must fail");
+
+    assert_invalid_profile_field(err, "architecture.core_dirs");
+}
+
+#[test]
+fn policy_whitespace_infra_crate_fails() {
+    let err = parse_profile(
+        r#"
+[architecture]
+core_dirs = ["src/core"]
+infra_crates = [" tokio"]
+"#,
+    )
+    .expect_err("whitespace-padded infra crate must fail");
+
+    assert_invalid_profile_field(err, "architecture.infra_crates");
+}
+
+#[test]
+fn policy_uppercase_infra_crate_fails() {
+    let err = parse_profile(
+        r#"
+[architecture]
+core_dirs = ["src/core"]
+infra_crates = ["Tokio"]
+"#,
+    )
+    .expect_err("uppercase infra crate must fail");
+
+    assert_invalid_profile_field(err, "architecture.infra_crates");
+}
+
+#[test]
 fn valid_single_exception_parses() {
     let exceptions = parse_exceptions(
         r#"
@@ -113,10 +211,10 @@ review = "SAFETY-1234"
     .expect("valid exception parses");
 
     assert_eq!(exceptions.len(), 1);
-    assert_eq!(exceptions[0].rule_id, "FUNC_LOOPS_FOR");
-    assert_eq!(exceptions[0].path, "src/control/loop.rs");
-    assert_eq!(exceptions[0].owner, "flight-control");
-    assert_eq!(exceptions[0].review, "SAFETY-1234");
+    assert_eq!(exceptions[0].rule_id.as_str(), "FUNC_LOOPS_FOR");
+    assert_eq!(exceptions[0].path.as_str(), "src/control/loop.rs");
+    assert_eq!(&*exceptions[0].owner, "flight-control");
+    assert_eq!(&*exceptions[0].review, "SAFETY-1234");
 }
 
 #[test]
@@ -144,7 +242,7 @@ review = "CLI-9"
     .expect("valid exceptions parse");
 
     assert_eq!(exceptions.len(), 2);
-    assert_eq!(exceptions[1].rule_id, "FORMAT_PRINT_001");
+    assert_eq!(exceptions[1].rule_id.as_str(), "FORMAT_PRINT_001");
 }
 
 #[test]
@@ -205,6 +303,15 @@ review = "SAFETY-1234"
 }
 
 #[test]
+fn equal_expiry_date_is_still_valid() {
+    let exceptions =
+        parse_exceptions(valid_exception_with_expiry("2026-07-04").as_str(), "2026-07-04")
+            .expect("same-day exception remains valid");
+
+    assert_eq!(exceptions[0].expires_on.as_ref(), "2026-07-04");
+}
+
+#[test]
 fn malformed_exceptions_toml_returns_parse_error() {
     let err = parse_exceptions("[[exceptions]\nrule_id = 1", "2026-07-04")
         .expect_err("malformed TOML must fail");
@@ -212,6 +319,100 @@ fn malformed_exceptions_toml_returns_parse_error() {
     let ExceptionError::ParseError { message } = err else {
         panic!("expected parse error");
     };
+    assert!(!message.is_empty());
+}
+
+#[test]
+fn singular_exception_table_is_rejected() {
+    let err = parse_exceptions(
+        r#"
+[Exception]
+rule_id = "FUNC_LOOPS_FOR"
+path = "src/control/loop.rs"
+owner = "flight-control"
+reason = "Bounded sensor loop"
+expires_on = "2026-12-31"
+review = "SAFETY-1234"
+"#,
+        "2026-07-04",
+    )
+    .expect_err("unknown singular table must fail");
+
+    let ExceptionError::ParseError { message } = err else {
+        panic!("expected parse error");
+    };
+    assert!(message.contains("unknown field"));
+}
+
+#[test]
+fn exception_lowercase_rule_id_fails() {
+    let err =
+        parse_exceptions(valid_exception_with_rule_id("func_loops_for").as_str(), "2026-07-04")
+            .expect_err("lowercase rule id must fail");
+
+    assert_invalid_exception_field(err, "rule_id", "POLICY_EXCEPTION_INVALID_FIELD");
+}
+
+#[test]
+fn exception_invalid_workspace_path_fails() {
+    let err =
+        parse_exceptions(valid_exception_with_path("src/../control.rs").as_str(), "2026-07-04")
+            .expect_err("path traversal must fail");
+
+    assert_invalid_exception_field(err, "path", "POLICY_EXCEPTION_INVALID_FIELD");
+}
+
+#[test]
+fn exception_non_padded_date_fails() {
+    let err = parse_exceptions(valid_exception_with_expiry("2026-7-04").as_str(), "2026-07-04")
+        .expect_err("non-padded date must fail");
+
+    assert_invalid_exception_field(err, "expires_on", "POLICY_EXCEPTION_INVALID_FIELD");
+}
+
+#[test]
+fn exception_non_leap_feb_29_fails() {
+    let err = parse_exceptions(valid_exception_with_expiry("2026-02-29").as_str(), "2026-01-01")
+        .expect_err("non-leap Feb 29 must fail");
+
+    assert_invalid_exception_field(err, "expires_on", "POLICY_EXCEPTION_INVALID_FIELD");
+}
+
+#[test]
+fn exception_leap_feb_29_parses() {
+    let exceptions =
+        parse_exceptions(valid_exception_with_expiry("2028-02-29").as_str(), "2026-01-01")
+            .expect("leap-year Feb 29 parses");
+
+    assert_eq!(exceptions[0].expires_on.as_ref(), "2028-02-29");
+}
+
+#[test]
+fn invalid_today_date_fails() {
+    let err = parse_exceptions(valid_exception_with_expiry("2028-02-29").as_str(), "2026-2-01")
+        .expect_err("invalid today date must fail");
+
+    assert_invalid_exception_field(err, "today", "POLICY_EXCEPTION_INVALID_FIELD");
+}
+
+fn assert_invalid_profile_field(err: ProfileError, expected: &'static str) {
+    let ProfileError::InvalidField { field, message } = err else {
+        panic!("expected invalid field");
+    };
+    assert_eq!(field, expected);
+    assert!(!message.is_empty());
+}
+
+fn assert_invalid_exception_field(
+    err: ExceptionError,
+    expected: &'static str,
+    expected_code: &'static str,
+) {
+    assert_eq!(err.code(), expected_code);
+    let ExceptionError::InvalidField { field, message } = err else {
+        panic!("expected invalid field");
+    };
+    assert_eq!(field, expected);
     assert!(!message.is_empty());
 }
 
@@ -233,4 +434,46 @@ fn missing_exception_field(field: &'static str) -> &'static str {
         panic!("expected missing field");
     };
     field
+}
+
+fn valid_exception_with_expiry(expires_on: &str) -> String {
+    format!(
+        r#"
+[[exceptions]]
+rule_id = "FUNC_LOOPS_FOR"
+path = "src/control/loop.rs"
+owner = "flight-control"
+reason = "Bounded sensor loop"
+expires_on = "{expires_on}"
+review = "SAFETY-1234"
+"#
+    )
+}
+
+fn valid_exception_with_rule_id(rule_id: &str) -> String {
+    format!(
+        r#"
+[[exceptions]]
+rule_id = "{rule_id}"
+path = "src/control/loop.rs"
+owner = "flight-control"
+reason = "Bounded sensor loop"
+expires_on = "2026-12-31"
+review = "SAFETY-1234"
+"#
+    )
+}
+
+fn valid_exception_with_path(path: &str) -> String {
+    format!(
+        r#"
+[[exceptions]]
+rule_id = "FUNC_LOOPS_FOR"
+path = "{path}"
+owner = "flight-control"
+reason = "Bounded sensor loop"
+expires_on = "2026-12-31"
+review = "SAFETY-1234"
+"#
+    )
 }

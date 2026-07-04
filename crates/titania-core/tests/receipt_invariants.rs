@@ -23,12 +23,13 @@ fn quality_receipt_new_rejects_empty_lane_list() -> Result<(), Box<dyn Error>> {
     let policy = Digest::from_bytes(b"policy");
     let toolchain = Digest::from_bytes(b"toolchain");
 
-    let err =
-        QualityReceipt::new(scope, source, lock, policy, toolchain, Vec::new().into_boxed_slice())
-            .err()
-            .ok_or_else(|| {
-                std::io::Error::other("empty lane list was accepted by QualityReceipt::new")
-            })?;
+    let err = QualityReceipt::new(
+        scope,
+        ReceiptDigests::new(source, lock, policy, toolchain),
+        Vec::new().into_boxed_slice(),
+    )
+    .err()
+    .ok_or_else(|| std::io::Error::other("empty lane list was accepted by QualityReceipt::new"))?;
 
     assert!(
         matches!(err, ReceiptError::EmptyLaneReceiptList),

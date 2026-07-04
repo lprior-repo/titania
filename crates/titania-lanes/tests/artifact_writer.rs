@@ -11,8 +11,8 @@ use std::path::Path;
 
 use tempfile::TempDir;
 use titania_core::{
-    CommandEvidence, Digest, Finding, FindingEffect, GateScope, Lane, LaneEvidence, LaneOutcome,
-    Location, RepairHint, RuleId, WorkspacePath,
+    CommandEvidence, Digest, Finding, GateScope, Lane, LaneEvidence, LaneOutcome, Location,
+    RepairHint, RuleId, WorkspacePath,
 };
 
 /// Type alias used throughout this test module.
@@ -37,7 +37,7 @@ fn stub_evidence() -> LaneEvidence {
 
 /// Helper: build a single `Finding` for a `LaneOutcome::Findings` path.
 fn stub_finding() -> Finding {
-    Finding::new(
+    Finding::reject(
         Lane::Fmt,
         RuleId::new("FUNC_PRINT_STDOUT").unwrap(),
         Location::Span {
@@ -49,9 +49,7 @@ fn stub_finding() -> Finding {
         },
         "Found `println!` in production source".into(),
         RepairHint::RequiresHumanReview { note: "Replace with tracing or a logging facade".into() },
-        FindingEffect::Reject,
     )
-    .unwrap()
 }
 
 /// Build a minimal synthetic target project inside a `TempDir` — a single

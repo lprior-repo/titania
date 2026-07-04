@@ -11,10 +11,9 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
-#[path = "loom_list/lane.rs"]
-mod lane;
+include!("loom_list/lane.rs");
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    lane::main_exit(&args)
+    main_exit(&args)
 }
