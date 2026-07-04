@@ -1,0 +1,2 @@
+{"type":"diagnostic","fields":{"code":"rejected","graphs":[{"crates":["WTFPL"]}],"labels":[{"column":1,"line":1,"message":"unlicensed-pkg 0.5.0 uses license WTFPL which is not in the allow list","span":"WTFPL"}],"message":"unlicensed-pkg 0.5.0 uses license WTFPL which is not in the allow list","severity":"error"}}
+{"type":"summary","fields":{"advisories":{"errors":0,"helps":0,"notes":0,"warnings":0},"bans":{"errors":0,"helps":0,"notes":0,"warnings":0},"licenses":{"errors":0,"helps":0,"notes":0,"warnings":0},"sources":{"errors":0,"helps":0,"notes":0,"warnings":0}}}

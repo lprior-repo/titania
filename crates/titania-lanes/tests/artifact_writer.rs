@@ -109,7 +109,7 @@ fn findings_outcome_written_to_scoped_lane_file() -> TestResult {
     let (_tmp, target) = make_target()?;
     let scope = GateScope::Edit;
     let lane = Lane::Fmt;
-    let outcome = LaneOutcome::Findings(Box::new([stub_finding()]));
+    let outcome = LaneOutcome::Findings { findings: Box::new([stub_finding()]) };
 
     let written =
         titania_lanes::artifact_writer::write_lane_artifact(&target, scope, lane, &outcome)?;
@@ -310,7 +310,7 @@ fn findings_artifact_includes_outcome_variant_in_json() -> TestResult {
     let (_tmp, target) = make_target()?;
     let scope = GateScope::Edit;
     let lane = Lane::Fmt;
-    let outcome = LaneOutcome::Findings(Box::new([stub_finding()]));
+    let outcome = LaneOutcome::Findings { findings: Box::new([stub_finding()]) };
 
     let written =
         titania_lanes::artifact_writer::write_lane_artifact(&target, scope, lane, &outcome)?;

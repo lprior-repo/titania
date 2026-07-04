@@ -1,5 +1,5 @@
 [workspace]
-members  = [ "crates/titania-core", "crates/titania-lanes", "crates/titania-policy" ]
+members  = [ "crates/titania-core", "crates/titania-lanes", "crates/titania-output", "crates/titania-policy" ]
 resolver = "3"
 
 [workspace.package]

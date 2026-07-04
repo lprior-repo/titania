@@ -38,10 +38,41 @@ use std::path::Path;
 
 use titania_lanes::{LaneExit, LaneReport, RuleId, RuleIdError, current_target_project, exit};
 
-/// Macros the bash lane flags. Kept as a single array so additions land
-/// in one obvious place.
-const PANIC_MACROS: &[&str] = &["assert!", "assert_eq!", "assert_ne!", "unreachable!"];
+/// Legacy summary rule retained in stderr compatibility text for old consumers.
 const PANIC_SURFACE_RULE: &str = "PANIC_SURFACE_001";
+
+/// Panic/assert macro to exact Holzman rule mapping.
+#[derive(Clone, Copy)]
+pub struct PanicMacroRule {
+    macro_name: &'static str,
+    rule_id: &'static str,
+}
+
+impl PanicMacroRule {
+    /// Macro token matched in production Rust source.
+    #[must_use]
+    pub const fn macro_name(self) -> &'static str {
+        self.macro_name
+    }
+
+    /// Exact v1 rule identifier for this macro.
+    #[must_use]
+    pub const fn rule_id(self) -> &'static str {
+        self.rule_id
+    }
+}
+
+/// Macros the panic scan lane flags. Kept as a single matrix so additions
+/// land with their exact rule identifier.
+const PANIC_MACROS: &[PanicMacroRule] = &[
+    PanicMacroRule { macro_name: "assert!", rule_id: "HOLZMAN_PANIC_ASSERT" },
+    PanicMacroRule { macro_name: "assert_eq!", rule_id: "HOLZMAN_PANIC_ASSERT_EQ" },
+    PanicMacroRule { macro_name: "assert_ne!", rule_id: "HOLZMAN_PANIC_ASSERT_NE" },
+    PanicMacroRule { macro_name: "unreachable!", rule_id: "HOLZMAN_PANIC_UNREACHABLE" },
+];
+
+/// Tool required by the v1 panic-scan lane contract.
+const RG_TOOL: &str = "rg";
 
 /// Path segments whose presence means the file is non-production.
 const EXCLUDED_SEGMENTS: &[&str] = &[
@@ -73,31 +104,41 @@ fn main() -> std::process::ExitCode {
     if output::write_scan_header().is_err() {
         return exit(LaneExit::Failure);
     }
-    let rule = match panic_surface_rule() {
-        Ok(rule) => rule,
-        Err(error) => {
-            return output::exit_after_stderr_line(
-                &format!("[check-panic-surface] rule id configuration error: {error}"),
-                LaneExit::Failure,
-            );
-        }
-    };
-    emit_result(&scan_target(target.as_std_path(), &rule))
+    if !rg_available() {
+        return output::exit_after_stderr_line(
+            "InfraFailure: tool rg unavailable for panic-scan",
+            LaneExit::Failure,
+        );
+    }
+    if let Err(error) = panic_surface_rules() {
+        return output::exit_after_stderr_line(
+            &format!("[check-panic-surface] rule id configuration error: {error}"),
+            LaneExit::Failure,
+        );
+    }
+    emit_result(&scan_target(target.as_std_path()))
 }
 
-/// Build the configured panic-surface rule identifier.
+/// Validate the configured panic-surface rule identifiers.
 ///
 /// # Errors
 ///
-/// Returns the invalid rule-id error if the static rule id violates the shared grammar.
-fn panic_surface_rule() -> Result<RuleId, RuleIdError> {
-    RuleId::new(PANIC_SURFACE_RULE)
+/// Returns the invalid rule-id error if any static rule id violates the shared grammar.
+fn panic_surface_rules() -> Result<(), RuleIdError> {
+    PANIC_MACROS.iter().try_for_each(|rule| RuleId::new(rule.rule_id()).map(|_| ()))
 }
 
-fn scan_target(root: &Path, rule: &RuleId) -> LaneReport {
+fn rg_available() -> bool {
+    std::process::Command::new(RG_TOOL)
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
+fn scan_target(root: &Path) -> LaneReport {
     let mut report = LaneReport::new();
     for file in paths::collect_source_files(root) {
-        scan::scan_file(root, &file, rule, &mut report);
+        scan::scan_file(root, &file, &mut report);
     }
     report
 }

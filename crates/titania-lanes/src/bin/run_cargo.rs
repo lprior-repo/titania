@@ -1,5 +1,9 @@
 //! Run Cargo-native lanes inside the target project discovered from CWD.
 
+#[path = "run_cargo/artifacts.rs"]
+/// Typed v1 lane artifact conversion for Cargo lanes.
+pub mod artifacts;
+
 #[path = "run_cargo/findings.rs"]
 /// Finding extraction from Cargo command output.
 pub mod findings;
@@ -22,21 +26,33 @@ fn main() -> ExitCode {
 fn run(args: Vec<String>) -> LaneExit {
     match run_checked(args) {
         Ok(report) => emit_report(&report),
-        Err(RunCargoError::Usage(message)) => exit_after_stderr_line(&message, LaneExit::Usage),
-        Err(RunCargoError::Target(error)) => {
-            exit_after_stderr_line(&format!("target discovery failed: {error}"), LaneExit::Usage)
-        }
-        Err(RunCargoError::Command(error)) => {
-            exit_after_stderr_line(&format!("cargo execution failed: {error}"), LaneExit::Failure)
-        }
-        Err(RunCargoError::CurrentDir(error)) => exit_after_stderr_line(
-            &format!("cannot read current directory: {error}"),
-            LaneExit::Failure,
-        ),
-        Err(RunCargoError::RuleId(error)) => exit_after_stderr_line(
-            &format!("rule id configuration error: {error}"),
-            LaneExit::Failure,
-        ),
+        Err(error) => emit_error(error),
+    }
+}
+
+fn emit_error(error: RunCargoError) -> LaneExit {
+    let code = error_code(&error);
+    exit_after_stderr_line(&error_message(error), code)
+}
+
+const fn error_code(error: &RunCargoError) -> LaneExit {
+    match error {
+        RunCargoError::Usage(_) | RunCargoError::Target(_) => LaneExit::Usage,
+        _other => LaneExit::Failure,
+    }
+}
+
+fn error_message(error: RunCargoError) -> String {
+    match error {
+        RunCargoError::Usage(message) => message,
+        RunCargoError::Target(error) => format!("target discovery failed: {error}"),
+        RunCargoError::Command(error) => format!("cargo execution failed: {error}"),
+        RunCargoError::CurrentDir(error) => format!("cannot read current directory: {error}"),
+        RunCargoError::RuleId(error) => format!("rule id configuration error: {error}"),
+        RunCargoError::Artifact(error) => format!("artifact write failed: {error}"),
+        RunCargoError::Outcome(error) => format!("lane outcome construction failed: {error}"),
+        RunCargoError::Finding(error) => format!("finding construction failed: {error}"),
+        RunCargoError::ToolVersion(error) => format!("tool version capture failed: {error}"),
     }
 }
 

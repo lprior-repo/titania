@@ -181,7 +181,7 @@ fn run_cargo_compile_bad_project_reports_diagnostic() -> TestResult {
 }
 
 #[test]
-fn run_cargo_compile_checks_integration_tests() -> TestResult {
+fn run_cargo_compile_does_not_check_integration_tests() -> TestResult {
     let temp = package_with_lock(
         "compile_integration_bad_project",
         "pub fn value() -> u8 {\n    1\n}\n",
@@ -194,10 +194,8 @@ fn run_cargo_compile_checks_integration_tests() -> TestResult {
     )?;
 
     let output = run_cargo(temp.path(), &["compile"])?;
-    let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1_i32));
-    assert!(stderr.contains("CARGO_COMPILE_001"));
-    assert!(stderr.contains("mismatched types"));
+    assert_eq!(output.status.code(), Some(0_i32));
+    assert_eq!(stderr_text(&output)?, "");
     Ok(())
 }
 
@@ -232,7 +230,7 @@ fn run_cargo_test_bad_project_reports_failed_test() -> TestResult {
 }
 
 #[test]
-fn run_cargo_test_checks_all_features() -> TestResult {
+fn run_cargo_test_does_not_force_all_features() -> TestResult {
     let temp = package_with_lock(
         "test_feature_bad_project",
         "pub fn value() -> u8 {\n    1\n}\n#[cfg(all(test, feature = \"failure\"))]\nmod tests {\n    #[test]\n    fn fails_when_feature_enabled() {\n        assert_eq!(super::value(), 2);\n    }\n}\n",
@@ -241,10 +239,8 @@ fn run_cargo_test_checks_all_features() -> TestResult {
     append_manifest(temp.path(), "\n[features]\nfailure = []\n")?;
 
     let output = run_cargo(temp.path(), &["test"])?;
-    let stderr = stderr_text(&output)?;
-    assert_eq!(output.status.code(), Some(1_i32));
-    assert!(stderr.contains("CARGO_TEST_001"));
-    assert!(stderr.contains("test failed: tests::fails_when_feature_enabled"));
+    assert_eq!(output.status.code(), Some(0_i32));
+    assert_eq!(stderr_text(&output)?, "");
     Ok(())
 }
 

@@ -3,9 +3,71 @@
 use std::{error::Error, fs, path::Path};
 
 use titania_core::{
-    Digest, DigestError, LaneDigest, LaneName, ReceiptDigests, ReceiptEnvelope, ReceiptError,
-    ReceiptLaneExit, ReceiptPeriod, TargetProject, TargetProjectError,
+    Digest, DigestError, GateScope, LaneDigest, LaneName, QualityReceipt, ReceiptDigests,
+    ReceiptEnvelope, ReceiptError, ReceiptLaneExit, ReceiptPeriod, TargetProject,
+    TargetProjectError,
 };
+
+/// Constructing a QualityReceipt with zero lanes must be rejected by the
+/// constructor returning Err(ReceiptError::EmptyLaneReceiptList).
+///
+/// This test is expected to FAIL at compile time until the production
+/// constructor `QualityReceipt::new` is changed from `Self` to
+/// `Result<Self, ReceiptError>`. The compile error proves the invariant
+/// contract is not yet in place.
+#[test]
+fn quality_receipt_new_rejects_empty_lane_list() -> Result<(), Box<dyn Error>> {
+    let scope: GateScope = "edit".parse().unwrap();
+    let source = Digest::from_bytes(b"source");
+    let lock = Digest::from_bytes(b"lock");
+    let policy = Digest::from_bytes(b"policy");
+    let toolchain = Digest::from_bytes(b"toolchain");
+
+    let err =
+        QualityReceipt::new(scope, source, lock, policy, toolchain, Vec::new().into_boxed_slice())
+            .err()
+            .ok_or_else(|| {
+                std::io::Error::other("empty lane list was accepted by QualityReceipt::new")
+            })?;
+
+    assert!(
+        matches!(err, ReceiptError::EmptyLaneReceiptList),
+        "expected ReceiptError::EmptyLaneReceiptList, got {err:?}"
+    );
+    Ok(())
+}
+
+/// Deserializing a QualityReceipt JSON lane entry that omits the required
+/// `evidence_digest` field must fail, and the error must reference the
+/// missing field.
+#[test]
+fn quality_receipt_deserialization_rejects_lane_missing_evidence_digest()
+-> Result<(), Box<dyn Error>> {
+    let json = serde_json::json!({
+        "schema_version": 1_u16,
+        "scope": "edit",
+        "source_digest": "aa".repeat(32),
+        "cargo_lock_digest": "bb".repeat(32),
+        "policy_digest": "cc".repeat(32),
+        "toolchain_digest": "dd".repeat(32),
+        "lanes": [
+            {
+                "lane": "Fmt",
+                "clean": true
+            }
+        ]
+    });
+
+    let err = serde_json::from_value::<QualityReceipt>(json).err().ok_or_else(|| {
+        std::io::Error::other("QualityReceipt with missing evidence_digest was accepted")
+    })?;
+
+    assert!(
+        err.to_string().to_lowercase().contains("evidence_digest"),
+        "error did not mention evidence_digest: {err:?}"
+    );
+    Ok(())
+}
 
 type TestResult = Result<(), Box<dyn Error>>;
 

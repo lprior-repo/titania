@@ -1,0 +1,5 @@
+this is not JSON at all
+just plain text output
+cargo-deny produces raw text here
+{"missing closing brace
+{"type": "diagnostic"

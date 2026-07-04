@@ -1,0 +1,2 @@
+{"type":"diagnostic","fields":{"code":"banned","graphs":[{"crates":["evil-pkg 2.3.1"]}],"labels":[{"column":1,"line":1,"message":"crate evil-pkg 2.3.1 is banned in this project","span":"evil-pkg 2.3.1"}],"message":"crate evil-pkg 2.3.1 is banned in this project","severity":"error"}}
+{"type":"summary","fields":{"advisories":{"errors":0,"helps":0,"notes":0,"warnings":0},"bans":{"errors":0,"helps":0,"notes":0,"warnings":0},"licenses":{"errors":0,"helps":0,"notes":0,"warnings":0},"sources":{"errors":0,"helps":0,"notes":0,"warnings":0}}}

@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Digest, GateScope, Lane};
+use crate::{Digest, GateScope, Lane, error::ReceiptError};
 
 /// Per-lane receipt summary inside a [`QualityReceiptV1`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -28,12 +28,51 @@ impl LaneReceipt {
     }
 }
 
+// Manual deserialization validates the v1 schema marker before constructing the
+// domain receipt.
+impl<'de> Deserialize<'de> for QualityReceiptV1 {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        let wire = Wire::deserialize(de)?;
+        validate_schema_version::<D::Error>(wire.schema_version)?;
+        Self::new(
+            wire.scope,
+            wire.source_digest,
+            wire.cargo_lock_digest,
+            wire.policy_digest,
+            wire.toolchain_digest,
+            wire.lanes,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+/// Validate a receipt schema version against the v1 wire contract.
+///
+/// # Errors
+///
+/// Returns a serde error when the payload schema version is not v1.
+fn validate_schema_version<E: serde::de::Error>(schema_version: u16) -> Result<(), E> {
+    (schema_version == RECEIPT_SCHEMA_VERSION).then_some(()).ok_or_else(|| {
+        E::custom(format!(
+            "unsupported schema version: expected {RECEIPT_SCHEMA_VERSION}, got {schema_version}"
+        ))
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct Wire {
+    schema_version: u16,
+    scope: GateScope,
+    source_digest: Digest,
+    cargo_lock_digest: Digest,
+    policy_digest: Digest,
+    toolchain_digest: Digest,
+    lanes: Box<[LaneReceipt]>,
+}
 /// v1 Quality Receipt — stable evidence envelope for a gate run.
 ///
 /// This is the spec §10 `QualityReceipt`, distinct from the existing
 /// `receipt::QualityReceipt` which tracks per-lane digests for receipt files.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct QualityReceiptV1 {
     /// Schema version. Always `1` for v1.
     pub schema_version: u16,
@@ -57,16 +96,20 @@ impl QualityReceiptV1 {
         reason = "The v1 receipt schema has four independent digest fields plus scope and lane summaries."
     )]
     /// Construct a v1 [`QualityReceiptV1`]. Always uses `schema_version = 1`.
-    #[must_use]
-    pub const fn new(
+    ///
+    /// # Errors
+    /// - [`ReceiptError::EmptyLaneReceiptList`] if `lanes` is empty.
+    pub fn new(
         scope: GateScope,
         source_digest: Digest,
         cargo_lock_digest: Digest,
         policy_digest: Digest,
         toolchain_digest: Digest,
         lanes: Box<[LaneReceipt]>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ReceiptError> {
+        let lanes =
+            (!lanes.is_empty()).then_some(lanes).ok_or(ReceiptError::EmptyLaneReceiptList)?;
+        Ok(Self {
             schema_version: RECEIPT_SCHEMA_VERSION,
             scope,
             source_digest,
@@ -74,7 +117,7 @@ impl QualityReceiptV1 {
             policy_digest,
             toolchain_digest,
             lanes,
-        }
+        })
     }
 }
 

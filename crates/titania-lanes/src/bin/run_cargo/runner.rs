@@ -1,13 +1,21 @@
 use std::env;
 
-use titania_core::{TargetProject, TargetProjectError, discover_target};
+use titania_core::{
+    FindingError, OutcomeError, TargetProject, TargetProjectError, discover_target,
+};
 use titania_lanes::{
     CommandIn, CommandOutput, Finding, LaneError, LaneReport, RuleId, RuleIdError,
+    artifact_writer::ArtifactWriterError,
 };
 
-use crate::{findings::collect_findings, lane::CargoLane, usage_message};
+use crate::{
+    artifacts::{write_failure_artifact, write_success_artifact},
+    findings::collect_findings,
+    lane::CargoLane,
+    usage_message,
+};
 
-const COMPILE_ARGS: &[&str] = &["check", "--workspace", "--all-targets", "--frozen"];
+const COMPILE_ARGS: &[&str] = &["check", "--workspace", "--frozen"];
 const CLIPPY_ARGS: &[&str] = &[
     "clippy",
     "--workspace",
@@ -17,13 +25,38 @@ const CLIPPY_ARGS: &[&str] = &[
     "--frozen",
     "--message-format=json",
     "--",
+    "-F",
+    "clippy::unwrap_used",
+    "-F",
+    "clippy::expect_used",
+    "-F",
+    "clippy::panic",
+    "-F",
+    "clippy::panic_in_result_fn",
+    "-F",
+    "clippy::todo",
+    "-F",
+    "clippy::unimplemented",
+    "-F",
+    "clippy::indexing_slicing",
+    "-F",
+    "clippy::string_slice",
+    "-F",
+    "clippy::get_unwrap",
+    "-F",
+    "clippy::arithmetic_side_effects",
+    "-F",
+    "clippy::dbg_macro",
+    "-F",
+    "clippy::as_conversions",
+    "-F",
+    "clippy::let_underscore_must_use",
+    "-F",
+    "clippy::await_holding_lock",
     "-D",
     "warnings",
-    "-W",
-    "clippy::all",
 ];
-const TEST_ARGS: &[&str] =
-    &["test", "--workspace", "--all-features", "--frozen", "--", "--test-threads=1"];
+const TEST_ARGS: &[&str] = &["test", "--workspace", "--frozen", "--", "--test-threads=1"];
 const BUILD_ARGS: &[&str] = &["build", "--workspace", "--release", "--frozen"];
 
 #[derive(Debug)]
@@ -33,6 +66,10 @@ pub(crate) enum RunCargoError {
     Command(LaneError),
     CurrentDir(std::io::Error),
     RuleId(RuleIdError),
+    Artifact(ArtifactWriterError),
+    Outcome(OutcomeError),
+    Finding(FindingError),
+    ToolVersion(String),
 }
 
 /// Runs the selected Cargo lane and returns its lane report.
@@ -50,7 +87,7 @@ pub(crate) fn run_checked(args: Vec<String>) -> Result<LaneReport, RunCargoError
     let extra_args: Vec<String> = rest.collect();
     let cwd = env::current_dir().map_err(RunCargoError::CurrentDir)?;
     let target = discover_target(&cwd).map_err(RunCargoError::Target)?;
-    run_lane(&target, lane, &rule, &extra_args).map_err(RunCargoError::Command)
+    run_lane(&target, lane, &rule, &extra_args)
 }
 
 /// Select the requested Cargo lane from command-line arguments.
@@ -76,17 +113,27 @@ fn rule_for_lane(lane: CargoLane) -> Result<RuleId, RunCargoError> {
 ///
 /// # Errors
 ///
-/// Returns the lane error reported by command construction, process execution,
-/// output decoding, or command-output classification.
+/// Returns typed errors from command construction/execution, output decoding,
+/// lane-outcome construction, or artifact writing.
 fn run_lane(
     target: &TargetProject,
     lane: CargoLane,
     rule: &RuleId,
     extra_args: &[String],
-) -> Result<LaneReport, LaneError> {
+) -> Result<LaneReport, RunCargoError> {
     let mut report = scanned_report();
-    let output = cargo_output(target, lane, extra_args)?;
-    classify_output(&output, lane, rule, &mut report)?;
+    let output = match cargo_output(target, lane, extra_args) {
+        Ok(output) => output,
+        Err(error) => {
+            write_failure_artifact(target, lane, &error)?;
+            return Err(RunCargoError::Command(error));
+        }
+    };
+    if let Err(error) = classify_output(&output, lane, rule, &mut report) {
+        write_failure_artifact(target, lane, &error)?;
+        return Err(RunCargoError::Command(error));
+    }
+    write_success_artifact(target, lane, extra_args, &output, &report)?;
     Ok(report)
 }
 
@@ -147,43 +194,28 @@ fn cargo_output(
     lane: CargoLane,
     extra_args: &[String],
 ) -> Result<CommandOutput, LaneError> {
-    let manifest = target.manifest_path();
     let mut command = CommandIn::new(target, "cargo")?;
     let _ = command.inherit_env();
-    append_lane_args(&mut command, lane, manifest.as_str());
+    append_lane_args(&mut command, lane);
     let _ = command.args_strings(extra_args);
     command.run_capture_raw()
 }
 
-fn append_lane_args<'a>(command: &mut CommandIn<'a>, lane: CargoLane, manifest: &'a str) {
+fn append_lane_args(command: &mut CommandIn<'_>, lane: CargoLane) {
+    let _ = command.args(args_for_lane(lane));
+}
+
+pub(crate) const fn args_for_lane(lane: CargoLane) -> &'static [&'static str] {
     match lane {
-        CargoLane::Fmt => append_fmt_args(command, manifest),
-        CargoLane::Compile => append_compile_args(command),
-        CargoLane::Clippy => append_clippy_args(command),
-        CargoLane::Test => append_test_args(command),
-        CargoLane::Build => append_build_args(command),
+        CargoLane::Fmt => FMT_ARGS,
+        CargoLane::Compile => COMPILE_ARGS,
+        CargoLane::Clippy => CLIPPY_ARGS,
+        CargoLane::Test => TEST_ARGS,
+        CargoLane::Build => BUILD_ARGS,
     }
 }
 
-fn append_fmt_args<'a>(command: &mut CommandIn<'a>, manifest: &'a str) {
-    let _ = command.arg("fmt").arg("--check").arg("--manifest-path").arg(manifest);
-}
-
-fn append_compile_args(command: &mut CommandIn<'_>) {
-    let _ = command.args(COMPILE_ARGS);
-}
-
-fn append_clippy_args(command: &mut CommandIn<'_>) {
-    let _ = command.args(CLIPPY_ARGS);
-}
-
-fn append_test_args(command: &mut CommandIn<'_>) {
-    let _ = command.args(TEST_ARGS);
-}
-
-fn append_build_args(command: &mut CommandIn<'_>) {
-    let _ = command.args(BUILD_ARGS);
-}
+const FMT_ARGS: &[&str] = &["fmt", "--all", "--check"];
 
 fn fallback_message(stdout: &str, stderr: &str) -> String {
     let message = stderr

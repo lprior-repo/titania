@@ -1,0 +1,128 @@
+# Embedded ast-grep functional-rule catalog for Titania v1.
+# Each document is loaded with include_str! by the AstGrep lane; path filters keep
+# these structural checks on production Rust only.
+
+id: FUNC_LOOPS_FOR
+language: Rust
+severity: error
+message: "FUNC_LOOPS_FOR: replace imperative for loops with iterator pipelines"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "for $LOOP in $ITER { $$$BODY }"
+metadata:
+  effect: Reject
+  repair_hint: UseIteratorPipeline
+---
+id: FUNC_LOOPS_WHILE
+language: Rust
+severity: error
+message: "FUNC_LOOPS_WHILE: replace while loops with bounded iterator or state-machine transitions"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "while $COND { $$$BODY }"
+metadata:
+  effect: Reject
+  repair_hint: UseIteratorPipeline
+---
+id: FUNC_LOOPS_LOOP
+language: Rust
+severity: error
+message: "FUNC_LOOPS_LOOP: replace open-ended loop blocks with explicit bounded control flow"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "loop { $$$BODY }"
+metadata:
+  effect: Reject
+  repair_hint: UseIteratorPipeline
+---
+id: FUNC_PRINT_STDOUT
+language: Rust
+severity: error
+message: "FUNC_PRINT_STDOUT: use typed output/reporting instead of print! or println!"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "print!($$$ARGS)"
+    - pattern: "println!($$$ARGS)"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview
+---
+id: FUNC_PRINT_STDERR
+language: Rust
+severity: error
+message: "FUNC_PRINT_STDERR: use typed diagnostics instead of eprint! or eprintln!"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "eprint!($$$ARGS)"
+    - pattern: "eprintln!($$$ARGS)"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview
+---
+id: FUNC_WILDCARD_IMPORT
+language: Rust
+severity: warning
+message: "FUNC_WILDCARD_IMPORT: replace wildcard imports with explicit imports"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "use $PATH::*;"
+metadata:
+  effect: Informational
+---
+id: FUNC_UNWRAP_OR
+language: Rust
+severity: error
+message: "FUNC_UNWRAP_OR: replace unwrap_or defaults with explicit typed recovery"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "$VALUE.unwrap_or($DEFAULT)"
+    - pattern: "$VALUE.unwrap_or_else($DEFAULT)"
+    - pattern: "$VALUE.unwrap_or_default()"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview

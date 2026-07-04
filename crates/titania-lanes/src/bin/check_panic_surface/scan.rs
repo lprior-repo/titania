@@ -2,10 +2,10 @@ use std::path::Path;
 
 use titania_lanes::{Finding, LaneReport, RuleId, SourceLine};
 
-use super::{PANIC_MACROS, paths::rel_str};
+use super::{PANIC_MACROS, PANIC_SURFACE_RULE, PanicMacroRule, paths::rel_str};
 
 /// Scan one Rust source file and append any panic-surface findings.
-pub fn scan_file(root: &Path, path: &Path, rule: &RuleId, report: &mut LaneReport) {
+pub fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
     report.record_scan();
     let Ok(content) = std::fs::read_to_string(path) else {
         return;
@@ -13,7 +13,7 @@ pub fn scan_file(root: &Path, path: &Path, rule: &RuleId, report: &mut LaneRepor
 
     let display = rel_str(root, path);
     let mut state = ScanState::default();
-    let mut sink = ScanSink { display: &display, rule, report };
+    let mut sink = ScanSink { display: &display, report };
     for (idx, raw) in content.lines().enumerate() {
         state.scan_line(raw, line_no_from_idx(idx), &mut sink);
     }
@@ -21,7 +21,6 @@ pub fn scan_file(root: &Path, path: &Path, rule: &RuleId, report: &mut LaneRepor
 
 struct ScanSink<'a> {
     display: &'a str,
-    rule: &'a RuleId,
     report: &'a mut LaneReport,
 }
 
@@ -61,14 +60,20 @@ fn push_panic_macro_if_present(
     line_no: u32,
     sink: &mut ScanSink<'_>,
 ) {
-    let Some(macro_name) = first_panic_macro(code).filter(|_| !inside_test_or_kani(state)) else {
+    let Some(macro_rule) = first_panic_macro(code).filter(|_| !inside_test_or_kani(state)) else {
+        return;
+    };
+    let Ok(rule) = RuleId::new(macro_rule.rule_id()) else {
         return;
     };
     sink.report.push(Finding::new(
-        sink.rule.clone(),
+        rule,
         sink.display,
         line_no,
-        format!("production panic/assert macro `{macro_name}` is forbidden"),
+        format!(
+            "production panic/assert macro `{}` is forbidden ({PANIC_SURFACE_RULE})",
+            macro_rule.macro_name()
+        ),
     ));
 }
 
@@ -192,8 +197,8 @@ fn is_cfg_attr_open(line: &str, scopes: &[&str]) -> bool {
     scopes.iter().any(|s| inside.split(',').any(|p| p.trim() == *s))
 }
 
-fn first_panic_macro(line: &str) -> Option<&'static str> {
-    PANIC_MACROS.iter().copied().find(|m| panic_macro_matches(line, m))
+fn first_panic_macro(line: &str) -> Option<PanicMacroRule> {
+    PANIC_MACROS.iter().copied().find(|rule| panic_macro_matches(line, rule.macro_name()))
 }
 
 fn panic_macro_matches(line: &str, macro_name: &str) -> bool {

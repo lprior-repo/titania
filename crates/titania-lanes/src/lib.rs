@@ -29,7 +29,9 @@ use thiserror::Error;
 use titania_core::{TargetProject, TargetProjectError, discover_target};
 
 pub mod artifact_writer;
+pub mod clippy_normalizer;
 pub mod command;
+pub mod deny_normalizer;
 pub mod helpers;
 pub mod source_line;
 

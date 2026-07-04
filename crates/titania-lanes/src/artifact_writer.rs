@@ -81,37 +81,55 @@ struct ArtifactOutcome<'a> {
     skipped: Option<SkipReason>,
 }
 
+impl<'a> ArtifactOutcome<'a> {
+    const fn clean(evidence: &'a LaneEvidence) -> Self {
+        Self {
+            variant: "clean",
+            evidence: Some(evidence),
+            findings: None,
+            failure: None,
+            skipped: None,
+        }
+    }
+
+    const fn findings(findings: &'a [Finding]) -> Self {
+        Self {
+            variant: "findings",
+            evidence: None,
+            findings: Some(findings),
+            failure: None,
+            skipped: None,
+        }
+    }
+
+    const fn failed(failure: &'a LaneFailure) -> Self {
+        Self {
+            variant: "failed",
+            evidence: None,
+            findings: None,
+            failure: Some(failure),
+            skipped: None,
+        }
+    }
+
+    const fn skipped(reason: SkipReason) -> Self {
+        Self {
+            variant: "skipped",
+            evidence: None,
+            findings: None,
+            failure: None,
+            skipped: Some(reason),
+        }
+    }
+}
+
 impl<'a> From<&'a LaneOutcome> for ArtifactOutcome<'a> {
     fn from(outcome: &'a LaneOutcome) -> Self {
         match outcome {
-            LaneOutcome::Clean { evidence } => Self {
-                variant: "clean",
-                evidence: Some(evidence),
-                findings: None,
-                failure: None,
-                skipped: None,
-            },
-            LaneOutcome::Findings(findings) => Self {
-                variant: "findings",
-                evidence: None,
-                findings: Some(findings),
-                failure: None,
-                skipped: None,
-            },
-            LaneOutcome::Failed(failure) => Self {
-                variant: "failed",
-                evidence: None,
-                findings: None,
-                failure: Some(failure),
-                skipped: None,
-            },
-            LaneOutcome::Skipped(reason) => Self {
-                variant: "skipped",
-                evidence: None,
-                findings: None,
-                failure: None,
-                skipped: Some(*reason),
-            },
+            LaneOutcome::Clean { evidence } => Self::clean(evidence),
+            LaneOutcome::Findings { findings } => Self::findings(findings),
+            LaneOutcome::Failed(failure) => Self::failed(failure),
+            LaneOutcome::Skipped { reason } => Self::skipped(*reason),
         }
     }
 }

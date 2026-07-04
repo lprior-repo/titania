@@ -10,8 +10,8 @@
 use titania_core::{
     CommandEvidence, DiagnosticSeverity, Digest, Finding, FindingEffect, GateScope,
     InputDiagnostic, Lane, LaneEvidence, LaneFailure, LaneOutcome, LaneReceipt, Location,
-    PolicyDiagnostic, ProcessTermination, QualityReceipt, RejectKind, RepairHint, Report, RuleId,
-    SkipReason, TextRange, WorkspacePath,
+    PolicyDiagnostic, ProcessTermination, QualityReceipt, ReceiptError, RejectKind, RepairHint,
+    Report, RuleId, SkipReason, TextRange, WorkspacePath,
 };
 
 // ===========================================================================
@@ -272,7 +272,7 @@ fn repair_hint_serde_round_trip() {
 // Report, RejectKind
 // ===========================================================================
 
-fn make_quality_receipt() -> QualityReceipt {
+fn make_quality_receipt() -> Result<QualityReceipt, ReceiptError> {
     let digest = Digest::from_bytes(b"test");
     QualityReceipt::new(
         GateScope::Edit,
@@ -280,13 +280,13 @@ fn make_quality_receipt() -> QualityReceipt {
         digest.clone(),
         digest.clone(),
         digest.clone(),
-        Box::new([]),
+        Box::new([LaneReceipt::new(Lane::Fmt, digest, true)]),
     )
 }
 
 #[test]
 fn report_pass_direct_construction() {
-    let receipt = make_quality_receipt();
+    let receipt = make_quality_receipt().unwrap();
     let per_lane: Box<[LaneOutcome]> = Box::new([]);
     let report = Report::Pass { receipt, per_lane };
     assert!(report.is_pass());
@@ -294,15 +294,16 @@ fn report_pass_direct_construction() {
 }
 #[test]
 fn report_pass_constructor_accepts_lane_outcomes() {
-    let receipt = make_quality_receipt();
-    let per_lane: Box<[LaneOutcome]> = Box::new([LaneOutcome::Skipped(SkipReason::NotApplicable)]);
+    let receipt = make_quality_receipt().unwrap();
+    let per_lane: Box<[LaneOutcome]> =
+        Box::new([LaneOutcome::Skipped { reason: SkipReason::NotApplicable }]);
     let report = Report::pass(receipt, per_lane).unwrap();
     assert!(report.is_pass());
 }
 
 #[test]
 fn report_pass_constructor_rejects_empty_lane_outcomes() {
-    let receipt = make_quality_receipt();
+    let receipt = make_quality_receipt().unwrap();
     let per_lane: Box<[LaneOutcome]> = Box::new([]);
     let result = Report::pass(receipt, per_lane);
     assert!(matches!(result, Err(titania_core::ReportError::EmptyPerLane)));
@@ -342,7 +343,7 @@ fn report_reject_rejects_empty_collections() {
 
 #[test]
 fn report_reject_kind_none_on_non_reject() {
-    let receipt = make_quality_receipt();
+    let receipt = make_quality_receipt().unwrap();
     let p = Report::Pass { receipt, per_lane: Box::new([]) };
     assert_eq!(p.reject_kind(), None);
 
@@ -405,8 +406,8 @@ fn lane_outcome_clean_rejects_nonzero_exit() {
 #[test]
 fn lane_outcome_findings() {
     let findings: Box<[Finding]> = Box::new([]);
-    let outcome = LaneOutcome::Findings(findings);
-    assert!(matches!(outcome, LaneOutcome::Findings(f) if f.is_empty()));
+    let outcome = LaneOutcome::Findings { findings };
+    assert!(matches!(outcome, LaneOutcome::Findings { findings } if findings.is_empty()));
 }
 
 #[test]
@@ -419,17 +420,20 @@ fn lane_outcome_failed() {
 
 #[test]
 fn lane_outcome_skipped_all_reasons() {
-    let outcome = LaneOutcome::Skipped(SkipReason::PriorCompilationFailure);
-    assert!(matches!(outcome, LaneOutcome::Skipped(SkipReason::PriorCompilationFailure)));
+    let outcome = LaneOutcome::Skipped { reason: SkipReason::PriorCompilationFailure };
+    assert!(matches!(
+        outcome,
+        LaneOutcome::Skipped { reason: SkipReason::PriorCompilationFailure }
+    ));
 
-    let outcome = LaneOutcome::Skipped(SkipReason::NotSelectedByScope);
-    assert!(matches!(outcome, LaneOutcome::Skipped(SkipReason::NotSelectedByScope)));
+    let outcome = LaneOutcome::Skipped { reason: SkipReason::NotSelectedByScope };
+    assert!(matches!(outcome, LaneOutcome::Skipped { reason: SkipReason::NotSelectedByScope }));
 
-    let outcome = LaneOutcome::Skipped(SkipReason::NotApplicable);
-    assert!(matches!(outcome, LaneOutcome::Skipped(SkipReason::NotApplicable)));
+    let outcome = LaneOutcome::Skipped { reason: SkipReason::NotApplicable };
+    assert!(matches!(outcome, LaneOutcome::Skipped { reason: SkipReason::NotApplicable }));
 
-    let outcome = LaneOutcome::Skipped(SkipReason::PolicyDisabled);
-    assert!(matches!(outcome, LaneOutcome::Skipped(SkipReason::PolicyDisabled)));
+    let outcome = LaneOutcome::Skipped { reason: SkipReason::PolicyDisabled };
+    assert!(matches!(outcome, LaneOutcome::Skipped { reason: SkipReason::PolicyDisabled }));
 }
 
 // ===========================================================================
@@ -582,8 +586,9 @@ fn quality_receipt_constructs() {
         digest.clone(),
         digest.clone(),
         digest.clone(),
-        Box::new([]),
-    );
+        Box::new([LaneReceipt::new(Lane::Fmt, digest, true)]),
+    )
+    .unwrap();
     assert_eq!(receipt.schema_version, 1);
     assert_eq!(receipt.scope, GateScope::Edit);
 }
@@ -616,7 +621,8 @@ fn quality_receipt_serde_round_trip() {
         digest.clone(),
         digest.clone(),
         Box::new([lr]),
-    );
+    )
+    .unwrap();
     let json = serde_json::to_string(&receipt).unwrap();
     let back: QualityReceipt = serde_json::from_str(&json).unwrap();
     assert_eq!(receipt, back);

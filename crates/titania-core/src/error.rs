@@ -136,6 +136,9 @@ pub enum ReceiptError {
         /// Receipt finish timestamp.
         finished_at: u64,
     },
+    /// A v1 quality receipt contained no per-lane receipt entries.
+    #[error("quality receipt must include at least one lane receipt")]
+    EmptyLaneReceiptList,
     /// Receipt target root was empty.
     #[error("receipt target_root must not be empty")]
     TargetRootEmpty,

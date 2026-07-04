@@ -18,7 +18,9 @@ fn is_behavior_test_path(path: &str) -> bool {
         return false;
     }
     let is_in_tests = path.split('/').any(|segment| matches!(segment, "tests"));
-    is_in_tests || path.contains("workspace_tests") || is_module_test_path(path)
+    (is_in_tests && !path.contains("/fixtures/"))
+        || path.contains("workspace_tests")
+        || is_module_test_path(path)
 }
 
 fn is_rust_ext(path: &str) -> bool {
@@ -86,9 +88,6 @@ fn has_ignore_or_skip(text: &str) -> bool {
     lower.contains("#[ignore")
         || (lower.contains("cfg_attr") && lower.contains("ignore"))
         || lower.contains("return;")
-        || lower.contains(" skipped")
-        || lower.contains(" skip")
-        || lower.contains("ignored")
 }
 
 fn is_fixture_literal_line(text: &str) -> bool {

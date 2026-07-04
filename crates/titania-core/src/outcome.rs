@@ -133,11 +133,17 @@ pub enum LaneOutcome {
         evidence: LaneEvidence,
     },
     /// Lane completed and emitted one or more findings.
-    Findings(Box<[Finding]>),
+    Findings {
+        /// Findings emitted by the lane.
+        findings: Box<[Finding]>,
+    },
     /// Lane failed before producing a clean or findings verdict.
     Failed(LaneFailure),
     /// Lane was intentionally skipped for a recorded reason.
-    Skipped(SkipReason),
+    Skipped {
+        /// Reason the lane was skipped.
+        reason: SkipReason,
+    },
 }
 
 impl LaneOutcome {

@@ -1,0 +1,4 @@
+{"reason":"compiler-message"
+THIS IS NOT JSON AT ALL
+{"missing_reason": true, "compiler_message"
+<binary garbage: \x00\x01\x02\xff

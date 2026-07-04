@@ -1,0 +1,106 @@
+# Embedded ast-grep bypass-rule catalog for Titania v1.
+# These rules reject local suppression/bypass mechanisms in production Rust.
+
+id: BYPASS_ALLOW_ATTR
+language: Rust
+severity: error
+message: "BYPASS_ALLOW_ATTR: remove item-level #[allow(...)] suppression"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "#[allow($$$LINTS)]"
+metadata:
+  effect: Reject
+  repair_hint: RemoveBypassAttribute
+---
+id: BYPASS_EXPECT_ATTR
+language: Rust
+severity: error
+message: "BYPASS_EXPECT_ATTR: remove item-level #[expect(...)] suppression"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "#[expect($$$LINTS)]"
+metadata:
+  effect: Reject
+  repair_hint: RemoveBypassAttribute
+---
+id: BYPASS_CFG_ATTR_ALLOW
+language: Rust
+severity: error
+message: "BYPASS_CFG_ATTR_ALLOW: remove cfg_attr allow(...) suppression"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "#[cfg_attr($COND, allow($$$LINTS))]"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview
+---
+id: BYPASS_CRATE_ALLOW
+language: Rust
+severity: error
+message: "BYPASS_CRATE_ALLOW: remove crate-level #![allow(...)] suppression"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "#![allow($$$LINTS)]"
+metadata:
+  effect: Reject
+  repair_hint: RemoveBypassAttribute
+---
+id: BYPASS_CRATE_EXPECT
+language: Rust
+severity: error
+message: "BYPASS_CRATE_EXPECT: remove crate-level #![expect(...)] suppression"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "#![expect($$$LINTS)]"
+metadata:
+  effect: Reject
+  repair_hint: RemoveBypassAttribute
+---
+id: BYPASS_INLINE_SUPPRESSION
+language: Rust
+severity: error
+message: "BYPASS_INLINE_SUPPRESSION: remove ast-grep-ignore or sg-ignore inline suppression"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - regex: "ast-grep-ignore"
+    - regex: "sg-ignore"
+metadata:
+  effect: Reject
+  repair_hint: RemoveInlineSuppression

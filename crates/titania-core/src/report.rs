@@ -35,7 +35,7 @@ pub enum RejectKind {
 ///
 /// A `Report` is the final output: either a pass (with a receipt), a reject
 /// (with findings and failures), or an error (policy or input diagnostics).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "variant", rename_all = "snake_case")]
 pub enum Report {
     /// All lanes passed.
@@ -67,6 +67,50 @@ pub enum Report {
         /// Input diagnostics explaining why invocation validation failed.
         diagnostics: Box<[InputDiagnostic]>,
     },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
+enum ReportWire {
+    Pass {
+        receipt: QualityReceipt,
+        per_lane: Box<[LaneOutcome]>,
+    },
+    Reject {
+        code_findings: Box<[Finding]>,
+        gate_failures: Box<[LaneFailure]>,
+        per_lane: Box<[LaneOutcome]>,
+    },
+    PolicyError {
+        diagnostics: Box<[PolicyDiagnostic]>,
+    },
+    InputError {
+        diagnostics: Box<[InputDiagnostic]>,
+    },
+}
+
+impl ReportWire {
+    /// Converts a wire report into a constructor-validated domain report.
+    ///
+    /// # Errors
+    ///
+    /// Returns `E` when the serialized wire shape violates report invariants.
+    fn into_report<E: serde::de::Error>(self) -> Result<Report, E> {
+        match self {
+            Self::Pass { receipt, per_lane } => Report::pass(receipt, per_lane).map_err(E::custom),
+            Self::Reject { code_findings, gate_failures, per_lane } => {
+                Report::reject(code_findings, gate_failures, per_lane).map_err(E::custom)
+            }
+            Self::PolicyError { diagnostics } => Ok(Report::PolicyError { diagnostics }),
+            Self::InputError { diagnostics } => Ok(Report::InputError { diagnostics }),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Report {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        ReportWire::deserialize(de)?.into_report()
+    }
 }
 
 impl Report {
