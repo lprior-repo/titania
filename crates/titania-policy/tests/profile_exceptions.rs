@@ -1,5 +1,6 @@
 //! Policy and exception parser behavior tests.
 
+use std::{fs, path::PathBuf};
 use titania_policy::{ExceptionError, PolicyValue, ProfileError, parse_exceptions, parse_profile};
 
 #[test]
@@ -21,6 +22,29 @@ infra_crates = ["tokio", "sqlx"]
     assert!(policy.lints.is_empty());
     assert!(policy.thresholds.is_empty());
     assert!(policy.supply_chain.is_empty());
+}
+
+#[test]
+fn checked_in_strict_ai_policy_parses_with_expected_architecture() {
+    let content = fs::read_to_string(repo_root().join(".titania/profiles/strict-ai/policy.toml"))
+        .expect("checked-in strict-ai policy must be readable");
+    let policy = parse_profile(&content).expect("checked-in strict-ai policy must parse");
+    let core_dirs =
+        policy.architecture.core_dirs.iter().map(|path| path.as_str()).collect::<Vec<_>>();
+
+    assert_eq!(core_dirs, ["src/core", "src/domain", "crates/*-core/src"]);
+    assert_eq!(policy.architecture.infra_crates, ["tokio", "axum", "sqlx", "reqwest"]);
+}
+
+#[test]
+fn checked_in_strict_ai_exceptions_parse_empty_set() {
+    let content =
+        fs::read_to_string(repo_root().join(".titania/profiles/strict-ai/exceptions.toml"))
+            .expect("checked-in strict-ai exceptions must be readable");
+    let exceptions =
+        parse_exceptions(&content, "2026-07-04").expect("checked-in exceptions must parse");
+
+    assert!(exceptions.is_empty());
 }
 
 #[test]
@@ -393,6 +417,14 @@ fn invalid_today_date_fails() {
         .expect_err("invalid today date must fail");
 
     assert_invalid_exception_field(err, "today", "POLICY_EXCEPTION_INVALID_FIELD");
+}
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("crate manifest has workspace root parent")
+        .to_path_buf()
 }
 
 fn assert_invalid_profile_field(err: ProfileError, expected: &'static str) {

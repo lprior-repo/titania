@@ -9,7 +9,7 @@
 //! Fixture files under `tests/fixtures/ast_grep/architecture/` exercise each
 //! rule in isolation; the YAML patterns are expected to match them.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 // ---------------------------------------------------------------------------
 // Compile-time YAML load — fails if the catalog is missing or malformed.
@@ -112,6 +112,45 @@ fn extract_rule_block<'a>(yaml: &'a str, rule_id: &str) -> Option<&'a str> {
     Some(&yaml[after_start..after_start + end_offset])
 }
 
+/// Extract a scalar value from the metadata subsection of a rule block.
+/// Searches only within lines indented under the top-level `metadata:` key.
+/// Returns an owned string so we never borrow a local variable.
+fn yaml_metadata_value(block: &str, key: &str) -> Option<String> {
+    let lines: Vec<&str> = block.lines().collect();
+
+    // Locate the "metadata:" line (at indent 0).
+    let meta_idx = lines.iter().position(|l| l.trim_start() == "metadata:")?;
+
+    // Collect metadata lines: everything after metadata: until next top-level key.
+    let mut meta_lines = String::new();
+    for line in &lines[meta_idx + 1..] {
+        let trimmed = line.trim_start();
+        let is_top_level_key = trimmed.starts_with("id: ")
+            || trimmed.starts_with("language: ")
+            || trimmed.starts_with("severity: ")
+            || trimmed.starts_with("message: ")
+            || trimmed.starts_with("files:")
+            || trimmed.starts_with("ignores:")
+            || trimmed.starts_with("rule:")
+            || trimmed.starts_with("metadata:");
+
+        if is_top_level_key {
+            break;
+        }
+        meta_lines.push_str(line);
+        meta_lines.push('\n');
+    }
+
+    // Search within metadata for the requested key.
+    for line in meta_lines.lines() {
+        if line.contains(key) {
+            let value = line.splitn(2, ':').nth(1)?;
+            return Some(strip_yaml_quotes(value.trim()).to_owned());
+        }
+    }
+    None
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -172,27 +211,41 @@ fn ast_grep_architecture_every_rule_has_required_fields() {
     }
 }
 
-/// Every architecture rule carries effect: Reject.
+/// Every architecture rule carries metadata.effect == "Reject".
 #[test]
 fn ast_grep_architecture_all_rules_reject_effect() {
     for &rule_id in REQUIRED_RULE_IDS {
         let block = extract_rule_block(ARCHITECTURE_YAML, rule_id)
             .unwrap_or_else(|| panic!("Rule block not found for '{rule_id}'"));
-        let lower = block.to_lowercase();
-        assert!(lower.contains("reject"), "'{rule_id}' must have effect: Reject (found: {lower})",);
+        let effect = yaml_metadata_value(block, "effect")
+            .unwrap_or_else(|| panic!("'{rule_id}' must have effect in metadata"));
+        assert_eq!(
+            effect, "Reject",
+            "'{rule_id}' metadata.effect must be exactly 'Reject' (got: '{effect}')"
+        );
     }
 }
 
-/// Every architecture rule has a repair hint in metadata.
+/// Per-rule repair-hint values are correct.
 #[test]
-fn ast_grep_architecture_all_rules_have_repair_hints() {
+fn ast_grep_architecture_repair_hints_per_rule() {
+    let expected: HashMap<&str, &str> = [
+        ("ARCHITECTURE_IMPORT_CORE_INFRA", "ReplaceDependency"),
+        ("ARCHITECTURE_IMPORT_CORE_FS", "RequiresHumanReview"),
+        ("ARCHITECTURE_IMPORT_CORE_TIME", "RequiresHumanReview"),
+        ("ARCHITECTURE_IMPORT_CORE_RANDOM", "RequiresHumanReview"),
+    ]
+    .into_iter()
+    .collect();
     for &rule_id in REQUIRED_RULE_IDS {
         let block = extract_rule_block(ARCHITECTURE_YAML, rule_id)
             .unwrap_or_else(|| panic!("Rule block not found for '{rule_id}'"));
-        assert!(
-            block.contains("repair_hint:"),
-            "'{rule_id}' must contain a repair_hint in metadata",
-        );
+        let hint = yaml_metadata_value(block, "repair_hint")
+            .unwrap_or_else(|| panic!("'{rule_id}' must have repair_hint in metadata"));
+        let exp = expected
+            .get(rule_id)
+            .unwrap_or_else(|| panic!("No expected repair_hint for '{rule_id}'"));
+        assert_eq!(hint, *exp, "'{rule_id}' metadata.repair_hint must be '{exp}' (got: '{hint}')");
     }
 }
 

@@ -32,6 +32,7 @@ pub mod artifact_writer;
 pub mod clippy_normalizer;
 pub mod command;
 pub mod deny_normalizer;
+pub mod dylint_lane;
 pub mod helpers;
 pub mod policy_scan;
 pub mod source_line;

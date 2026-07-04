@@ -22,7 +22,7 @@ const FUNCTIONAL_YAML: &str = include_str!("../rules/functional.yml");
 // Required rule IDs and their expected metadata.
 // ---------------------------------------------------------------------------
 
-/// The seven rule IDs that MUST appear in the catalog.
+/// The eight rule IDs that MUST appear in the catalog.
 const REQUIRED_RULE_IDS: &[&str] = &[
     "FUNC_LOOPS_FOR",
     "FUNC_LOOPS_WHILE",
@@ -31,6 +31,7 @@ const REQUIRED_RULE_IDS: &[&str] = &[
     "FUNC_PRINT_STDERR",
     "FUNC_WILDCARD_IMPORT",
     "FUNC_UNWRAP_OR",
+    "FUNC_RESULT_STRING",
 ];
 
 /// Path segments that MUST be excluded from production scanning.
@@ -258,10 +259,16 @@ fn ast_grep_functional_violation_fixtures_contain_their_patterns() {
         wildcard.contains("::*"),
         "func_wildcard_import_violation.rs must contain wildcard import",
     );
-
     // unwrap_or fixture
     let unwrap = read_fixture(&fixtures_dir, "func_unwrap_or_violation.rs");
     assert!(unwrap.contains(".unwrap_or"), "func_unwrap_or_violation.rs must contain .unwrap_or",);
+
+    // result_string fixture
+    let result_string = read_fixture(&fixtures_dir, "func_result_string_violation.rs");
+    assert!(
+        result_string.contains("Result<") && result_string.contains(", String>"),
+        "func_result_string_violation.rs must contain Result<T, String>",
+    );
 }
 
 // ---------------------------------------------------------------------------

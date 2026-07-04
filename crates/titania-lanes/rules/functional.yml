@@ -126,3 +126,20 @@ rule:
 metadata:
   effect: Reject
   repair_hint: RequiresHumanReview
+---
+id: FUNC_RESULT_STRING
+language: Rust
+severity: error
+message: "FUNC_RESULT_STRING: use typed error types instead of String for Result error variants"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "Result<$T, String>"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview
