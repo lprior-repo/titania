@@ -1,0 +1,25 @@
+name = "titania-workspace"
+description = "Strict Rust workspace template for Titania Check adoption."
+authors = ["Titania Contributors"]
+license = "MIT OR Apache-2.0"
+keywords = ["rust", "quality", "strict-ai", "moon"]
+
+[package]
+name = "{{project-name}}"
+
+[template]
+cargo_generate_version = ">=0.23.0"
+include = [
+  "Cargo.toml",
+  "README.md",
+  "clippy.toml",
+  "deny.toml",
+  "rustfmt.toml",
+  "rust-toolchain.toml",
+  ".moon/workspace.yml",
+  ".moon/toolchains.yml",
+  ".moon/tasks/all.yml",
+  ".cargo/config.toml",
+  ".titania/profiles/strict-ai/policy.toml",
+  ".titania/profiles/strict-ai/exceptions.toml",
+]

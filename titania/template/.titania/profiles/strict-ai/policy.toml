@@ -1,0 +1,12 @@
+# Policy file for the strict-ai profile.
+# Overrides binary defaults. Changes require CODEOWNER approval.
+
+[lints]
+
+[thresholds]
+
+[architecture]
+core_dirs = ["src/core", "src/domain", "crates/*-core/src"]
+infra_crates = ["tokio", "axum", "sqlx", "reqwest"]
+
+[supply_chain]

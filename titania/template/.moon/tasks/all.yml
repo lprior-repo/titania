@@ -1,0 +1,95 @@
+fileGroups:
+  sources:
+    - 'src/**/*.rs'
+    - 'crates/**/*.rs'
+  tests:
+    - 'tests/**/*.rs'
+    - 'crates/**/tests/**/*.rs'
+    - 'crates/**/benches/**/*.rs'
+    - 'crates/**/examples/**/*.rs'
+
+tasks:
+  # Lane runners — each invokes titania-check run-lane
+  titania-fmt:
+    command: 'titania-check run-lane fmt'
+    toolchains: [rust]
+    options: { runInCI: true }
+    inputs: ['@globs(sources)', 'rustfmt.toml', '.titania/**']
+
+  titania-compile:
+    command: 'titania-check run-lane compile'
+    env:
+      CARGO_TARGET_DIR: '${workspace.root}/.titania/cache/compile'
+    toolchains: [rust]
+    options: { runInCI: true }
+    inputs: ['@globs(sources)', 'Cargo.toml', 'Cargo.lock', '.cargo/**', 'rust-toolchain.toml']
+
+  titania-clippy:
+    command: 'titania-check run-lane clippy'
+    env:
+      CARGO_TARGET_DIR: '${workspace.root}/.titania/cache/clippy'
+    toolchains: [rust]
+    deps: ['~:titania-compile']
+    options: { runInCI: true }
+    inputs: ['@globs(sources)', 'clippy.toml', 'Cargo.toml', '.titania/**']
+
+  titania-ast-grep:
+    command: 'titania-check run-lane ast-grep'
+    options: { runInCI: true }
+    inputs: ['@globs(sources)']
+
+  titania-dylint:
+    command: 'titania-check run-lane dylint'
+    toolchains: [rust]
+    options: { runInCI: true }
+    inputs: ['@globs(sources)']
+
+  titania-panic-scan:
+    command: 'titania-check run-lane panic-scan'
+    options: { runInCI: true }
+    inputs: ['@globs(sources)']
+
+  titania-policy-scan:
+    command: 'titania-check run-lane policy-scan'
+    options: { runInCI: true }
+    inputs: ['Cargo.toml', '**/Cargo.toml', '.cargo/**', '.titania/**']
+
+  titania-test:
+    command: 'titania-check run-lane test'
+    env:
+      CARGO_TARGET_DIR: '${workspace.root}/.titania/cache/test'
+    toolchains: [rust]
+    deps: ['~:titania-compile']
+    options: { runInCI: true }
+    inputs: ['@globs(sources)', '@globs(tests)']
+
+  titania-deny:
+    command: 'titania-check run-lane deny'
+    options: { runInCI: true }
+    inputs: ['Cargo.lock', 'deny.toml']
+
+  titania-build:
+    command: 'titania-check run-lane build'
+    env:
+      CARGO_TARGET_DIR: '${workspace.root}/.titania/cache/release'
+    toolchains: [rust]
+    deps: ['~:titania-compile']
+    options: { runInCI: true }
+    inputs: ['@globs(sources)']
+    outputs: ['target/release/titania-check']
+
+  # Composite gates
+  gate-edit:
+    command: 'titania-check aggregate --scope edit'
+    deps: ['~:titania-fmt', '~:titania-compile', '~:titania-clippy', '~:titania-ast-grep', '~:titania-dylint', '~:titania-panic-scan', '~:titania-policy-scan']
+    options: { runInCI: true }
+
+  gate-prepush:
+    command: 'titania-check aggregate --scope prepush'
+    deps: ['~:gate-edit', '~:titania-test', '~:titania-deny']
+    options: { runInCI: true }
+
+  gate-release:
+    command: 'titania-check aggregate --scope release'
+    deps: ['~:gate-prepush', '~:titania-build']
+    options: { runInCI: true }
