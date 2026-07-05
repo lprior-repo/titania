@@ -430,16 +430,45 @@ const GATE_DEPS: &[(&str, &[&str])] = &[
 
 /// Expected inputs per v1 lane task (§13).
 const LANE_INPUTS: &[(&str, &[&str])] = &[
-    ("titania-fmt", &["@globs(sources)", "rustfmt.toml", ".titania/**"]),
+    (
+        "titania-fmt",
+        &[
+            "@globs(sources)",
+            "rustfmt.toml",
+            ".titania/**",
+            "!.titania/cache/**",
+            "!.titania/out/**",
+        ],
+    ),
     (
         "titania-compile",
         &["@globs(sources)", "Cargo.toml", "Cargo.lock", ".cargo/**", "rust-toolchain.toml"],
     ),
-    ("titania-clippy", &["@globs(sources)", "clippy.toml", "Cargo.toml", ".titania/**"]),
+    (
+        "titania-clippy",
+        &[
+            "@globs(sources)",
+            "clippy.toml",
+            "Cargo.toml",
+            ".titania/**",
+            "!.titania/cache/**",
+            "!.titania/out/**",
+        ],
+    ),
     ("titania-ast-grep", &["@globs(sources)"]),
     ("titania-dylint", &["@globs(sources)"]),
     ("titania-panic-scan", &["@globs(sources)"]),
-    ("titania-policy-scan", &["Cargo.toml", "**/Cargo.toml", ".cargo/**", ".titania/**"]),
+    (
+        "titania-policy-scan",
+        &[
+            "Cargo.toml",
+            "**/Cargo.toml",
+            ".cargo/**",
+            ".titania/**",
+            "!.titania/cache/**",
+            "!.titania/out/**",
+        ],
+    ),
     ("titania-test", &["@globs(sources)", "@globs(tests)"]),
     ("titania-deny", &["Cargo.lock", "deny.toml"]),
     ("titania-build", &["@globs(sources)"]),
@@ -466,6 +495,17 @@ fn v1_moon_tasks() -> Result<()> {
 
     // ── 2. Assert file-level structure ─────────────────────────────────────
     assert!(MOON_TASKS.contains("\ntasks:\n"), "all.yml must define the top-level `tasks:` map");
+    assert!(
+        MOON_TASKS.contains("    - '.titania/profiles/**'"),
+        "sources fileGroup must hash stable Titania policy profiles"
+    );
+    assert!(
+        !MOON_TASKS.contains("    - '.titania/cache")
+            && !MOON_TASKS.contains("    - '.titania/out")
+            && !MOON_TASKS.contains("      - '.titania/cache")
+            && !MOON_TASKS.contains("      - '.titania/out"),
+        "Moon fileGroups/task inputs must exclude Titania runtime cache/output paths"
+    );
 
     // ── 3. Assert every required v1 task name exists in the parsed map ────
     let parsed_names: Vec<&str> = tasks.iter().map(|t| t.name.as_str()).collect();
@@ -636,6 +676,14 @@ fn v1_moon_tasks() -> Result<()> {
                 task.inputs
             );
         }
+        assert!(
+            task.inputs
+                .iter()
+                .all(|input| !input.starts_with(".titania/cache")
+                    && !input.starts_with(".titania/out")),
+            "task '{task_name}' inputs must not hash volatile Titania output/cache paths (got: {:?})",
+            task.inputs
+        );
         assert_eq!(
             task.inputs.len(),
             expected_inputs.len(),

@@ -14,7 +14,7 @@ tasks:
     command: 'titania-check run-lane fmt'
     toolchains: [rust]
     options: { runInCI: true }
-    inputs: ['@globs(sources)', 'rustfmt.toml', '.titania/**']
+    inputs: ['@globs(sources)', 'rustfmt.toml', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
 
   titania-compile:
     command: 'titania-check run-lane compile'
@@ -31,7 +31,7 @@ tasks:
     toolchains: [rust]
     deps: ['~:titania-compile']
     options: { runInCI: true }
-    inputs: ['@globs(sources)', 'clippy.toml', 'Cargo.toml', '.titania/**']
+    inputs: ['@globs(sources)', 'clippy.toml', 'Cargo.toml', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
 
   titania-ast-grep:
     command: 'titania-check run-lane ast-grep'
@@ -52,7 +52,7 @@ tasks:
   titania-policy-scan:
     command: 'titania-check run-lane policy-scan'
     options: { runInCI: true }
-    inputs: ['Cargo.toml', '**/Cargo.toml', '.cargo/**', '.titania/**']
+    inputs: ['Cargo.toml', '**/Cargo.toml', '.cargo/**', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
 
   titania-test:
     command: 'titania-check run-lane test'

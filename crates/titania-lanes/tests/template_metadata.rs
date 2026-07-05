@@ -170,6 +170,7 @@ fn template_metadata() -> Result<()> {
         "deny.toml",
         "rust-toolchain.toml",
         "Cargo.toml",
+        ".gitignore",
     ];
 
     // Check each §14 file exists under the template directory

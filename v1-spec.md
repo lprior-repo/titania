@@ -946,7 +946,7 @@ titania-fmt:
   command: 'titania-check run-lane fmt'
   toolchains: [rust]
   options: { runInCI: true }
-  inputs: ['@globs(sources)', 'rustfmt.toml', '.titania/**']
+  inputs: ['@globs(sources)', 'rustfmt.toml', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
 
 titania-compile:
   command: 'titania-check run-lane compile'
@@ -963,7 +963,7 @@ titania-clippy:
   toolchains: [rust]
   deps: [':titania-compile']
   options: { runInCI: true }
-  inputs: ['@globs(sources)', 'clippy.toml', 'Cargo.toml', '.titania/**']
+  inputs: ['@globs(sources)', 'clippy.toml', 'Cargo.toml', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
 
 titania-ast-grep:
   command: 'titania-check run-lane ast-grep'
@@ -984,7 +984,7 @@ titania-panic-scan:
 titania-policy-scan:
   command: 'titania-check run-lane policy-scan'
   options: { runInCI: true }
-  inputs: ['Cargo.toml', '**/Cargo.toml', '.cargo/**', '.titania/**']
+  inputs: ['Cargo.toml', '**/Cargo.toml', '.cargo/**', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
 
 titania-test:
   command: 'titania-check run-lane test'
@@ -1026,6 +1026,11 @@ gate-release:
   deps: [':gate-prepush', ':titania-build']
   options: { runInCI: true }
 ```
+
+The broad `.titania/**` input keeps every versioned Titania policy/profile
+change in Moon's task hash. The adjacent negated globs exclude regenerated
+lane cache/output trees so a prior run cannot self-hash stale Cargo or report
+artifacts.
 
 ### Cache layers
 
@@ -1074,6 +1079,7 @@ The template provides:
 - `deny.toml`
 - `rust-toolchain.toml` (Moon-managed)
 - `Cargo.toml` with `[workspace.lints]` from §9.1
+- `.gitignore` excluding regenerated Titania/Moon/Cargo scratch state
 
 ### Prerequisites
 

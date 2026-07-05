@@ -12,6 +12,7 @@ cargo_generate_version = ">=0.23.0"
 include = [
   "Cargo.toml",
   "README.md",
+  ".gitignore",
   "clippy.toml",
   "deny.toml",
   "rustfmt.toml",

@@ -22,7 +22,7 @@ fileGroups:
     - 'Cargo.toml'
     - 'Cargo.lock'
     - 'rustfmt.toml'
-    - '.titania/**'
+    - '.titania/profiles/**'
   tests:
     - 'crates/**/tests/**/*.rs'
     - 'crates/**/*_test.rs'
@@ -467,6 +467,8 @@ tasks:
       - '@globs(sources)'
       - 'rustfmt.toml'
       - '.titania/**'
+      - '!.titania/cache/**'
+      - '!.titania/out/**'
 
   titania-compile:
     command: 'CARGO_TARGET_DIR=".titania/cache/compile" cargo run --quiet -p titania-check -- run-lane compile'
@@ -491,6 +493,8 @@ tasks:
       - 'clippy.toml'
       - 'Cargo.toml'
       - '.titania/**'
+      - '!.titania/cache/**'
+      - '!.titania/out/**'
 
   titania-ast-grep:
     command: 'cargo run --quiet -p titania-check -- run-lane ast-grep'
@@ -523,6 +527,8 @@ tasks:
       - '**/Cargo.toml'
       - '.cargo/**'
       - '.titania/**'
+      - '!.titania/cache/**'
+      - '!.titania/out/**'
 
   titania-test:
     command: 'PATH="$PATH:$HOME/.cargo/bin" CARGO_TARGET_DIR=".titania/cache/test" cargo run --quiet -p titania-check -- run-lane test'
