@@ -17,5 +17,9 @@
 #![forbid(unsafe_code)]
 
 pub use artifact_reader::{ReaderError, ReaderResult, read_lane_artifacts};
+pub use receipt_builder::{ReceiptBuilderError, build_quality_receipt, compute_evidence_digest};
+pub use report_assembly::{ReportAssemblyError, assemble_report};
 
 pub mod artifact_reader;
+pub mod receipt_builder;
+pub mod report_assembly;
