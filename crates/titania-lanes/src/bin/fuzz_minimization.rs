@@ -28,9 +28,14 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
-use std::{fs, io, io::Write, path::Path};
+use std::{
+    fs, io,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
-use titania_lanes::{CommandIn, LaneExit, current_target_project, exit};
+use thiserror::Error;
+use titania_lanes::{CommandIn, LaneError, LaneExit, current_target_project, exit};
 
 /// Boundary-parsed lane input.
 enum LaneInput {
@@ -41,6 +46,18 @@ enum LaneInput {
 enum LaneOutcome {
     NotApplicable(String),
     Child(LaneExit),
+}
+
+#[derive(Debug, Error)]
+enum FuzzMinError {
+    #[error("failed to read {}: {source}", path.display())]
+    ReadDir { path: PathBuf, source: io::Error },
+    #[error("failed to inspect {}: {source}", path.display())]
+    InspectDir { path: PathBuf, source: io::Error },
+    #[error("failed to prepare cargo fuzz: {source}")]
+    PrepareCargo { source: LaneError },
+    #[error("failed to spawn cargo fuzz: {source}")]
+    RunCargo { source: LaneError },
 }
 
 impl LaneOutcome {
@@ -128,7 +145,10 @@ fn exit_after_stderr_line(text: &str, code: LaneExit) -> std::process::ExitCode 
 ///
 /// Returns an error string when fuzz-target discovery fails or cargo-fuzz
 /// cannot be spawned.
-fn run_lane(target: &titania_core::TargetProject, input: LaneInput) -> Result<LaneOutcome, String> {
+fn run_lane(
+    target: &titania_core::TargetProject,
+    input: LaneInput,
+) -> Result<LaneOutcome, FuzzMinError> {
     let has_targets = has_fuzz_targets(target)?;
     if !has_targets {
         return Ok(LaneOutcome::NotApplicable("target project has no fuzz target".to_owned()));
@@ -149,7 +169,7 @@ fn run_lane(target: &titania_core::TargetProject, input: LaneInput) -> Result<La
 ///
 /// Returns an error string when the fuzz target directory exists but cannot be
 /// read or inspected.
-fn has_fuzz_targets(target: &titania_core::TargetProject) -> Result<bool, String> {
+fn has_fuzz_targets(target: &titania_core::TargetProject) -> Result<bool, FuzzMinError> {
     let fuzz_dir = target.as_std_path().join("fuzz");
     if !fuzz_dir.join("Cargo.toml").is_file() {
         return Ok(false);
@@ -159,13 +179,13 @@ fn has_fuzz_targets(target: &titania_core::TargetProject) -> Result<bool, String
         Ok(entries) => entries,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(err) => {
-            return Err(format!("failed to read {}: {err}", targets_dir.display()));
+            return Err(FuzzMinError::ReadDir { path: targets_dir, source: err });
         }
     };
     entries
         .map(|entry| entry.map(|entry| is_rust_source(&entry.path())))
         .try_fold(false, |found, entry| entry.map(|is_target| found || is_target))
-        .map_err(|err| format!("failed to inspect {}: {err}", targets_dir.display()))
+        .map_err(|source| FuzzMinError::InspectDir { path: targets_dir, source })
 }
 
 fn is_rust_source(path: &Path) -> bool {
@@ -181,9 +201,9 @@ fn run_fuzz_target(
     target: &titania_core::TargetProject,
     fuzz_target: &str,
     extra_args: &[String],
-) -> Result<LaneOutcome, String> {
-    let mut command = CommandIn::new(target, "cargo")
-        .map_err(|err| format!("failed to prepare cargo fuzz: {err}"))?;
+) -> Result<LaneOutcome, FuzzMinError> {
+    let mut command =
+        CommandIn::new(target, "cargo").map_err(|source| FuzzMinError::PrepareCargo { source })?;
     let _ = command.inherit_env();
     let _ = command.arg("fuzz").arg("run").arg(fuzz_target);
     let _ = command.arg("--target").arg("x86_64-unknown-linux-gnu");
@@ -195,7 +215,7 @@ fn run_fuzz_target(
     command
         .run_status_raw()
         .map(|status| LaneOutcome::Child(status_to_lane(status.code())))
-        .map_err(|io_err| format!("failed to spawn cargo fuzz: {io_err}"))
+        .map_err(|source| FuzzMinError::RunCargo { source })
 }
 
 #[cfg(test)]

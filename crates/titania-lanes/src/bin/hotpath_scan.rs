@@ -103,9 +103,11 @@ fn failure_after_stderr_line(args: std::fmt::Arguments<'_>) -> std::process::Exi
 fn run(target: &TargetProject, rules: &HotpathRules, report: &mut LaneReport) {
     let root = target.as_std_path();
     let allow = allow::load_allow(root, rules, report);
-    for dir in HOT_ROOTS.iter().map(|hot| root.join(hot)).filter(|dir| dir.is_dir()) {
-        scan::scan_dir(&dir, root, &allow, rules, report);
-    }
+    HOT_ROOTS
+        .iter()
+        .map(|hot| root.join(hot))
+        .filter(|dir| dir.is_dir())
+        .for_each(|dir| scan::scan_dir(&dir, root, &allow, rules, report));
 }
 
 fn print_and_exit(report: &LaneReport) -> std::process::ExitCode {

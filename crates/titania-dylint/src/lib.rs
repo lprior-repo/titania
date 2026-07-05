@@ -24,19 +24,13 @@ use rustc_span::{Span, sym};
 
 /// Return the Dylint ABI version string to `cargo-dylint`.
 #[expect(
-    clippy::option_if_let_else,
-    reason = "Dylint ABI bootstrap keeps the impossible CString error explicit"
-)]
-#[expect(
     unsafe_code,
     reason = "Dylint requires an unsafe no_mangle ABI export for version discovery"
 )]
 #[unsafe(no_mangle)]
 pub extern "C" fn dylint_version() -> *mut std::os::raw::c_char {
-    match std::ffi::CString::new(dylint_linting::DYLINT_VERSION) {
-        Ok(version) => version.into_raw(),
-        Err(_) => std::ptr::null_mut(),
-    }
+    std::ffi::CString::new(dylint_linting::DYLINT_VERSION)
+        .map_or(std::ptr::null_mut(), std::ffi::CString::into_raw)
 }
 
 declare_lint! {
@@ -179,10 +173,11 @@ fn emit_pub_allow(cx: &LateContext<'_>, span: Span) {
         BYPASS_PUB_ALLOW,
         span,
         DiagDecorator(|diag| {
-            let _ = diag.primary_message(
-                "BYPASS_PUB_ALLOW: public API item weakens lint policy with #[allow(...)]",
-            );
-            let _ = diag.help("move any justified lint exception to the policy exceptions ledger");
+            let _decorated = diag
+                .primary_message(
+                    "BYPASS_PUB_ALLOW: public API item weakens lint policy with #[allow(...)]",
+                )
+                .help("move any justified lint exception to the policy exceptions ledger");
         }),
     );
 }
@@ -192,10 +187,11 @@ fn emit_attr_context(cx: &LateContext<'_>, span: Span) {
         BYPASS_ATTR_CONTEXT,
         span,
         DiagDecorator(|diag| {
-            let _ = diag.primary_message(
-                "BYPASS_ATTR_CONTEXT: public #[allow(...)] comes from macro expansion",
-            );
-            let _ = diag.help("write lint exceptions directly in reviewed source or ledger them");
+            let _decorated = diag
+                .primary_message(
+                    "BYPASS_ATTR_CONTEXT: public #[allow(...)] comes from macro expansion",
+                )
+                .help("write lint exceptions directly in reviewed source or ledger them");
         }),
     );
 }
@@ -205,10 +201,10 @@ fn emit_required_lint_weakening(cx: &EarlyContext<'_>, span: Span, lint: &str) {
         BYPASS_REQUIRED_LINT_WEAKENING,
         span,
         DiagDecorator(|diag| {
-            let _ = diag.primary_message(format!(
-                "BYPASS_REQUIRED_LINT_WEAKENING: crate-level allow weakens required lint `{lint}`"
-            ));
-            let _ = diag
+            let _decorated = diag
+                .primary_message(format!(
+                    "BYPASS_REQUIRED_LINT_WEAKENING: crate-level allow weakens required lint `{lint}`"
+                ))
                 .help("keep the lint at deny/forbid level or use the audited exceptions ledger");
         }),
     );
@@ -219,10 +215,11 @@ fn emit_internal_unstable(cx: &EarlyContext<'_>, span: Span) {
         BYPASS_INTERNAL_UNSTABLE,
         span,
         DiagDecorator(|diag| {
-            let _ = diag.primary_message(
-                "BYPASS_INTERNAL_UNSTABLE: macro uses #[allow_internal_unstable(...)]",
-            );
-            let _ = diag.help("remove compiler-internal unstable escape hatches from macros");
+            let _decorated = diag
+                .primary_message(
+                    "BYPASS_INTERNAL_UNSTABLE: macro uses #[allow_internal_unstable(...)]",
+                )
+                .help("remove compiler-internal unstable escape hatches from macros");
         }),
     );
 }
@@ -232,9 +229,9 @@ fn emit_internal_unsafe(cx: &EarlyContext<'_>, span: Span) {
         BYPASS_INTERNAL_UNSAFE,
         span,
         DiagDecorator(|diag| {
-            let _ =
-                diag.primary_message("BYPASS_INTERNAL_UNSAFE: macro uses #[allow_internal_unsafe]");
-            let _ = diag.help("remove compiler-internal unsafe escape hatches from macros");
+            let _decorated = diag
+                .primary_message("BYPASS_INTERNAL_UNSAFE: macro uses #[allow_internal_unsafe]")
+                .help("remove compiler-internal unsafe escape hatches from macros");
         }),
     );
 }

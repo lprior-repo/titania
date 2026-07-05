@@ -15,9 +15,9 @@ pub(super) fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
     let display = rel_str(root, path);
     let mut state = ScanState::default();
     let mut sink = ScanSink { display: &display, report };
-    for (idx, raw) in content.lines().enumerate() {
+    content.lines().enumerate().for_each(|(idx, raw)| {
         state.scan_line(raw, line_no_from_idx(idx), &mut sink);
-    }
+    });
 }
 
 struct ScanSink<'a> {

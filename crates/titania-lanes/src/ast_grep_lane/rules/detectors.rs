@@ -1,7 +1,22 @@
 //! String-backed detectors for the embedded v1 ast-grep rule table.
 mod code_scan;
 
-use code_scan::detect_code_line;
+use code_scan::{code_only_source, detect_code_line, first_code_line};
+
+pub(super) fn first_matching_line(source: &str, detects: fn(&str) -> bool) -> Option<usize> {
+    first_code_line(source, detects).or_else(|| fallback_first_code_line(source, detects))
+}
+
+fn fallback_first_code_line(source: &str, detects: fn(&str) -> bool) -> Option<usize> {
+    if !detects(source) {
+        return None;
+    }
+    first_code_line(source, has_code).or(Some(0))
+}
+
+fn has_code(line: &str) -> bool {
+    !line.trim().is_empty()
+}
 
 pub(super) fn detect_for_loop(source: &str) -> bool {
     detect_code_line(source, has_for_loop_tokens)
@@ -20,42 +35,44 @@ fn has_for_loop_tokens(line: &str) -> bool {
 }
 
 pub(super) fn detect_print_stdout(source: &str) -> bool {
-    contains_macro(source, &["print!(", "println!("])
+    detect_code_line(source, |line| {
+        has_print_macro_boundary(line, "print!(") || has_print_macro_boundary(line, "println!(")
+    })
+}
+
+/// Check that `needle` appears in `line` with a non-alphanumeric/non-`_` boundary.
+/// Also rejects `eprint!`/`eprintln!` when checking for `print!`/`println!`.
+fn has_print_macro_boundary(line: &str, needle: &str) -> bool {
+    line.match_indices(needle).any(|(start, _)| {
+        let before_start = start.saturating_sub(1);
+        line.as_bytes()
+            .get(before_start)
+            .is_none_or(|&b| !b.is_ascii_alphanumeric() && b != b'_' && b != b'e')
+    })
 }
 
 pub(super) fn detect_print_stderr(source: &str) -> bool {
-    contains_macro(source, &["eprint!(", "eprintln!("])
-}
-
-fn contains_macro(source: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|needle| contains_macro_needle(source, needle))
-}
-
-fn contains_macro_needle(source: &str, needle: &str) -> bool {
-    source.match_indices(needle).any(|(start, _)| macro_name_boundary(source.as_bytes(), start))
-}
-
-fn macro_name_boundary(bytes: &[u8], start: usize) -> bool {
-    start
-        .checked_sub(1)
-        .and_then(|index| bytes.get(index))
-        .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+    detect_code_line(source, |line| {
+        has_print_macro_boundary(line, "eprint!(") || has_print_macro_boundary(line, "eprintln!(")
+    })
 }
 
 pub(super) fn detect_wildcard_import(source: &str) -> bool {
-    source.contains("::*;")
+    detect_code_line(source, |line| line.contains("::*;"))
 }
 
 pub(super) fn detect_unwrap_or(source: &str) -> bool {
-    [".unwrap_or(", ".unwrap_or_else(", ".unwrap_or_default()"]
-        .iter()
-        .any(|needle| source.contains(needle))
+    detect_code_line(source, |line| {
+        line.contains(".unwrap_or(")
+            || line.contains(".unwrap_or_else(")
+            || line.contains(".unwrap_or_default()")
+    })
 }
 
 pub(super) fn detect_result_string(source: &str) -> bool {
-    source
-        .match_indices("Result")
-        .filter_map(|(start, _)| result_generic_tail(source, start))
+    let code = code_only_source(source);
+    code.match_indices("Result")
+        .filter_map(|(start, _)| result_generic_tail(&code, start))
         .any(result_tail_error_is_string)
 }
 
@@ -132,27 +149,41 @@ impl ResultTypeScan {
 }
 
 pub(super) fn detect_allow_attr(source: &str) -> bool {
-    source.contains("#[allow(")
+    detect_code_line(source, |line| line.contains("#[allow("))
 }
 
 pub(super) fn detect_expect_attr(source: &str) -> bool {
-    source.contains("#[expect(")
+    detect_code_line(source, |line| line.contains("#[expect("))
 }
 
 pub(super) fn detect_cfg_attr_allow(source: &str) -> bool {
-    source.contains("#[cfg_attr(") && source.contains("allow(")
+    detect_code_line(source, |line| line.contains("#[cfg_attr(") && line.contains("allow("))
 }
 
 pub(super) fn detect_crate_allow(source: &str) -> bool {
-    source.contains("#![allow(")
+    detect_code_line(source, |line| line.contains("#![allow("))
 }
 
 pub(super) fn detect_crate_expect(source: &str) -> bool {
-    source.contains("#![expect(")
+    detect_code_line(source, |line| line.contains("#![expect("))
 }
 
 pub(super) fn detect_inline_suppression(source: &str) -> bool {
-    source.contains("ast-grep-ignore") || source.contains("sg-ignore")
+    source.lines().any(line_comment_contains_inline_suppression)
+}
+
+fn line_comment_contains_inline_suppression(line: &str) -> bool {
+    line.split_once("//")
+        .map(|(_, comment)| comment)
+        .is_some_and(contains_inline_suppression_marker)
+        || line
+            .split_once("/*")
+            .map(|(_, comment)| comment)
+            .is_some_and(contains_inline_suppression_marker)
+}
+
+fn contains_inline_suppression_marker(comment: &str) -> bool {
+    comment.contains("ast-grep-ignore") || comment.contains("sg-ignore")
 }
 
 pub(super) fn detect_core_infra_import(source: &str) -> bool {

@@ -24,9 +24,7 @@ pub fn scan_dir(
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
-    for entry in read.flatten() {
-        scan_path(&entry.path(), root, allow, rules, report);
-    }
+    read.flatten().for_each(|entry| scan_path(&entry.path(), root, allow, rules, report));
 }
 
 fn scan_path(

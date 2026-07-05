@@ -186,7 +186,11 @@ fn strip_non_code(raw: &str, block_comment: &mut bool) -> String {
     let mut code = String::with_capacity(raw.len());
     let mut chars = raw.chars().peekable();
     let mut state = StripState::new(*block_comment);
-    while consume_next_char(&mut state, &mut chars, &mut code) {}
+    strip_chars(&mut state, &mut chars, &mut code);
     *block_comment = state.block_comment;
     code
+}
+
+fn strip_chars(state: &mut StripState, chars: &mut Peekable<Chars<'_>>, code: &mut String) {
+    std::iter::from_fn(|| consume_next_char(state, chars, code).then_some(())).for_each(drop);
 }

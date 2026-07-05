@@ -46,9 +46,9 @@ fn parse_ledger(
 ) -> Vec<String> {
     let mut entries: Vec<String> = Vec::new();
     let mut context = LedgerParseContext { tracked, rule, report };
-    for (idx, raw) in text.lines().enumerate() {
+    text.lines().enumerate().for_each(|(idx, raw)| {
         push_ledger_line(raw, line_no_from_idx(idx), &mut entries, &mut context);
-    }
+    });
     entries
 }
 

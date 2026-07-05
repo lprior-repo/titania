@@ -145,9 +145,12 @@ fn collect_source_files(root: &Path) -> Vec<PathBuf> {
 fn walk_rust_files(dir: PathBuf) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     let mut stack: Vec<PathBuf> = vec![dir];
-    while let Some(top) = stack.pop() {
-        append_rust_files(&top, &mut stack, &mut out);
-    }
+    std::iter::from_fn(|| {
+        let current = stack.pop()?;
+        append_rust_files(&current, &mut stack, &mut out);
+        Some(())
+    })
+    .for_each(drop);
     out.sort();
     out
 }

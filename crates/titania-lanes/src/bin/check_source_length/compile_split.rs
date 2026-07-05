@@ -30,9 +30,9 @@ pub(super) fn check_compile_split_sources(
         return Ok(());
     }
     check_impl_body(root, &compile_dir, &rule, report);
-    for name in SPLIT_MODULES {
-        check_split_module(root, &compile_dir, name, &rule, report);
-    }
+    SPLIT_MODULES
+        .iter()
+        .fold((), |(), name| check_split_module(root, &compile_dir, name, &rule, report));
     Ok(())
 }
 

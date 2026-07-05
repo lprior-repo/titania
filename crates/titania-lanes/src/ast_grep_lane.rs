@@ -11,7 +11,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rules::{RULES, RuleDef, repair_hint, rule_applies};
+use rules::{
+    RULES, RuleDef, first_matching_line as rule_first_matching_line, repair_hint, rule_applies,
+};
 use thiserror::Error;
 use titania_core::{
     CommandEvidence, Digest, Finding, FindingEffect, Lane, LaneEvidence, LaneOutcome, Location,
@@ -114,7 +116,7 @@ fn scan_path(
         .iter()
         .copied()
         .filter(|rule| rule_enabled(catalog, rule.id))
-        .filter(|rule| rule_applies(*rule, &workspace_path))
+        .filter(|rule| rule_applies(rule, &workspace_path))
         .filter(|rule| (rule.detects)(&source))
         .map(|rule| finding(rule, &source, &workspace_path))
         .collect::<Result<Vec<_>, _>>()
@@ -202,7 +204,7 @@ fn finding(
 /// Returns [`AstGrepLaneError::LineNumberOverflow`] when the matching line index
 /// does not fit in `u32`.
 fn first_matching_line(source: &str, detects: fn(&str) -> bool) -> Result<u32, AstGrepLaneError> {
-    source.lines().position(detects).map_or(Ok(1), checked_line_number)
+    rule_first_matching_line(source, detects).map_or(Ok(1), checked_line_number)
 }
 
 /// Convert a zero-based line index into a one-based `u32` line number.

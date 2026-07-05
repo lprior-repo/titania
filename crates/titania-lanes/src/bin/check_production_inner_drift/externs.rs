@@ -26,11 +26,10 @@ pub(crate) fn per_extern_pass(root: &Path, rule: &RuleId, report: &mut LaneRepor
     let Ok(read) = std::fs::read_dir(&verif_dir) else {
         return;
     };
-    for path in
-        read.filter_map(Result::ok).map(|entry| entry.path()).filter(|path| is_extern_ledger(path))
-    {
-        scan_extern_ledger(root, &path, rule, report);
-    }
+    read.filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| is_extern_ledger(path))
+        .fold((), |(), path| scan_extern_ledger(root, &path, rule, report));
 }
 
 fn scan_extern_ledger(root: &Path, path: &Path, rule: &RuleId, report: &mut LaneReport) {
@@ -38,9 +37,9 @@ fn scan_extern_ledger(root: &Path, path: &Path, rule: &RuleId, report: &mut Lane
     let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
-    for entry in parse_extern_ledger(&text) {
-        check_entry(root, &rel, &entry, rule, report);
-    }
+    parse_extern_ledger(&text)
+        .into_iter()
+        .fold((), |(), entry| check_entry(root, &rel, &entry, rule, report));
 }
 
 fn check_entry(
@@ -97,13 +96,14 @@ fn report_missing_identifier(
 }
 
 fn parse_extern_ledger(text: &str) -> Vec<ExternEntry> {
-    let mut out: Vec<ExternEntry> = Vec::new();
-    let mut state = LedgerState::default();
-    for (idx, raw) in text.lines().enumerate() {
-        let line_no = u32::try_from(idx).map_or(0, |value| value).saturating_add(1);
-        parse_ledger_line(raw.trim_start(), line_no, &mut state, &mut out);
-    }
-    out
+    text.lines()
+        .enumerate()
+        .fold((LedgerState::default(), Vec::new()), |(mut state, mut out), (idx, raw)| {
+            let line_no = u32::try_from(idx).map_or(0, |value| value).saturating_add(1);
+            parse_ledger_line(raw.trim_start(), line_no, &mut state, &mut out);
+            (state, out)
+        })
+        .1
 }
 
 fn parse_ledger_line(

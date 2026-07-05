@@ -69,9 +69,9 @@ fn main() -> std::process::ExitCode {
         Err(code) => return code,
     };
     let mut report = LaneReport::new();
-    for file in &collect_source_files(target.as_std_path()) {
-        scan_file(file, &rules, &mut report);
-    }
+    collect_source_files(target.as_std_path())
+        .iter()
+        .fold((), |(), file| scan_file(file, &rules, &mut report));
     if write_stderr_raw(format_args!("{}", report.render())).is_err() {
         return exit(LaneExit::Failure);
     }
@@ -181,7 +181,7 @@ fn scan_file(path: &Path, rules: &NightlyRules, report: &mut LaneReport) {
     let scope =
         classify_scope(ScopeSignals { perf_scoped: is_perf_scoped, marker_opt_in: has_marker });
 
-    for (line_no, names, line_no_for_message) in collect_features(&content) {
+    collect_features(&content).into_iter().fold((), |(), (line_no, names, line_no_for_message)| {
         scan_feature_names(FeatureNameScan {
             display: &display,
             feature_line: line_no,
@@ -191,7 +191,7 @@ fn scan_file(path: &Path, rules: &NightlyRules, report: &mut LaneReport) {
             rules,
             report,
         });
-    }
+    });
 }
 
 struct FeatureNameScan<'a> {
@@ -206,7 +206,7 @@ struct FeatureNameScan<'a> {
 
 fn scan_feature_names(scan: FeatureNameScan<'_>) {
     let FeatureNameScan { display, feature_line, names, report_line, scope, rules, report } = scan;
-    for name in names.iter().map(|name| name.trim()).filter(|name| !name.is_empty()) {
+    names.iter().map(|name| name.trim()).filter(|name| !name.is_empty()).for_each(|name| {
         check_feature(FeatureCheck {
             file: display,
             feature_line,
@@ -216,7 +216,7 @@ fn scan_feature_names(scan: FeatureNameScan<'_>) {
             report_line,
             report,
         });
-    }
+    });
 }
 
 struct FeatureCheck<'a> {

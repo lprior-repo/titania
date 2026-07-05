@@ -4,11 +4,15 @@ use std::path::Path;
 
 use titania_core::WorkspacePath;
 
-use super::RuleScope;
+use super::{RuleDef, RuleScope};
 
-pub(super) fn rule_applies(scope: RuleScope, workspace_path: &WorkspacePath) -> bool {
+pub(super) fn rule_applies(rule: &RuleDef, workspace_path: &WorkspacePath) -> bool {
     let path = workspace_path.as_str();
-    is_rust_source(path) && !is_ignored_production_path(path) && scope_matches(scope, path)
+    is_rust_source(path)
+        && !is_ignored_production_path(path)
+        && !is_meta_code_path(path)
+        && !is_rule_ignored(rule.id, path)
+        && scope_matches(rule.scope, path)
 }
 
 fn is_rust_source(path: &str) -> bool {
@@ -24,6 +28,18 @@ fn is_ignored_production_path(path: &str) -> bool {
         || path.contains("/examples/")
         || path == "build.rs"
         || path.ends_with("/build.rs")
+}
+
+fn is_meta_code_path(path: &str) -> bool {
+    path.starts_with("crates/titania-lanes/src/ast_grep_lane/rules/")
+}
+
+fn is_rule_ignored(rule_id: &str, path: &str) -> bool {
+    // Exclude Verus proof files from FUNC_WILDCARD_IMPORT (prelude is Verus std)
+    if rule_id == "FUNC_WILDCARD_IMPORT" && path.starts_with("verification/verus/") {
+        return true;
+    }
+    false
 }
 
 fn scope_matches(scope: RuleScope, path: &str) -> bool {

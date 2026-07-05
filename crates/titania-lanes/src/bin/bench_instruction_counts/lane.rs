@@ -5,8 +5,29 @@ use std::{
     process::ExitCode,
 };
 
+use thiserror::Error;
+
 use titania_core::TargetProject;
-use titania_lanes::{CommandIn, LaneExit, current_target_project, exit};
+use titania_lanes::{CommandIn, LaneError, LaneExit, current_target_project, exit};
+
+/// Errors from benchmark planning.
+#[derive(Debug, Error)]
+enum BenchError {
+    /// An empty benchmark name was requested.
+    #[error("empty benchmark name is not allowed")]
+    EmptyBenchmarkName,
+}
+
+/// Errors from command execution.
+#[derive(Debug, Error)]
+enum CommandError {
+    /// Failed to spawn the command.
+    #[error("failed to spawn {label}: {source}")]
+    SpawnFailed { label: String, source: Box<LaneError> },
+    /// Command exited with a non-zero status.
+    #[error("{label} failed with exit {code:?}")]
+    NonZeroExit { label: String, code: Option<i32> },
+}
 
 /// Default benches the bash lane exercised. Override by passing names on argv.
 const DEFAULT_BENCHES: &[&str] = &["ir_traversal", "action_dispatch", "timer_wheel_tick"];
@@ -56,7 +77,7 @@ fn runnable_benches(target: &TargetProject, args: Vec<String>) -> Result<Vec<Str
     match bench_plan(target, args) {
         Ok(BenchPlan::Run(benches)) => Ok(benches),
         Ok(BenchPlan::NotApplicable(reason)) => Err(not_applicable_exit(&reason)),
-        Err(err) => Err(usage_error_exit(&err)),
+        Err(err) => Err(usage_error_exit(format_args!("[bench-instruction-counts] {err}"))),
     }
 }
 
@@ -67,8 +88,8 @@ fn not_applicable_exit(reason: &str) -> ExitCode {
     )
 }
 
-fn usage_error_exit(err: &str) -> ExitCode {
-    exit_after_stderr(format_args!("[bench-instruction-counts] {err}"), LaneExit::Usage)
+fn usage_error_exit(args: std::fmt::Arguments<'_>) -> ExitCode {
+    exit_after_stderr(args, LaneExit::Usage)
 }
 
 fn run_bench_plan(target: &TargetProject, benches: &[String]) -> ExitCode {
@@ -145,7 +166,7 @@ fn empty_benchmark_exit() -> LaneExit {
     lane_after_stderr(format_args!("Empty benchmark name is not allowed."), LaneExit::Usage)
 }
 
-fn failed_benchmark_exit(bench: &str, code: &str) -> LaneExit {
+fn failed_benchmark_exit(bench: &str, code: impl std::fmt::Display) -> LaneExit {
     lane_after_stderr(
         format_args!("[bench-instruction-counts] {bench} failed: {code}"),
         LaneExit::Violations,
@@ -171,7 +192,7 @@ fn empty_log_exit(log_file: &Path) -> LaneExit {
 /// # Errors
 ///
 /// Returns an error when requested benchmark names are invalid.
-fn bench_plan(target: &TargetProject, args: Vec<String>) -> Result<BenchPlan, String> {
+fn bench_plan(target: &TargetProject, args: Vec<String>) -> Result<BenchPlan, BenchError> {
     if bench_roots(target).is_empty() {
         return Ok(BenchPlan::NotApplicable(
             "target project has no instruction-count bench directories".to_owned(),
@@ -203,14 +224,14 @@ fn bench_roots(target: &TargetProject) -> Vec<PathBuf> {
 /// # Errors
 ///
 /// Returns an error when any requested benchmark name is empty.
-fn requested_benches(args: Vec<String>) -> Result<Vec<String>, String> {
+fn requested_benches(args: Vec<String>) -> Result<Vec<String>, BenchError> {
     let requested = if args.is_empty() {
         DEFAULT_BENCHES.iter().map(|bench| (*bench).to_owned()).collect()
     } else {
         args
     };
     if requested.iter().any(std::string::String::is_empty) {
-        Err("empty benchmark name is not allowed".to_owned())
+        Err(BenchError::EmptyBenchmarkName)
     } else {
         Ok(requested)
     }
@@ -231,12 +252,18 @@ include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bin/bench_instruction_counts/
 /// # Errors
 ///
 /// Returns an error when the command cannot spawn or exits unsuccessfully.
-fn run_with_status(cmd: &CommandIn<'_>, label: &str) -> Result<(), String> {
-    let status = cmd.run_status_raw().map_err(|e| format!("failed to spawn {label}: {e}"))?;
+fn run_with_status(cmd: &CommandIn<'_>, label: &str) -> Result<(), CommandError> {
+    let status = cmd.run_status_raw().map_err(|e| CommandError::SpawnFailed {
+        label: label.to_owned(),
+        source: Box::new(e),
+    })?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!("{label} failed with exit {:?}", status.code()))
+        Err(CommandError::NonZeroExit {
+            label: label.to_owned(),
+            code: status.code(),
+        })
     }
 }
 

@@ -7,7 +7,7 @@ use std::{
 use titania_core::TargetProject;
 use titania_lanes::{CommandIn, LaneExit};
 
-use super::{TestIntegrityRules, Vcs, check};
+use super::{TestIntegrityError, TestIntegrityRules, Vcs, check};
 
 pub(super) fn run() -> LaneExit {
     match run_fixtures() {
@@ -27,14 +27,15 @@ pub(super) fn run() -> LaneExit {
 /// # Errors
 ///
 /// Returns fixture setup, scanner, or cleanup failures with context.
-fn run_fixtures() -> Result<(), String> {
+fn run_fixtures() -> Result<(), TestIntegrityError> {
     let scratch = scratch_dir()?;
     let rules = TestIntegrityRules::new().map_err(|error| format!("rule id config: {error}"))?;
     let result = with_initialized_repo(&scratch, |target| {
         assert_clean_fixture(target, &rules)?;
         assert_untracked_ignored_fixture(target, &rules)
     });
-    let cleanup = fs::remove_dir_all(&scratch).map_err(|error| format!("cleanup failed: {error}"));
+    let cleanup = fs::remove_dir_all(&scratch)
+        .map_err(|error| TestIntegrityError::from(format!("cleanup failed: {error}")));
     result.and(cleanup)
 }
 
@@ -44,9 +45,9 @@ fn run_fixtures() -> Result<(), String> {
 ///
 /// Returns filesystem, target construction, git setup, or fixture callback
 /// failures.
-fn with_initialized_repo<F>(root: &Path, f: F) -> Result<(), String>
+fn with_initialized_repo<F>(root: &Path, f: F) -> Result<(), TestIntegrityError>
 where
-    F: FnOnce(&TargetProject) -> Result<(), String>,
+    F: FnOnce(&TargetProject) -> Result<(), TestIntegrityError>,
 {
     fs::create_dir_all(root).map_err(|error| format!("create scratch repo failed: {error}"))?;
     fs::write(root.join("Cargo.toml"), "[workspace]\nmembers=[]\n")
@@ -66,10 +67,13 @@ where
 /// # Errors
 ///
 /// Returns scanner errors or a non-clean fixture result.
-fn assert_clean_fixture(target: &TargetProject, rules: &TestIntegrityRules) -> Result<(), String> {
+fn assert_clean_fixture(
+    target: &TargetProject,
+    rules: &TestIntegrityRules,
+) -> Result<(), TestIntegrityError> {
     match check(target, "HEAD", Vcs::Git, rules)? {
         0 => Ok(()),
-        code => Err(format!("clean fixture returned {code}")),
+        code => Err(TestIntegrityError::from(format!("clean fixture returned {code}"))),
     }
 }
 
@@ -81,7 +85,7 @@ fn assert_clean_fixture(target: &TargetProject, rules: &TestIntegrityRules) -> R
 fn assert_untracked_ignored_fixture(
     target: &TargetProject,
     rules: &TestIntegrityRules,
-) -> Result<(), String> {
+) -> Result<(), TestIntegrityError> {
     let tests_dir = target.as_std_path().join("tests");
     fs::create_dir_all(&tests_dir).map_err(|error| format!("create tests dir failed: {error}"))?;
     fs::write(
@@ -91,7 +95,7 @@ fn assert_untracked_ignored_fixture(
     .map_err(|error| format!("write untracked test failed: {error}"))?;
     match check(target, "HEAD", Vcs::Git, rules)? {
         1 => Ok(()),
-        code => Err(format!("untracked ignored fixture returned {code}")),
+        code => Err(TestIntegrityError::from(format!("untracked ignored fixture returned {code}"))),
     }
 }
 
@@ -100,7 +104,7 @@ fn assert_untracked_ignored_fixture(
 /// # Errors
 ///
 /// Returns command construction, spawn, or non-zero exit failures.
-fn run_git(target: &TargetProject, args: &[&str]) -> Result<(), String> {
+fn run_git(target: &TargetProject, args: &[&str]) -> Result<(), TestIntegrityError> {
     let mut command =
         CommandIn::new(target, "git").map_err(|error| format!("git {args:?} invalid: {error}"))?;
     let _ = command.inherit_env();
@@ -108,7 +112,11 @@ fn run_git(target: &TargetProject, args: &[&str]) -> Result<(), String> {
     let status = command
         .run_status_raw()
         .map_err(|error| format!("git {args:?} failed to start: {error}"))?;
-    if status.success() { Ok(()) } else { Err(format!("git {args:?} exited with {status}")) }
+    if status.success() {
+        Ok(())
+    } else {
+        Err(TestIntegrityError::from(format!("git {args:?} exited with {status}")))
+    }
 }
 
 /// Build a unique scratch directory path.
@@ -116,7 +124,7 @@ fn run_git(target: &TargetProject, args: &[&str]) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns an error if system time is before the Unix epoch.
-fn scratch_dir() -> Result<PathBuf, String> {
+fn scratch_dir() -> Result<PathBuf, TestIntegrityError> {
     let root = std::env::temp_dir();
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

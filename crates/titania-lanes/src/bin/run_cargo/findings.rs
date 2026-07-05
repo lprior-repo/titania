@@ -133,11 +133,21 @@ fn collect_error_lines_when_clean(rule: &RuleId, path: &str, text: &str, report:
 }
 
 fn collect_test_findings(rule: &RuleId, stdout: &str, stderr: &str, report: &mut LaneReport) {
+    // Parse "test <name> ... FAILED" lines from stdout/stderr.
     stdout
         .lines()
         .chain(stderr.lines())
         .filter_map(failed_test_message)
         .for_each(|message| push_test_finding(rule, message, report));
+    // Also parse test names from the "failures:" section at end of cargo test output.
+    let all_text = format!("{stdout}{stderr}");
+    if let Some((_, tail)) = all_text.split_once("failures:") {
+        tail.lines()
+            .take_while(|line| !line.is_empty())
+            .filter_map(|line| line.trim().strip_prefix("    "))
+            .filter(|name| !name.is_empty())
+            .for_each(|name| push_test_finding(rule, format!("test failed: {name}"), report));
+    }
 }
 
 fn failed_test_message(line: &str) -> Option<String> {

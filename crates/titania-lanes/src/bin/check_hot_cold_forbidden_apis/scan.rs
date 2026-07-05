@@ -5,12 +5,23 @@ use std::{
 };
 
 use crate::{
-    allow_file::load_allow_file,
+    allow_file::{AllowFileError, load_allow_file},
     model::{COLD_MARKERS, FindingData, HOT_CRATES, SourceRole},
     syntax::{ApiSourceLine, compact, remove_spaces},
 };
+use thiserror::Error;
 
 type ScanOutcome = (Vec<String>, Vec<FindingData>, Vec<FindingData>);
+
+#[derive(Debug, Error)]
+pub(super) enum ScanError {
+    #[error("hot/cold allow file failed: {source}")]
+    AllowFile { source: AllowFileError },
+    #[error("hot source scan failed: {source}")]
+    SourceWalk { source: io::Error },
+    #[error("{}: unreadable: {source}", path.display())]
+    SourceRead { path: PathBuf, source: io::Error },
+}
 
 /// Scan hot source files for forbidden APIs.
 ///
@@ -18,9 +29,9 @@ type ScanOutcome = (Vec<String>, Vec<FindingData>, Vec<FindingData>);
 ///
 /// Returns an error when allow-file loading or source enumeration fails, or
 /// when a hot source file cannot be read.
-pub(super) fn scan(root: &Path) -> Result<ScanOutcome, String> {
-    let allowed = load_allow_file(root)?;
-    let sources = hot_sources(root).map_err(|error| format!("hot source scan failed: {error}"))?;
+pub(super) fn scan(root: &Path) -> Result<ScanOutcome, ScanError> {
+    let allowed = load_allow_file(root).map_err(|source| ScanError::AllowFile { source })?;
+    let sources = hot_sources(root).map_err(|source| ScanError::SourceWalk { source })?;
     let mut state = ScanState::new(allowed);
     sources.iter().try_for_each(|source| scan_source(&mut state, root, source))?;
     Ok(state.finish())
@@ -48,7 +59,7 @@ impl ScanState {
 /// # Errors
 ///
 /// Returns an error when a hot production source cannot be read.
-fn scan_source(state: &mut ScanState, root: &Path, source: &Path) -> Result<(), String> {
+fn scan_source(state: &mut ScanState, root: &Path, source: &Path) -> Result<(), ScanError> {
     let rel_path = relative_path(root, source);
     let role = source_role(&rel_path);
     state.classified.push(format!("ClassifiedPath|{role:?}|{rel_path}"));
@@ -56,7 +67,7 @@ fn scan_source(state: &mut ScanState, root: &Path, source: &Path) -> Result<(), 
         return Ok(());
     }
     let text = fs::read_to_string(source)
-        .map_err(|error| format!("{}: unreadable: {error}", source.display()))?;
+        .map_err(|error| ScanError::SourceRead { path: source.to_path_buf(), source: error })?;
     scan_hot_text(state, &rel_path, &text);
     Ok(())
 }

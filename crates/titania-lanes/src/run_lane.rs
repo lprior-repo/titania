@@ -7,6 +7,8 @@ mod policy_run_lane;
 mod run_cargo;
 #[path = "run_cargo_lane.rs"]
 mod run_cargo_lane;
+#[path = "run_lane_dylint.rs"]
+mod run_lane_dylint;
 #[path = "run_lane_outcome.rs"]
 mod run_lane_outcome;
 #[path = "run_lane_sources.rs"]
@@ -19,7 +21,7 @@ use crate::{
     CommandIn, CommandOutput, LaneError, LaneExit, LaneReport, RuleIdError, ast_grep_lane,
     current_target_project,
     deny_normalizer::{DenyNormalization, deny_missing_binary, normalize_deny_json},
-    dylint_lane::{DylintProbe, probe_dylint_toolchain},
+    policy_scan::exceptions::load_exceptions,
 };
 use panic_scan_lane::PanicRun;
 use run_lane_outcome::{
@@ -128,7 +130,7 @@ fn execute_non_cargo_lane(lane: Lane) -> Result<LaneExecution, RunLaneError> {
 fn non_cargo_outcome(target: &TargetProject, lane: Lane) -> Result<LaneOutcome, RunLaneError> {
     match lane {
         Lane::AstGrep => ast_grep_outcome(target),
-        Lane::Dylint => Ok(dylint_outcome(target)),
+        Lane::Dylint => Ok(run_lane_dylint::outcome(target)),
         Lane::PanicScan => panic_scan_outcome(target),
         Lane::PolicyScan => policy_scan_outcome(target),
         Lane::Deny => deny_outcome(target),
@@ -143,42 +145,17 @@ fn non_cargo_outcome(target: &TargetProject, lane: Lane) -> Result<LaneOutcome, 
 /// Returns [`RunLaneError`] when source discovery or ast-grep outcome building fails.
 fn ast_grep_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
     let sources = collect_rust_sources(target.as_std_path())?;
-    ast_grep_lane::run(AST_GREP_RULES, &sources, &[]).map_err(Into::into)
-}
-
-fn dylint_outcome(target: &TargetProject) -> LaneOutcome {
-    match probe_dylint_toolchain() {
-        DylintProbe::Infra(failure, _) => return LaneOutcome::Failed(failure),
-        DylintProbe::Ready => {}
+    let today = policy_run_lane::policy_date()?;
+    let mut report = LaneReport::new();
+    let exceptions = load_exceptions(target.as_std_path(), &today, &mut report)?;
+    if !report.is_clean() {
+        return Ok(findings_outcome(Lane::AstGrep, &report));
     }
-
-    let output = match command_output(target, "cargo", &["dylint", "--workspace", "--all"]) {
-        Ok(output) => output,
-        Err(error) => return dylint_failure_outcome(&error),
-    };
-
-    if output.success() {
-        return clean_outcome_unchecked(Lane::Dylint, "cargo-dylint", output.stdout());
-    }
-    LaneOutcome::Failed(LaneFailure::Suspicious {
-        tool: String::from("cargo-dylint"),
-        evidence: dylint_failure_evidence(&output),
-    })
-}
-
-fn dylint_failure_evidence(output: &CommandOutput) -> String {
-    output.stderr_str().map_or_else(
-        |_| String::from("<non-UTF-8>"),
-        |stderr| dylint_stderr_or_status(stderr, output),
-    )
-}
-
-fn dylint_stderr_or_status(stderr: &str, output: &CommandOutput) -> String {
-    if stderr.is_empty() {
-        format!("cargo dylint exited with code {:?}", output.status().code())
-    } else {
-        stderr.to_owned()
-    }
+    let exception_pairs = exceptions
+        .into_iter()
+        .map(|exception| (exception.rule_id, exception.path.as_str().to_owned()))
+        .collect::<Vec<_>>();
+    ast_grep_lane::run(AST_GREP_RULES, &sources, &exception_pairs).map_err(Into::into)
 }
 
 /// Run the panic-surface scanner lane.
@@ -272,13 +249,6 @@ fn deny_failure_outcome(error: &LaneError) -> LaneOutcome {
         },
         |failure| LaneOutcome::Failed(failure.clone()),
     )
-}
-
-fn dylint_failure_outcome(error: &LaneError) -> LaneOutcome {
-    LaneOutcome::Failed(LaneFailure::Infra {
-        tool: String::from("cargo-dylint"),
-        reason: error.to_string(),
-    })
 }
 
 fn execution_from_outcome(outcome: &LaneOutcome) -> LaneExecution {

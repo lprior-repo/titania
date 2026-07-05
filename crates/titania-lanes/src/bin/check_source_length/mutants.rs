@@ -19,9 +19,9 @@ pub(super) fn check_mutants_residue(
     report: &mut LaneReport,
 ) -> Result<(), RuleIdError> {
     let rule = RuleId::new(MUTANTS_RULE)?;
-    for file in rust_files_in_crates(root) {
-        check_mutant_file(root, &file, &rule, report);
-    }
+    rust_files_in_crates(root)
+        .into_iter()
+        .fold((), |(), file| check_mutant_file(root, &file, &rule, report));
     Ok(())
 }
 
@@ -33,7 +33,7 @@ fn rust_files_in_crates(root: &Path) -> Vec<PathBuf> {
     let mut all = Vec::new();
     read.filter_map(Result::ok)
         .filter_map(|entry| source_dir(&entry.path()))
-        .for_each(|src| walk_rs_files(&src, &mut all));
+        .fold((), |(), src| walk_rs_files(&src, &mut all));
     all
 }
 
@@ -52,7 +52,7 @@ fn check_mutant_file(root: &Path, file: &Path, rule: &RuleId, report: &mut LaneR
     text.lines()
         .enumerate()
         .filter(|(_, line)| has_mutants_marker(line))
-        .for_each(|(idx, _)| push_mutants_finding(root, file, idx, rule, report));
+        .fold((), |(), (idx, _)| push_mutants_finding(root, file, idx, rule, report));
 }
 
 fn has_mutants_marker(line: &str) -> bool {

@@ -73,6 +73,7 @@ fn scan_target_config(root: &Path, rules: &CargoConfigRules) -> Vec<Finding> {
 fn parent_config_findings(root: &Path, rules: &CargoConfigRules) -> Vec<Finding> {
     root.ancestors()
         .skip(1)
+        .take_while(|dir| !dir.join(".git").exists())
         .flat_map(|dir| parent_config_findings_in_dir(root, dir, rules))
         .collect()
 }

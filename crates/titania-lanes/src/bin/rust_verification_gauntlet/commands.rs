@@ -16,13 +16,13 @@ fn run_local_lane(target: &TargetProject, lane: LocalLane) -> LaneExit {
 ///
 /// Returns an error when the current executable cannot be resolved, has no parent
 /// directory, or the named sibling binary is absent.
-fn sibling_binary(binary_name: &str) -> Result<PathBuf, String> {
-    let current = std::env::current_exe().map_err(|error| error.to_string())?;
+fn sibling_binary(binary_name: &str) -> Result<PathBuf, GauntletError> {
+    let current = std::env::current_exe().map_err(|error| GauntletError::from(error.to_string()))?;
     let Some(dir) = current.parent() else {
-        return Err("cannot resolve current Titania lane binary directory".to_owned());
+        return Err(GauntletError::from("cannot resolve current Titania lane binary directory"));
     };
     let binary = dir.join(binary_name);
-    if binary.is_file() { Ok(binary) } else { Err(missing_binary(binary_name, dir)) }
+    if binary.is_file() { Ok(binary) } else { Err(GauntletError::from(missing_binary(binary_name, dir))) }
 }
 
 fn missing_binary(binary_name: &str, dir: &std::path::Path) -> String {
@@ -87,13 +87,13 @@ fn run_kani_default_unwind(target: &TargetProject, harness: &str) -> LaneExit {
 fn cargo_capture(
     target: &TargetProject,
     args: &[&str],
-) -> Result<titania_lanes::CommandOutput, String> {
-    let mut cmd = CommandIn::new(target, "cargo").map_err(|error| error.to_string())?;
+) -> Result<titania_lanes::CommandOutput, GauntletError> {
+    let mut cmd = CommandIn::new(target, "cargo").map_err(|error| GauntletError::from(error.to_string()))?;
     let _ = cmd.inherit_env();
     let _ = cmd.env_remove("RUSTC_WRAPPER");
     let _ = cmd.env("SCCACHE_DISABLE", "1");
     let _ = cmd.args(args);
-    cmd.run_capture().map_err(|error| error.to_string())
+    cmd.run_capture().map_err(|error| GauntletError::from(error.to_string()))
 }
 
 fn cargo_status(target: &TargetProject, args: &[&str]) -> LaneExit {

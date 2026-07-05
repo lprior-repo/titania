@@ -11,6 +11,29 @@ use titania_lanes::{CommandIn, LaneExit, current_target_project, exit};
 /// "Available models:" listing as a side effect of any unknown --model.
 const SENTINEL: &str = "__loom_list_enumerate__";
 
+#[derive(Debug)]
+struct LoomListError(String);
+
+impl std::fmt::Display for LoomListError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for LoomListError {}
+
+impl From<String> for LoomListError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&'static str> for LoomListError {
+    fn from(value: &'static str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
 enum LaneOutcome {
     Models(Vec<String>),
     NotApplicable(String),
@@ -48,11 +71,11 @@ fn usage_exit(args: &[String]) -> Option<ExitCode> {
     None
 }
 
-fn render_lane_result(result: Result<LaneOutcome, String>) -> ExitCode {
+fn render_lane_result(result: Result<LaneOutcome, LoomListError>) -> ExitCode {
     match result {
         Ok(LaneOutcome::Models(models)) => models_exit(&models),
         Ok(LaneOutcome::NotApplicable(reason)) => not_applicable_exit(&reason),
-        Err(err) => violations_exit(&err),
+        Err(err) => violations_exit(&err.to_string()),
     }
 }
 
@@ -80,7 +103,7 @@ fn violations_exit(err: &str) -> ExitCode {
 ///
 /// Returns an error string when cargo xtask execution fails, stderr emission
 /// fails, or the xtask output cannot be classified as a clean inventory state.
-fn run_lane(target: &TargetProject) -> Result<LaneOutcome, String> {
+fn run_lane(target: &TargetProject) -> Result<LaneOutcome, LoomListError> {
     if !has_xtask_inventory(target) {
         return Ok(LaneOutcome::NotApplicable(
             "target project has no xtask loom inventory".to_owned(),
@@ -100,12 +123,12 @@ fn has_xtask_inventory(target: &TargetProject) -> bool {
 /// # Errors
 ///
 /// Returns an error string when command construction or process spawning fails.
-fn run_xtask_loom(target: &TargetProject) -> Result<titania_lanes::CommandOutput, String> {
+fn run_xtask_loom(target: &TargetProject) -> Result<titania_lanes::CommandOutput, LoomListError> {
     let mut command =
         CommandIn::new(target, "cargo").map_err(|e| format!("failed to prepare cargo: {e}"))?;
     let _ = command.inherit_env();
     let _ = command.arg("xtask").arg("loom").arg("--model").arg(SENTINEL);
-    command.run_capture_raw().map_err(|e| format!("failed to spawn cargo xtask loom: {e}"))
+    command.run_capture_raw().map_err(|e| LoomListError::from(format!("failed to spawn cargo xtask loom: {e}")))
 }
 
 fn combined_output(stdout: &[u8], stderr: &[u8]) -> String {
@@ -120,12 +143,12 @@ fn combined_output(stdout: &[u8], stderr: &[u8]) -> String {
 ///
 /// Returns an error string if warning or raw-output diagnostics cannot be
 /// written to stderr.
-fn classify_loom_output(sentinel_success: bool, combined: &str) -> Result<LaneOutcome, String> {
+fn classify_loom_output(sentinel_success: bool, combined: &str) -> Result<LaneOutcome, LoomListError> {
     if sentinel_success {
         write_stderr_line(format_args!(
             "[loom-list] WARNING: xtask exited 0 for sentinel model (unexpected)"
         ))
-        .map_err(|error| format!("stderr write failed: {error}"))?;
+        .map_err(|error| LoomListError::from(format!("stderr write failed: {error}")))?;
     }
     if combined.contains("no such command: `xtask`") {
         return Ok(LaneOutcome::NotApplicable(
@@ -141,9 +164,9 @@ fn classify_loom_output(sentinel_success: bool, combined: &str) -> Result<LaneOu
 /// # Errors
 ///
 /// Returns an error string when stderr output fails.
-fn unparsed_inventory(combined: &str) -> Result<LaneOutcome, String> {
+fn unparsed_inventory(combined: &str) -> Result<LaneOutcome, LoomListError> {
     write_stderr_line(format_args!("[loom-list] Raw output:\n{combined}"))
-        .map_err(|error| format!("stderr write failed: {error}"))?;
+        .map_err(|error| LoomListError::from(format!("stderr write failed: {error}")))?;
     Ok(LaneOutcome::NotApplicable("could not parse model inventory from xtask output".to_owned()))
 }
 

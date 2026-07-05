@@ -8,10 +8,12 @@ fn run_compile(
     target_dir: &Path,
     bench: &str,
     extra: &[&str],
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let target_dir_value = target_dir.display().to_string();
-    let mut cmd = CommandIn::new(target, "rustup")
-        .map_err(|e| format!("failed to prepare cargo bench --no-run: {e}"))?;
+    let mut cmd = CommandIn::new(target, "rustup").map_err(|e| CommandError::SpawnFailed {
+        label: "cargo bench --no-run".to_owned(),
+        source: Box::new(e),
+    })?;
     let _ = cmd.inherit_env();
     append_compile_args(&mut cmd, bench, &target_dir_value, extra);
     run_with_status(&cmd, "cargo bench --no-run")
@@ -39,11 +41,13 @@ fn run_perf_stat(
     target_dir: &Path,
     bench: &str,
     log_file: &Path,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let target_dir_value = target_dir.display().to_string();
     let log_file_value = log_file.display().to_string();
-    let mut cmd = CommandIn::new(target, "perf")
-        .map_err(|e| format!("failed to prepare perf stat cargo bench: {e}"))?;
+    let mut cmd = CommandIn::new(target, "perf").map_err(|e| CommandError::SpawnFailed {
+        label: "perf stat cargo bench".to_owned(),
+        source: Box::new(e),
+    })?;
     let _ = cmd.inherit_env();
     append_perf_args(&mut cmd, bench, &target_dir_value, &log_file_value);
     run_with_status(&cmd, "perf stat cargo bench")

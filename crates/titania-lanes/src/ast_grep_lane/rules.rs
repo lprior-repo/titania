@@ -37,8 +37,12 @@ enum RuleScope {
     CoreDomainRust,
 }
 
-pub(super) fn rule_applies(rule: RuleDef, workspace_path: &WorkspacePath) -> bool {
-    filters::rule_applies(rule.scope, workspace_path)
+pub(super) fn rule_applies(rule: &RuleDef, workspace_path: &WorkspacePath) -> bool {
+    filters::rule_applies(rule, workspace_path)
+}
+
+pub(super) fn first_matching_line(source: &str, detects: fn(&str) -> bool) -> Option<usize> {
+    detectors::first_matching_line(source, detects)
 }
 
 pub(super) fn repair_hint(kind: RepairKind) -> RepairHint {

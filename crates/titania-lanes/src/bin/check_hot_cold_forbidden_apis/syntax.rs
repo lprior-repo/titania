@@ -114,16 +114,23 @@ fn strip_non_code(raw: &str, block_comment: &mut bool) -> String {
     let mut code = String::with_capacity(raw.len());
     let mut chars = raw.chars().peekable();
     let mut state = StripState::new(*block_comment);
-    while let Some(ch) = chars.next() {
-        match strip_action(&mut state, ch, &mut chars) {
-            StripAction::Skip => skip_action(),
-            StripAction::Stop => break,
-            StripAction::Space => code.push(' '),
-            StripAction::Push(value) => code.push(value),
-        }
-    }
+    strip_chars(&mut chars, &mut state, &mut code);
     *block_comment = state.block_comment;
     code
 }
 
-const fn skip_action() {}
+fn strip_chars(chars: &mut Peekable<Chars<'_>>, state: &mut StripState, code: &mut String) {
+    let Some(ch) = chars.next() else { return };
+    match strip_action(state, ch, chars) {
+        StripAction::Skip => strip_chars(chars, state, code),
+        StripAction::Stop => {}
+        StripAction::Space => {
+            code.push(' ');
+            strip_chars(chars, state, code);
+        }
+        StripAction::Push(value) => {
+            code.push(value);
+            strip_chars(chars, state, code);
+        }
+    }
+}

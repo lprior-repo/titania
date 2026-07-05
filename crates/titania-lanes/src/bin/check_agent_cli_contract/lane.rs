@@ -131,9 +131,10 @@ fn collect_files(root: &Path) -> Vec<PathBuf> {
 
 fn collect_files_into(root: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(root) else { return };
-    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
-        record_file_path(path, out);
-    }
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .for_each(|path| record_file_path(path, out));
 }
 
 fn record_file_path(path: PathBuf, out: &mut Vec<PathBuf>) {
@@ -150,10 +151,10 @@ fn check_required_literals(
     rules: &AgentCliRules,
     report: &mut LaneReport,
 ) {
-    for literal in REQUIRED_LITERALS.iter().chain(REQUIRED_IN_MASTER.iter()) {
+    REQUIRED_LITERALS.iter().chain(REQUIRED_IN_MASTER.iter()).for_each(|literal| {
         report.record_scan();
         check_required_literal(target, files, literal, rules, report);
-    }
+    });
 }
 
 fn check_required_literal(

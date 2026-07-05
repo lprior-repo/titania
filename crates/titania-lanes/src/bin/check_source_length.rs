@@ -133,16 +133,40 @@ fn write_stderr_raw(args: std::fmt::Arguments<'_>) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::fmt::Write as _;
+    use super::{SOURCE_LINE_LIMIT, run};
+    use std::{fmt::Write as _, path::Path};
+    use titania_lanes::LaneReport;
 
-    fn fixture_file(root: &Path, rel: &str, text: &str) -> Result<(), String> {
+    #[derive(Debug)]
+    enum SourceLengthError {
+        Io(std::io::Error),
+        Message(String),
+    }
+    impl std::fmt::Display for SourceLengthError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Io(err) => write!(f, "{err}"),
+                Self::Message(message) => f.write_str(message),
+            }
+        }
+    }
+    impl std::error::Error for SourceLengthError {}
+    impl From<String> for SourceLengthError {
+        fn from(value: String) -> Self {
+            Self::Message(value)
+        }
+    }
+
+    fn fixture_file(root: &Path, rel: &str, text: &str) -> Result<(), SourceLengthError> {
         let path = root.join(rel);
         let Some(parent) = path.parent() else {
-            return Err("test path has parent".to_string());
+            return Err(SourceLengthError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "test path has parent",
+            )));
         };
-        std::fs::create_dir_all(parent).map_err(|error| format!("create parent dirs: {error}"))?;
-        std::fs::write(path, text).map_err(|error| format!("write test file: {error}"))
+        std::fs::create_dir_all(parent).map_err(SourceLengthError::Io)?;
+        std::fs::write(path, text).map_err(SourceLengthError::Io)
     }
 
     fn long_source(lines: usize) -> String {
@@ -161,16 +185,19 @@ mod tests {
     }
 
     #[test]
-    fn missing_source_length_ledger_keeps_line_limit_active() -> Result<(), String> {
-        let temp = tempfile::tempdir().map_err(|error| format!("tempdir: {error}"))?;
+    fn missing_source_length_ledger_keeps_line_limit_active() -> Result<(), SourceLengthError> {
+        let temp = tempfile::tempdir()
+            .map_err(|error| SourceLengthError::Message(format!("tempdir: {error}")))?;
         fixture_file(
             temp.path(),
             "crates/titania-lanes/src/lib.rs",
             &long_source(SOURCE_LINE_LIMIT + 1),
-        )?;
+        )
+        .map_err(|e| SourceLengthError::Message(format!("{e}")))?;
 
         let mut report = LaneReport::new();
-        run(temp.path(), &mut report).map_err(|error| format!("run: {error}"))?;
+        run(temp.path(), &mut report)
+            .map_err(|error| SourceLengthError::Message(format!("run: {error}")))?;
 
         if report.findings().iter().any(|finding| {
             finding.rule().as_str() == "SRC_LINE_LIMIT"
@@ -178,17 +205,20 @@ mod tests {
         }) {
             Ok(())
         } else {
-            Err("missing SRC_LINE_LIMIT finding".to_string())
+            Err(SourceLengthError::Message("missing SRC_LINE_LIMIT finding".to_string()))
         }
     }
 
     #[test]
-    fn src_bin_production_functions_are_scanned() -> Result<(), String> {
-        let temp = tempfile::tempdir().map_err(|error| format!("tempdir: {error}"))?;
-        fixture_file(temp.path(), "crates/titania-lanes/src/bin/oversized.rs", &long_function())?;
+    fn src_bin_production_functions_are_scanned() -> Result<(), SourceLengthError> {
+        let temp = tempfile::tempdir()
+            .map_err(|error| SourceLengthError::Message(format!("tempdir: {error}")))?;
+        fixture_file(temp.path(), "crates/titania-lanes/src/bin/oversized.rs", &long_function())
+            .map_err(|e| SourceLengthError::Message(format!("{e}")))?;
 
         let mut report = LaneReport::new();
-        run(temp.path(), &mut report).map_err(|error| format!("run: {error}"))?;
+        run(temp.path(), &mut report)
+            .map_err(|error| SourceLengthError::Message(format!("run: {error}")))?;
 
         if report.findings().iter().any(|finding| {
             finding.rule().as_str() == "FN_LINE_LIMIT"
@@ -196,7 +226,7 @@ mod tests {
         }) {
             Ok(())
         } else {
-            Err("missing FN_LINE_LIMIT finding".to_string())
+            Err(SourceLengthError::Message("missing FN_LINE_LIMIT finding".to_string()))
         }
     }
 }

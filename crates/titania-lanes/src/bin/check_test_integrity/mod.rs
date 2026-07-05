@@ -26,6 +26,29 @@ type TestDeclaration = (String, String);
 type ChangedFile = (String, String);
 type ChangedFiles = Vec<ChangedFile>;
 
+#[derive(Debug)]
+pub(super) struct TestIntegrityError(String);
+
+impl std::fmt::Display for TestIntegrityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for TestIntegrityError {}
+
+impl From<String> for TestIntegrityError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&'static str> for TestIntegrityError {
+    fn from(value: &'static str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
 struct TestIntegrityRules {
     test_integrity: RuleId,
     del: RuleId,
@@ -170,7 +193,7 @@ fn resolve_vcs_root(target: &TargetProject) -> Result<RootInfo, LaneExit> {
     })
 }
 
-fn check_result_to_exit(result: Result<i32, String>) -> LaneExit {
+fn check_result_to_exit(result: Result<i32, TestIntegrityError>) -> LaneExit {
     match result {
         Ok(0) => LaneExit::Clean,
         Ok(_) => LaneExit::Violations,
@@ -191,7 +214,7 @@ fn check(
     base: &str,
     vcs: Vcs,
     rules: &TestIntegrityRules,
-) -> Result<i32, String> {
+) -> Result<i32, TestIntegrityError> {
     vcs::validate_base_revision(target, base, vcs)?;
     let mut findings = deleted_file_findings(&vcs::changed_files(target, base, vcs)?);
     findings.extend(scan::scan_diff(&vcs::diff_text(target, base, vcs)?));

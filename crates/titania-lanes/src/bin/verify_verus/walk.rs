@@ -17,9 +17,12 @@ pub(crate) struct WalkLine {
 pub(crate) fn walk_rs_lines(root: &Path, display_root: &Path) -> Vec<WalkLine> {
     let mut out = Vec::new();
     let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
+    std::iter::from_fn(|| {
+        let dir = stack.pop()?;
         visit_dir(&dir, display_root, &mut stack, &mut out);
-    }
+        Some(())
+    })
+    .for_each(drop);
     out
 }
 

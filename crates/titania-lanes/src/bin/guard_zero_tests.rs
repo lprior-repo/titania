@@ -23,6 +23,29 @@ const USAGE: &str = "usage: guard_zero_tests [--] <cargo-test-args>\n  \
      exit 1: zero applicable tests or parse failure\n  \
      exit 2: usage error";
 
+#[derive(Debug)]
+struct GuardZeroError(String);
+
+impl std::fmt::Display for GuardZeroError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for GuardZeroError {}
+
+impl From<String> for GuardZeroError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&'static str> for GuardZeroError {
+    fn from(value: &'static str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -54,7 +77,7 @@ fn run_command_exit(cmd_args: &[String]) -> std::process::ExitCode {
     lane_result_exit(run_lane(&target, cmd_args))
 }
 
-fn lane_result_exit(result: Result<(), String>) -> std::process::ExitCode {
+fn lane_result_exit(result: Result<(), GuardZeroError>) -> std::process::ExitCode {
     match result {
         Ok(()) => exit(LaneExit::Clean),
         Err(err) => {
@@ -87,7 +110,10 @@ fn parse_lane_input(args: Vec<String>) -> LaneInput {
 ///
 /// Returns an error when the command cannot be parsed, fails to run, fails, or
 /// reports no applicable tests.
-fn run_lane(target: &titania_core::TargetProject, cmd_args: &[String]) -> Result<(), String> {
+fn run_lane(
+    target: &titania_core::TargetProject,
+    cmd_args: &[String],
+) -> Result<(), GuardZeroError> {
     write_stderr_line(format_args!("[guard-zero-tests] running: {}", cmd_args.join(" ")))
         .map_err(|err| stderr_error(&err))?;
     let (program, passthrough) = parse_command_args(cmd_args)?;
@@ -100,11 +126,11 @@ fn run_lane(target: &titania_core::TargetProject, cmd_args: &[String]) -> Result
 /// # Errors
 ///
 /// Returns an error when no program argument is present.
-fn parse_command_args(cmd_args: &[String]) -> Result<ParsedCommand<'_>, String> {
+fn parse_command_args(cmd_args: &[String]) -> Result<ParsedCommand<'_>, GuardZeroError> {
     cmd_args
         .split_first()
         .map(|(program, passthrough)| (program.as_str(), passthrough))
-        .ok_or_else(|| "guard-zero-tests: empty command".to_string())
+        .ok_or_else(|| GuardZeroError::from("guard-zero-tests: empty command"))
 }
 
 /// # Errors
@@ -114,18 +140,20 @@ fn run_test_command<'a>(
     target: &'a titania_core::TargetProject,
     program: &'a str,
     passthrough: &'a [String],
-) -> Result<CommandOutput, String> {
+) -> Result<CommandOutput, GuardZeroError> {
     let mut command =
         CommandIn::new(target, program).map_err(|e| format!("failed to spawn {program}: {e}"))?;
     let _ = command.inherit_env();
     let _ = command.args_strings(passthrough);
-    command.run_capture_raw().map_err(|e| format!("failed to spawn {program}: {e}"))
+    command
+        .run_capture_raw()
+        .map_err(|e| GuardZeroError::from(format!("failed to spawn {program}: {e}")))
 }
 
 /// # Errors
 ///
 /// Returns an error when the captured command status was non-zero or signaled.
-fn reject_failed_command(output: &CommandOutput, combined: &str) -> Result<(), String> {
+fn reject_failed_command(output: &CommandOutput, combined: &str) -> Result<(), GuardZeroError> {
     match output.status().code() {
         Some(0) => Ok(()),
         Some(code) => reject_nonzero_command(code, combined),
@@ -136,7 +164,7 @@ fn reject_failed_command(output: &CommandOutput, combined: &str) -> Result<(), S
 /// # Errors
 ///
 /// Returns an error after reporting a non-zero command status.
-fn reject_nonzero_command(code: i32, combined: &str) -> Result<(), String> {
+fn reject_nonzero_command(code: i32, combined: &str) -> Result<(), GuardZeroError> {
     write_stderr_line(format_args!(
         "[guard-zero-tests] cargo test exited {code} - treating as tooling failure"
     ))
@@ -148,30 +176,30 @@ fn reject_nonzero_command(code: i32, combined: &str) -> Result<(), String> {
         .map_err(|err| stderr_error(&err))?;
     }
     write_stderr_line(format_args!("{combined}")).map_err(|err| stderr_error(&err))?;
-    Err(format!("command exited with status {code}"))
+    Err(GuardZeroError::from(format!("command exited with status {code}")))
 }
 
 /// # Errors
 ///
 /// Returns an error after reporting a signaled command termination.
-fn reject_signaled_command(combined: &str) -> Result<(), String> {
+fn reject_signaled_command(combined: &str) -> Result<(), GuardZeroError> {
     write_stderr_line(format_args!("[guard-zero-tests] command terminated by signal"))
         .map_err(|err| stderr_error(&err))?;
     write_stderr_line(format_args!("{combined}")).map_err(|err| stderr_error(&err))?;
-    Err("command terminated by signal".to_string())
+    Err(GuardZeroError::from("command terminated by signal"))
 }
 
 /// # Errors
 ///
 /// Returns an error when cargo output contains no recognized test count.
-fn parse_test_count(combined: &str) -> Result<u32, String> {
+fn parse_test_count(combined: &str) -> Result<u32, GuardZeroError> {
     extract_applicable_count(combined).map_or_else(|| missing_test_count(combined), Ok)
 }
 
 /// # Errors
 ///
 /// Returns an error when reporting fails or zero applicable tests ran.
-fn report_test_evidence(count: u32) -> Result<(), String> {
+fn report_test_evidence(count: u32) -> Result<(), GuardZeroError> {
     match classify_evidence(count) {
         TestEvidence::Applicable(count) => {
             write_stderr_line(format_args!(
@@ -185,7 +213,7 @@ fn report_test_evidence(count: u32) -> Result<(), String> {
                 "[guard-zero-tests] FAIL: command completed but executed zero applicable tests"
             ))
             .map_err(|err| stderr_error(&err))?;
-            Err("zero applicable tests executed".to_string())
+            Err(GuardZeroError::from("zero applicable tests executed"))
         }
     }
 }
@@ -193,14 +221,14 @@ fn report_test_evidence(count: u32) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns an error when writing the parse failure report fails.
-fn missing_test_count(combined: &str) -> Result<u32, String> {
+fn missing_test_count(combined: &str) -> Result<u32, GuardZeroError> {
     write_stderr_line(format_args!(
         "[guard-zero-tests] FAIL: could not parse test count from cargo output."
     ))
     .map_err(|err| stderr_error(&err))?;
     write_stderr_line(format_args!("[guard-zero-tests] Raw output:\n{combined}"))
         .map_err(|err| stderr_error(&err))?;
-    Err("could not parse test count from cargo output".to_string())
+    Err(GuardZeroError::from("could not parse test count from cargo output"))
 }
 
 const fn classify_evidence(count: u32) -> TestEvidence {

@@ -5,7 +5,17 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 /// Directory names that are not production Rust input for source-scan lanes.
-const SKIP_DIRS: &[&str] = &[".beads", ".git", ".moon", ".titania", ".worktrees", "target"];
+const SKIP_DIRS: &[&str] = &[
+    ".beads",
+    ".git",
+    ".moon",
+    ".titania",
+    ".worktrees",
+    "benches",
+    "examples",
+    "target",
+    "tests",
+];
 
 /// Filesystem traversal failures from source discovery.
 #[derive(Debug, Error)]
@@ -79,7 +89,7 @@ fn visit_source_entry(
     if file_type.is_dir() && !skip_dir(&path) {
         return collect_rust_sources_into(root, &path, files);
     }
-    if file_type.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
+    if file_type.is_file() && !skip_file(&path) && path.extension().is_some_and(|ext| ext == "rs") {
         push_relative_source(root, &path, files)?;
     }
     Ok(())
@@ -104,4 +114,9 @@ fn push_relative_source(
 /// Return true when *path* points at a directory excluded from source discovery.
 fn skip_dir(path: &Path) -> bool {
     path.file_name().and_then(|name| name.to_str()).is_some_and(|name| SKIP_DIRS.contains(&name))
+}
+
+/// Return true when *path* points at a Rust build script excluded from source discovery.
+fn skip_file(path: &Path) -> bool {
+    path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name == "build.rs")
 }

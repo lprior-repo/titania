@@ -94,9 +94,9 @@ fn usage_error(error: impl std::fmt::Display, rules: &HcRules) -> ExitCode {
     exit(LaneExit::Usage)
 }
 
-fn fixture_error(error: String, rules: &HcRules) -> ExitCode {
+fn fixture_error(error: impl std::fmt::Display, rules: &HcRules) -> ExitCode {
     let mut report = LaneReport::new();
-    report.push(Finding::new(rules.fixture.clone(), ".", 0, error));
+    report.push(Finding::new(rules.fixture.clone(), ".", 0, error.to_string()));
     if write_stderr(&report.render()).is_err() {
         return exit(LaneExit::Failure);
     }

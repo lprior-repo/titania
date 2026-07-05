@@ -38,9 +38,9 @@ pub(super) fn check_file(
 fn scan_functions(text: &str, rel: &str, rule: &RuleId, report: &mut LaneReport) {
     let mut state = ScanState::Outside;
     let mut context = ScanContext { rel, rule, report };
-    for (idx, raw) in text.lines().enumerate() {
+    text.lines().enumerate().for_each(|(idx, raw)| {
         state = state.advance(raw, line_no_from_idx(idx), &mut context);
-    }
+    });
 }
 
 struct ScanContext<'a> {

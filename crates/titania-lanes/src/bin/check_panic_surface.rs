@@ -139,9 +139,9 @@ fn rg_available() -> bool {
 
 fn scan_target(root: &Path) -> LaneReport {
     let mut report = LaneReport::new();
-    for file in paths::collect_source_files(root) {
-        scan::scan_file(root, &file, &mut report);
-    }
+    paths::collect_source_files(root)
+        .into_iter()
+        .fold((), |(), file| scan::scan_file(root, &file, &mut report));
     report
 }
 

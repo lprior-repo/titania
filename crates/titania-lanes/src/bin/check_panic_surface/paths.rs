@@ -22,32 +22,29 @@ pub(super) fn collect_source_files(root: &Path) -> Vec<PathBuf> {
 fn walk_rust_files(dir: PathBuf) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     let mut stack: Vec<PathBuf> = vec![dir];
-    while let Some(top) = stack.pop() {
-        collect_dir_entries(&top, &mut stack, &mut out);
-    }
+    std::iter::from_fn(|| {
+        let top = stack.pop()?;
+        visit_walk_dir(&top, &mut stack, &mut out);
+        Some(())
+    })
+    .for_each(drop);
     out.sort();
     out
 }
 
-fn collect_dir_entries(dir: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+fn visit_walk_dir(top: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(top) else {
         return;
     };
-    entries.flatten().for_each(|entry| collect_walk_path(entry.path(), stack, out));
+    entries.flatten().for_each(|entry| record_walk_path(entry.path(), stack, out));
 }
 
-fn collect_walk_path(path: PathBuf, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
+fn record_walk_path(path: PathBuf, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
     if path.is_dir() {
         stack.push(path);
-        return;
-    }
-    if is_rust_file(&path) {
+    } else if path.extension().is_some_and(|e| e == "rs") {
         out.push(path);
     }
-}
-
-fn is_rust_file(path: &Path) -> bool {
-    path.extension().is_some_and(|e| e == "rs")
 }
 
 /// Replicate the bash `--glob '!...'`. The list mirrors

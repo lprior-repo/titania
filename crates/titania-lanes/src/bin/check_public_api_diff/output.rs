@@ -49,18 +49,18 @@ fn resolve_package_list(
 ) -> Result<Vec<String>, LaneExit> {
     match discover_packages(target) {
         Ok(packages) => Ok(packages),
-        Err(error) => Err(record_package_list_error(error, report, rules)),
+        Err(error) => Err(record_package_list_error(&error, report, rules)),
     }
 }
 
 fn record_package_list_error(
-    error: String,
+    error: &PackageDiscoveryError,
     report: &mut LaneReport,
     rules: &PubApiRules,
 ) -> LaneExit {
-    let is_missing = error.contains("failed to start");
+    let is_missing = error.is_missing_command();
     let (rule, code) = package_failure_rule(is_missing, rules);
-    report.push(Finding::new(rule.clone(), "Cargo.toml", 0, error));
+    report.push(Finding::new(rule.clone(), "Cargo.toml", 0, error.to_string()));
     render_report_or(report, code)
 }
 

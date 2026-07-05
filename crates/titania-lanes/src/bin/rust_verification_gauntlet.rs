@@ -22,6 +22,29 @@ use serde_json::Value;
 use titania_core::TargetProject;
 use titania_lanes::{LaneExit, LaneReport, current_target_project, exit};
 
+#[derive(Debug)]
+struct GauntletError(String);
+
+impl std::fmt::Display for GauntletError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for GauntletError {}
+
+impl From<String> for GauntletError {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&'static str> for GauntletError {
+    fn from(value: &'static str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
 include!("rust_verification_gauntlet/commands.rs");
 
 const TEST_GROUPS: [(&str, &str); 4] = [
@@ -96,7 +119,7 @@ impl TargetPackages {
     ///
     /// Returns an error when cargo metadata cannot be captured, decoded as UTF-8,
     /// or parsed as JSON.
-    fn discover(target: &TargetProject) -> Result<Self, String> {
+    fn discover(target: &TargetProject) -> Result<Self, GauntletError> {
         let output = cargo_capture(target, &["metadata", "--format-version", "1", "--no-deps"])?;
         let text = output.stdout_str().map_err(|error| error.to_string())?;
         let metadata = serde_json::from_str::<Value>(text).map_err(|error| error.to_string())?;

@@ -42,9 +42,9 @@ pub fn scan(
     rules: &DiscardRules,
     report: &mut LaneReport,
 ) {
-    for file_root in scan_roots(root) {
+    scan_roots(root).into_iter().fold((), |(), file_root| {
         scan_dir(&file_root, root, allow, rules, report);
-    }
+    });
 }
 
 fn scan_roots(root: &Path) -> Vec<PathBuf> {
@@ -93,9 +93,7 @@ fn scan_dir(
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
-    for entry in read.flatten() {
-        scan_entry(&entry.path(), root, allow, rules, report);
-    }
+    read.flatten().fold((), |(), entry| scan_entry(&entry.path(), root, allow, rules, report));
 }
 
 fn scan_entry(
@@ -144,9 +142,9 @@ fn scan_file(
     };
     let mut block_comment = false;
     let mut context = ScanContext { rel, allow, rules, report };
-    for (idx, line) in text.lines().enumerate() {
+    text.lines().enumerate().fold((), |(), (idx, line)| {
         scan_line(&mut context, line_no_from_idx(idx), line, &mut block_comment);
-    }
+    });
 }
 
 struct ScanContext<'a> {

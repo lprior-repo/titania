@@ -14,10 +14,12 @@ pub mod package_json;
 
 use titania_core::TargetProject;
 use titania_lanes::{
-    CommandIn, Finding, LaneExit, LaneReport, RuleId, RuleIdError, current_target_project, exit,
+    CommandIn, Finding, LaneError, LaneExit, LaneReport, RuleId, RuleIdError,
+    current_target_project, exit,
 };
 
 use std::io::{self, Write};
+use thiserror::Error;
 
 use package_json::extract_package_names;
 
@@ -61,16 +63,32 @@ fn filter_packages(discovered: Vec<String>) -> Vec<String> {
     selected
 }
 
+#[derive(Debug, Error)]
+enum PackageDiscoveryError {
+    #[error("cargo metadata failed to start: {source}")]
+    Command { source: LaneError },
+    #[error("cargo metadata failed: {stderr}")]
+    Status { stderr: String },
+    #[error("cargo metadata returned non-UTF8 JSON: {source}")]
+    NonUtf8 { source: std::string::FromUtf8Error },
+}
+
+impl PackageDiscoveryError {
+    const fn is_missing_command(&self) -> bool {
+        matches!(self, Self::Command { .. })
+    }
+}
+
 /// Discovers public API checked package names from Cargo metadata.
 ///
 /// # Errors
 ///
-/// Returns an error string when `cargo metadata` cannot start, exits with a
+/// Returns a typed error when `cargo metadata` cannot start, exits with a
 /// failure status, or emits non-UTF-8 JSON.
-fn discover_packages(target: &TargetProject) -> Result<Vec<String>, String> {
+fn discover_packages(target: &TargetProject) -> Result<Vec<String>, PackageDiscoveryError> {
     let manifest = target.manifest_path();
     let mut command = CommandIn::new(target, "cargo")
-        .map_err(|error| format!("cargo metadata failed to start: {error}"))?;
+        .map_err(|source| PackageDiscoveryError::Command { source })?;
     let _ = command.inherit_env();
     let _ = command
         .arg("metadata")
@@ -79,15 +97,14 @@ fn discover_packages(target: &TargetProject) -> Result<Vec<String>, String> {
         .arg("--no-deps")
         .arg("--manifest-path")
         .arg(manifest.as_str());
-    let output = command
-        .run_capture_raw()
-        .map_err(|error| format!("cargo metadata failed to start: {error}"))?;
+    let output =
+        command.run_capture_raw().map_err(|source| PackageDiscoveryError::Command { source })?;
     if !output.status().success() {
-        let stderr = String::from_utf8_lossy(output.stderr());
-        return Err(format!("cargo metadata failed: {stderr}"));
+        let stderr = String::from_utf8_lossy(output.stderr()).into_owned();
+        return Err(PackageDiscoveryError::Status { stderr });
     }
     let text = String::from_utf8(output.stdout().to_vec())
-        .map_err(|error| format!("cargo metadata returned non-UTF8 JSON: {error}"))?;
+        .map_err(|source| PackageDiscoveryError::NonUtf8 { source })?;
     Ok(filter_packages(extract_package_names(&text)))
 }
 
@@ -169,12 +186,10 @@ fn run_package_diffs(
     rules: &PubApiRules,
     report: &mut LaneReport,
 ) -> LaneExit {
-    let mut exit_code = LaneExit::Clean;
     let context = DiffContext { target, rules };
-    for package in packages {
-        exit_code = apply_public_api_diff(&context, package, report, exit_code);
-    }
-    exit_code
+    packages.iter().fold(LaneExit::Clean, |exit_code, package| {
+        apply_public_api_diff(&context, package, report, exit_code)
+    })
 }
 
 fn apply_public_api_diff(

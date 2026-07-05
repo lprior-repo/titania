@@ -1,25 +1,43 @@
 use std::{collections::BTreeSet, fs, path::Path};
 
+use thiserror::Error;
+
 type AllowKey = (String, String);
 type AllowSet = BTreeSet<AllowKey>;
 
+/// Errors from allow-file loading and parsing.
+#[derive(Debug, Error)]
+pub(super) enum AllowFileError {
+    /// The allow file is unreadable.
+    #[error("scripts/hot-cold-forbidden-apis.allow: unreadable: {source}")]
+    ReadFailed { source: std::io::Error },
+    /// The absence notice could not be written.
+    #[error("stderr write failed: {source}")]
+    Stderr { source: std::io::Error },
+    /// The row is malformed or has wrong field count.
+    #[error("{0}")]
+    Malformed(String),
+    /// The row is overbroad or missing required metadata.
+    #[error("{0}")]
+    Overbroad(String),
+}
 /// Load and validate the hot/cold allow file.
 ///
 /// # Errors
 ///
 /// Returns an error when the allow file is unreadable or contains malformed
 /// or overbroad rows.
-pub(super) fn load_allow_file(root: &Path) -> Result<AllowSet, String> {
+pub(super) fn load_allow_file(root: &Path) -> Result<AllowSet, AllowFileError> {
     let allow_path = root.join("scripts/hot-cold-forbidden-apis.allow");
     if !allow_path.exists() {
         crate::write_stderr_line(format_args!(
             "NotApplicable: hot/cold forbidden API allow file absent"
         ))
-        .map_err(|error| format!("stderr write failed: {error}"))?;
+        .map_err(|error| AllowFileError::Stderr { source: error })?;
         return Ok(AllowSet::new());
     }
     let text = fs::read_to_string(&allow_path)
-        .map_err(|error| format!("scripts/hot-cold-forbidden-apis.allow: unreadable: {error}"))?;
+        .map_err(|error| AllowFileError::ReadFailed { source: error })?;
     text.lines().enumerate().try_fold(BTreeSet::new(), collect_allow_entry)
 }
 
@@ -31,7 +49,7 @@ pub(super) fn load_allow_file(root: &Path) -> Result<AllowSet, String> {
 fn collect_allow_entry(
     mut acc: AllowSet,
     (index, line): (usize, &str),
-) -> Result<AllowSet, String> {
+) -> Result<AllowSet, AllowFileError> {
     if let Some(entry) = parse_allow_entry(index, line)? {
         let _ = acc.insert(entry);
     }
@@ -44,17 +62,17 @@ fn collect_allow_entry(
 ///
 /// Returns an error when the row is malformed or fails allow-entry
 /// validation.
-fn parse_allow_entry(index: usize, line: &str) -> Result<Option<AllowKey>, String> {
+fn parse_allow_entry(index: usize, line: &str) -> Result<Option<AllowKey>, AllowFileError> {
     let trimmed = line.trim();
     if trimmed.is_empty() || trimmed.starts_with('#') {
         return Ok(None);
     }
     let parts: Vec<&str> = trimmed.split('|').collect();
     let [path, class, owner, reviewed_by, test, reason] = parts.as_slice() else {
-        return Err(malformed_allow(
-            index,
-            "expected path|class|owner=...|reviewed_by=...|test=...|reason=...",
-        ));
+        return Err(AllowFileError::Malformed(format!(
+            "MalformedException: scripts/hot-cold-forbidden-apis.allow:{} expected path|class|owner=...|reviewed_by=...|test=...|reason=...",
+            index.saturating_add(1)
+        )));
     };
     let entry = AllowEntry { index, path, class, owner, reviewed_by, test, reason };
     validate_allow_entry(&entry)?;
@@ -76,38 +94,33 @@ struct AllowEntry<'a> {
 /// # Errors
 ///
 /// Returns an error when the row is overbroad or missing required metadata.
-fn validate_allow_entry(entry: &AllowEntry<'_>) -> Result<(), String> {
+fn validate_allow_entry(entry: &AllowEntry<'_>) -> Result<(), AllowFileError> {
     if entry.path.contains('*')
         || !entry.path.starts_with("crates/")
         || !std::path::Path::new(&entry.path)
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"))
     {
-        return Err(overbroad_allow(entry.index, "path must be exact crates/*/src/*.rs"));
+        return Err(AllowFileError::Overbroad(format!(
+            "OverbroadException: scripts/hot-cold-forbidden-apis.allow:{} path must be exact crates/*/src/*.rs",
+            entry.index.saturating_add(1)
+        )));
     }
     if entry.class == "ALL" || entry.class.contains('*') {
-        return Err(overbroad_allow(entry.index, "class must be exact"));
+        return Err(AllowFileError::Overbroad(format!(
+            "OverbroadException: scripts/hot-cold-forbidden-apis.allow:{} class must be exact",
+            entry.index.saturating_add(1)
+        )));
     }
     if !entry.owner.starts_with("owner=")
         || !entry.reviewed_by.starts_with("reviewed_by=")
         || !entry.test.starts_with("test=")
         || !entry.reason.starts_with("reason=")
     {
-        return Err(malformed_allow(entry.index, "missing owner/reviewed_by/test/reason"));
+        return Err(AllowFileError::Malformed(format!(
+            "MalformedException: scripts/hot-cold-forbidden-apis.allow:{} missing owner/reviewed_by/test/reason",
+            entry.index.saturating_add(1)
+        )));
     }
     Ok(())
-}
-
-fn malformed_allow(index: usize, detail: &str) -> String {
-    format!(
-        "MalformedException: scripts/hot-cold-forbidden-apis.allow:{} {detail}",
-        index.saturating_add(1)
-    )
-}
-
-fn overbroad_allow(index: usize, detail: &str) -> String {
-    format!(
-        "OverbroadException: scripts/hot-cold-forbidden-apis.allow:{} {detail}",
-        index.saturating_add(1)
-    )
 }

@@ -48,8 +48,9 @@ fn verus_target_failure(
     match verus_tool::run_verus_target(target, proof_target, evidence_dir) {
         Ok(()) => Ok(None),
         Err(e) => {
-            record_target_failure(report, proof_target, &e, target_rule)?;
-            Ok(Some(format!("{}: {e}", proof_target.path())))
+            let message = e.to_string();
+            record_target_failure(report, proof_target, &message, target_rule)?;
+            Ok(Some(format!("{}: {message}", proof_target.path())))
         }
     }
 }

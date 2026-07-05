@@ -45,7 +45,7 @@ pub(super) fn run(target: &TargetProject) -> Result<LaneReport, PolicyRunError> 
 ///
 /// # Errors
 /// Returns [`PolicyRunError`] when the command fails or emits invalid UTF-8.
-fn policy_date() -> Result<String, PolicyRunError> {
+pub(super) fn policy_date() -> Result<String, PolicyRunError> {
     let output = Command::new(DATE_TOOL).arg(DATE_FORMAT).output().map_err(PolicyRunError::Date)?;
     if !output.status.success() {
         return Err(PolicyRunError::DateStatus(output.status.to_string()));

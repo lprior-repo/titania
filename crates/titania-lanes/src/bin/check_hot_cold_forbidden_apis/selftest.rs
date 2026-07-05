@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::scan::scan;
+use crate::scan::{ScanError, scan};
 
 pub(super) fn self_test() -> i32 {
     let root = fixture_root();
@@ -105,7 +105,7 @@ fn write_fixtures(root: &Path) -> io::Result<()> {
 /// # Errors
 ///
 /// Returns scanner errors from the fixture scan.
-fn missing_required_classes(root: &Path) -> Result<Vec<&'static str>, String> {
+fn missing_required_classes(root: &Path) -> Result<Vec<&'static str>, ScanError> {
     let (_classified, violations, _justified) = scan(root)?;
     let classes: BTreeSet<&'static str> =
         violations.iter().map(|finding| finding.class_id).collect();

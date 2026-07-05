@@ -7,7 +7,8 @@ use std::{
 
 use titania_core::TargetProject;
 use titania_lanes::{
-    CommandIn, Finding, LaneExit, LaneReport, RuleId, RuleIdError, current_target_project, exit,
+    CommandIn, Finding, LaneError, LaneExit, LaneReport, RuleId, RuleIdError,
+    current_target_project, exit,
 };
 
 const RULE_REJECTED: &str = "FLUX_REJECTED_001";
@@ -155,7 +156,7 @@ fn run_flux(target: &TargetProject, invocation: &Invocation, rules: &FluxRules) 
     let path = rustup_first_path();
     let mut command = match prepare_command(target, path.as_deref()) {
         Ok(command) => command,
-        Err(error) => return cargo_missing_exit(&error, rules),
+        Err(error) => return cargo_missing_exit(&error.to_string(), rules),
     };
     append_args(&mut command, &cargo_args);
     run_command(&command, rules)
@@ -177,13 +178,13 @@ fn build_cargo_args(invocation: &Invocation) -> Vec<String> {
 ///
 /// # Errors
 ///
-/// Returns a stringified command construction error when the target command
-/// cannot be created.
+/// Returns a typed command construction error when the target command cannot
+/// be created.
 fn prepare_command<'a>(
     target: &'a TargetProject,
     path: Option<&'a str>,
-) -> Result<CommandIn<'a>, String> {
-    let mut command = CommandIn::new(target, "cargo").map_err(|error| error.to_string())?;
+) -> Result<CommandIn<'a>, LaneError> {
+    let mut command = CommandIn::new(target, "cargo")?;
     let _ = command.inherit_env();
     if let Some(path) = path {
         let _ = command.env("PATH", path);

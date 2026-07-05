@@ -37,14 +37,25 @@ fn checked_in_strict_ai_policy_parses_with_expected_architecture() {
 }
 
 #[test]
-fn checked_in_strict_ai_exceptions_parse_empty_set() {
+fn checked_in_strict_ai_exceptions_parse_audit_exception() {
     let content =
         fs::read_to_string(repo_root().join(".titania/profiles/strict-ai/exceptions.toml"))
             .expect("checked-in strict-ai exceptions must be readable");
     let exceptions =
         parse_exceptions(&content, "2026-07-04").expect("checked-in exceptions must parse");
 
-    assert!(exceptions.is_empty());
+    assert_eq!(exceptions.len(), 1, "expected exactly one audited exception");
+    let ex = &exceptions[0];
+    assert_eq!(ex.rule_id.as_str(), "BYPASS_EXPECT_ATTR");
+    assert_eq!(ex.path.as_str(), "crates/titania-dylint/src/lib.rs");
+    assert_eq!(ex.owner.as_ref(), "titania-maintainers");
+    assert!(
+        ex.reason.contains("Dylint ABI"),
+        "reason should cite Dylint ABI/no_mangle rationale, got: {}",
+        ex.reason
+    );
+    assert_eq!(ex.expires_on.as_ref(), "2026-10-01");
+    assert_eq!(ex.review.as_ref(), "tn-dylint-abi-expect");
 }
 
 #[test]

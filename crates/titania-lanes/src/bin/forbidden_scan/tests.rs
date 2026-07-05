@@ -1,15 +1,16 @@
-use std::{error::Error, fs};
+use std::{error::Error, fs, io};
 
 use titania_lanes::RuleId;
 
 use super::{ForbiddenToken, collect_source_files, default_forbidden_set, scan_file};
 
-fn macro_token(name: &str) -> Result<ForbiddenToken, String> {
-    ForbiddenToken::parse(name).ok_or_else(|| format!("token parse failed for {name}"))
+fn macro_token(name: &str) -> Result<ForbiddenToken, Box<dyn Error>> {
+    ForbiddenToken::parse(name)
+        .ok_or_else(|| io::Error::other(format!("token parse failed for {name}")).into())
 }
 
 #[test]
-fn macro_token_matches_panic_bang() -> Result<(), String> {
+fn macro_token_matches_panic_bang() -> Result<(), Box<dyn Error>> {
     let token = macro_token("panic!")?;
     assert!(token.is_present_in("panic!(\"boom\")"));
     assert!(token.is_present_in("let _ = panic!();"));
@@ -17,7 +18,7 @@ fn macro_token_matches_panic_bang() -> Result<(), String> {
 }
 
 #[test]
-fn macro_token_rejects_identifier_prefixed_match() -> Result<(), String> {
+fn macro_token_rejects_identifier_prefixed_match() -> Result<(), Box<dyn Error>> {
     // `mypanic!` must not be flagged as `panic!`.
     let token = macro_token("panic!")?;
     assert!(!token.is_present_in("mypanic!()"));
@@ -25,7 +26,7 @@ fn macro_token_rejects_identifier_prefixed_match() -> Result<(), String> {
 }
 
 #[test]
-fn method_token_matches_dot_receiver() -> Result<(), String> {
+fn method_token_matches_dot_receiver() -> Result<(), Box<dyn Error>> {
     let token = macro_token("unwrap")?;
     assert!(token.is_present_in("x.unwrap()"));
     // `unwrap_or_default` is a different method, not `unwrap`.
@@ -34,14 +35,14 @@ fn method_token_matches_dot_receiver() -> Result<(), String> {
 }
 
 #[test]
-fn method_token_matches_double_colon_receiver() -> Result<(), String> {
+fn method_token_matches_double_colon_receiver() -> Result<(), Box<dyn Error>> {
     let token = macro_token("unwrap")?;
     assert!(token.is_present_in("Result::unwrap(r)"));
     Ok(())
 }
 
 #[test]
-fn method_token_matches_expect_with_message() -> Result<(), String> {
+fn method_token_matches_expect_with_message() -> Result<(), Box<dyn Error>> {
     // Regression: the old plain-substring matcher missed this because
     // `.expect("msg")` never contains the literal `expect()` token.
     let token = macro_token("expect")?;
@@ -50,7 +51,7 @@ fn method_token_matches_expect_with_message() -> Result<(), String> {
 }
 
 #[test]
-fn method_token_rejects_identifier_prefixed_match() -> Result<(), String> {
+fn method_token_rejects_identifier_prefixed_match() -> Result<(), Box<dyn Error>> {
     // `myexpect()` must not be flagged as the `expect` method.
     let token = macro_token("expect")?;
     assert!(!token.is_present_in("myexpect()"));
@@ -59,7 +60,7 @@ fn method_token_rejects_identifier_prefixed_match() -> Result<(), String> {
 }
 
 #[test]
-fn method_token_requires_open_paren() -> Result<(), String> {
+fn method_token_requires_open_paren() -> Result<(), Box<dyn Error>> {
     let token = macro_token("unwrap")?;
     // No `(` after the name means it's just an identifier in scope.
     assert!(!token.is_present_in("let unwrap = 1;"));
@@ -74,7 +75,7 @@ fn empty_token_string_is_rejected() {
 }
 
 #[test]
-fn dbg_macro_token_matches_bang_form() -> Result<(), String> {
+fn dbg_macro_token_matches_bang_form() -> Result<(), Box<dyn Error>> {
     let token = macro_token("dbg!")?;
     assert!(token.is_present_in("dbg!(x)"));
     Ok(())

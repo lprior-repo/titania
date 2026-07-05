@@ -94,7 +94,7 @@ pub(crate) fn run_checked(args: Vec<String>) -> Result<LaneReport, RunCargoError
 /// Returns a usage error when the subcommand is missing or unknown.
 fn selected_lane(rest: &mut impl Iterator<Item = String>) -> Result<CargoLane, RunCargoError> {
     let subcommand = rest.next().ok_or_else(|| RunCargoError::Usage(usage_message()))?;
-    CargoLane::parse(&subcommand).map_err(RunCargoError::Usage)
+    CargoLane::parse(&subcommand).map_err(|error| RunCargoError::Usage(error.to_string()))
 }
 
 /// Build the rule id associated with a Cargo lane.
@@ -215,10 +215,30 @@ pub(crate) const fn args_for_lane(lane: CargoLane) -> &'static [&'static str] {
 const FMT_ARGS: &[&str] = &["fmt", "--all", "--check"];
 
 fn fallback_message(stdout: &str, stderr: &str) -> String {
+    fn is_progress(line: &str) -> bool {
+        let t = line.trim_start();
+        t.starts_with("Compiling")
+            || t.starts_with("Checking")
+            || t.starts_with("Downloading")
+            || t.starts_with("Preparing")
+            || t.starts_with("Resolving")
+            || t.starts_with("Finished")
+            || t.starts_with("Doc-tests")
+            || t.starts_with("Building")
+    }
     let message = stderr
         .lines()
         .chain(stdout.lines())
-        .find(|line| !line.trim().is_empty())
-        .map_or("cargo command failed without output", |line| line);
+        .find(|line| !line.trim().is_empty() && !is_progress(line))
+        .map_or_else(
+            || {
+                stderr
+                    .lines()
+                    .chain(stdout.lines())
+                    .find(|line| !line.trim().is_empty())
+                    .map_or("cargo command failed without output", |l| l)
+            },
+            |line| line,
+        );
     message.to_owned()
 }

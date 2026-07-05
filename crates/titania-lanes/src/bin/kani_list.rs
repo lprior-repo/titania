@@ -435,7 +435,7 @@ fn is_non_empty(path: &Path) -> bool {
 ///
 /// # Errors
 ///
-/// Returns the parse error text when `raw` is not valid JSON.
-fn validate_json(raw: &str) -> Result<(), String> {
-    serde_json::from_str::<Value>(raw).map(|_| ()).map_err(|e| e.to_string())
+/// Returns the parse error when `raw` is not valid JSON.
+fn validate_json(raw: &str) -> Result<(), serde_json::Error> {
+    serde_json::from_str::<Value>(raw).map(|_| ())
 }

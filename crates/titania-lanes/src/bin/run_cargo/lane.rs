@@ -6,6 +6,17 @@ const RULE_CLIPPY: &str = "CARGO_CLIPPY_001";
 const RULE_TEST: &str = "CARGO_TEST_001";
 const RULE_BUILD: &str = "CARGO_BUILD_001";
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CargoLaneParseError;
+
+impl std::fmt::Display for CargoLaneParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&usage_message())
+    }
+}
+
+impl std::error::Error for CargoLaneParseError {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CargoLane {
     Fmt,
@@ -22,15 +33,15 @@ impl CargoLane {
     ///
     /// Returns a usage message when `raw` has surrounding whitespace or does
     /// not name a supported Cargo lane.
-    pub(crate) fn parse(raw: &str) -> Result<Self, String> {
-        (raw.trim() == raw).then_some(()).ok_or_else(usage_message)?;
+    pub(crate) fn parse(raw: &str) -> Result<Self, CargoLaneParseError> {
+        (raw.trim() == raw).then_some(()).ok_or(CargoLaneParseError)?;
         match raw {
             "fmt" => Ok(Self::Fmt),
             "compile" => Ok(Self::Compile),
             "clippy" => Ok(Self::Clippy),
             "test" => Ok(Self::Test),
             "build" => Ok(Self::Build),
-            _other => Err(usage_message()),
+            _other => Err(CargoLaneParseError),
         }
     }
 

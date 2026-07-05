@@ -22,11 +22,10 @@ where
     collect_utf8(args).and_then(|strings| parse_command(&strings))
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
-fn collect_utf8<I>(args: I) -> Result<Vec<String>, CliError>
-where
-    I: IntoIterator<Item = OsString>,
-{
+/// # Errors
+///
+/// Returns a [`CliError::NonUtf8Argument`] when any argument is not valid UTF-8.
+fn collect_utf8<I: IntoIterator<Item = OsString>>(args: I) -> Result<Vec<String>, CliError> {
     args.into_iter()
         .map(|arg| {
             arg.into_string().map_err(|error| CliError::NonUtf8Argument(format!("{error:?}")))
@@ -34,7 +33,12 @@ where
         .collect()
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_command(args: &[String]) -> Result<Cli, CliError> {
     match args.split_first() {
         None => Ok(Cli { command: Command::Check(CheckOptions::default()) }),
@@ -47,13 +51,23 @@ fn parse_command(args: &[String]) -> Result<Cli, CliError> {
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_check(args: &[String]) -> Result<Cli, CliError> {
     let options = parse_check_options(args, CheckOptions::default())?;
     Ok(Cli { command: Command::Check(options) })
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_check_options(args: &[String], options: CheckOptions) -> Result<CheckOptions, CliError> {
     match args.split_first() {
         None => Ok(options),
@@ -65,21 +79,36 @@ fn parse_check_options(args: &[String], options: CheckOptions) -> Result<CheckOp
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_check_scope(args: &[String], options: CheckOptions) -> Result<CheckOptions, CliError> {
     let (value, rest) = take_value("--scope", args)?;
     let scope = parse_scope(value)?;
     parse_check_options(rest, CheckOptions { scope, emit: options.emit, out: options.out })
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_check_emit(args: &[String], options: CheckOptions) -> Result<CheckOptions, CliError> {
     let (value, rest) = take_value("--emit", args)?;
     let emit = parse_emit(value)?;
     parse_check_options(rest, CheckOptions { scope: options.scope, emit, out: options.out })
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_check_out(args: &[String], options: &CheckOptions) -> Result<CheckOptions, CliError> {
     let (value, rest) = take_value("--out", args)?;
     parse_check_options(
@@ -88,7 +117,12 @@ fn parse_check_out(args: &[String], options: &CheckOptions) -> Result<CheckOptio
     )
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_aggregate(args: &[String]) -> Result<Cli, CliError> {
     let state = parse_aggregate_options(args, AggregateState::default())?;
     match state.scope {
@@ -103,7 +137,12 @@ fn parse_aggregate(args: &[String]) -> Result<Cli, CliError> {
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_aggregate_options(
     args: &[String],
     state: AggregateState,
@@ -120,7 +159,12 @@ fn parse_aggregate_options(
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_aggregate_scope(
     args: &[String],
     state: AggregateState,
@@ -133,7 +177,12 @@ fn parse_aggregate_scope(
     )
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_aggregate_emit(
     args: &[String],
     state: AggregateState,
@@ -143,7 +192,12 @@ fn parse_aggregate_emit(
     parse_aggregate_options(rest, AggregateState { scope: state.scope, emit, out: state.out })
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_aggregate_out(
     args: &[String],
     state: &AggregateState,
@@ -155,13 +209,23 @@ fn parse_aggregate_out(
     )
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_doctor(args: &[String]) -> Result<Cli, CliError> {
     let options = parse_doctor_options(args, DoctorOptions::default())?;
     Ok(Cli { command: Command::Doctor(options) })
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_doctor_options(
     args: &[String],
     options: DoctorOptions,
@@ -177,21 +241,36 @@ fn parse_doctor_options(
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_doctor_scope(args: &[String], options: DoctorOptions) -> Result<DoctorOptions, CliError> {
     let (value, rest) = take_value("--scope", args)?;
     let scope = parse_scope(value)?;
     parse_doctor_options(rest, DoctorOptions { scope, emit: options.emit })
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_doctor_emit(args: &[String], options: DoctorOptions) -> Result<DoctorOptions, CliError> {
     let (value, rest) = take_value("--emit", args)?;
     let emit = parse_emit(value)?;
     parse_doctor_options(rest, DoctorOptions { scope: options.scope, emit })
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_explain(args: &[String]) -> Result<Cli, CliError> {
     match args.split_first() {
         None => Err(CliError::MissingRuleId),
@@ -202,7 +281,12 @@ fn parse_explain(args: &[String]) -> Result<Cli, CliError> {
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_run_lane(args: &[String]) -> Result<Cli, CliError> {
     match args.split_first() {
         None => Err(CliError::MissingLaneName),
@@ -211,7 +295,12 @@ fn parse_run_lane(args: &[String]) -> Result<Cli, CliError> {
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn extra_arg(command: &'static str, args: &[String]) -> Result<Cli, CliError> {
     match args.split_first() {
         Some((value, _)) => Err(CliError::ExtraArgument { command, value: value.clone() }),
@@ -219,12 +308,22 @@ fn extra_arg(command: &'static str, args: &[String]) -> Result<Cli, CliError> {
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_scope(value: &str) -> Result<GateScope, CliError> {
     value.parse::<GateScope>().map_err(|error| CliError::UnknownScope(error.to_string()))
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_emit(value: &str) -> Result<EmitFormat, CliError> {
     match value {
         "human" => Ok(EmitFormat::Human),
@@ -233,7 +332,12 @@ fn parse_emit(value: &str) -> Result<EmitFormat, CliError> {
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_lane(value: &str) -> Result<Lane, CliError> {
     match value {
         "fmt" => Ok(Lane::Fmt),
@@ -250,7 +354,12 @@ fn parse_lane(value: &str) -> Result<Lane, CliError> {
     }
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn parse_rule_id(value: &str) -> Result<RuleId, CliError> {
     RuleId::new(value).map_err(|error| CliError::InvalidRuleId {
         value: value.to_owned(),
@@ -258,7 +367,12 @@ fn parse_rule_id(value: &str) -> Result<RuleId, CliError> {
     })
 }
 
-#[expect(clippy::missing_errors_doc, reason = "private parser stage returns CliError")]
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives missing, extra, invalid,
+/// or unsupported CLI input.
 fn take_value<'a>(flag: &'static str, args: &'a [String]) -> Result<ValueTail<'a>, CliError> {
     args.split_first()
         .map(|(value, rest)| (value.as_str(), rest))
