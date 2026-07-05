@@ -185,7 +185,7 @@ fn run_workspace_list(target: &TargetProject, output_dir: &Path) -> Result<(), L
     remove_if_present(&produced)?;
 
     write_stderr_line(&format!("[kani-list] scope=workspace output={}", target_file.display()))?;
-    let kani_status = run_kani_list(target, None)?;
+    let kani_status = run_kani_list(target)?;
     if !kani_status.success() {
         return Err(LaneError::violation(
             RuleId::new(KANI_LIST_EXEC_RULE)?,
@@ -219,9 +219,7 @@ fn run_package_lists(
     let metadata: Value = serde_json::from_str(&metadata_text)
         .map_err(|e| LaneError::Failure(format!("cargo metadata parse: {e}")))?;
 
-    packages
-        .iter()
-        .try_for_each(|package| run_package_list(target, output_dir, &metadata, package))?;
+    packages.iter().try_for_each(|package| run_package_list(output_dir, &metadata, package))?;
 
     write_stderr_line(&format!(
         "KANI_LIST_OK output_dir={} packages={}",
@@ -235,19 +233,15 @@ fn run_package_lists(
 ///
 /// # Errors
 ///
-/// Returns a lane error when the package manifest cannot be resolved, stale
+/// Returns a lane error when the package directory cannot be validated, stale
 /// output removal fails, Kani execution fails, produced JSON is invalid, output
 /// renaming fails, or status reporting fails.
-fn run_package_list(
-    target: &TargetProject,
-    output_dir: &Path,
-    metadata: &Value,
-    package: &str,
-) -> Result<(), LaneError> {
+fn run_package_list(output_dir: &Path, metadata: &Value, package: &str) -> Result<(), LaneError> {
     let manifest = find_manifest(metadata, package)?;
     let package_dir = manifest_dir(&manifest);
+    let package_target = package_target(&package_dir)?;
     let target_file = output_dir.join(format!("{package}.json"));
-    let produced = target.as_std_path().join("kani-list.json");
+    let produced = package_dir.join("kani-list.json");
     remove_if_present(&produced)?;
 
     write_stderr_line(&format!(
@@ -255,7 +249,7 @@ fn run_package_list(
         package_dir.display(),
         target_file.display()
     ))?;
-    let kani_status = run_kani_list(target, Some(&manifest))?;
+    let kani_status = run_kani_list(&package_target)?;
     if !kani_status.success() {
         return Err(LaneError::violation(
             RuleId::new(KANI_LIST_EXEC_RULE)?,
@@ -346,46 +340,34 @@ fn manifest_dir(manifest: &Path) -> PathBuf {
     manifest.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf)
 }
 
+/// Builds a target project rooted at a selected package directory.
+///
+/// # Errors
+///
+/// Returns a lane error when the package directory is not a valid Cargo
+/// project root.
+fn package_target(package_dir: &Path) -> Result<TargetProject, LaneError> {
+    TargetProject::try_from_path(package_dir).map_err(|error| {
+        LaneError::Failure(format!("invalid package directory {}: {error}", package_dir.display()))
+    })
+}
+
 /// Starts `cargo kani list` and returns its exit status.
 ///
 /// # Errors
 ///
-/// Returns a lane error when command preparation fails, a package manifest path
-/// is not UTF-8, or `cargo kani` cannot be spawned.
-fn run_kani_list(
-    target: &TargetProject,
-    manifest: Option<&Path>,
-) -> Result<std::process::ExitStatus, LaneError> {
+/// Returns a lane error when command preparation fails or `cargo kani` cannot
+/// be spawned.
+fn run_kani_list(target: &TargetProject) -> Result<std::process::ExitStatus, LaneError> {
     let features = env::var_os("KANI_FEATURES").map(|value| value.to_string_lossy().into_owned());
     let mut command = command_in(target, "cargo")?;
     let _ = command.arg("kani").arg("list").arg("--format").arg("json");
-    if let Some(manifest) = manifest {
-        let manifest = manifest_path_str(manifest)?;
-        let _ = command.arg("--manifest-path").arg(manifest);
-    }
     if let Some(features) = features.as_deref().filter(|value| !value.is_empty()) {
         let _ = command.arg("--features").arg(features);
     }
     command
         .run_status_raw()
         .map_err(|e| LaneError::Failure(format!("failed to spawn cargo kani: {e}")))
-}
-
-/// Converts a manifest path to UTF-8 text for command arguments.
-///
-/// # Errors
-///
-/// Returns a lane error when the manifest path is not valid UTF-8.
-fn manifest_path_str(manifest: &Path) -> Result<&str, LaneError> {
-    manifest.to_str().map_or_else(
-        || {
-            Err(LaneError::Failure(format!(
-                "package manifest is not UTF-8: {}",
-                manifest.display()
-            )))
-        },
-        Ok,
-    )
 }
 
 fn target_root_path(target: &TargetProject, path: PathBuf) -> PathBuf {

@@ -24,6 +24,9 @@
 #![deny(clippy::panic)]
 #![forbid(unsafe_code)]
 
+#[path = "check_nightly_features/boundary.rs"]
+/// Exact-path waivers for non-production nightly-feature boundaries.
+pub mod boundary;
 #[path = "check_nightly_features/collector.rs"]
 /// Feature-attribute collector for the nightly-feature lane.
 pub mod collector;
@@ -39,6 +42,7 @@ use titania_lanes::{
     helpers::{is_excluded_source_path, normalize_slashes},
 };
 
+use boundary::is_dylint_boundary_feature;
 use collector::collect_features;
 use scope::{FeatureScope, ScopeSignals, classify_scope, is_perf_scoped_path};
 
@@ -226,7 +230,7 @@ struct FeatureCheck<'a> {
 }
 
 fn check_feature(check: FeatureCheck<'_>) {
-    if NORMAL_ALLOWED.contains(&check.name) {
+    if NORMAL_ALLOWED.contains(&check.name) || is_dylint_boundary_feature(check.file, check.name) {
         return;
     }
     if PERF_ONLY_ALLOWED.contains(&check.name) {

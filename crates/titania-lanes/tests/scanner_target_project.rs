@@ -284,3 +284,93 @@ fn panic_surface_skips_assert_inside_string_literal() -> TestResult {
     assert!(output.status.success(), "string literal leaked: {stderr}");
     Ok(())
 }
+
+#[test]
+fn nightly_features_dylint_rustc_private_is_allowed() -> TestResult {
+    // Regression gate: `crates/titania-dylint/src/lib.rs` carries
+    // `#![feature(rustc_private)]` because Dylint is a rustc compiler
+    // plugin. The nightly-feature lane must NOT flag this feature.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/titania-dylint/src/lib.rs"),
+        "#![feature(rustc_private)]\n\nextern crate rustc_ast;\n",
+    )?;
+    let output = Command::new(env!("CARGO_BIN_EXE_check-nightly-features"))
+        .current_dir(fixture.path())
+        .output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "dylint rustc_private was flagged; stderr was: {stderr}");
+    assert!(
+        stderr.contains("no disallowed feature attributes"),
+        "expected clean pass; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn nightly_features_normal_crate_rustc_private_is_rejected() -> TestResult {
+    // `rustc_private` in an ordinary production crate is disallowed.
+    // Only the Dylint plugin path is exempted.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        "#![feature(rustc_private)]\npub fn a() {}\n",
+    )?;
+    let output = Command::new(env!("CARGO_BIN_EXE_check-nightly-features"))
+        .current_dir(fixture.path())
+        .output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "rustc_private in normal crate should be rejected; stderr was: {stderr}"
+    );
+    assert!(stderr.contains("`rustc_private`"), "stderr was: {stderr}");
+    assert!(stderr.contains("NIGHTLY_FEATURE_001"), "stderr was: {stderr}");
+    Ok(())
+}
+
+#[test]
+fn nightly_features_allow_internal_unstable_in_dylint_fixture_passes() -> TestResult {
+    // `allow_internal_unstable` is allowed only in the Dylint test
+    // fixture path `crates/titania-dylint/tests/internal_escape.rs`.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/titania-dylint/tests/internal_escape.rs"),
+        "#![feature(allow_internal_unstable)]\n",
+    )?;
+    let output = Command::new(env!("CARGO_BIN_EXE_check-nightly-features"))
+        .current_dir(fixture.path())
+        .output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "dylint fixture allow_internal_unstable was flagged; stderr was: {stderr}"
+    );
+    assert!(
+        stderr.contains("no disallowed feature attributes"),
+        "expected clean pass; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn nightly_features_allow_internal_unstable_in_normal_crate_is_rejected() -> TestResult {
+    // `allow_internal_unstable` in an ordinary production crate is disallowed.
+    // Only the Dylint test-fixture path is exempted.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        "#![feature(allow_internal_unstable)]\npub fn a() {}\n",
+    )?;
+    let output = Command::new(env!("CARGO_BIN_EXE_check-nightly-features"))
+        .current_dir(fixture.path())
+        .output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "allow_internal_unstable in normal crate should be rejected; stderr was: {stderr}"
+    );
+    assert!(stderr.contains("`allow_internal_unstable`"), "stderr was: {stderr}");
+    assert!(stderr.contains("NIGHTLY_FEATURE_001"), "stderr was: {stderr}");
+    Ok(())
+}

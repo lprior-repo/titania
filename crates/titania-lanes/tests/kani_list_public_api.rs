@@ -6,7 +6,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 const MOON_TASKS: &str = include_str!("../../../.moon/tasks/all.yml");
-const KANI_WORKSPACE: &str = include_str!("../../../.evidence/kani-list/workspace.json");
+const KANI_CORE: &str = include_str!("../../../.evidence/kani-list/titania-core.json");
 
 fn write_workspace(root: &Path) -> Result<(), std::io::Error> {
     fs::write(
@@ -84,7 +84,7 @@ fn must<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -> T {
 
 #[cfg(unix)]
 #[test]
-fn kani_list_package_mode_scopes_cargo_kani_to_selected_manifest() {
+fn kani_list_package_mode_runs_cargo_kani_from_selected_package_dir() {
     let workspace = must!(TempDir::new(), "create workspace tempdir");
     must!(write_workspace(workspace.path()), "write workspace fixture");
     let fake_bin = workspace.path().join("fake-bin");
@@ -108,22 +108,24 @@ fn kani_list_package_mode_scopes_cargo_kani_to_selected_manifest() {
     assert!(output_dir.join("alpha.json").is_file());
 
     let log = must!(fs::read_to_string(&log_path), "read cargo log");
-    let alpha_manifest = workspace.path().join("crates/alpha/Cargo.toml");
+    let alpha_dir = workspace.path().join("crates/alpha");
+    let beta_dir = workspace.path().join("crates/beta");
     assert!(
-        log.contains(&format!(
-            "ARGS=kani list --format json --manifest-path {}",
-            alpha_manifest.display()
-        )),
-        "cargo kani list was not scoped to alpha manifest; log:\n{log}"
+        log.contains(&format!("PWD={}", alpha_dir.display())),
+        "cargo kani list was not run from alpha package dir; log:\n{log}"
     );
-    assert!(!log.contains("--manifest-path crates/beta/Cargo.toml"));
+    assert!(
+        log.contains("ARGS=kani list --format json"),
+        "cargo kani list args changed unexpectedly; log:\n{log}"
+    );
+    assert!(!log.contains(&format!("PWD={}", beta_dir.display())));
 }
 
 #[test]
 fn moon_kani_core_command_lists_every_recorded_core_harness() {
     let task = must!(moon_task("lane-kani-core"), "read lane-kani-core Moon task");
     let evidence: Value =
-        must!(serde_json::from_str(KANI_WORKSPACE), "parse Kani workspace evidence");
+        must!(serde_json::from_str(KANI_CORE), "parse Kani titania-core evidence");
     let harnesses = must!(
         evidence
             .get("standard-harnesses")
@@ -153,6 +155,22 @@ fn moon_geiger_inputs_track_lockfile_and_crate_manifests() {
     assert!(
         task.contains("- 'crates/**/Cargo.toml'"),
         "geiger must include crate manifest inputs\n{task}"
+    );
+}
+
+#[test]
+fn moon_kani_list_command_scopes_to_titania_core() {
+    // `lane-kani-list` must NOT run cargo-kani workspace-wide.
+    // It must pass `titania-core` as a package argument so that only
+    // the designated Kani-bearing production package is scanned.
+    let task = must!(moon_task("lane-kani-list"), "read lane-kani-list Moon task");
+    assert!(
+        task.contains("-- titania-core"),
+        "lane-kani-list must scope cargo-kani to titania-core package; task:\n{task}"
+    );
+    assert!(
+        !task.contains("cargo kani"),
+        "lane-kani-list must not invoke cargo kani workspace-wide; task:\n{task}"
     );
 }
 

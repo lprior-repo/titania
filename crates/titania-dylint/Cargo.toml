@@ -13,10 +13,96 @@ categories = ["development-tools"]
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 doctest = false
 
-[lints]
-workspace = true
+[lints.rust]
+warnings = { level = "deny", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
+rust_2018_idioms = { level = "deny", priority = -1 }
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(kani)'] }
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+unused_results = "deny"
+missing_docs = "deny"
+unreachable_pub = "deny"
+let_underscore_drop = "deny"
+elided_lifetimes_in_paths = "deny"
+explicit_outlives_requirements = "deny"
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+variant_size_differences = "deny"
+unused_extern_crates = "deny"
+unused_import_braces = "deny"
+keyword_idents_2024 = "deny"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+bare_urls = "deny"
+private_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+missing_crate_level_docs = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+unwrap_in_result = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+get_unwrap = "deny"
+arithmetic_side_effects = "deny"
+as_conversions = "deny"
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_sign_loss = "deny"
+cast_precision_loss = "deny"
+integer_division = "deny"
+integer_division_remainder_used = "deny"
+modulo_arithmetic = "deny"
+float_arithmetic = "deny"
+result_large_err = "deny"
+result_unit_err = "deny"
+map_err_ignore = "deny"
+missing_errors_doc = "deny"
+missing_panics_doc = "deny"
+missing_safety_doc = "deny"
+large_enum_variant = "deny"
+cognitive_complexity = "deny"
+too_many_arguments = "deny"
+too_many_lines = "deny"
+type_complexity = "deny"
+excessive_nesting = "deny"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+future_not_send = "deny"
+large_futures = "deny"
+disallowed_methods = "deny"
+disallowed_macros = "deny"
+disallowed_types = "deny"
+disallowed_fields = "deny"
+multiple_crate_versions = "deny"
+wildcard_dependencies = "deny"
+negative_feature_names = "deny"
+redundant_feature_names = "deny"
 
 [dependencies]
+dylint_linting = "=6.0.1"
+
+
+[package.metadata.rust-analyzer]
+rustc_private = true

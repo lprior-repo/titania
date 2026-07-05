@@ -369,7 +369,7 @@ tasks:
       - 'crates/**/*.rs'
 
   lane-kani-list:
-    command: 'cargo run --quiet -p titania-lanes --bin kani-list'
+    command: 'cargo run --quiet -p titania-lanes --bin kani-list -- titania-core'
     toolchains: [rust]
     options:
       runInCI: true
