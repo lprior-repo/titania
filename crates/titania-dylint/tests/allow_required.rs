@@ -16,6 +16,11 @@ const FIXTURE_PUB_ALLOW: &str = r#"
 pub fn public_api() {}
 "#;
 
+const FIXTURE_PUB_ALLOW_WARNINGS: &str = r#"
+#[allow(warnings)]
+pub fn public_api() {}
+"#;
+
 const FIXTURE_PUB_CRATE_ALLOW: &str = r#"
 #[allow(dead_code)]
 pub(crate) fn crate_api() {}
@@ -29,6 +34,12 @@ pub fn kept() {}
 
 const FIXTURE_WEAKEN_UNWRAP: &str = r#"
 #![allow(clippy::unwrap_used)]
+
+pub fn kept() {}
+"#;
+
+const FIXTURE_WEAKEN_WARNINGS: &str = r#"
+#![allow(warnings)]
 
 pub fn kept() {}
 "#;
@@ -127,6 +138,19 @@ fn output_contains(output: &std::process::Output, needle: &str) -> bool {
         || String::from_utf8_lossy(&output.stderr).contains(needle)
 }
 
+fn assert_dylint_rejects(output: &std::process::Output, rule: &str, context: &str) {
+    assert!(
+        !output.status.success(),
+        "cargo dylint must reject {context}:\n{}",
+        combined_output(output)
+    );
+    assert!(
+        output_contains(output, rule),
+        "cargo dylint must emit {rule} for {context}:\n{}",
+        combined_output(output)
+    );
+}
+
 #[test]
 fn bypass_pub_allow_is_registered_by_cargo_dylint() {
     let output = cargo_dylint_list_output();
@@ -145,11 +169,13 @@ fn bypass_pub_allow_is_registered_by_cargo_dylint() {
 #[test]
 fn bypass_pub_allow_detects_public_allow_attribute() {
     let output = run_dylint_on_fixture("pub_allow", FIXTURE_PUB_ALLOW);
-    assert!(
-        output_contains(&output, "BYPASS_PUB_ALLOW"),
-        "cargo dylint must emit BYPASS_PUB_ALLOW for `#[allow]` pub fn:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_PUB_ALLOW", "`#[allow]` pub fn");
+}
+
+#[test]
+fn bypass_pub_allow_detects_public_allow_warnings() {
+    let output = run_dylint_on_fixture("pub_allow_warnings", FIXTURE_PUB_ALLOW_WARNINGS);
+    assert_dylint_rejects(&output, "BYPASS_PUB_ALLOW", "public API allowing warnings");
 }
 
 #[test]
@@ -185,21 +211,19 @@ fn bypass_required_lint_weakening_is_registered_by_cargo_dylint() {
 #[test]
 fn bypass_required_lint_weakening_detects_forbid_downgrade() {
     let output = run_dylint_on_fixture("weaken_forbid", FIXTURE_WEAKEN_FORBID);
-    assert!(
-        output_contains(&output, "BYPASS_REQUIRED_LINT_WEAKENING"),
-        "cargo dylint must emit BYPASS_REQUIRED_LINT_WEAKENING for unsafe_code allow:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "unsafe_code allow");
 }
 
 #[test]
 fn bypass_required_lint_weakening_detects_deny_unwrap_removal() {
     let output = run_dylint_on_fixture("weaken_unwrap", FIXTURE_WEAKEN_UNWRAP);
-    assert!(
-        output_contains(&output, "BYPASS_REQUIRED_LINT_WEAKENING"),
-        "cargo dylint must emit BYPASS_REQUIRED_LINT_WEAKENING for clippy::unwrap_used allow:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "clippy::unwrap_used allow");
+}
+
+#[test]
+fn bypass_required_lint_weakening_detects_allow_warnings() {
+    let output = run_dylint_on_fixture("weaken_warnings", FIXTURE_WEAKEN_WARNINGS);
+    assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "crate allowing warnings");
 }
 
 #[test]
@@ -281,31 +305,19 @@ impl Api {
 #[test]
 fn bypass_required_lint_weakening_detects_expect_used_removal() {
     let output = run_dylint_on_fixture("weaken_expect", FIXTURE_WEAKEN_EXPECT);
-    assert!(
-        output_contains(&output, "BYPASS_REQUIRED_LINT_WEAKENING"),
-        "cargo dylint must emit BYPASS_REQUIRED_LINT_WEAKENING for clippy::expect_used allow:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "clippy::expect_used allow");
 }
 
 #[test]
 fn bypass_required_lint_weakening_detects_panic_removal() {
     let output = run_dylint_on_fixture("weaken_panic", FIXTURE_WEAKEN_PANIC);
-    assert!(
-        output_contains(&output, "BYPASS_REQUIRED_LINT_WEAKENING"),
-        "cargo dylint must emit BYPASS_REQUIRED_LINT_WEAKENING for clippy::panic allow:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "clippy::panic allow");
 }
 
 #[test]
 fn bypass_pub_allow_detects_public_associated_fn() {
     let output = run_dylint_on_fixture("assoc_pub_allow", FIXTURE_ASSOC_PUB_ALLOW);
-    assert!(
-        output_contains(&output, "BYPASS_PUB_ALLOW"),
-        "cargo dylint must emit BYPASS_PUB_ALLOW for `#[allow]` on pub associated fn:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_PUB_ALLOW", "`#[allow]` on pub associated fn");
 }
 
 #[test]
@@ -327,11 +339,7 @@ fn bypass_pub_allow_ignores_pub_crate_associated_fn() {
 #[test]
 fn bypass_pub_allow_detects_public_trait_method() {
     let output = run_dylint_on_fixture("trait_pub_allow", FIXTURE_TRAIT_PUB_ALLOW);
-    assert!(
-        output_contains(&output, "BYPASS_PUB_ALLOW"),
-        "cargo dylint must emit BYPASS_PUB_ALLOW for #[allow] on pub trait method:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_PUB_ALLOW", "`#[allow]` on pub trait method");
     assert!(
         !output_contains(&output, "BYPASS_ATTR_CONTEXT"),
         "BYPASS_ATTR_CONTEXT must not fire on direct #[allow] on pub trait method:\n{}",
@@ -344,10 +352,10 @@ fn bypass_pub_allow_detects_public_trait_method() {
 #[test]
 fn bypass_attr_context_detects_macro_generated_associated_method() {
     let output = run_dylint_on_fixture("macro_assoc_pub_allow", FIXTURE_MACRO_ASSOC_PUB_ALLOW);
-    assert!(
-        output_contains(&output, "BYPASS_ATTR_CONTEXT"),
-        "cargo dylint must emit BYPASS_ATTR_CONTEXT for #[allow] generated by macro on pub associated fn:\n{}",
-        combined_output(&output)
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow]` generated by macro on pub associated fn",
     );
     assert!(
         !output_contains(&output, "BYPASS_PUB_ALLOW"),

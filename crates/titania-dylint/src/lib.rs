@@ -42,35 +42,35 @@ pub extern "C" fn dylint_version() -> *mut std::os::raw::c_char {
 declare_lint! {
     /// Detects public items with local `#[allow(...)]` suppressions.
     pub BYPASS_PUB_ALLOW,
-    Warn,
+    Deny,
     "BYPASS_PUB_ALLOW: public API item weakens lint policy with an allow attribute"
 }
 
 declare_lint! {
     /// Detects public `#[allow(...)]` attributes produced by macro expansion.
     pub BYPASS_ATTR_CONTEXT,
-    Warn,
+    Deny,
     "BYPASS_ATTR_CONTEXT: public allow attribute comes from expanded code"
 }
 
 declare_lint! {
     /// Detects crate-level downgrades of mandatory Titania lint policy.
     pub BYPASS_REQUIRED_LINT_WEAKENING,
-    Warn,
+    Deny,
     "BYPASS_REQUIRED_LINT_WEAKENING: crate-level allow weakens mandatory Titania lint policy"
 }
 
 declare_lint! {
     /// Detects `#[allow_internal_unstable(...)]` bypass attributes.
     pub BYPASS_INTERNAL_UNSTABLE,
-    Warn,
+    Deny,
     "BYPASS_INTERNAL_UNSTABLE: macro permits unstable internals through expansion"
 }
 
 declare_lint! {
     /// Detects `#[allow_internal_unsafe]` bypass attributes.
     pub BYPASS_INTERNAL_UNSAFE,
-    Warn,
+    Deny,
     "BYPASS_INTERNAL_UNSAFE: macro permits unsafe internals through expansion"
 }
 

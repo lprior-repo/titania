@@ -192,6 +192,19 @@ fn output_contains(output: &std::process::Output, needle: &str) -> bool {
         || String::from_utf8_lossy(&output.stderr).contains(needle)
 }
 
+fn assert_dylint_rejects(output: &std::process::Output, rule: &str, context: &str) {
+    assert!(
+        !output.status.success(),
+        "cargo dylint must reject {context}:\n{}",
+        combined_output(output)
+    );
+    assert!(
+        output_contains(output, rule),
+        "cargo dylint must emit {rule} for {context}:\n{}",
+        combined_output(output)
+    );
+}
+
 // ── Registration tests ────────────────────────────────────────────────
 
 #[test]
@@ -244,10 +257,10 @@ fn bypass_internal_unsafe_is_registered_by_cargo_dylint() {
 #[test]
 fn bypass_attr_context_detects_macro_generated_allow() {
     let output = run_dylint_on_fixture("attr_context", FIXTURE_ATTR_CONTEXT);
-    assert!(
-        output_contains(&output, "BYPASS_ATTR_CONTEXT"),
-        "cargo dylint must emit BYPASS_ATTR_CONTEXT for #[allow(...)] generated inside a macro on a pub fn:\n{}",
-        combined_output(&output)
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow(...)]` generated inside a macro on a pub fn",
     );
     assert!(
         !output_contains(&output, "BYPASS_PUB_ALLOW"),
@@ -257,13 +270,9 @@ fn bypass_attr_context_detects_macro_generated_allow() {
 }
 
 #[test]
-fn bypass_attr_context_ignores_direct_allow_on_pub_fn() {
+fn bypass_attr_context_leaves_direct_allow_to_pub_allow() {
     let output = run_dylint_on_fixture("attr_context_clean", FIXTURE_ATTR_CONTEXT_CLEAN);
-    assert!(
-        output.status.success(),
-        "direct-allow fixture should not fail dylint execution:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_PUB_ALLOW", "direct `#[allow(...)]` on pub fn");
     assert!(
         !output_contains(&output, "BYPASS_ATTR_CONTEXT"),
         "BYPASS_ATTR_CONTEXT must not fire when #[allow(...)] is written directly on the pub fn:\n{}",
@@ -274,11 +283,7 @@ fn bypass_attr_context_ignores_direct_allow_on_pub_fn() {
 #[test]
 fn bypass_internal_unstable_detects_allow_internal_unstable_attr() {
     let output = run_dylint_on_fixture("internal_unstable", FIXTURE_INTERNAL_UNSTABLE);
-    assert!(
-        output_contains(&output, "BYPASS_INTERNAL_UNSTABLE"),
-        "cargo dylint must emit BYPASS_INTERNAL_UNSTABLE for #[allow_internal_unstable(...)]:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_INTERNAL_UNSTABLE", "`#[allow_internal_unstable(...)]`");
 }
 
 #[test]
@@ -299,11 +304,7 @@ fn bypass_internal_unstable_ignores_plain_function() {
 #[test]
 fn bypass_internal_unsafe_detects_allow_internal_unsafe_attr() {
     let output = run_dylint_on_fixture("internal_unsafe", FIXTURE_INTERNAL_UNSAFE);
-    assert!(
-        output_contains(&output, "BYPASS_INTERNAL_UNSAFE"),
-        "cargo dylint must emit BYPASS_INTERNAL_UNSAFE for #[allow_internal_unsafe]:\n{}",
-        combined_output(&output)
-    );
+    assert_dylint_rejects(&output, "BYPASS_INTERNAL_UNSAFE", "`#[allow_internal_unsafe]`");
 }
 
 #[test]
