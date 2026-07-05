@@ -1,11 +1,11 @@
 //! CLI dispatch shell for `titania-check`.
 //!
-//! The shell owns argument parsing, exit-code mapping, and explicit typed
-//! blockers for downstream work. It does not fake lane execution, aggregate
-//! reports, doctor output, or rule explanations.
+//! The shell owns argument parsing, exit-code mapping, and typed dispatch.
+//! It does not fake doctor output or lane execution.
 
 pub mod aggregate;
 pub mod args;
+pub mod explain;
 
 use std::{env, io, io::Write, process::ExitCode};
 
@@ -38,7 +38,7 @@ fn dispatch(cli: Cli) -> CliDisposition {
         Command::Aggregate(options) => aggregate_scope(options.scope),
         Command::RunLane { lane } => missing_run_lane(lane),
         Command::Doctor(options) => missing_doctor(options.scope),
-        Command::Explain { rule_id } => missing_explain(&rule_id),
+        Command::Explain { rule_id } => explain_rule(&rule_id),
     }
 }
 
@@ -87,11 +87,11 @@ fn missing_doctor(scope: GateScope) -> CliDisposition {
     ))
 }
 
-fn missing_explain(rule_id: &RuleId) -> CliDisposition {
-    CliDisposition::input_error(format!(
-        "InputError: MissingImplementation command=explain rule '{}' bead=tn-ja8.1; rule explain output is not yet implemented",
-        rule_id.as_str()
-    ))
+fn explain_rule(rule_id: &RuleId) -> CliDisposition {
+    explain::render(rule_id).map_or_else(
+        |error| CliDisposition::input_error(format!("InputError: {error}")),
+        |output| CliDisposition::report(output, EXIT_PASS),
+    )
 }
 
 const fn scope_name(scope: GateScope) -> &'static str {

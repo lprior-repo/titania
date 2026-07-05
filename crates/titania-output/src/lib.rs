@@ -41,6 +41,11 @@ pub enum OutputError {
         /// Component that is intentionally unavailable.
         component: OutputComponent,
     },
+    /// A syntactically valid rule ID is absent from the static catalog.
+    UnknownRule {
+        /// Requested rule identifier.
+        rule_id: String,
+    },
 }
 
 impl OutputError {
@@ -49,14 +54,21 @@ impl OutputError {
     pub const fn component_unavailable(component: OutputComponent) -> Self {
         Self::ComponentUnavailable { component }
     }
+
+    /// Build an unknown-rule error.
+    #[must_use]
+    pub fn unknown_rule(rule_id: &str) -> Self {
+        Self::UnknownRule { rule_id: rule_id.to_owned() }
+    }
 }
 
 impl fmt::Display for OutputError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let component = match self {
-            Self::ComponentUnavailable { component } => component,
+        let message = match self {
+            Self::ComponentUnavailable { component } => component.as_str(),
+            Self::UnknownRule { rule_id } => return write!(f, "unknown rule ID: {rule_id}"),
         };
-        write!(f, "{} output is not implemented yet", component.as_str())
+        write!(f, "{message} output is not implemented yet")
     }
 }
 
@@ -80,20 +92,6 @@ pub mod doctor {
     }
 }
 
-/// Rule explanation output contract.
-pub mod explain {
-    use crate::{OutputComponent, OutputError};
-
-    /// Typed rule explanation placeholder.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct RuleExplanation;
-
-    /// Return a rule explanation catalog entry.
-    ///
-    /// # Errors
-    /// Always returns [`OutputError::ComponentUnavailable`] until the rule
-    /// catalog bead wires concrete catalog data.
-    pub const fn explain_rule(_rule_id: &str) -> Result<RuleExplanation, OutputError> {
-        Err(OutputError::component_unavailable(OutputComponent::ExplainCatalog))
-    }
-}
+// Rule explanation output contract — replaced by the file-based module
+// in `explain.rs` which owns catalog data and test scaffolding.
+pub mod explain;

@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 titania-core = { version = "0.1.0", path = "../titania-core" }
 titania-aggregate = { version = "0.1.0", path = "../titania-aggregate" }
+titania-output = { version = "0.1.0", path = "../titania-output" }
 serde_json = "1.0"
 
 [dev-dependencies]

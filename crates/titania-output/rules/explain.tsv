@@ -1,0 +1,65 @@
+FUNC_LOOPS_FOR	ast-grep	Reject	UseIteratorPipeline	for $LOOP in $ITER { ... }	Rejects imperative `for` loops in production source.
+FUNC_LOOPS_WHILE	ast-grep	Reject	UseIteratorPipeline	while $COND { ... }	Rejects imperative while loops in production source.
+FUNC_LOOPS_LOOP	ast-grep	Reject	UseIteratorPipeline	loop { ... }	Rejects open-ended loop blocks in production source.
+FUNC_NESTING_DEPTH	ast-grep	Reject	FlattenNesting	nesting depth > 2	Rejects deeply nested production control flow.
+FUNC_RECURSION_DIRECT	ast-grep	Reject	RequiresHumanReview	function calls itself	Rejects direct recursion in production source.
+FUNC_PRINT_STDOUT	ast-grep	Reject	RequiresHumanReview	print! or println!	Rejects stdout printing in production source.
+FUNC_PRINT_STDERR	ast-grep	Reject	RequiresHumanReview	eprint! or eprintln!	Rejects stderr printing in production source.
+FUNC_WILDCARD_IMPORT	ast-grep	Informational	RequiresHumanReview	use $PATH::*	Reports wildcard imports for human review.
+FUNC_UNWRAP_OR	ast-grep	Reject	RequiresHumanReview	unwrap_or / unwrap_or_else / unwrap_or_default	Rejects hidden default recovery through unwrap_or variants.
+FUNC_RESULT_STRING	ast-grep	Reject	RequiresHumanReview	Result<T, String>	Rejects stringly typed core errors.
+BYPASS_ALLOW_ATTR	ast-grep	Reject	RemoveAllowAttribute	#[allow(...)]	Rejects item-level allow suppressions.
+BYPASS_EXPECT_ATTR	ast-grep	Reject	RemoveAllowAttribute	#[expect(...)]	Rejects item-level expect suppressions.
+BYPASS_CFG_ATTR_ALLOW	ast-grep	Reject	RequiresHumanReview	cfg_attr(..., allow(...))	Rejects conditional allow suppressions.
+BYPASS_CRATE_ALLOW	ast-grep	Reject	RemoveAllowAttribute	#![allow(...)]	Rejects crate-level allow suppressions.
+BYPASS_CRATE_EXPECT	ast-grep	Reject	RemoveAllowAttribute	#![expect(...)]	Rejects crate-level expect suppressions.
+BYPASS_INLINE_SUPPRESSION	ast-grep	Reject	RequiresHumanReview	ast-grep-ignore or sg-ignore	Rejects inline structural-scan suppression comments.
+ARCHITECTURE_IMPORT_CORE_INFRA	ast-grep	Reject	ReplaceDependency	core/domain imports infrastructure	Rejects infrastructure imports from core/domain code.
+ARCHITECTURE_IMPORT_CORE_FS	ast-grep	Reject	RequiresHumanReview	core/domain imports std::fs/env/net	Rejects direct filesystem, environment, or network imports from core/domain code.
+ARCHITECTURE_IMPORT_CORE_TIME	ast-grep	Reject	RequiresHumanReview	core/domain imports SystemTime or Instant	Rejects direct wall-clock reads from core/domain code.
+ARCHITECTURE_IMPORT_CORE_RANDOM	ast-grep	Reject	RequiresHumanReview	core/domain imports random source	Rejects direct entropy reads from core/domain code.
+BYPASS_PUB_ALLOW	dylint	Reject	RequiresHumanReview	#[allow(...)] on pub item	Rejects public API items with local allow suppressions.
+BYPASS_REQUIRED_LINT_WEAKENING	dylint	Reject	RequiresHumanReview	#![allow(...)] for required lint	Rejects crate-level weakening of mandatory Titania lint policy.
+BYPASS_ATTR_CONTEXT	dylint	Reject	RequiresHumanReview	macro-expanded #[allow(...)] on pub item	Rejects public allow attributes produced by macro expansion.
+BYPASS_INTERNAL_UNSTABLE	dylint	Reject	RequiresHumanReview	#[allow_internal_unstable(...)]	Rejects macro escape hatches for unstable internals.
+BYPASS_INTERNAL_UNSAFE	dylint	Reject	RequiresHumanReview	#[allow_internal_unsafe]	Rejects macro escape hatches for unsafe internals.
+DYLINT_INFRA_FAILURE	dylint	Reject	RequiresHumanReview	dylint infrastructure failure	Reports Dylint infrastructure failures.
+BYPASS_CARGO_LINTS_WEAKENING	policy-scan	Reject	RequiresHumanReview	Cargo.toml [lints] weakening	Rejects Cargo lint policy weakening.
+BYPASS_CARGO_CONFIG_FLAGS	policy-scan	Reject	RequiresHumanReview	.cargo/config rustflags	Rejects unexpected Cargo rustflags.
+BYPASS_CARGO_CONFIG_WRAPPER	policy-scan	Reject	RequiresHumanReview	.cargo/config rustc-wrapper	Rejects unexpected rustc wrapper configuration.
+BYPASS_CARGO_CONFIG_PARENT	policy-scan	Reject	RequiresHumanReview	parent .cargo/config	Rejects inherited parent Cargo configuration.
+BYPASS_ENV_RUSTFLAGS	policy-scan	Reject	RequiresHumanReview	RUSTFLAGS	Rejects runtime RUSTFLAGS bypasses.
+BYPASS_ENV_CARGO_ENCODED_RUSTFLAGS	policy-scan	Reject	RequiresHumanReview	CARGO_ENCODED_RUSTFLAGS	Rejects runtime encoded rustflags bypasses.
+BYPASS_ENV_RUSTC_WRAPPER	policy-scan	Reject	RequiresHumanReview	RUSTC_WRAPPER	Rejects runtime rustc wrapper bypasses.
+BYPASS_ENV_RUSTC_WORKSPACE_WRAPPER	policy-scan	Reject	RequiresHumanReview	RUSTC_WORKSPACE_WRAPPER	Rejects runtime workspace wrapper bypasses.
+BYPASS_ENV_RUSTC_BOOTSTRAP	policy-scan	Reject	RequiresHumanReview	RUSTC_BOOTSTRAP	Rejects RUSTC_BOOTSTRAP bypasses.
+POLICY_EXCEPTION_READ_ERROR	policy-scan	Reject	RequiresHumanReview	exceptions.toml read error	Reports unreadable policy exception ledgers.
+POLICY_EXCEPTION_EXPIRED	policy-scan	Reject	RequiresHumanReview	expired exception	Rejects expired policy exceptions.
+POLICY_EXCEPTION_INVALID_FIELD	policy-scan	Reject	RequiresHumanReview	invalid exception field	Rejects malformed policy exception fields.
+POLICY_EXCEPTION_PARSE_ERROR	policy-scan	Reject	RequiresHumanReview	exception parse error	Rejects invalid policy exception syntax.
+POLICY_EXCEPTION_MISSING_FIELD	policy-scan	Reject	RequiresHumanReview	missing exception field	Rejects incomplete policy exceptions.
+HOLZMAN_PANIC_ASSERT	panic-scan	Reject	RequiresHumanReview	assert!	Rejects production assert! panic paths.
+HOLZMAN_PANIC_ASSERT_EQ	panic-scan	Reject	RequiresHumanReview	assert_eq!	Rejects production assert_eq! panic paths.
+HOLZMAN_PANIC_ASSERT_NE	panic-scan	Reject	RequiresHumanReview	assert_ne!	Rejects production assert_ne! panic paths.
+HOLZMAN_PANIC_UNREACHABLE	panic-scan	Reject	RequiresHumanReview	unreachable!	Rejects production unreachable! panic paths.
+PANIC_SURFACE_001	panic-scan	Reject	RequiresHumanReview	legacy panic surface	Legacy panic-scan compatibility rule.
+DENY_ADVISORY	deny	Reject	RequiresHumanReview	RustSec advisory	Rejects dependency security advisories.
+DENY_LICENSE	deny	Reject	RequiresHumanReview	license rejected or unlicensed	Rejects dependency license violations.
+DENY_BANNED_CRATE	deny	Reject	RequiresHumanReview	banned crate	Rejects banned dependency crates.
+DENY_MULTIPLE_VERSIONS	deny	Informational	RequiresHumanReview	duplicate crate versions	Reports duplicate dependency versions.
+DENY_UNKNOWN_REGISTRY	deny	Reject	RequiresHumanReview	unknown registry source	Rejects dependencies from unknown registries.
+DENY_UNKNOWN_GIT	deny	Reject	RequiresHumanReview	unknown git source	Rejects dependencies from unknown git sources.
+DENY_UNKNOWN	deny	Reject	RequiresHumanReview	unmapped cargo-deny code	Reports unmapped cargo-deny diagnostics.
+DENY_INFRA_FAILURE	deny	Reject	RequiresHumanReview	cargo-deny infrastructure failure	Reports cargo-deny infrastructure failures.
+FORBIDDEN_001	forbidden-scan	Reject	RequiresHumanReview	panic/unwrap/expect/todo/unimplemented/dbg	Rejects configured forbidden source tokens.
+CARGO_FMT_001	cargo	Reject	RequiresHumanReview	cargo fmt failure	Reports cargo fmt lane failures.
+CARGO_COMPILE_001	cargo	Reject	RequiresHumanReview	cargo check failure	Reports cargo check lane failures.
+CARGO_CLIPPY_001	cargo	Reject	RequiresHumanReview	cargo clippy failure	Reports cargo clippy lane failures.
+CARGO_TEST_001	cargo	Reject	RequiresHumanReview	cargo test failure	Reports cargo test lane failures.
+CARGO_BUILD_001	cargo	Reject	RequiresHumanReview	cargo build failure	Reports cargo build lane failures.
+CLIPPY_UNKNOWN	clippy	Reject	RequiresHumanReview	unknown clippy diagnostic	Fallback for unknown clippy diagnostics.
+COMPILE_SPLIT	source-length	Reject	RequiresHumanReview	legacy compile split layout	Reports missing legacy compile-split source layout when applicable.
+FN_LINE_LIMIT	source-length	Reject	RequiresHumanReview	function logical line limit	Rejects functions over the configured logical line limit.
+MUTANTS_RESIDUE	source-length	Reject	RequiresHumanReview	cargo-mutants residue	Rejects cargo-mutants residue markers in first-party source.
+SRC_LEN_LEDGER	source-length	Reject	RequiresHumanReview	source-length exception ledger	Rejects invalid source-length exception ledger entries.
+SRC_LINE_LIMIT	source-length	Reject	RequiresHumanReview	source physical line limit	Rejects source files over the configured physical line limit.

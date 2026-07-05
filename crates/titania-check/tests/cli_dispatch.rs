@@ -57,6 +57,20 @@ fn assert_missing_impl(args: &[&str], command: &str, bead: &str, detail: &str) {
     assert_stderr_contains(&stderr, detail);
 }
 
+fn assert_known_explain(args: &[&str], rule: &str) {
+    let (code, stdout, stderr) = run(args);
+    assert_eq!(code, 0, "known explain rule must exit 0, stderr: {stderr}");
+    assert!(stderr.is_empty(), "known explain rule must not write stderr: {stderr}");
+    assert!(stdout.starts_with(rule), "stdout must start with {rule}: {stdout}");
+    assert!(stdout.contains("Pattern:"), "stdout must include pattern metadata: {stdout}");
+    assert!(stdout.contains("Effect:"), "stdout must include effect metadata: {stdout}");
+    assert!(
+        stdout.contains("Example violation:"),
+        "stdout must include violation sample: {stdout}"
+    );
+    assert!(stdout.contains("Example repair:"), "stdout must include repair sample: {stdout}");
+}
+
 fn assert_empty_workspace_reject(args: &[&str], expected_gate_failures: usize) {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
     let (code, stdout, stderr) = run_in(workspace.path(), args);
@@ -134,13 +148,8 @@ fn dispatch_missing_implementation_doctor() {
 }
 
 #[test]
-fn dispatch_missing_implementation_explain() {
-    assert_missing_impl(
-        &["explain", "CLIPPY_UNWRAP_USED"],
-        "explain",
-        "tn-ja8.1",
-        "rule 'CLIPPY_UNWRAP_USED'",
-    );
+fn dispatch_explain_known_rule() {
+    assert_known_explain(&["explain", "CLIPPY_UNWRAP_USED"], "CLIPPY_UNWRAP_USED");
 }
 
 #[test]
@@ -164,12 +173,7 @@ fn exit_codes_unknown_subcommand_rejected() {
 
 #[test]
 fn exit_codes_clippy_explain_rule() {
-    assert_missing_impl(
-        &["explain", "CLIPPY_UNWRAP_USED"],
-        "explain",
-        "tn-ja8.1",
-        "rule 'CLIPPY_UNWRAP_USED'",
-    );
+    assert_known_explain(&["explain", "CLIPPY_UNWRAP_USED"], "CLIPPY_UNWRAP_USED");
 }
 
 #[test]
@@ -210,12 +214,7 @@ fn cli_args_dispatch_missing_implementation_exit_codes() {
     assert_empty_workspace_reject(&[], 7);
     assert_missing_impl(&["run-lane", "fmt"], "run-lane", "tn-uia", "lane 'fmt'");
     assert_missing_impl(&["doctor"], "doctor", "tn-4rq.2", "scope 'edit'");
-    assert_missing_impl(
-        &["explain", "CLIPPY_UNWRAP_USED"],
-        "explain",
-        "tn-ja8.1",
-        "rule 'CLIPPY_UNWRAP_USED'",
-    );
+    assert_known_explain(&["explain", "CLIPPY_UNWRAP_USED"], "CLIPPY_UNWRAP_USED");
     let (code, stdout, stderr) = run(&["run-lane", "invalid-lane"]);
     assert_input_error(code, &stdout, &stderr);
     assert_stderr_contains(&stderr, "unknown lane 'invalid-lane'");
