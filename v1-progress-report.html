@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Titania-Check v1 Progress Report</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #111a2f;
+      --panel-2: #17213a;
+      --text: #eef4ff;
+      --muted: #aebbd0;
+      --line: #2b3858;
+      --green: #41d392;
+      --yellow: #f7c948;
+      --orange: #ff9f43;
+      --red: #ff6b6b;
+      --blue: #74b9ff;
+      --purple: #b197fc;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(116, 185, 255, 0.18), transparent 34rem),
+        radial-gradient(circle at top right, rgba(65, 211, 146, 0.12), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.45;
+    }
+
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, .mono { font-family: var(--mono); }
+    code {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 0.35rem;
+      padding: 0.08rem 0.28rem;
+      white-space: nowrap;
+    }
+
+    header {
+      padding: 3.2rem 2rem 1.5rem;
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+    .eyebrow {
+      color: var(--green);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 0.82rem;
+    }
+    h1 {
+      margin: 0.35rem 0 0.8rem;
+      font-size: clamp(2.4rem, 7vw, 5.2rem);
+      line-height: 0.92;
+      letter-spacing: -0.07em;
+    }
+    .subtitle {
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 1.16rem;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(18px);
+      background: rgba(11, 16, 32, 0.82);
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    nav .wrap {
+      max-width: 1240px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      padding: 0.7rem 2rem;
+    }
+    nav a {
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.4rem 0.7rem;
+      font-size: 0.88rem;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    main {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 1.2rem 2rem 4rem;
+    }
+    section { margin: 1.2rem 0 2.2rem; }
+    h2 {
+      font-size: clamp(1.7rem, 3.2vw, 2.45rem);
+      letter-spacing: -0.04em;
+      margin: 0 0 0.8rem;
+    }
+    h3 { margin: 0 0 0.7rem; font-size: 1.1rem; }
+    p { margin: 0.4rem 0 0.75rem; }
+
+    .grid { display: grid; gap: 1rem; }
+    .cards { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .two { grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+
+    .card, .panel, details {
+      background: linear-gradient(180deg, rgba(23, 33, 58, 0.96), rgba(17, 26, 47, 0.96));
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.22);
+    }
+    .card { padding: 1rem; }
+    .panel { padding: 1.1rem; }
+    .metric {
+      font-size: 2.1rem;
+      font-weight: 900;
+      letter-spacing: -0.06em;
+    }
+    .metric-label { color: var(--muted); font-size: 0.9rem; }
+
+    .ok { color: var(--green); }
+    .warn { color: var(--yellow); }
+    .risk { color: var(--orange); }
+    .bad { color: var(--red); }
+    .info { color: var(--blue); }
+    .purple { color: var(--purple); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 0.18rem 0.55rem;
+      font-size: 0.8rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .badge.ok { background: rgba(65, 211, 146, 0.12); border-color: rgba(65, 211, 146, 0.45); }
+    .badge.warn { background: rgba(247, 201, 72, 0.12); border-color: rgba(247, 201, 72, 0.45); }
+    .badge.risk { background: rgba(255, 159, 67, 0.12); border-color: rgba(255, 159, 67, 0.45); }
+    .badge.bad { background: rgba(255, 107, 107, 0.12); border-color: rgba(255, 107, 107, 0.45); }
+    .badge.info { background: rgba(116, 185, 255, 0.12); border-color: rgba(116, 185, 255, 0.45); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 0.85rem;
+      border: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.12);
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 0.72rem 0.75rem;
+      border-bottom: 1px solid var(--line);
+    }
+    th {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(255, 255, 255, 0.04);
+    }
+    tr:last-child td { border-bottom: 0; }
+    td.small, .small { color: var(--muted); font-size: 0.9rem; }
+
+    ul, ol { margin: 0.45rem 0 0.2rem 1.15rem; padding: 0; }
+    li { margin: 0.28rem 0; }
+
+    .progress {
+      height: 0.9rem;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    .progress > span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), var(--blue));
+    }
+
+    details { padding: 0.95rem 1.1rem; }
+    details + details { margin-top: 0.8rem; }
+    summary {
+      cursor: pointer;
+      font-weight: 850;
+      letter-spacing: -0.02em;
+    }
+    .callout {
+      border-left: 4px solid var(--yellow);
+      background: rgba(247, 201, 72, 0.08);
+      padding: 0.85rem 1rem;
+      border-radius: 0.7rem;
+    }
+    .footer {
+      color: var(--muted);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--line);
+      padding-top: 1rem;
+      margin-top: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Titania-check v1 · progress + hammer list</div>
+    <h1>What works, what was tested, what is left.</h1>
+    <p class="subtitle">
+      Generated from the current <code>v1-combined-dispatch</code> worktree after the pushed Moon/template repair.
+      The report is intentionally blunt: Moon is green, core lane infrastructure is real, and the remaining work is concentrated in dogfood proof, doctor/thin CLI UX, template smoke evidence, and strict-lint cleanup/review closure.
+    </p>
+  </header>
+
+  <nav>
+    <div class="wrap">
+      <a href="#snapshot">Snapshot</a>
+      <a href="#works">Currently works</a>
+      <a href="#tested">Testing evidence</a>
+      <a href="#implemented">Implemented</a>
+      <a href="#reviewed">Reviewed / verified</a>
+      <a href="#gaps">Gaps left</a>
+      <a href="#dod">v1 DoD matrix</a>
+      <a href="#beads">Bead board</a>
+      <a href="#next">Next hammer order</a>
+    </div>
+  </nav>
+
+  <main>
+    <section id="snapshot">
+      <h2>Current snapshot</h2>
+      <div class="grid cards">
+        <div class="card"><div class="metric ok">Green</div><div class="metric-label">Latest <code>moon ci</code> status in <code>.moon/cache/ciReport.json</code>: <strong>completed</strong>.</div></div>
+        <div class="card"><div class="metric ok">53 / 53</div><div class="metric-label">Moon target states reported <strong>passed</strong>.</div></div>
+        <div class="card"><div class="metric info">13.520s</div><div class="metric-label">Latest Moon CI duration; most work was cache-hydrated after input repair.</div></div>
+        <div class="card"><div class="metric ok">clean</div><div class="metric-label"><code>git status --short --branch</code>: no staged, unstaged, or untracked files.</div></div>
+        <div class="card"><div class="metric ok">e04740a</div><div class="metric-label">Local HEAD and <code>origin/v1-combined-dispatch</code> both point at this commit.</div></div>
+        <div class="card"><div class="metric ok">pushed</div><div class="metric-label"><code>git push</code>: up-to-date. <code>bd dolt push</code>: Push complete.</div></div>
+      </div>
+      <div class="panel" style="margin-top: 1rem;">
+        <h3>Tracker shape</h3>
+        <p><span class="badge ok">50 closed</span> <span class="badge warn">9 in progress</span> <span class="badge info">12 open</span> <span class="badge bad">1 blocked</span></p>
+        <p class="small">Current ready work with no active blockers: <code>tn-pdn</code> killer demo, <code>tn-d3s.1</code> dogfood finding manifest, <code>tn-rld.4</code> generated workspace prepush smoke evidence.</p>
+      </div>
+    </section>
+
+    <section id="works">
+      <h2>Currently works</h2>
+      <div class="grid two">
+        <div class="panel">
+          <h3>Moon-orchestrated lane DAG</h3>
+          <ul>
+            <li><code>.moon/tasks/all.yml</code> defines v1 lane tasks plus <code>gate-edit</code>, <code>gate-prepush</code>, and <code>gate-release</code>.</li>
+            <li><code>moon ci</code> completes with all 53 target states passed.</li>
+            <li>Cache/output churn was fixed by keeping broad <code>.titania/**</code> task inputs while negating generated <code>.titania/cache/**</code> and <code>.titania/out/**</code> trees.</li>
+            <li>The generated template Moon config now mirrors the root task input policy.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Lane runner dispatch</h3>
+          <ul>
+            <li><code>cargo run --quiet -p titania-check -- run-lane fmt</code> exits 0.</li>
+            <li><code>cargo run --quiet -p titania-check -- run-lane compile</code> exits 0.</li>
+            <li>Moon no longer hits <code>exitCode=127</code> for <code>titania-check run-lane ...</code> tasks.</li>
+            <li>Run-lane dispatch no longer routes to the previous <code>MissingImplementation</code> stub for the core lanes.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Aggregation gates</h3>
+          <ul>
+            <li><code>gate-edit</code> aggregates edit-scope lane outputs.</li>
+            <li><code>gate-prepush</code> adds test and deny evidence.</li>
+            <li><code>gate-release</code> adds release build evidence.</li>
+            <li>Current report generation commands in Moon exit 0: <code>aggregate --scope edit</code>, <code>aggregate --scope prepush</code>, and <code>aggregate --scope release</code>.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Template metadata/config baseline</h3>
+          <ul>
+            <li><code>titania/template/cargo-generate.toml</code> includes required template files, including the generated workspace <code>.gitignore</code>.</li>
+            <li><code>titania/template/.gitignore</code> excludes generated scratch state: <code>.titania/cache/</code>, <code>.titania/out/</code>, <code>target/</code>, and <code>.moon/cache/</code>.</li>
+            <li>Template metadata and template Moon config tests pass.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="tested">
+      <h2>What is tested right now</h2>
+      <table>
+        <thead><tr><th>Evidence</th><th>Status</th><th>What it proves</th><th>Limit</th></tr></thead>
+        <tbody>
+          <tr><td><code>moon ci</code></td><td><span class="badge ok">pass</span></td><td>Moon can orchestrate the current task graph through release gates; latest report status is <code>completed</code>.</td><td>Many actions are cache-hydrated; this proves current hash inputs are stable and green, not that every external tool was cold-run in this invocation.</td></tr>
+          <tr><td><code>cargo test -p titania-lanes v1_moon_tasks</code></td><td><span class="badge ok">pass</span></td><td>The root Moon v1 task graph contract is checked, including lane inputs/output/cache exclusions.</td><td>Task-graph contract only; does not validate every lane's semantic correctness.</td></tr>
+          <tr><td><code>cargo test -p titania-lanes template_moon_configs</code></td><td><span class="badge ok">pass</span></td><td>The generated template Moon config matches the v1 task/input contract.</td><td>Does not itself run a generated workspace smoke test.</td></tr>
+          <tr><td><code>cargo test -p titania-lanes template_metadata</code></td><td><span class="badge ok">pass</span></td><td><code>cargo-generate.toml</code> includes the required files for adoption.</td><td>Metadata coverage only; generated workspace proof remains <code>tn-rld.4</code>.</td></tr>
+          <tr><td><code>cargo test --workspace --all-features</code></td><td><span class="badge ok">pass</span></td><td>Workspace tests compile/run under current Moon state; CI report records exit 0 for the test task.</td><td>Does not replace the pending killer demo and dogfood release beads.</td></tr>
+          <tr><td>Direct <code>run-lane</code> smokes</td><td><span class="badge ok">pass</span></td><td><code>fmt</code>, <code>compile</code>, <code>clippy</code>, <code>ast-grep</code>, <code>policy-scan</code>, <code>panic-scan</code>, <code>test</code>, <code>deny</code>, and <code>build</code> lane commands are wired in Moon and report exit 0 in the latest CI report.</td><td>Some lane semantics still have open beads for richer typed-rule coverage and review.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="implemented">
+      <h2>Implemented / landed slices</h2>
+      <div class="grid two">
+        <div class="panel">
+          <h3>Core product pieces landed</h3>
+          <ul>
+            <li>CLI parser, validation, exit-code mapping, and dispatch shell.</li>
+            <li>Real <code>check</code> and <code>aggregate</code> command wiring.</li>
+            <li>Real <code>run-lane</code> dispatch for Moon v1 lane tasks.</li>
+            <li>Typed lane outcomes and atomic artifact writing.</li>
+            <li>Report assembly from lane outcomes.</li>
+            <li><code>QualityReceipt</code> and lane receipt digest evidence.</li>
+            <li>Strict policy parser, exception parser, and policy digest.</li>
+            <li>Policy scan for Cargo lint weakening, local/parent Cargo rustflags/wrappers, forbidden env flags/wrappers, and exception application.</li>
+            <li>Clippy JSON normalization to <code>CLIPPY_*</code> findings.</li>
+            <li>Cargo-deny JSON normalization to <code>DENY_*</code> findings.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Rule/lane families landed</h3>
+          <ul>
+            <li>Embedded ast-grep functional rule family.</li>
+            <li>Embedded ast-grep bypass rule family.</li>
+            <li>Embedded ast-grep architecture rule family.</li>
+            <li><code>FUNC_RESULT_STRING</code> rule.</li>
+            <li>Panic-scan lane and parser-prefiltered panic surface checks.</li>
+            <li>Dylint cdylib crate and lane loader contract.</li>
+            <li>Dylint bypass rules: <code>BYPASS_PUB_ALLOW</code>, <code>BYPASS_REQUIRED_LINT_WEAKENING</code>, <code>BYPASS_ATTR_CONTEXT</code>, <code>BYPASS_INTERNAL_UNSTABLE</code>, <code>BYPASS_INTERNAL_UNSAFE</code>, and self-suppression guard.</li>
+          </ul>
+        </div>
+      </div>
+      <details>
+        <summary>Recent closed bead evidence highlights</summary>
+        <table>
+          <thead><tr><th>Bead</th><th>Priority</th><th>Closed work</th></tr></thead>
+          <tbody>
+            <tr><td><code>tn-buk</code></td><td>P0</td><td>Wired <code>run-lane</code> for Moon v1 tasks; acceptance cites direct <code>fmt</code>/<code>compile</code> smokes and <code>moon ci</code> with no <code>exitCode=127</code>.</td></tr>
+            <tr><td><code>tn-1of</code></td><td>P1</td><td>Added the v1 <code>titania-*</code> Moon lane DAG and gates.</td></tr>
+            <tr><td><code>tn-ja8.1</code></td><td>P0</td><td>Implemented rule explain catalog for every v1 rule ID.</td></tr>
+            <tr><td><code>tn-cgk.2</code></td><td>P0</td><td>Wired check/aggregate commands to the real aggregate implementation.</td></tr>
+            <tr><td><code>tn-37r.4</code></td><td>P0</td><td>Runs embedded ast-grep catalog and emits typed findings.</td></tr>
+            <tr><td><code>tn-d7l.3</code></td><td>P0</td><td>Computes <code>QualityReceipt</code> and lane receipt evidence digests.</td></tr>
+            <tr><td><code>tn-2cn</code></td><td>P0</td><td>Implemented TOML/env policy scan.</td></tr>
+            <tr><td><code>tn-d7l.2</code></td><td>P0</td><td>Assembles typed <code>Report</code> from <code>LaneOutcome</code> values.</td></tr>
+            <tr><td><code>tn-8ab.1</code>–<code>tn-8ab.4</code></td><td>P0</td><td>Dylint crate/loader and multiple type-aware bypass lint rules.</td></tr>
+            <tr><td><code>tn-8xw.1</code></td><td>P0</td><td>Normalizes cargo-deny JSON to typed <code>DENY_*</code> findings.</td></tr>
+            <tr><td><code>tn-d2l.2</code></td><td>P0</td><td>Normalizes clippy JSON diagnostics to typed <code>CLIPPY_*</code> findings.</td></tr>
+          </tbody>
+        </table>
+      </details>
+    </section>
+
+    <section id="reviewed">
+      <h2>Reviewed / verified status</h2>
+      <div class="grid two">
+        <div class="panel">
+          <h3>Verified by commands</h3>
+          <ul>
+            <li>Moon CI is the strongest current review signal: all current release-gate targets pass.</li>
+            <li>Targeted task-graph and template tests protect the repair that was just pushed.</li>
+            <li>The branch and Beads state were pushed after the report generation request: Git remote is at <code>e04740a</code>, Dolt push completed.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Still needs formal review closure</h3>
+          <ul>
+            <li>Open beads still require their own specialist lifecycle before closure: failing-first tests where applicable, reviewer pass, black-hat/truth-serum/evidence packaging when the bead demands it.</li>
+            <li>The current report does <strong>not</strong> claim every v1 proof/review lane is done. It says current Moon/task/runner state is green and identifies the remaining review-bearing beads.</li>
+            <li>Dogfood self-exceptions must be reviewed in <code>tn-d3s.2</code>; that is intentionally not marked complete.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="gaps">
+      <h2>Gaps left to hammer on</h2>
+      <div class="callout">
+        <strong>Bottom line:</strong> the platform is buildable and Moon-green; v1 is not fully done until the user-facing scope command/doctor path, killer demo, template smoke, dogfood release proof, and open strict-rule cleanup/review beads close.
+      </div>
+      <div class="grid two" style="margin-top: 1rem;">
+        <div class="panel">
+          <h3>P0 gaps</h3>
+          <ul>
+            <li><code>tn-pdn</code> — prove the killer demo: a Rust <code>for</code> loop plus <code>.unwrap()</code> must reject with typed <code>FUNC_LOOPS_FOR</code> and <code>CLIPPY_UNWRAP_USED</code> findings, then pass after repair.</li>
+            <li><code>tn-d3s</code> / <code>tn-d3s.1</code> / <code>tn-d3s.2</code> / <code>tn-d3s.3</code> — make Titania dogfood its own release scope with a captured finding manifest, reviewed self-exceptions, and final release pass evidence.</li>
+            <li><code>tn-ed4</code> — package final v1 Definition-of-Done evidence after the functional gaps close.</li>
+            <li><code>tn-4rq.2</code> — blocked subtask for doctor/version output plus embedded ast-grep row; blocks the doctor command path.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>P1/P2 gaps</h3>
+          <ul>
+            <li><code>tn-fqd</code> — thin executor binary: user-facing <code>titania-check --scope edit/prepush/release</code> path remains open even though Moon tasks and <code>run-lane</code> work.</li>
+            <li><code>tn-4rq</code> — doctor tool/version report is open; v1 DoD item 9 depends on it.</li>
+            <li><code>tn-rld</code> / <code>tn-rld.4</code> — cargo-generate template exists, but generated workspace prepush smoke evidence is still open.</li>
+            <li><code>tn-5c2</code> — ast-grep catalog with hand-written repair hints remains in progress.</li>
+            <li><code>tn-d2h</code> — titania-lints dylint library with all six type-aware rules remains in progress.</li>
+            <li><code>tn-kpm</code>, <code>tn-tyo</code>, <code>tn-bdl</code>, <code>tn-i0j</code>, <code>tn-q9a</code> — strict clippy/source-length/serde/public API/Kani assertion repair cleanup remains active.</li>
+            <li><code>tn-30e</code> — public docs alignment waits until implementation shape stops moving.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="dod">
+      <h2>v1 Definition-of-Done matrix</h2>
+      <table>
+        <thead><tr><th>#</th><th>Spec clause</th><th>Status</th><th>Evidence / blocker</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><code>--scope edit</code> runs fmt, compile, clippy, ast-grep, dylint, panic-scan, policy-scan via Moon.</td><td><span class="badge warn">partial</span></td><td>Moon <code>gate-edit</code> passes and lane tasks are wired. User-facing thin <code>--scope</code> executor remains <code>tn-fqd</code>.</td></tr>
+          <tr><td>2</td><td><code>--scope prepush</code> adds test and cargo-deny lanes.</td><td><span class="badge warn">partial</span></td><td>Moon <code>gate-prepush</code> passes. Thin executor UX remains open.</td></tr>
+          <tr><td>3</td><td><code>--scope release</code> adds release build.</td><td><span class="badge warn">partial</span></td><td>Moon <code>gate-release</code> passes. Dogfood release proof remains <code>tn-d3s</code>.</td></tr>
+          <tr><td>4</td><td>Each lane writes typed findings to <code>.titania/out/&lt;scope&gt;/&lt;lane&gt;.json</code>.</td><td><span class="badge ok">mostly done</span></td><td>Typed artifact writer and lane outcomes are landed; current Moon gate aggregation passes.</td></tr>
+          <tr><td>5</td><td><code>aggregate --scope</code> reads lane outputs and produces typed <code>Report</code>.</td><td><span class="badge ok">done</span></td><td><code>tn-cgk.2</code>, <code>tn-d7l.2</code>; Moon aggregate tasks pass for edit/prepush/release.</td></tr>
+          <tr><td>6</td><td>Report schema stable, versioned, machine-readable, separating findings from tool failures.</td><td><span class="badge ok">done</span></td><td>Core report/outcome types and aggregate tests landed; current report generation passes.</td></tr>
+          <tr><td>7</td><td><code>strict-ai</code> forbids unsafe, unwrap/expect, panic macros, unchecked indexing/arithmetic, lint suppressions, loops, excessive nesting, architecture violations, core <code>Result&lt;T, String&gt;</code>.</td><td><span class="badge warn">partial</span></td><td>Many rule families landed. Remaining active work: <code>tn-5c2</code>, <code>tn-d2h</code>, <code>tn-kpm</code>, <code>tn-tyo</code>, dogfood/review beads.</td></tr>
+          <tr><td>8</td><td>All policy exceptions live in <code>.titania/profiles/strict-ai/exceptions.toml</code> with owner/reason/expiry/review.</td><td><span class="badge warn">partial</span></td><td>Parser/tests exist; reviewed self-exception closure remains <code>tn-d3s.2</code>.</td></tr>
+          <tr><td>9</td><td><code>doctor --scope</code> reports tools and versions.</td><td><span class="badge bad">open</span></td><td><code>tn-4rq</code> open; <code>tn-4rq.2</code> blocked.</td></tr>
+          <tr><td>10</td><td><code>cargo generate titania/template</code> produces a workspace passing prepush out of the box.</td><td><span class="badge warn">partial</span></td><td>Template files/config/tests landed; generated workspace prepush smoke evidence remains <code>tn-rld.4</code>.</td></tr>
+          <tr><td>11</td><td>Titania-check's own repository passes release scope.</td><td><span class="badge warn">partial</span></td><td>Moon <code>gate-release</code> passes now. Formal self-dogfood release bead remains <code>tn-d3s</code>.</td></tr>
+          <tr><td>12</td><td>Dylint library loads correctly via workspace metadata.</td><td><span class="badge warn">partial</span></td><td>Dylint crate/loader and lane pass in current CI. Full six-rule library bead remains <code>tn-d2h</code>.</td></tr>
+          <tr><td>13</td><td>Clippy findings normalize to <code>CLIPPY_*</code> rule IDs.</td><td><span class="badge ok">done</span></td><td><code>tn-d2l.2</code> closed; clippy lane exits 0 in current Moon report.</td></tr>
+          <tr><td>14</td><td>Cargo-deny findings normalize to <code>DENY_*</code> rule IDs.</td><td><span class="badge ok">done</span></td><td><code>tn-8xw.1</code> closed; deny lane exits 0 in current Moon report.</td></tr>
+          <tr><td>Demo</td><td>Killer demo rejects <code>for</code> loop plus <code>.unwrap()</code> with two typed findings.</td><td><span class="badge bad">open</span></td><td><code>tn-pdn</code> ready and unblocked.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="beads">
+      <h2>Open / active bead board</h2>
+      <h3>Ready now</h3>
+      <table>
+        <thead><tr><th>Bead</th><th>Priority</th><th>Work</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr><td><code>tn-pdn</code></td><td>P0</td><td>demo: prove for-loop plus unwrap rejection</td><td>Killer demo / v1 sales proof.</td></tr>
+          <tr><td><code>tn-d3s.1</code></td><td>P1</td><td>dogfood: capture current release-scope finding manifest</td><td>First child for own-repo release proof.</td></tr>
+          <tr><td><code>tn-rld.4</code></td><td>P1</td><td>template: generated workspace prepush smoke evidence</td><td>Proves cargo-generate adoption path.</td></tr>
+        </tbody>
+      </table>
+
+      <h3 style="margin-top: 1.2rem;">In progress</h3>
+      <table>
+        <thead><tr><th>Bead</th><th>Priority</th><th>Work</th><th>Dependency count</th><th>Blocks</th></tr></thead>
+        <tbody>
+          <tr><td><code>tn-91r</code></td><td>P0</td><td>verify: moon ci exits 0 on strict-lint-dogfood</td><td>1</td><td>0</td></tr>
+          <tr><td><code>tn-5c2</code></td><td>P1</td><td>ast-grep catalog (~10 rules) with hand-written RepairHints</td><td>3</td><td>1</td></tr>
+          <tr><td><code>tn-b2w</code></td><td>P1</td><td>Slice 1 of v1: Moon scaffold + dylint + ast-grep + thin CLI + dogfood</td><td>0</td><td>0</td></tr>
+          <tr><td><code>tn-bdl</code></td><td>P1</td><td>Repair hot-cold serde_json violations in finding domain</td><td>0</td><td>0</td></tr>
+          <tr><td><code>tn-d2h</code></td><td>P1</td><td>titania-lints dylint library (6 type-aware rules)</td><td>3</td><td>1</td></tr>
+          <tr><td><code>tn-i0j</code></td><td>P1</td><td>Repair Moon public-api diff lane</td><td>0</td><td>0</td></tr>
+          <tr><td><code>tn-kpm</code></td><td>P1</td><td>fix: clear remaining 295 strict-clippy lints in lane binaries</td><td>1</td><td>28</td></tr>
+          <tr><td><code>tn-q9a</code></td><td>P1</td><td>Add explicit <code>Err(_)</code> assertions to Kani harnesses</td><td>0</td><td>0</td></tr>
+          <tr><td><code>tn-tyo</code></td><td>P1</td><td>Repair source-length gate failures in titania-core</td><td>0</td><td>0</td></tr>
+        </tbody>
+      </table>
+
+      <h3 style="margin-top: 1.2rem;">Open / blocked</h3>
+      <table>
+        <thead><tr><th>Bead</th><th>Status</th><th>Priority</th><th>Work</th><th>Dependency count</th><th>Blocks</th></tr></thead>
+        <tbody>
+          <tr><td><code>tn-4rq.2</code></td><td><span class="badge bad">blocked</span></td><td>P0</td><td>output: implement doctor tool/version report and embedded ast-grep row</td><td>5</td><td>3</td></tr>
+          <tr><td><code>tn-d3s</code></td><td><span class="badge info">open</span></td><td>P0</td><td>dogfood: make Titania repo pass release scope</td><td>8</td><td>2</td></tr>
+          <tr><td><code>tn-ed4</code></td><td><span class="badge info">open</span></td><td>P0</td><td>release: package v1 DoD evidence</td><td>7</td><td>0</td></tr>
+          <tr><td><code>tn-pdn</code></td><td><span class="badge info">open</span></td><td>P0</td><td>demo: prove for-loop plus unwrap rejection</td><td>5</td><td>1</td></tr>
+          <tr><td><code>tn-4rq</code></td><td><span class="badge info">open</span></td><td>P1</td><td>output: implement doctor tool/version report</td><td>4</td><td>2</td></tr>
+          <tr><td><code>tn-d3s.1</code></td><td><span class="badge info">open</span></td><td>P1</td><td>dogfood: capture current release-scope finding manifest</td><td>2</td><td>3</td></tr>
+          <tr><td><code>tn-d3s.2</code></td><td><span class="badge info">open</span></td><td>P1</td><td>dogfood: add reviewed self exceptions only after audit</td><td>1</td><td>2</td></tr>
+          <tr><td><code>tn-d3s.3</code></td><td><span class="badge info">open</span></td><td>P1</td><td>dogfood: prove own repo release pass after repair children close</td><td>2</td><td>2</td></tr>
+          <tr><td><code>tn-fqd</code></td><td><span class="badge info">open</span></td><td>P1</td><td>titania-check thin executor binary</td><td>7</td><td>1</td></tr>
+          <tr><td><code>tn-p0g</code></td><td><span class="badge info">open</span></td><td>P1</td><td>dogfood: moon :titania-check passes on titania repo</td><td>5</td><td>0</td></tr>
+          <tr><td><code>tn-rld</code></td><td><span class="badge info">open</span></td><td>P1</td><td>template: add cargo-generate Titania workspace template</td><td>11</td><td>2</td></tr>
+          <tr><td><code>tn-rld.4</code></td><td><span class="badge info">open</span></td><td>P1</td><td>template: generated workspace prepush smoke evidence</td><td>4</td><td>2</td></tr>
+          <tr><td><code>tn-30e</code></td><td><span class="badge info">open</span></td><td>P2</td><td>docs: align README and public docs with v1 contract</td><td>4</td><td>1</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="next">
+      <h2>Recommended hammer order</h2>
+      <ol>
+        <li><strong>Close <code>tn-pdn</code> first.</strong> It is P0, ready, visible, and proves the headline killer demo with typed findings.</li>
+        <li><strong>Run <code>tn-d3s.1 → tn-d3s.2 → tn-d3s.3</code>.</strong> Capture current self-dogfood findings, repair/exception them honestly, then prove own-repo release scope.</li>
+        <li><strong>Close <code>tn-rld.4</code>.</strong> Generate a fresh workspace and prove prepush passes; this converts the template from configured to adoption-proven.</li>
+        <li><strong>Unblock <code>tn-4rq.2</code> and close <code>tn-4rq</code>.</strong> Doctor/version reporting is a hard v1 DoD clause and will make failure diagnosis tolerable.</li>
+        <li><strong>Finish <code>tn-fqd</code>.</strong> Thin scope executor bridges the gap between Moon internals that work and the public <code>titania-check --scope ...</code> UX promised by the spec.</li>
+        <li><strong>Drain active cleanup beads.</strong> <code>tn-kpm</code>, <code>tn-tyo</code>, <code>tn-bdl</code>, <code>tn-i0j</code>, <code>tn-q9a</code>, <code>tn-5c2</code>, and <code>tn-d2h</code> are the remaining rule-quality/review hardening work.</li>
+        <li><strong>Package <code>tn-ed4</code> last.</strong> Evidence bundle only matters after the open acceptance gaps are actually closed.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Push / handoff facts</h2>
+      <table>
+        <thead><tr><th>Check</th><th>Observed result</th></tr></thead>
+        <tbody>
+          <tr><td><code>git push</code></td><td><span class="badge ok">ok</span> Remote was already up to date after the pushed repair.</td></tr>
+          <tr><td><code>bd dolt push</code></td><td><span class="badge ok">ok</span> Dolt remote push completed after the tracker state was corrected.</td></tr>
+          <tr><td><code>git status --short --branch</code></td><td><span class="badge ok">clean</span> <code>v1-combined-dispatch...origin/v1-combined-dispatch</code>, zero staged/unstaged/untracked files before this report file was created.</td></tr>
+          <tr><td>Report file</td><td>This single-page report is <code>v1-progress-report.html</code>.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div class="footer">
+      Generated 2026-07-05 from <code>v1-spec.md</code>, <code>bd list --json</code>, <code>bd ready</code>, <code>.moon/cache/ciReport.json</code>, <code>git status</code>, <code>git rev-parse</code>, <code>git push</code>, and <code>bd dolt push</code>. No success claim here is based on invented output.
+    </div>
+  </main>
+</body>
+</html>
