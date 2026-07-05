@@ -601,6 +601,7 @@ dependencies = [
  "tempfile",
  "titania-aggregate",
  "titania-core",
+ "titania-lanes",
  "titania-output",
 ]
 

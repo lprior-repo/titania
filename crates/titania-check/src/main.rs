@@ -36,7 +36,7 @@ fn dispatch(cli: Cli) -> CliDisposition {
     match cli.command {
         Command::Check(options) => aggregate_scope(options.scope),
         Command::Aggregate(options) => aggregate_scope(options.scope),
-        Command::RunLane { lane } => missing_run_lane(lane),
+        Command::RunLane { lane } => run_lane(lane),
         Command::Doctor(options) => missing_doctor(options.scope),
         Command::Explain { rule_id } => explain_rule(&rule_id),
     }
@@ -73,11 +73,9 @@ const fn report_code(status: aggregate::ReportStatus) -> u8 {
     }
 }
 
-fn missing_run_lane(lane: Lane) -> CliDisposition {
-    CliDisposition::input_error(format!(
-        "InputError: MissingImplementation command=run-lane lane '{}' bead=tn-uia; lane execution is not yet implemented",
-        lane_cli_name(lane)
-    ))
+fn run_lane(lane: Lane) -> CliDisposition {
+    let execution = titania_lanes::run_lane::execute_lane(lane);
+    CliDisposition::lane_execution(execution.exit().as_u8(), execution.stderr())
 }
 
 fn missing_doctor(scope: GateScope) -> CliDisposition {
@@ -103,21 +101,6 @@ const fn scope_name(scope: GateScope) -> &'static str {
     }
 }
 
-const fn lane_cli_name(lane: Lane) -> &'static str {
-    match lane {
-        Lane::Fmt => "fmt",
-        Lane::Compile => "compile",
-        Lane::Clippy => "clippy",
-        Lane::AstGrep => "ast-grep",
-        Lane::Dylint => "dylint",
-        Lane::PanicScan => "panic-scan",
-        Lane::PolicyScan => "policy-scan",
-        Lane::Test => "test",
-        Lane::Deny => "deny",
-        Lane::Build => "build",
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CliDisposition {
     code: u8,
@@ -136,6 +119,11 @@ impl CliDisposition {
 
     const fn report(stdout: String, code: u8) -> Self {
         Self { code, stdout: Some(stdout), diagnostic: None }
+    }
+
+    fn lane_execution(code: u8, stderr: &str) -> Self {
+        let diagnostic = (!stderr.is_empty()).then(|| stderr.trim_end_matches('\n').to_owned());
+        Self { code, stdout: None, diagnostic }
     }
 
     const fn code(&self) -> u8 {

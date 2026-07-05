@@ -36,7 +36,9 @@ pub mod scan;
 
 use std::path::Path;
 
-use titania_lanes::{LaneExit, LaneReport, RuleId, RuleIdError, current_target_project, exit};
+use titania_lanes::{
+    Finding, LaneExit, LaneReport, RuleId, RuleIdError, SourceLine, current_target_project, exit,
+};
 
 /// Legacy summary rule retained in stderr compatibility text for old consumers.
 const PANIC_SURFACE_RULE: &str = "PANIC_SURFACE_001";

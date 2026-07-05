@@ -4,7 +4,7 @@ use super::EXCLUDED_SEGMENTS;
 
 /// Collect production Rust source files under every workspace crate.
 #[must_use]
-pub fn collect_source_files(root: &Path) -> Vec<PathBuf> {
+pub(super) fn collect_source_files(root: &Path) -> Vec<PathBuf> {
     let crates_dir = root.join("crates");
     let Ok(entries) = std::fs::read_dir(crates_dir) else {
         return Vec::new();
@@ -74,7 +74,7 @@ fn is_excluded_path(path: &Path) -> bool {
 
 /// Render a path relative to the target root when possible.
 #[must_use]
-pub fn rel_str(root: &Path, path: &Path) -> String {
+pub(super) fn rel_str(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .map_or_else(|_| path.display().to_string(), |rel| rel.display().to_string())
 }

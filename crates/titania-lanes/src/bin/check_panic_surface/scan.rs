@@ -1,11 +1,12 @@
 use std::path::Path;
 
-use titania_lanes::{Finding, LaneReport, RuleId, SourceLine};
-
-use super::{PANIC_MACROS, PANIC_SURFACE_RULE, PanicMacroRule, paths::rel_str};
+use super::{
+    Finding, LaneReport, PANIC_MACROS, PANIC_SURFACE_RULE, PanicMacroRule, RuleId, SourceLine,
+    paths::rel_str,
+};
 
 /// Scan one Rust source file and append any panic-surface findings.
-pub fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
+pub(super) fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
     report.record_scan();
     let Ok(content) = std::fs::read_to_string(path) else {
         return;

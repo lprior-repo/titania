@@ -1,15 +1,22 @@
 //! String-backed detectors for the embedded v1 ast-grep rule table.
+mod code_scan;
+
+use code_scan::detect_code_line;
 
 pub(super) fn detect_for_loop(source: &str) -> bool {
-    source.contains("for ") && source.contains(" in ")
+    detect_code_line(source, has_for_loop_tokens)
 }
 
 pub(super) fn detect_while_loop(source: &str) -> bool {
-    source.contains("while ")
+    detect_code_line(source, |line| line.contains("while "))
 }
 
 pub(super) fn detect_loop_block(source: &str) -> bool {
-    source.contains("loop {")
+    detect_code_line(source, |line| line.contains("loop {"))
+}
+
+fn has_for_loop_tokens(line: &str) -> bool {
+    line.contains("for ") && line.contains(" in ")
 }
 
 pub(super) fn detect_print_stdout(source: &str) -> bool {

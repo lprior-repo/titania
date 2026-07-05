@@ -1,17 +1,19 @@
 //! Failing-first CLI dispatch tests for bead tn-cgk.1.
 //!
-//! Covers: parser/validation, exit-code mapping, dispatch shell.
+//! Covers: parser/validation, exit-code mapping, dispatch shell, and lane execution.
 //! Uses `std::process::Command` and the `CARGO_BIN_EXE_titania-check`
 //! environment variable set by `cargo test`.
 //!
 //! Selective acceptance filter:
 //! `cargo test -p titania-check cli_args_dispatch_missing_implementation_exit_codes`
 
+use serde_json::Value;
 use std::{
-    env,
+    env, fs,
     path::Path,
     process::{Command, Stdio},
 };
+use tempfile::TempDir;
 
 fn binary() -> std::path::PathBuf {
     env::var("CARGO_BIN_EXE_titania-check")
@@ -89,6 +91,29 @@ fn assert_empty_workspace_reject(args: &[&str], expected_gate_failures: usize) {
     );
 }
 
+/// Helper: build a minimal Cargo project (lib + bin) and return the TempDir.
+fn package(name: &str, lib_rs: &str, main_rs: &str) -> Result<TempDir, std::io::Error> {
+    let temp = tempfile::tempdir()?;
+    fs::write(
+        temp.path().join("Cargo.toml"),
+        format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"),
+    )?;
+    fs::create_dir_all(temp.path().join("src"))?;
+    fs::write(temp.path().join("src/lib.rs"), lib_rs)?;
+    fs::write(temp.path().join("src/main.rs"), main_rs)?;
+    Ok(temp)
+}
+
+/// Resolve the artifact path for the fmt lane in the edit scope.
+fn fmt_artifact_path(root: &Path) -> std::path::PathBuf {
+    root.join(".titania/out/edit/fmt.json")
+}
+
+/// Resolve the artifact path for the clippy lane in the edit scope.
+fn clippy_artifact_path(root: &Path) -> std::path::PathBuf {
+    root.join(".titania/out/edit/clippy.json")
+}
+
 #[test]
 fn cli_args_default_scope_edit() {
     assert_empty_workspace_reject(&[], 7);
@@ -128,13 +153,71 @@ fn dispatch_default_check_aggregates_empty_workspace() {
 }
 
 #[test]
-fn dispatch_missing_implementation_run_lane_fmt() {
-    assert_missing_impl(&["run-lane", "fmt"], "run-lane", "tn-uia", "lane 'fmt'");
+fn dispatch_run_lane_fmt_writes_typed_clean_artifact() {
+    let temp =
+        package("dispatch_fmt_clean", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
+            .expect("temp package must be created");
+    let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "fmt"]);
+    assert_eq!(code, 0, "run-lane fmt on clean project must exit 0, stderr: {stderr}");
+    assert!(stdout.is_empty(), "run-lane fmt must not write stdout, got: {stdout}");
+    assert!(stderr.is_empty(), "run-lane fmt must not write stderr, got: {stderr}");
+    let artifact = fmt_artifact_path(temp.path());
+    assert!(artifact.exists(), "fmt artifact must exist at .titania/out/edit/fmt.json");
+    let payload = fs::read_to_string(&artifact).expect("must read fmt artifact");
+    let json: Value = serde_json::from_str(&payload).expect("artifact must be valid JSON");
+    assert_eq!(json["lane"].as_str(), Some("Fmt"), "lane must be Fmt");
+    assert_eq!(json["outcome"]["variant"].as_str(), Some("clean"), "outcome must be clean");
+    // Command evidence: executable, argv, tool_version, exit_status.
+    let evidence = &json["outcome"]["evidence"];
+    let cmd = &evidence["command"];
+    assert_eq!(cmd["executable"].as_str(), Some("cargo"), "command executable must be cargo");
+    let argv: Vec<&str> = cmd["argv"]
+        .as_array()
+        .expect("argv must be a JSON array")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert_eq!(
+        argv,
+        vec!["cargo", "fmt", "--check"],
+        "command argv must be [cargo, fmt, --check]; got {argv:?}"
+    );
+    assert!(
+        evidence["tool_version"].as_str().is_some(),
+        "tool_version must be non-null, got: {:#}",
+        evidence["tool_version"]
+    );
+    assert_eq!(
+        evidence["exit_status"]["exited"]["code"].as_i64(),
+        Some(0),
+        "exit_status.exited.code must be 0, got: {:#}",
+        evidence["exit_status"]
+    );
 }
 
 #[test]
-fn dispatch_missing_implementation_run_lane_clippy() {
-    assert_missing_impl(&["run-lane", "clippy"], "run-lane", "tn-uia", "lane 'clippy'");
+fn dispatch_run_lane_clippy_executes_on_clean_project() {
+    let temp =
+        package("dispatch_clippy_clean", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
+            .expect("temp package must be created");
+    // Generate a lock file (clippy lane uses --frozen which requires one).
+    drop(
+        std::process::Command::new("cargo")
+            .current_dir(temp.path())
+            .arg("generate-lockfile")
+            .output()
+            .expect("cargo generate-lockfile must succeed"),
+    );
+    let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "clippy"]);
+    assert_eq!(code, 0, "run-lane clippy on clean project must exit 0, stderr: {stderr}");
+    assert!(stdout.is_empty(), "run-lane clippy must not write stdout, got: {stdout}");
+    assert!(stderr.is_empty(), "run-lane clippy must not write stderr, got: {stderr}");
+    let artifact = clippy_artifact_path(temp.path());
+    assert!(artifact.exists(), "clippy artifact must exist at .titania/out/edit/clippy.json");
+    let payload = fs::read_to_string(&artifact).expect("must read clippy artifact");
+    let json: Value = serde_json::from_str(&payload).expect("artifact must be valid JSON");
+    assert_eq!(json["lane"].as_str(), Some("Clippy"), "lane must be Clippy");
+    assert_eq!(json["outcome"]["variant"].as_str(), Some("clean"), "outcome must be clean");
 }
 
 #[test]
@@ -212,7 +295,6 @@ fn exit_codes_scope_release_emit_json_out() {
 #[test]
 fn cli_args_dispatch_missing_implementation_exit_codes() {
     assert_empty_workspace_reject(&[], 7);
-    assert_missing_impl(&["run-lane", "fmt"], "run-lane", "tn-uia", "lane 'fmt'");
     assert_missing_impl(&["doctor"], "doctor", "tn-4rq.2", "scope 'edit'");
     assert_known_explain(&["explain", "CLIPPY_UNWRAP_USED"], "CLIPPY_UNWRAP_USED");
     let (code, stdout, stderr) = run(&["run-lane", "invalid-lane"]);

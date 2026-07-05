@@ -493,6 +493,210 @@ fn ast_grep_lane_rejects_pub_and_multiline_architecture_imports() -> TestResult 
     Ok(())
 }
 
+// ===========================================================================
+// Tests: ast-grep functional detector false positives (comments, strings)
+// ===========================================================================
+
+/// **Contract:** A whole-line comment containing `for x in y` must NOT
+/// trigger FUNC_LOOPS_FOR. The code scanner ignores line comments.
+#[test]
+fn ast_grep_functional_for_loop_in_line_comment_not_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/allowed_for_loop_in_line_comment.rs"]
+        .map(|p| fixture_root("ast_grep", p))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "line-comment for-loop must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+/// **Contract:** Loop keywords inside a block-comment body must NOT trigger
+/// any FUNC_LOOPS_* finding, including plain block-comment bodies that do not
+/// start with `*`.
+#[test]
+fn ast_grep_functional_for_loop_in_block_comment_not_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/allowed_for_loop_in_block_comment.rs"]
+        .map(|p| fixture_root("ast_grep", p))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "block-comment-body loop keywords must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+/// **Contract:** Nested Rust block comments containing loop keywords must NOT
+/// trigger FUNC_LOOPS_* findings before the outer comment closes.
+#[test]
+fn ast_grep_functional_loop_keywords_in_nested_block_comment_not_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/allowed_nested_block_comment_loops.rs"]
+        .map(|p| fixture_root("ast_grep", p))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "nested block-comment loop keywords must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+/// **Contract:** A trailing `// while ` comment must NOT trigger
+/// FUNC_LOOPS_WHILE. The code scanner ignores text after line comments.
+#[test]
+fn ast_grep_functional_while_in_trailing_comment_not_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/allowed_while_in_trailing_comment.rs"]
+        .map(|p| fixture_root("ast_grep", p))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "trailing-comment while/loop keywords must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+/// **Contract:** Loop keywords in line comments only must stay clean.
+#[test]
+fn ast_grep_functional_loop_keywords_in_line_comments_only_are_clean() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/allowed_loop_keywords_in_strings.rs"]
+        .map(|p| fixture_root("ast_grep", p))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "line-comment loop keywords must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+/// **Contract:** String literals containing `loop {`, `for ... in`, or
+/// `while ` must stay clean. The scanner must ignore delimiters and loop
+/// keywords inside strings.
+#[test]
+fn ast_grep_functional_loop_in_string_literal_not_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/allowed_loop_in_string_literal.rs"]
+        .map(|p| fixture_root("ast_grep", p))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "string-literal loop keywords must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+/// **Contract:** Raw string literals containing quote characters and loop
+/// keywords must stay clean.
+#[test]
+fn ast_grep_functional_loop_in_raw_string_literal_not_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/allowed_raw_string_loop_keywords.rs"]
+        .map(|p| fixture_root("ast_grep", p))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "raw-string loop keywords must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_functional_for_after_line_comment_delimiter_string_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/real_for_after_line_comment_delimiter_string.rs"]
+        .map(|p| fixture_root("ast_grep", p))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|f| f.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected finding after string delimiter, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("FUNC_LOOPS_FOR"),
+        "real for-loop after string containing // must emit FUNC_LOOPS_FOR: {ids:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_functional_while_after_block_comment_delimiter_string_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/real_while_after_block_comment_delimiter_string.rs"]
+        .map(|p| fixture_root("ast_grep", p))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|f| f.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected finding after block delimiter string, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("FUNC_LOOPS_WHILE"),
+        "real while-loop after string containing /* must emit FUNC_LOOPS_WHILE: {ids:?}"
+    );
+    Ok(())
+}
+
+/// **Contract:** A real imperative for-loop in code MUST still trigger
+/// FUNC_LOOPS_FOR. This is the positive control that proves the detector
+/// fires when loop syntax appears in actual executable lines.
+#[test]
+fn ast_grep_functional_real_for_loop_still_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths =
+        ["functional/real_for_loop_in_code.rs"].map(|p| fixture_root("ast_grep", p)).to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|f| f.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected findings for real for-loop, got {other:?}"),
+    };
+
+    assert!(ids.contains("FUNC_LOOPS_FOR"), "real for-loop must emit FUNC_LOOPS_FOR: {ids:?}");
+    assert!(!ids.contains("FUNC_LOOPS_WHILE"), "real for-loop must not emit FUNC_LOOPS_WHILE");
+    assert!(
+        !ids.contains("FUNC_LOOPS_LOOP"),
+        "real for-loop must not emit FUNC_LOOPS_LOOP: {ids:?}"
+    );
+    Ok(())
+}
+
 fn all_rule_fixture_paths() -> Vec<PathBuf> {
     [
         "functional/func_loops_for_violation.rs",
