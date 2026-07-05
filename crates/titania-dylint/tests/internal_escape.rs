@@ -28,6 +28,19 @@ macro_rules! impl_public {
 impl_public!(public_api);
 "#;
 
+const FIXTURE_ATTR_CONTEXT_SELF_SUPPRESSED: &str = r#"
+#![allow(bypass_attr_context)]
+
+macro_rules! impl_public {
+    ($name:ident) => {
+        #[allow(dead_code)]
+        pub fn $name() {}
+    };
+}
+
+impl_public!(public_api);
+"#;
+
 // ── Fixture: plain pub fn with direct #[allow(...)] — no macro escape ─
 //
 // This should NOT trigger BYPASS_ATTR_CONTEXT because the allow is on
@@ -48,6 +61,20 @@ pub fn public_api() {}
 // itself is an unstable attribute.
 const FIXTURE_INTERNAL_UNSTABLE: &str = r#"
 #![feature(allow_internal_unstable)]
+
+#[allow_internal_unstable(stability_warning)]
+macro_rules! unstable_macro {
+    () => {
+        pub fn _internal_unstable_item() {}
+    };
+}
+
+unstable_macro!();
+"#;
+
+const FIXTURE_INTERNAL_UNSTABLE_SELF_SUPPRESSED: &str = r#"
+#![feature(allow_internal_unstable)]
+#![allow(bypass_internal_unstable)]
 
 #[allow_internal_unstable(stability_warning)]
 macro_rules! unstable_macro {
@@ -81,6 +108,20 @@ plain_macro!();
 // itself is an unstable attribute.
 const FIXTURE_INTERNAL_UNSAFE: &str = r#"
 #![feature(allow_internal_unsafe)]
+
+#[allow_internal_unsafe]
+macro_rules! unsafe_macro {
+    () => {
+        pub fn _internal_unsafe_item() {}
+    };
+}
+
+unsafe_macro!();
+"#;
+
+const FIXTURE_INTERNAL_UNSAFE_SELF_SUPPRESSED: &str = r#"
+#![feature(allow_internal_unsafe)]
+#![allow(bypass_internal_unsafe)]
 
 #[allow_internal_unsafe]
 macro_rules! unsafe_macro {
@@ -205,6 +246,35 @@ fn assert_dylint_rejects(output: &std::process::Output, rule: &str, context: &st
     );
 }
 
+fn assert_lint_name_is_recognized(output: &std::process::Output, context: &str) {
+    assert!(
+        !output_contains(output, "unknown lint") && !output_contains(output, "unknown tool name"),
+        "self-suppression fixture must use a recognized lint name for {context}:\n{}",
+        combined_output(output)
+    );
+}
+
+fn assert_self_suppression_rejected(
+    output: &std::process::Output,
+    lint_name: &str,
+    rule: &str,
+    context: &str,
+) {
+    assert!(
+        !output.status.success(),
+        "cargo dylint must reject self-suppression for {context}:\n{}",
+        combined_output(output)
+    );
+    assert_lint_name_is_recognized(output, context);
+    assert!(
+        output_contains(output, rule)
+            || (output_contains(output, "incompatible with previous forbid")
+                && output_contains(output, lint_name)),
+        "self-suppression must either emit {rule} or be blocked by default forbid for {context}:\n{}",
+        combined_output(output)
+    );
+}
+
 // ── Registration tests ────────────────────────────────────────────────
 
 #[test]
@@ -245,6 +315,7 @@ fn bypass_internal_unsafe_is_registered_by_cargo_dylint() {
         "cargo dylint list --all must load the Titania library:\n{}",
         combined_output(&output)
     );
+
     assert!(
         output_contains(&output, "BYPASS_INTERNAL_UNSAFE"),
         "registered lint list must include BYPASS_INTERNAL_UNSAFE:\n{}",
@@ -270,6 +341,18 @@ fn bypass_attr_context_detects_macro_generated_allow() {
 }
 
 #[test]
+fn bypass_attr_context_rejects_self_suppression() {
+    let output =
+        run_dylint_on_fixture("attr_context_self_suppressed", FIXTURE_ATTR_CONTEXT_SELF_SUPPRESSED);
+    assert_self_suppression_rejected(
+        &output,
+        "bypass_attr_context",
+        "BYPASS_ATTR_CONTEXT",
+        "self-suppressed macro-generated allow",
+    );
+}
+
+#[test]
 fn bypass_attr_context_leaves_direct_allow_to_pub_allow() {
     let output = run_dylint_on_fixture("attr_context_clean", FIXTURE_ATTR_CONTEXT_CLEAN);
     assert_dylint_rejects(&output, "BYPASS_PUB_ALLOW", "direct `#[allow(...)]` on pub fn");
@@ -284,6 +367,20 @@ fn bypass_attr_context_leaves_direct_allow_to_pub_allow() {
 fn bypass_internal_unstable_detects_allow_internal_unstable_attr() {
     let output = run_dylint_on_fixture("internal_unstable", FIXTURE_INTERNAL_UNSTABLE);
     assert_dylint_rejects(&output, "BYPASS_INTERNAL_UNSTABLE", "`#[allow_internal_unstable(...)]`");
+}
+
+#[test]
+fn bypass_internal_unstable_rejects_self_suppression() {
+    let output = run_dylint_on_fixture(
+        "internal_unstable_self_suppressed",
+        FIXTURE_INTERNAL_UNSTABLE_SELF_SUPPRESSED,
+    );
+    assert_self_suppression_rejected(
+        &output,
+        "bypass_internal_unstable",
+        "BYPASS_INTERNAL_UNSTABLE",
+        "self-suppressed allow_internal_unstable",
+    );
 }
 
 #[test]
@@ -305,6 +402,20 @@ fn bypass_internal_unstable_ignores_plain_function() {
 fn bypass_internal_unsafe_detects_allow_internal_unsafe_attr() {
     let output = run_dylint_on_fixture("internal_unsafe", FIXTURE_INTERNAL_UNSAFE);
     assert_dylint_rejects(&output, "BYPASS_INTERNAL_UNSAFE", "`#[allow_internal_unsafe]`");
+}
+
+#[test]
+fn bypass_internal_unsafe_rejects_self_suppression() {
+    let output = run_dylint_on_fixture(
+        "internal_unsafe_self_suppressed",
+        FIXTURE_INTERNAL_UNSAFE_SELF_SUPPRESSED,
+    );
+    assert_self_suppression_rejected(
+        &output,
+        "bypass_internal_unsafe",
+        "BYPASS_INTERNAL_UNSAFE",
+        "self-suppressed allow_internal_unsafe",
+    );
 }
 
 #[test]

@@ -21,6 +21,13 @@ const FIXTURE_PUB_ALLOW_WARNINGS: &str = r#"
 pub fn public_api() {}
 "#;
 
+const FIXTURE_PUB_ALLOW_SELF_SUPPRESSED: &str = r#"
+#![allow(bypass_pub_allow)]
+
+#[allow(dead_code)]
+pub fn public_api() {}
+"#;
+
 const FIXTURE_PUB_CRATE_ALLOW: &str = r#"
 #[allow(dead_code)]
 pub(crate) fn crate_api() {}
@@ -39,6 +46,13 @@ pub fn kept() {}
 "#;
 
 const FIXTURE_WEAKEN_WARNINGS: &str = r#"
+#![allow(warnings)]
+
+pub fn kept() {}
+"#;
+
+const FIXTURE_WEAKEN_SELF_SUPPRESSED: &str = r#"
+#![allow(bypass_required_lint_weakening)]
 #![allow(warnings)]
 
 pub fn kept() {}
@@ -151,6 +165,35 @@ fn assert_dylint_rejects(output: &std::process::Output, rule: &str, context: &st
     );
 }
 
+fn assert_lint_name_is_recognized(output: &std::process::Output, context: &str) {
+    assert!(
+        !output_contains(output, "unknown lint") && !output_contains(output, "unknown tool name"),
+        "self-suppression fixture must use a recognized lint name for {context}:\n{}",
+        combined_output(output)
+    );
+}
+
+fn assert_self_suppression_rejected(
+    output: &std::process::Output,
+    lint_name: &str,
+    rule: &str,
+    context: &str,
+) {
+    assert!(
+        !output.status.success(),
+        "cargo dylint must reject self-suppression for {context}:\n{}",
+        combined_output(output)
+    );
+    assert_lint_name_is_recognized(output, context);
+    assert!(
+        output_contains(output, rule)
+            || (output_contains(output, "incompatible with previous forbid")
+                && output_contains(output, lint_name)),
+        "self-suppression must either emit {rule} or be blocked by default forbid for {context}:\n{}",
+        combined_output(output)
+    );
+}
+
 #[test]
 fn bypass_pub_allow_is_registered_by_cargo_dylint() {
     let output = cargo_dylint_list_output();
@@ -176,6 +219,18 @@ fn bypass_pub_allow_detects_public_allow_attribute() {
 fn bypass_pub_allow_detects_public_allow_warnings() {
     let output = run_dylint_on_fixture("pub_allow_warnings", FIXTURE_PUB_ALLOW_WARNINGS);
     assert_dylint_rejects(&output, "BYPASS_PUB_ALLOW", "public API allowing warnings");
+}
+
+#[test]
+fn bypass_pub_allow_rejects_self_suppression() {
+    let output =
+        run_dylint_on_fixture("pub_allow_self_suppressed", FIXTURE_PUB_ALLOW_SELF_SUPPRESSED);
+    assert_self_suppression_rejected(
+        &output,
+        "bypass_pub_allow",
+        "BYPASS_PUB_ALLOW",
+        "self-suppressed public allow",
+    );
 }
 
 #[test]
@@ -224,6 +279,17 @@ fn bypass_required_lint_weakening_detects_deny_unwrap_removal() {
 fn bypass_required_lint_weakening_detects_allow_warnings() {
     let output = run_dylint_on_fixture("weaken_warnings", FIXTURE_WEAKEN_WARNINGS);
     assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "crate allowing warnings");
+}
+
+#[test]
+fn bypass_required_lint_weakening_rejects_self_suppression() {
+    let output = run_dylint_on_fixture("weaken_self_suppressed", FIXTURE_WEAKEN_SELF_SUPPRESSED);
+    assert_self_suppression_rejected(
+        &output,
+        "bypass_required_lint_weakening",
+        "BYPASS_REQUIRED_LINT_WEAKENING",
+        "self-suppressed required-lint weakening",
+    );
 }
 
 #[test]
