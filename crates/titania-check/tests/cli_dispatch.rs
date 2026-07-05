@@ -9,6 +9,7 @@
 
 use std::{
     env,
+    path::Path,
     process::{Command, Stdio},
 };
 
@@ -19,7 +20,13 @@ fn binary() -> std::path::PathBuf {
 }
 
 fn run(args: &[&str]) -> (i32, String, String) {
+    let cwd = env::current_dir().expect("test current directory must be available");
+    run_in(&cwd, args)
+}
+
+fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     let output = Command::new(binary())
+        .current_dir(cwd)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -50,29 +57,47 @@ fn assert_missing_impl(args: &[&str], command: &str, bead: &str, detail: &str) {
     assert_stderr_contains(&stderr, detail);
 }
 
+fn assert_empty_workspace_reject(args: &[&str], expected_gate_failures: usize) {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+    let (code, stdout, stderr) = run_in(workspace.path(), args);
+    assert_eq!(code, 1, "reject reports must exit 1, stderr: {stderr}");
+    assert!(stderr.is_empty(), "aggregate success path must not write stderr: {stderr}");
+    let report: serde_json::Value = serde_json::from_str(&stdout).expect("stdout must be JSON");
+    assert_eq!(report["variant"], "reject");
+    assert_eq!(
+        report["gate_failures"].as_array().map(|items| items.len()),
+        Some(expected_gate_failures),
+    );
+    assert_eq!(report["code_findings"].as_array().map(|items| items.len()), Some(0));
+    assert_eq!(
+        report["per_lane"].as_array().map(|items| items.len()),
+        Some(expected_gate_failures),
+    );
+}
+
 #[test]
 fn cli_args_default_scope_edit() {
-    assert_missing_impl(&[], "check", "tn-cgk.2", "scope 'edit'");
+    assert_empty_workspace_reject(&[], 7);
 }
 
 #[test]
 fn cli_args_scope_prepush() {
-    assert_missing_impl(&["--scope", "prepush"], "check", "tn-cgk.2", "scope 'prepush'");
+    assert_empty_workspace_reject(&["--scope", "prepush"], 9);
 }
 
 #[test]
 fn cli_args_scope_release() {
-    assert_missing_impl(&["--scope", "release"], "check", "tn-cgk.2", "scope 'release'");
+    assert_empty_workspace_reject(&["--scope", "release"], 10);
 }
 
 #[test]
 fn cli_args_emit_json_flag() {
-    assert_missing_impl(&["--emit", "json"], "check", "tn-cgk.2", "scope 'edit'");
+    assert_empty_workspace_reject(&["--emit", "json"], 7);
 }
 
 #[test]
 fn cli_args_out_path() {
-    assert_missing_impl(&["--out", "/tmp/report.json"], "check", "tn-cgk.2", "scope 'edit'");
+    assert_empty_workspace_reject(&["--out", "/tmp/report.json"], 7);
 }
 
 #[test]
@@ -84,8 +109,8 @@ fn cli_args_unknown_scope_rejected() {
 }
 
 #[test]
-fn dispatch_missing_implementation_default_check() {
-    assert_missing_impl(&[], "check", "tn-cgk.2", "scope 'edit'");
+fn dispatch_default_check_aggregates_empty_workspace() {
+    assert_empty_workspace_reject(&[], 7);
 }
 
 #[test]
@@ -99,8 +124,8 @@ fn dispatch_missing_implementation_run_lane_clippy() {
 }
 
 #[test]
-fn dispatch_missing_implementation_run_lane_aggregate() {
-    assert_missing_impl(&["aggregate", "--scope", "edit"], "aggregate", "tn-cgk.2", "scope 'edit'");
+fn dispatch_aggregate_subcommand_reads_empty_workspace() {
+    assert_empty_workspace_reject(&["aggregate", "--scope", "edit"], 7);
 }
 
 #[test]
@@ -126,8 +151,8 @@ fn dispatch_missing_implementation_unknown_lane() {
 }
 
 #[test]
-fn exit_codes_no_unimplemented_command_exits_0() {
-    assert_missing_impl(&[], "check", "tn-cgk.2", "scope 'edit'");
+fn exit_codes_reject_report_exits_1() {
+    assert_empty_workspace_reject(&[], 7);
 }
 
 #[test]
@@ -161,37 +186,28 @@ fn exit_codes_run_lane_invalid_lane() {
 
 #[test]
 fn exit_codes_scope_emit_out_combination() {
-    assert_missing_impl(
+    assert_empty_workspace_reject(
         &["--scope", "prepush", "--emit", "json", "--out", "/tmp/test-report.json"],
-        "check",
-        "tn-cgk.2",
-        "scope 'prepush'",
+        9,
     );
 }
 
 #[test]
 fn exit_codes_scope_prepush_emit_json() {
-    assert_missing_impl(
-        &["--scope", "prepush", "--emit", "json"],
-        "check",
-        "tn-cgk.2",
-        "scope 'prepush'",
-    );
+    assert_empty_workspace_reject(&["--scope", "prepush", "--emit", "json"], 9);
 }
 
 #[test]
 fn exit_codes_scope_release_emit_json_out() {
-    assert_missing_impl(
+    assert_empty_workspace_reject(
         &["--scope", "release", "--emit", "json", "--out", "/tmp/release-report.json"],
-        "check",
-        "tn-cgk.2",
-        "scope 'release'",
+        10,
     );
 }
 
 #[test]
 fn cli_args_dispatch_missing_implementation_exit_codes() {
-    assert_missing_impl(&[], "check", "tn-cgk.2", "scope 'edit'");
+    assert_empty_workspace_reject(&[], 7);
     assert_missing_impl(&["run-lane", "fmt"], "run-lane", "tn-uia", "lane 'fmt'");
     assert_missing_impl(&["doctor"], "doctor", "tn-4rq.2", "scope 'edit'");
     assert_missing_impl(

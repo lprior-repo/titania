@@ -7,7 +7,7 @@ use std::fs;
 
 use tempfile::TempDir;
 use titania_aggregate::{ReaderError, read_lane_artifacts};
-use titania_core::{GateScope, Lane, LaneOutcome};
+use titania_core::{GateScope, Lane, LaneFailure, LaneOutcome};
 
 /// Helper: build a minimal clean artifact JSON string for a given lane.
 fn clean_artifact_json(lane: Lane) -> String {
@@ -94,42 +94,28 @@ fn read_all_release_lanes_in_order() {
 }
 
 #[test]
-fn missing_first_lane_returns_infra_failure() {
+fn missing_first_lane_returns_failed_outcome() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // Only write compile.json (second lane), skip fmt.json (first lane)
     fs::write(dir.join("compile.json"), clean_artifact_json(Lane::Compile)).unwrap();
 
-    let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
-    match result {
-        Err(ReaderError::InfraFailure { tool, reason }) => {
-            assert_eq!(tool, "Fmt");
-            assert_eq!(reason, "output file missing");
-        }
-        other => panic!("expected InfraFailure, got {other:?}"),
-    }
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_missing_lane(&records, Lane::Fmt);
 }
 
 #[test]
-fn missing_middle_lane_returns_infra_failure() {
+fn missing_middle_lane_returns_failed_outcome() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // Write Fmt, Compile, Clippy (first 3), skip AstGrep (4th)
     for lane in GateScope::Edit.lanes().iter().take(3) {
         fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
             .unwrap();
     }
 
-    let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
-    match result {
-        Err(ReaderError::InfraFailure { tool, reason }) => {
-            assert_eq!(tool, "AstGrep");
-            assert_eq!(reason, "output file missing");
-        }
-        other => panic!("expected InfraFailure, got {other:?}"),
-    }
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_missing_lane(&records, Lane::AstGrep);
 }
 
 #[test]
@@ -189,26 +175,20 @@ fn skipped_lane_parsed_correctly() {
 }
 
 #[test]
-fn empty_target_root_returns_infra_failure_for_first_lane() {
+fn empty_target_root_returns_failed_outcomes() {
     let tmp = tempfile::tempdir().unwrap();
-    // No .titania/out/ directory at all
 
-    let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
-    match result {
-        Err(ReaderError::InfraFailure { tool, reason }) => {
-            assert_eq!(tool, "Fmt");
-            assert_eq!(reason, "output file missing");
-        }
-        other => panic!("expected InfraFailure, got {other:?}"),
-    }
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_missing_lane(&records, Lane::Fmt);
+    assert_missing_lane(&records, Lane::Dylint);
+    assert_missing_lane(&records, Lane::PolicyScan);
 }
 
 #[test]
-fn dylint_specific_infra_failure() {
+fn dylint_specific_missing_file_becomes_failed_outcome() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // Write all lanes except Dylint
     for lane in GateScope::Edit.lanes() {
         if *lane != Lane::Dylint {
             fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
@@ -216,13 +196,18 @@ fn dylint_specific_infra_failure() {
         }
     }
 
-    let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
-    match result {
-        Err(ReaderError::InfraFailure { tool, reason }) => {
-            assert_eq!(tool, "Dylint");
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_missing_lane(&records, Lane::Dylint);
+}
+
+fn assert_missing_lane(records: &[(Lane, LaneOutcome)], expected: Lane) {
+    let (_, outcome) = records.iter().find(|(lane, _)| *lane == expected).unwrap();
+    match outcome {
+        LaneOutcome::Failed(LaneFailure::Infra { tool, reason }) => {
+            assert_eq!(tool, expected.name());
             assert_eq!(reason, "output file missing");
         }
-        other => panic!("expected InfraFailure for Dylint, got {other:?}"),
+        other => panic!("expected missing-lane Infra failure for {expected}, got {other:?}"),
     }
 }
 

@@ -4,6 +4,7 @@
 //! blockers for downstream work. It does not fake lane execution, aggregate
 //! reports, doctor output, or rule explanations.
 
+pub mod aggregate;
 pub mod args;
 
 use std::{env, io, io::Write, process::ExitCode};
@@ -11,6 +12,9 @@ use std::{env, io, io::Write, process::ExitCode};
 use args::{Cli, Command};
 use titania_core::{GateScope, Lane, RuleId};
 
+const EXIT_PASS: u8 = 0;
+const EXIT_REJECT: u8 = 1;
+const EXIT_POLICY_ERROR: u8 = 2;
 const EXIT_INPUT_ERROR: u8 = 3;
 const EXIT_INTERNAL_ERROR: u8 = 4;
 
@@ -30,26 +34,43 @@ where
 
 fn dispatch(cli: Cli) -> CliDisposition {
     match cli.command {
-        Command::Check(options) => missing_check(options.scope),
+        Command::Check(options) => aggregate_scope(options.scope),
+        Command::Aggregate(options) => aggregate_scope(options.scope),
         Command::RunLane { lane } => missing_run_lane(lane),
-        Command::Aggregate(options) => missing_aggregate(options.scope),
         Command::Doctor(options) => missing_doctor(options.scope),
         Command::Explain { rule_id } => missing_explain(&rule_id),
     }
 }
 
-fn missing_check(scope: GateScope) -> CliDisposition {
-    CliDisposition::input_error(format!(
-        "InputError: MissingImplementation command=check scope '{}' bead=tn-cgk.2; check/aggregate wiring is not yet implemented",
-        scope_name(scope)
-    ))
+fn aggregate_scope(scope: GateScope) -> CliDisposition {
+    env::current_dir().map_or_else(
+        |error| current_dir_error(&error),
+        |target_root| aggregate_from_root(&target_root, scope),
+    )
 }
 
-fn missing_aggregate(scope: GateScope) -> CliDisposition {
-    CliDisposition::input_error(format!(
-        "InputError: MissingImplementation command=aggregate scope '{}' bead=tn-cgk.2; aggregate dispatch is not yet implemented",
-        scope_name(scope)
-    ))
+fn current_dir_error(error: &io::Error) -> CliDisposition {
+    CliDisposition::internal_error(format!("InternalError: current directory unavailable: {error}"))
+}
+
+fn aggregate_from_root(target_root: &std::path::Path, scope: GateScope) -> CliDisposition {
+    match aggregate::report_json(target_root, scope) {
+        Ok(report) => report_disposition(&report),
+        Err(error) => CliDisposition::input_error(error.diagnostic()),
+    }
+}
+
+fn report_disposition(report: &aggregate::ReportJson) -> CliDisposition {
+    CliDisposition::report(report.json().to_owned(), report_code(report.status()))
+}
+
+const fn report_code(status: aggregate::ReportStatus) -> u8 {
+    match status {
+        aggregate::ReportStatus::Pass => EXIT_PASS,
+        aggregate::ReportStatus::Reject => EXIT_REJECT,
+        aggregate::ReportStatus::PolicyError => EXIT_POLICY_ERROR,
+        aggregate::ReportStatus::InputError => EXIT_INPUT_ERROR,
+    }
 }
 
 fn missing_run_lane(lane: Lane) -> CliDisposition {
@@ -100,16 +121,29 @@ const fn lane_cli_name(lane: Lane) -> &'static str {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CliDisposition {
     code: u8,
+    stdout: Option<String>,
     diagnostic: Option<String>,
 }
 
 impl CliDisposition {
     const fn input_error(message: String) -> Self {
-        Self { code: EXIT_INPUT_ERROR, diagnostic: Some(message) }
+        Self { code: EXIT_INPUT_ERROR, stdout: None, diagnostic: Some(message) }
+    }
+
+    const fn internal_error(message: String) -> Self {
+        Self { code: EXIT_INTERNAL_ERROR, stdout: None, diagnostic: Some(message) }
+    }
+
+    const fn report(stdout: String, code: u8) -> Self {
+        Self { code, stdout: Some(stdout), diagnostic: None }
     }
 
     const fn code(&self) -> u8 {
         self.code
+    }
+
+    fn stdout(&self) -> Option<&str> {
+        self.stdout.as_deref()
     }
 
     fn diagnostic(&self) -> Option<&str> {
@@ -131,7 +165,25 @@ fn exit(disposition: &CliDisposition) -> ExitCode {
 /// Returns the underlying stderr I/O error when the diagnostic cannot be
 /// written completely.
 fn write_disposition(disposition: &CliDisposition) -> io::Result<()> {
-    disposition.diagnostic().map_or(Ok(()), write_stderr_line)
+    if let Some(stdout) = disposition.stdout() {
+        write_stdout_line(stdout)?;
+    }
+    if let Some(diagnostic) = disposition.diagnostic() {
+        return write_stderr_line(diagnostic);
+    }
+    Ok(())
+}
+
+/// Write a single stdout line.
+///
+/// # Errors
+///
+/// Returns the underlying stdout I/O error when the line or newline cannot be
+/// written completely.
+fn write_stdout_line(text: &str) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    stdout.write_all(text.as_bytes())?;
+    stdout.write_all(b"\n")
 }
 
 /// Write a single stderr line.

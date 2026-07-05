@@ -4,18 +4,22 @@
 //! The reader walks the lanes for the requested scope, deserialises each file,
 //! and returns a vector of `(Lane, LaneOutcome)` tuples in scope order.
 //!
+//! Missing artifact files are not fatal to aggregation: the missing lane is
+//! returned as `LaneOutcome::Failed(LaneFailure::Infra { reason:
+//! "output file missing" })` so the final report records a gate failure instead
+//! of silently skipping or aborting.
+//!
 //! # Errors
 //!
-//! - Missing artifact file → [`ReaderError::InfraFailure`] with reason
-//!   `"output file missing"`.
 //! - Malformed JSON or lane-name mismatch → [`ReaderError::InputError`].
+//! - Non-`NotFound` filesystem errors → [`ReaderError::InputError`].
 
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
-use titania_core::{GateScope, Lane, LaneOutcome};
+use titania_core::{GateScope, Lane, LaneFailure, LaneOutcome};
 
 /// Errors returned by the lane-artifact reader.
 #[derive(Debug, Error)]
@@ -60,9 +64,9 @@ pub type ReaderResult = Result<Vec<(Lane, LaneOutcome)>, ReaderError>;
 ///
 /// # Errors
 ///
-/// Returns [`ReaderError::InfraFailure`] when an expected lane artifact is
-/// missing, [`ReaderError::InputError`] when an artifact cannot be parsed or its
-/// embedded lane does not match its filename, and
+/// Returns one [`LaneOutcome::Failed`] per missing lane output, preserving scope
+/// order. Returns [`ReaderError::InputError`] when an existing artifact cannot be
+/// read, parsed, or matched to its lane, and [`ReaderError::UnsupportedScope`]
 /// [`ReaderError::UnsupportedScope`] for future gate-scope variants unknown to
 /// this v1 reader.
 pub fn read_lane_artifacts(target_root: &Path, scope: GateScope) -> ReaderResult {
@@ -76,13 +80,15 @@ pub fn read_lane_artifacts(target_root: &Path, scope: GateScope) -> ReaderResult
 ///
 /// # Errors
 ///
-/// Returns [`ReaderError::InfraFailure`] when the lane output file is missing,
-/// or [`ReaderError::InputError`] when the file cannot be read, decoded as
-/// JSON, deserialized as a [`LaneOutcome`], or its embedded lane name does not
+/// Returns [`LaneOutcome::Failed`] when the lane output file is missing, or
+/// [`ReaderError::InputError`] when the file cannot be read, decoded as JSON,
+/// deserialized as a [`LaneOutcome`], or its embedded lane name does not match
 /// match the expected `lane`.
 fn read_one(out_dir: &Path, lane: Lane) -> Result<(Lane, LaneOutcome), ReaderError> {
     let file_path = out_dir.join(lane_stem(lane)).with_extension("json");
-    let contents = read_artifact_file(&file_path, lane)?;
+    let Some(contents) = read_artifact_file(&file_path, lane)? else {
+        return Ok((lane, missing_lane_outcome(lane)));
+    };
     let artifact: LaneArtifact = serde_json::from_str(&contents).map_err(|err| {
         ReaderError::InputError { lane, cause: format!("malformed JSON for {lane}: {err}") }
     })?;
@@ -107,20 +113,35 @@ fn read_one(out_dir: &Path, lane: Lane) -> Result<(Lane, LaneOutcome), ReaderErr
 ///
 /// # Errors
 ///
-/// Returns [`ReaderError::InfraFailure`] for missing files and
-/// [`ReaderError::InputError`] for other filesystem errors.
-fn read_artifact_file(file_path: &Path, lane: Lane) -> Result<String, ReaderError> {
-    std::fs::read_to_string(file_path).map_err(|err| read_file_error(lane, &err))
+/// Returns `Ok(None)` for missing files and [`ReaderError::InputError`] for
+/// other filesystem errors.
+fn read_artifact_file(file_path: &Path, lane: Lane) -> Result<Option<String>, ReaderError> {
+    match std::fs::read_to_string(file_path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) => read_file_error(lane, &error),
+    }
 }
 
-fn read_file_error(lane: Lane, err: &std::io::Error) -> ReaderError {
+/// Classify filesystem read errors for a lane artifact.
+///
+/// # Errors
+///
+/// Returns [`ReaderError::InputError`] for non-missing filesystem errors.
+fn read_file_error(lane: Lane, err: &std::io::Error) -> Result<Option<String>, ReaderError> {
     match err.kind() {
-        std::io::ErrorKind::NotFound => ReaderError::InfraFailure {
-            tool: lane.name().to_owned(),
-            reason: "output file missing".to_owned(),
-        },
-        _ => ReaderError::InputError { lane, cause: format!("IO error reading artifact: {err}") },
+        std::io::ErrorKind::NotFound => Ok(None),
+        _ => Err(ReaderError::InputError {
+            lane,
+            cause: format!("IO error reading artifact: {err}"),
+        }),
     }
+}
+
+fn missing_lane_outcome(lane: Lane) -> LaneOutcome {
+    LaneOutcome::Failed(LaneFailure::Infra {
+        tool: lane.name().to_owned(),
+        reason: "output file missing".to_owned(),
+    })
 }
 /// Return the output directory name for a gate scope.
 ///
@@ -172,42 +193,41 @@ mod tests {
     }
 
     #[test]
-    fn read_missing_dylint_artifact_returns_infra_failure() {
+    fn read_missing_dylint_artifact_returns_failed_lane_outcome() {
         let tmp = tempfile::tempdir().unwrap();
         let edit_dir = tmp.path().join(".titania").join("out").join("edit");
         fs::create_dir_all(&edit_dir).unwrap();
 
-        // Write all lanes before Dylint (Fmt, Compile, Clippy, AstGrep).
-        // Dylint is intentionally missing so we can verify InfraFailure.
         for lane in GateScope::Edit.lanes() {
-            if *lane != Lane::Dylint && *lane != Lane::PanicScan && *lane != Lane::PolicyScan {
+            if *lane != Lane::Dylint {
                 let path = edit_dir.join(format!("{}.json", lane_stem(*lane)));
                 fs::write(&path, clean_artifact_json(*lane)).unwrap();
             }
         }
 
-        let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
-        // Fmt-Compile-Clippy-AstGrep succeed, Dylint InfraFailure
-        match result {
-            Err(ReaderError::InfraFailure { tool, reason }) => {
-                assert_eq!(tool, "Dylint");
-                assert_eq!(reason, "output file missing");
-            }
-            other => panic!("expected InfraFailure for Dylint, got {other:?}"),
-        }
+        let outcomes = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+        assert_eq!(outcomes.len(), GateScope::Edit.lanes().len());
+        assert_missing_lane(&outcomes, Lane::Dylint);
     }
 
     #[test]
-    fn read_dylint_missing_returns_infra_failure_reason() {
+    fn read_all_missing_returns_failed_lane_outcomes_in_scope_order() {
         let tmp = tempfile::tempdir().unwrap();
-        // No artifact directory at all — all lanes missing
-        let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
-        match result {
-            Err(ReaderError::InfraFailure { tool, reason }) => {
-                assert_eq!(tool, "Fmt");
+        let outcomes = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+        assert_eq!(outcomes.len(), GateScope::Edit.lanes().len());
+        assert_missing_lane(&outcomes, Lane::Fmt);
+        assert_missing_lane(&outcomes, Lane::Dylint);
+        assert_missing_lane(&outcomes, Lane::PolicyScan);
+    }
+
+    fn assert_missing_lane(outcomes: &[(Lane, LaneOutcome)], lane: Lane) {
+        let (_, outcome) = outcomes.iter().find(|(found, _)| *found == lane).unwrap();
+        match outcome {
+            LaneOutcome::Failed(LaneFailure::Infra { tool, reason }) => {
+                assert_eq!(tool, lane.name());
                 assert_eq!(reason, "output file missing");
             }
-            other => panic!("expected InfraFailure, got {other:?}"),
+            other => panic!("expected missing-lane Infra failure for {lane}, got {other:?}"),
         }
     }
 

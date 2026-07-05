@@ -1,0 +1,187 @@
+//! Aggregate dispatch for existing lane artifacts.
+//!
+//! This shell module performs no lane execution. It reads artifacts already
+//! written under `.titania/out/<scope>/`, delegates classification to
+//! `titania-aggregate`, and renders the typed report as JSON.
+
+use std::path::{Path, PathBuf};
+
+use titania_aggregate::{
+    ReaderError, ReportAssemblyError, assemble_report, build_quality_receipt,
+    compute_evidence_digest, read_lane_artifacts,
+};
+use titania_core::{
+    Digest, GateScope, Lane, LaneOutcome, LaneReceipt, QualityReceipt, ReceiptDigests, Report,
+};
+
+/// Serialized aggregate report plus its CLI exit classification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReportJson {
+    json: String,
+    status: ReportStatus,
+}
+
+impl ReportJson {
+    /// Borrow the serialized report.
+    #[must_use]
+    pub(crate) fn json(&self) -> &str {
+        &self.json
+    }
+
+    /// Return the report status classification.
+    #[must_use]
+    pub(crate) const fn status(&self) -> ReportStatus {
+        self.status
+    }
+}
+
+/// Exit-code classification for a typed report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReportStatus {
+    /// All scoped lanes passed.
+    Pass,
+    /// Code findings or gate failures rejected the run.
+    Reject,
+    /// Policy diagnostics rejected evaluation before lane classification.
+    PolicyError,
+    /// Input diagnostics rejected evaluation before lane classification.
+    InputError,
+}
+
+impl ReportStatus {
+    #[must_use]
+    const fn from_report(report: &Report) -> Self {
+        match report {
+            Report::Pass { .. } => Self::Pass,
+            Report::Reject { .. } => Self::Reject,
+            Report::PolicyError { .. } => Self::PolicyError,
+            Report::InputError { .. } => Self::InputError,
+        }
+    }
+}
+
+/// Build aggregate report JSON for the target workspace root.
+///
+/// # Errors
+///
+/// Returns [`AggregateError`] when artifacts cannot be read, report invariants
+/// fail, receipt construction fails, or report serialization fails.
+pub(crate) fn report_json(
+    target_root: &Path,
+    scope: GateScope,
+) -> Result<ReportJson, AggregateError> {
+    let lane_artifacts = read_lane_artifacts(target_root, scope).map_err(AggregateError::Read)?;
+    let receipt = quality_receipt(target_root, scope, &lane_artifacts)?;
+    let outcomes = lane_artifacts
+        .iter()
+        .map(|(_, outcome)| outcome.clone())
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    let report = assemble_report(scope, outcomes, receipt, Box::new([]), Box::new([]))?;
+    let status = ReportStatus::from_report(&report);
+    let json = serde_json::to_string(&report).map_err(AggregateError::Serialize)?;
+    Ok(ReportJson { json, status })
+}
+
+/// Aggregate dispatch failure.
+#[derive(Debug)]
+pub(crate) enum AggregateError {
+    /// Lane artifacts could not be read or parsed.
+    Read(ReaderError),
+    /// Receipt construction failed.
+    Receipt(titania_aggregate::ReceiptBuilderError),
+    /// Report construction failed.
+    Report(ReportAssemblyError),
+    /// Report serialization failed.
+    Serialize(serde_json::Error),
+}
+
+impl AggregateError {
+    /// Render the failure as a stable CLI diagnostic.
+    #[must_use]
+    pub(crate) fn diagnostic(&self) -> String {
+        match self {
+            Self::Read(error) => format!("InputError: aggregate artifact read failed: {error}"),
+            Self::Receipt(error) => format!("InputError: aggregate receipt failed: {error}"),
+            Self::Report(error) => format!("InputError: aggregate report failed: {error}"),
+            Self::Serialize(error) => serialize_diagnostic(error),
+        }
+    }
+}
+
+fn serialize_diagnostic(error: &serde_json::Error) -> String {
+    format!("InputError: aggregate serialization failed: {error}")
+}
+
+impl From<titania_aggregate::ReceiptBuilderError> for AggregateError {
+    fn from(error: titania_aggregate::ReceiptBuilderError) -> Self {
+        Self::Receipt(error)
+    }
+}
+
+impl From<ReportAssemblyError> for AggregateError {
+    fn from(error: ReportAssemblyError) -> Self {
+        Self::Report(error)
+    }
+}
+
+/// Build the pass-path quality receipt from lane outcomes.
+///
+/// # Errors
+///
+/// Returns [`AggregateError`] when lane evidence cannot be digested or the
+/// receipt constructor rejects scope/digest invariants.
+fn quality_receipt(
+    target_root: &Path,
+    scope: GateScope,
+    lane_artifacts: &[(Lane, LaneOutcome)],
+) -> Result<QualityReceipt, AggregateError> {
+    let digests = receipt_digests(target_root);
+    let lanes =
+        lane_artifacts.iter().map(lane_receipt).collect::<Result<Vec<_>, _>>()?.into_boxed_slice();
+    build_quality_receipt(scope, digests, lanes).map_err(Into::into)
+}
+
+/// Build one lane receipt entry from a lane outcome.
+///
+/// # Errors
+///
+/// Returns [`AggregateError`] when the lane outcome digest cannot be computed.
+fn lane_receipt((lane, outcome): &(Lane, LaneOutcome)) -> Result<LaneReceipt, AggregateError> {
+    let digest = lane_outcome_digest(outcome)?;
+    Ok(LaneReceipt::new(*lane, digest, outcome.is_pass()))
+}
+
+/// Compute the stable digest for one lane outcome.
+///
+/// # Errors
+///
+/// Returns [`AggregateError`] when a non-clean outcome cannot be serialized or
+/// clean evidence cannot be digested.
+fn lane_outcome_digest(outcome: &LaneOutcome) -> Result<Digest, AggregateError> {
+    match outcome {
+        LaneOutcome::Clean { evidence } => compute_evidence_digest(evidence).map_err(Into::into),
+        LaneOutcome::Findings { .. } | LaneOutcome::Failed(_) | LaneOutcome::Skipped { .. } => {
+            serde_json::to_vec(outcome)
+                .map(|payload| Digest::from_bytes(&payload))
+                .map_err(AggregateError::Serialize)
+        }
+    }
+}
+
+fn receipt_digests(target_root: &Path) -> ReceiptDigests {
+    ReceiptDigests::new(
+        digest_optional_file(target_root.join("Cargo.toml"), b"missing-cargo-toml"),
+        digest_optional_file(target_root.join("Cargo.lock"), b"missing-cargo-lock"),
+        digest_optional_file(
+            target_root.join(".titania").join("profiles").join("strict-ai").join("policy.toml"),
+            b"missing-strict-ai-policy",
+        ),
+        Digest::from_bytes(env!("CARGO_PKG_VERSION").as_bytes()),
+    )
+}
+
+fn digest_optional_file(path: PathBuf, missing_marker: &[u8]) -> Digest {
+    std::fs::read(path)
+        .map_or_else(|_| Digest::from_bytes(missing_marker), |bytes| Digest::from_bytes(&bytes))
+}
