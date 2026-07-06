@@ -1,7 +1,7 @@
 //! Dylint lane loader — checks tool availability and reports typed infra failures.
 //!
 //! This module owns the Dylint lane's pre-flight checks:
-//! 1. Is `cargo-dylint` available (via `cargo dylint --version`)? If not,
+//! 1. Is `cargo-dylint` available (via `cargo dylint --help`)? If not,
 //!    return [`LaneFailure::Infra`] with `tool = "cargo-dylint"`.
 //! 2. Is the `libtitania_dylint` cdylib available and ABI-compatible? If not,
 //!    return [`LaneFailure::Infra`] with `tool = "libtitania_dylint"`.
@@ -16,12 +16,13 @@ use crate::{LaneReport, RuleId};
 
 const LIB_TITANIA_DYLINT: &str = "libtitania_dylint";
 const RULE_DYLINT_INFRA: &str = "DYLINT_INFRA_FAILURE";
-/// Probe `cargo dylint --version` availability.
+/// Probe `cargo dylint --help` availability.
 ///
-/// Uses `cargo dylint` (not the broken `cargo-dylint` shim) and checks `.success()`.
+/// Uses `cargo dylint --help` (the subcommand form avoids
+/// the `cargo-dylint` shim). Checks `.success()`.
 fn cargo_dylint_available() -> bool {
     Command::new("cargo")
-        .args(["dylint", "--version"])
+        .args(["dylint", "--help"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
@@ -62,7 +63,7 @@ impl DylintProbe {
 /// on the first infrastructure failure encountered.
 #[must_use]
 pub fn probe_dylint_toolchain() -> DylintProbe {
-    // Check 1: is cargo-dylint available (via `cargo dylint --version`)?
+    // Check 1: is cargo-dylint available (via `cargo dylint --help`)?
     if !cargo_dylint_available() {
         return unavailable_probe("cargo-dylint", String::from("subcommand unavailable"));
     }
