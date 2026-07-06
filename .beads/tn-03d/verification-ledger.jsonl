@@ -1,0 +1,7 @@
+{"gate":"fmt","command":"cargo fmt --all -- --check","exit":0,"status":"pass"}
+{"gate":"check","command":"cargo check -p titania-core","exit":0,"status":"pass"}
+{"gate":"clippy","command":"cargo clippy --workspace --lib --bins --examples --all-features -- -D warnings","exit":0,"status":"pass"}
+{"gate":"tests","command":"cargo test -p titania-core --test tn_03d_domain_model","exit":0,"status":"pass","tests":60,"suites":1,"evidence_path":".beads/tn-03d/raw/tn_03d_tests.txt"}
+{"gate":"black-hat-reviewer","command":"internal review","exit":0,"status":"pass","repairs":["C1","C2","C3","M2","M3"]}
+{"gate":"truth-serum","command":"dual-persona audit","exit":0,"status":"pass"}
+{"gate":"evidence-packaging","command":"requirements-to-evidence map","exit":0,"status":"pass"}

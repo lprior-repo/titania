@@ -29,7 +29,6 @@ fn cargo_dylint_available() -> bool {
         .is_ok_and(|s| s.success())
 }
 
-
 /// Result of the Dylint lane pre-flight checks.
 #[derive(Debug)]
 pub enum DylintProbe {
@@ -78,7 +77,6 @@ pub fn probe_dylint_toolchain() -> DylintProbe {
 
     DylintProbe::Ready
 }
-
 
 /// Check whether the `libtitania_dylint` cdylib is available.
 ///

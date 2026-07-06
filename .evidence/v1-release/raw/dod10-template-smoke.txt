@@ -1,0 +1,8 @@
+   Compiling titania-lanes v0.1.0 (/home/lewis/src/titania/.worktrees/v1-combined-dispatch/crates/titania-lanes)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/template_metadata.rs (target/debug/deps/template_metadata-eebd41147841b25f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+

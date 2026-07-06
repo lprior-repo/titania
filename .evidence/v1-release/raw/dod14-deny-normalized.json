@@ -1,0 +1,23 @@
+{
+  "lane": "Deny",
+  "outcome": {
+    "variant": "clean",
+    "evidence": {
+      "command": {
+        "executable": "titania-check",
+        "argv": [
+          "titania-check",
+          "run-lane",
+          "deny"
+        ]
+      },
+      "tool_version": "cargo-deny-json",
+      "exit_status": {
+        "exited": {
+          "code": 0
+        }
+      },
+      "parsed_result_digest": "e4be772eb3b05b969907af778b97b88188084eef22ef387939a323387caabbe6"
+    }
+  }
+}

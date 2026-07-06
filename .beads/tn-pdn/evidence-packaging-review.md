@@ -129,4 +129,4 @@ No blockers.
 
 **STATUS: APPROVED**
 
-The `tn-pdn` evidence bundle is complete, consistent, and untainted. All 8 acceptance criteria are satisfied with fresh execution evidence. All three independent reviews are APPROVED. All raw JSON files are valid and mutually consistent. No unapproved findings or blockers remain. The bead is ready to close.
+The `tn-pdn` evidence bundle is complete, consistent, and untainted. All 8 acceptance criteria are satisfied with fresh execution evidence. All three independent reviews are APPROVED. All raw JSON files are valid and mutually consistent. No unapproved findings or blockers remain. The bead is closed.

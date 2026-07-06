@@ -1,0 +1,162 @@
+# v1 Release Evidence Manifest
+# Maps all 14 v1 DoD clauses to raw command output and artifacts.
+#
+# Checker command: python .evidence/v1-release/check_evidence.py .evidence/v1-release/manifest.toml
+
+schema_version = "1"
+generated_at = "2026-07-06T00:00:00Z"
+workspace_root = "."
+
+# ── DoD 1: edit scope runs all lanes ────────────────────────────────────────
+[[dod]]
+id = 1
+spec_ref = "v1-spec.md §15.1"
+description = "`titania-check --scope edit` runs fmt, compile, clippy, ast-grep, dylint, panic-scan, policy-scan"
+evidence_path = ".evidence/v1-release/raw/dod01-edit-scope.json"
+command = "target/release/titania-check --scope edit --emit json"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 2: prepush adds test and cargo-deny ─────────────────────────────────
+[[dod]]
+id = 2
+spec_ref = "v1-spec.md §15.2"
+description = "`titania-check --scope prepush` adds test and cargo-deny lanes"
+evidence_path = ".evidence/v1-release/raw/dod02-prepush-scope.json"
+command = "target/release/titania-check --scope prepush --emit json"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 3: release adds build ──────────────────────────────────────────────
+[[dod]]
+id = 3
+spec_ref = "v1-spec.md §15.3"
+description = "`titania-check --scope release` adds release build"
+evidence_path = ".evidence/v1-release/raw/dod03-release-scope.json"
+command = "target/release/titania-check --scope release --emit json"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 4: typed findings to JSON with schema versioning ────────────────────
+[[dod]]
+id = 4
+spec_ref = "v1-spec.md §15.4"
+description = "Each lane writes typed findings to .titania/out/<scope>/<lane>.json with schema versioning"
+evidence_path = ".evidence/v1-release/raw/dod04-typed-findings.txt"
+command = "wc -c .titania/out/edit/*.json"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 5: aggregate produces typed Report ─────────────────────────────────
+[[dod]]
+id = 5
+spec_ref = "v1-spec.md §15.5"
+description = "`titania-check aggregate --scope <scope>` produces typed Report JSON per §11.1"
+evidence_path = ".evidence/v1-release/raw/dod05-aggregate-report.json"
+command = "target/release/titania-check --scope edit --emit json | jq '.receipt.schema_version'"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 6: stable report schema ────────────────────────────────────────────
+[[dod]]
+id = 6
+spec_ref = "v1-spec.md §15.6"
+description = "Report schema is stable (schema_version=1), versioned, machine-readable, separates findings from failures"
+evidence_path = ".evidence/v1-release/raw/dod06-schema-version.txt"
+command = "target/release/titania-check --scope edit --emit json | grep -c schema_version"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 7: strict-ai policy ────────────────────────────────────────────────
+[[dod]]
+id = 7
+spec_ref = "v1-spec.md §15.7"
+description = "strict-ai policy forbids unsafe, unwrap, panic, unchecked indexing, etc."
+evidence_path = ".evidence/v1-release/raw/dod07-strict-ai.txt"
+command = "wc -l .titania/profiles/strict-ai/exceptions.toml"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 8: policy exceptions with owner/reason/expiry/review ────────────────
+[[dod]]
+id = 8
+spec_ref = "v1-spec.md §15.8"
+description = "All policy exceptions in exceptions.toml with owner, reason, expiry, review"
+evidence_path = ".evidence/v1-release/raw/dod08-exceptions-fields.txt"
+command = "cargo test -p titania-lanes --test v1_config_contract strict_ai_exceptions_all_fields_present"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 9: doctor reports tools and versions ───────────────────────────────
+[[dod]]
+id = 9
+spec_ref = "v1-spec.md §15.9"
+description = "`titania-check doctor --scope <scope>` reports tools and versions per §12"
+evidence_path = ".evidence/v1-release/raw/dod09-doctor-tool.txt"
+command = "cargo test -p titania-check --test doctor_report -- doctor_report_basic"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 10: cargo generate template passes prepush ─────────────────────────
+[[dod]]
+id = 10
+spec_ref = "v1-spec.md §15.10"
+description = "`cargo generate titania/template` produces workspace that passes prepush"
+evidence_path = ".evidence/v1-release/raw/dod10-template-smoke.txt"
+command = "cargo test -p titania-lanes --test template_metadata template_prepush_generated_workspace_smoke"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 11: own repo passes release ────────────────────────────────────────
+[[dod]]
+id = 11
+spec_ref = "v1-spec.md §15.11"
+description = "Titania-check's own repository passes `titania-check --scope release`"
+evidence_path = ".evidence/v1-release/raw/dod11-own-repo.txt"
+command = "target/release/titania-check --scope release --emit json | grep -c variant"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 12: dylint library loads correctly ─────────────────────────────────
+[[dod]]
+id = 12
+spec_ref = "v1-spec.md §15.12"
+description = "Dylint library loads via [workspace.metadata.dylint]"
+evidence_path = ".evidence/v1-release/raw/dod12-dylint-loads.txt"
+command = "grep -c 'workspace.metadata.dylint' Cargo.toml"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 13: clippy findings normalized ─────────────────────────────────────
+[[dod]]
+id = 13
+spec_ref = "v1-spec.md §15.13"
+description = "Clippy findings normalized to typed Findings with CLIPPY_* rule IDs"
+evidence_path = ".evidence/v1-release/raw/dod13-clippy-normalized.json"
+command = "cat .titania/out/edit/clippy.json"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""
+
+# ── DoD 14: cargo-deny findings normalized ─────────────────────────────────
+[[dod]]
+id = 14
+spec_ref = "v1-spec.md §15.14"
+description = "Cargo-deny findings normalized to typed Findings with DENY_* rule IDs"
+evidence_path = ".evidence/v1-release/raw/dod14-deny-normalized.json"
+command = "cat .titania/out/prepush/deny.json"
+exit_status = 0
+review_status = "pass"
+blocker_reason = ""

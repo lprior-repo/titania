@@ -55,27 +55,27 @@ your team can review, gate on, and accumulate over time.
 ## Quick Start
 
 ```bash
-# Initialize a workspace (writes .titania/ config + Moon task wiring)
-titania init
+# Generate a new Titania workspace
+cargo generate titania/template
 
 # Verify the install
-titania doctor
+titania-check doctor
 
 # Edit-time feedback (~seconds, the inner loop)
-titania ci --scope edit
+titania-check --scope edit
 
 # Pre-push gate (~minutes, the PR expectation)
-titania ci --scope prepush
+titania-check --scope prepush
 
-# Full evidence sweep (~tens of minutes, on PR)
-titania ci --scope full
+# Release evidence (~tens of minutes, on tag)
+titania-check --scope release
 
 # Diagnose a finding
-titania explain vb-fmt-0012
+titania-check --help
 ```
 
 Git hooks and CI call the same binary with the same scope. The
-`prepush` scope is what your CI runs. `full` is what runs on PRs.
+`prepush` scope is what your CI runs. `release` is what runs on tags.
 
 ## What Titania Catches
 
@@ -220,8 +220,8 @@ AI agent's tool harness.
 
 ### Is Titania for individual developers or teams?
 
-Both. Individual devs use `titania ci --scope edit` in the inner loop.
-Teams use `--scope prepush` in CI and `--scope full` on PRs. The same
+Both. Individual devs use `titania-check --scope edit` in the inner loop.
+Teams use `--scope prepush` in CI and `--scope release` on tags. The same
 binary, the same policy, the same receipts.
 
 ## Install
