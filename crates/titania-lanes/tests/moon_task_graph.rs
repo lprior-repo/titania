@@ -499,14 +499,53 @@ fn v1_moon_tasks() -> Result<()> {
         MOON_TASKS.contains("    - '.titania/profiles/**'"),
         "sources fileGroup must hash stable Titania policy profiles"
     );
-    assert!(
-        !MOON_TASKS.contains("    - '.titania/cache")
-            && !MOON_TASKS.contains("    - '.titania/out")
-            && !MOON_TASKS.contains("      - '.titania/cache")
-            && !MOON_TASKS.contains("      - '.titania/out"),
-        "Moon fileGroups/task inputs must exclude Titania runtime cache/output paths"
-    );
-
+    // Inputs must NOT hash runtime cache/output paths (they are generated
+    // by lane runs, not sources). Negative globs like `!.titania/cache/**`
+    // are allowed because they EXCLUDE the path from input hashing.
+    // Outputs MAY reference runtime paths so Moon can cache the produced
+    // artifacts. Distinguish inputs from outputs by tracking the
+    // current section under each task, resetting on a new task or a
+    // top-level key.
+    let mut in_outputs_section = false;
+    let mut in_inputs_section = false;
+    for line in MOON_TASKS.lines() {
+        let trimmed = line.trim_start();
+        // A new task (2-space indent + "name:") resets section state.
+        if line.starts_with("  ")
+            && !line.starts_with("    ")
+            && trimmed.ends_with(":")
+            && !trimmed.contains(" ")
+        {
+            in_outputs_section = false;
+            in_inputs_section = false;
+        }
+        if trimmed == "inputs:" {
+            in_inputs_section = true;
+            in_outputs_section = false;
+            continue;
+        }
+        if trimmed == "outputs:" {
+            in_outputs_section = true;
+            in_inputs_section = false;
+            continue;
+        }
+        if in_outputs_section {
+            continue;
+        }
+        if !in_inputs_section {
+            continue;
+        }
+        if !trimmed.starts_with("- '") {
+            continue;
+        }
+        if trimmed.starts_with("- '!.") {
+            continue;
+        }
+        assert!(
+            !trimmed.contains(".titania/cache") && !trimmed.contains(".titania/out"),
+            "Moon fileGroups/task inputs must not include Titania runtime paths: {trimmed}"
+        );
+    }
     // ── 3. Assert every required v1 task name exists in the parsed map ────
     let parsed_names: Vec<&str> = tasks.iter().map(|t| t.name.as_str()).collect();
     for required in REQUIRED_TASKS {
