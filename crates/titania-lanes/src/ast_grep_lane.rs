@@ -251,9 +251,17 @@ fn exception_matches(
 /// Returns [`AstGrepLaneError::Outcome`] when command or evidence invariants
 /// fail validation.
 fn clean_outcome() -> Result<LaneOutcome, AstGrepLaneError> {
-    let command = CommandEvidence::new(
-        "titania-ast-grep".to_owned(),
-        Box::from(["titania-ast-grep".to_owned()]),
+    // Bead tn-e65p: ast-grep is embedded in-process; record the real
+    // `titania-check` argv (which binary exists on PATH) and mark
+    // `mode: embedded` so receipt auditors don't trust a fictional
+    // `titania-ast-grep` binary.
+    let command = CommandEvidence::embedded(
+        "titania-check".to_owned(),
+        Box::from([
+            "titania-check".to_owned(),
+            "run-lane".to_owned(),
+            "ast-grep".to_owned(),
+        ]),
     )?;
     let evidence = LaneEvidence::new(
         command,

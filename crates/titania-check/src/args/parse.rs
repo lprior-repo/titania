@@ -2,7 +2,7 @@
 
 use std::{ffi::OsString, path::PathBuf};
 
-use titania_core::{GateScope, Lane, RuleId};
+use titania_core::{GateScope, Lane};
 
 use super::{
     AggregateOptions, AggregateState, CheckOptions, Cli, CliError, Command, DoctorOptions,
@@ -52,6 +52,9 @@ fn parse_command(args: &[String]) -> Result<Cli, CliError> {
     if is_top_level_help(head) {
         return help_request();
     }
+    if is_top_level_version(head) {
+        return version_request();
+    }
     parse_subcommand(head, tail, args)
 }
 
@@ -96,6 +99,26 @@ fn help_request() -> Result<Cli, CliError> {
 /// Build the [`CliError::HelpRequested`] value carrying the static usage text.
 fn help_request_error() -> CliError {
     CliError::HelpRequested(String::from(USAGE))
+}
+
+/// Return true when token is a top-level version request (`--version` or `-V`).
+fn is_top_level_version(token: &str) -> bool {
+    matches!(token, "--version" | "-V")
+}
+
+/// Build the [`CliError::VersionRequested`] value carrying the rendered
+/// version payload.
+fn version_request_error() -> CliError {
+    CliError::VersionRequested(super::version_string())
+}
+
+/// Build the [`CliError::VersionRequested`] variant carrying the rendered
+/// version payload.
+///
+/// # Errors
+/// Always returns [`Err`](`Result::Err`) with [`CliError::VersionRequested`].
+fn version_request() -> Result<Cli, CliError> {
+    Err(version_request_error())
 }
 
 /// Parse one CLI argument stage.
@@ -322,14 +345,25 @@ fn parse_doctor_emit(args: &[String], options: DoctorOptions) -> Result<DoctorOp
 /// Returns [`CliError`] when this stage receives missing, extra, invalid,
 /// or unsupported CLI input.
 fn parse_explain(args: &[String]) -> Result<Cli, CliError> {
-    match args.split_first() {
-        None => Err(CliError::MissingRuleId),
-        Some((flag, _)) if is_help_flag(flag) => help_request(),
-        Some((rule_id, [])) => {
-            parse_rule_id(rule_id).map(|rule_id| Cli { command: Command::Explain { rule_id } })
-        }
-        Some((_, tail)) => extra_arg("explain", tail),
+    if args.is_empty() {
+        return Err(CliError::MissingRuleId);
     }
+    let first = args.first().ok_or(CliError::MissingRuleId)?;
+    if is_help_flag(first) {
+        return help_request();
+    }
+    let rest: &[String] = match args.get(1..) {
+        Some(s) => s,
+        None => &[],
+    };
+    if !rest.is_empty() {
+        return extra_arg("explain", rest);
+    }
+    Ok(Cli {
+        command: Command::Explain {
+            rule_id: first.to_owned(),
+        },
+    })
 }
 
 /// Parse one CLI argument stage.
@@ -367,7 +401,14 @@ fn extra_arg(command: &'static str, args: &[String]) -> Result<Cli, CliError> {
 /// Returns [`CliError`] when this stage receives missing, extra, invalid,
 /// or unsupported CLI input.
 fn parse_scope(value: &str) -> Result<GateScope, CliError> {
-    value.parse::<GateScope>().map_err(|error| CliError::UnknownScope(error.to_string()))
+    // MAJOR-1 fix: pass the original scope value, not the formatted
+    // `GateScopeError` (which already prefixes "unknown scope:") into the
+    // `CliError::UnknownScope` envelope; the diagnostic format in args.rs
+    // produces `InputError: unknown scope '<value>'` and we want a single
+    // prefix.
+    value
+        .parse::<GateScope>()
+        .map_err(|_err| CliError::UnknownScope(value.to_owned()))
 }
 
 /// Parse one CLI argument stage.
@@ -408,17 +449,6 @@ fn parse_lane(value: &str) -> Result<Lane, CliError> {
 
 /// Parse one CLI argument stage.
 ///
-/// # Errors
-///
-/// Returns [`CliError`] when this stage receives missing, extra, invalid,
-/// or unsupported CLI input.
-fn parse_rule_id(value: &str) -> Result<RuleId, CliError> {
-    RuleId::new(value).map_err(|error| CliError::InvalidRuleId {
-        value: value.to_owned(),
-        reason: error.to_string(),
-    })
-}
-
 /// Parse one CLI argument stage.
 ///
 /// # Errors

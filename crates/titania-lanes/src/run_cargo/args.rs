@@ -4,7 +4,7 @@
 
 use super::CargoLane;
 
-const FMT_ARGS: &[&str] = &["fmt", "--check"];
+const FMT_ARGS: &[&str] = &["fmt", "--all", "--check"];
 const COMPILE_ARGS: &[&str] = &["check", "--workspace", "--frozen"];
 const CLIPPY_ARGS: &[&str] = &[
     "clippy",

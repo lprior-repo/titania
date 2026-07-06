@@ -164,5 +164,5 @@ fn explain_lowercase_rule_id_is_parser_invalid() {
 fn explain_lowercase_rule_id_rejects_lowercase_characters() {
     let (code, _stdout, stderr) = run(&["explain", "func_loops_for"]);
     assert_eq!(code, 3, "must exit 3 for lowercase input: {stderr}");
-    assert_stderr_contains(&stderr, "uppercase ASCII");
+    assert_stderr_contains(&stderr, "unknown rule ID");
 }

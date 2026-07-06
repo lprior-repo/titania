@@ -20,11 +20,12 @@ pub mod args;
 pub mod doctor;
 pub mod explain;
 pub mod moon;
+pub mod version;
 
 use std::{env, io, io::Write, process::ExitCode};
 
 use args::{Cli, Command};
-use titania_core::{GateScope, Lane, RuleId};
+use titania_core::{GateScope, Lane};
 use titania_lanes::LaneExit;
 
 const EXIT_PASS: u8 = 0;
@@ -44,6 +45,9 @@ where
     match Cli::parse_from_os(args) {
         Ok(cli) => dispatch(cli),
         Err(error) if error.is_help() => CliDisposition::report(error.diagnostic(), EXIT_PASS),
+        Err(error) if error.is_version() => {
+            CliDisposition::report(error.diagnostic(), EXIT_PASS)
+        }
         Err(error) => CliDisposition::input_error(error.diagnostic()),
     }
 }
@@ -79,6 +83,9 @@ fn check_with_moon(options: &args::CheckOptions) -> CliDisposition {
         Err(moon::MoonSpawnError::NotFound) => {
             CliDisposition::input_error(format!("InputError: {}", moon::MISSING_INSTALL_HINT))
         }
+        Err(moon::MoonSpawnError::TimedOut { seconds }) => CliDisposition::internal_error(
+            format!("InternalError: moon spawn exceeded wallclock timeout ({seconds}s)"),
+        ),
         Err(moon::MoonSpawnError::Failed(error)) => {
             CliDisposition::internal_error(format!("InternalError: moon spawn failed: {error}"))
         }
@@ -176,7 +183,7 @@ fn doctor_scope(scope: GateScope, emit: args::EmitFormat) -> CliDisposition {
     }
 }
 
-fn explain_rule(rule_id: &RuleId) -> CliDisposition {
+fn explain_rule(rule_id: &str) -> CliDisposition {
     explain::render(rule_id).map_or_else(
         |error| CliDisposition::input_error(format!("InputError: {error}")),
         |output| CliDisposition::report(output, EXIT_PASS),
@@ -239,12 +246,25 @@ fn exit(disposition: &CliDisposition) -> ExitCode {
 /// written completely.
 fn write_disposition(disposition: &CliDisposition) -> io::Result<()> {
     if let Some(stdout) = disposition.stdout() {
-        write_stdout_line(stdout)?;
+        stdout_is_silent(stdout)?;
     }
     if let Some(diagnostic) = disposition.diagnostic() {
         return write_stderr_line(diagnostic);
     }
     Ok(())
+}
+
+/// Write `text` to stdout; treat `BrokenPipe` (from a closed reader) as
+/// success so the dispatch `code` still propagates to the OS (red-queen CRIT-1).
+///
+/// # Errors
+/// Returns the underlying stdout I/O error when the write fails for a reason
+/// other than `BrokenPipe`.
+fn stdout_is_silent(text: &str) -> io::Result<()> {
+    match write_stdout_line(text) {
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        result => result,
+    }
 }
 
 /// Write a single stdout line.

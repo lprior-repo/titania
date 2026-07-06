@@ -78,25 +78,72 @@ impl LaneEvidence {
     }
 }
 
+/// How a command's findings were produced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandMode {
+    /// Lane spawned a separate process whose output it captured.
+    ChildProcess,
+    /// Lane executed the rule/logic in-process inside this binary. The
+    /// `executable` and `argv` record which invocation would yield the
+    /// same outcome; not a separate binary on `PATH`.
+    Embedded,
+}
+
 /// Evidence of the command that was executed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandEvidence {
     executable: String,
     argv: Box<[String]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<CommandMode>,
 }
 
 impl CommandEvidence {
-    /// Construct command evidence.
+    /// Construct command evidence for a child-process lane (default mode).
     ///
     /// # Errors
     /// - [`OutcomeError::EmptyArgv`] if `argv` is empty.
     /// - [`OutcomeError::Argv0Mismatch`] if `argv.first()` does not equal `executable`.
     pub fn new(executable: String, argv: Box<[String]>) -> Result<Self, OutcomeError> {
+        Self::with_mode(executable, argv, None)
+    }
+
+    /// Construct command evidence for an embedded (in-process) lane.
+    ///
+    /// Records `executable` and `argv` so receipt auditors see a real
+    /// binary path, then marks `mode: embedded` so consumers can
+    /// distinguish in-process lanes from shell-out lanes (bead tn-e65p).
+    ///
+    /// # Errors
+    /// Returns [`OutcomeError::EmptyArgv`] or [`OutcomeError::Argv0Mismatch`]
+    /// under the same conditions as [`Self::new`].
+    pub fn embedded(executable: String, argv: Box<[String]>) -> Result<Self, OutcomeError> {
+        Self::with_mode(executable, argv, Some(CommandMode::Embedded))
+    }
+
+    /// Construct command evidence with an explicit mode.
+    ///
+    /// # Errors
+    /// Returns [`OutcomeError::EmptyArgv`] if `argv` is empty.
+    /// Returns [`OutcomeError::Argv0Mismatch`] if `argv.first()` does not
+    /// equal `executable`.
+    fn with_mode(
+        executable: String,
+        argv: Box<[String]>,
+        mode: Option<CommandMode>,
+    ) -> Result<Self, OutcomeError> {
         match argv.first() {
-            Some(first) if first == &executable => Ok(Self { executable, argv }),
+            Some(first) if first == &executable => Ok(Self { executable, argv, mode }),
             Some(found) => Err(argv0_mismatch(executable, found)),
             None => Err(OutcomeError::EmptyArgv),
         }
+    }
+
+    /// How this command's findings were produced (if recorded).
+    #[must_use]
+    pub const fn mode(&self) -> Option<CommandMode> {
+        self.mode
     }
 
     /// Executable used as `argv[0]`.

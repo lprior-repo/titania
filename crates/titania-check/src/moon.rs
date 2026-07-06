@@ -79,12 +79,33 @@ const PREPUSH_TASKS: &[&str] = &[":titania-test", ":titania-deny"];
 /// Release-scope additional moon task IDs (spec §13 `gate-release` extra deps).
 const RELEASE_TASKS: &[&str] = &[":titania-build"];
 
+const TIMEOUT_ENV: &str = "TITANIA_MOON_TIMEOUT_SECS";
+const DEFAULT_TIMEOUT_SECS: u64 = 600;
+const MAX_TIMEOUT_SECS: u64 = 24 * 60 * 60;
+
+/// Resolve and clamp the wallclock timeout for a moon spawn (seconds).
+/// Reads `TITANIA_MOON_TIMEOUT_SECS` if present; otherwise returns the default.
+#[must_use]
+pub(crate) fn timeout_seconds() -> u64 {
+    let parsed = env::var(TIMEOUT_ENV)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|v| *v > 0 && *v <= MAX_TIMEOUT_SECS);
+    parsed.map_or(DEFAULT_TIMEOUT_SECS, std::convert::identity)
+}
+
 /// Typed failure mode for the moon spawn.
 #[derive(Debug)]
 pub(crate) enum MoonSpawnError {
     /// The moon binary could not be found on `PATH` (or at the overridden
     /// path). Surfaces to the user as `InputError(3)`.
     NotFound,
+    /// The moon subprocess exceeded the wallclock timeout.
+    /// Surfaces as `InternalError(>=4)`.
+    TimedOut {
+        /// Configured timeout in seconds.
+        seconds: u64,
+    },
     /// Any other spawn/wait IO failure. Surfaces as `InternalError(>=4)`.
     Failed(io::Error),
 }
@@ -101,14 +122,30 @@ pub(crate) enum MoonSpawnError {
 /// - [`MoonSpawnError::NotFound`] when the moon binary is absent.
 /// - [`MoonSpawnError::Failed`] for any other spawn/wait IO error.
 pub(crate) fn spawn(binary: &str, tasks: &[&str]) -> Result<(), MoonSpawnError> {
+    use wait_timeout::ChildExt;
+
     let mut command = std::process::Command::new(binary);
     let _ = command.arg("run");
     let _ = command.args(tasks);
     let _ = command.stdin(Stdio::null());
     let _ = command.stdout(Stdio::null());
     let _ = command.stderr(Stdio::inherit());
-    let _status = command.status().map_err(map_spawn_error)?;
-    Ok(())
+
+    let mut child = command.spawn().map_err(map_spawn_error)?;
+    let seconds = timeout_seconds();
+    match child.wait_timeout(std::time::Duration::from_secs(seconds)) {
+        Ok(Some(_status)) => Ok(()),
+        Ok(None) => {
+            drop(child.kill());
+            drop(child.wait());
+            Err(MoonSpawnError::TimedOut { seconds })
+        }
+        Err(error) => {
+            drop(child.kill());
+            drop(child.wait());
+            Err(MoonSpawnError::Failed(error))
+        }
+    }
 }
 
 /// Map a moon spawn IO error to its typed Moon spawn variant.

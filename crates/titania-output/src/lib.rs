@@ -1,9 +1,18 @@
+#![warn(missing_docs)]
+#![deny(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::todo,
+    clippy::unimplemented
+)]
+#![forbid(unsafe_code)]
+
 //! Shared typed output contracts for titania doctor and explain commands.
 //!
 //! This crate owns the output data types used by the `titania-check` CLI's
 //! `--emit json` and `--emit human` modes. It also provides a minimal
 //! `OutputError` type for reporting unavailable output components.
-#![forbid(unsafe_code)]
 
 use thiserror::Error;
 

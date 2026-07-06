@@ -727,6 +727,7 @@ dependencies = [
  "titania-lanes",
  "titania-output",
  "titania-policy",
+ "wait-timeout",
 ]
 
 [[package]]

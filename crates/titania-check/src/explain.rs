@@ -1,6 +1,5 @@
 //! Rule explanation rendering for the `explain` subcommand.
 
-use titania_core::RuleId;
 use titania_output::{
     OutputError,
     explain::{RuleExplanation, explain_rule},
@@ -9,10 +8,11 @@ use titania_output::{
 /// Render a known rule explanation for CLI stdout.
 ///
 /// # Errors
-/// Returns a typed input diagnostic when the syntactically valid rule ID is not
-/// present in the v1 rule catalog.
-pub fn render(rule_id: &RuleId) -> Result<String, OutputError> {
-    explain_rule(rule_id.as_str()).map(|entry| render_entry(&entry))
+/// Returns a typed input diagnostic when the rule ID is not present in the
+/// v1 rule catalog. Strict [`titania_core::RuleId`] validation is
+/// intentionally skipped; any non-empty input is looked up.
+pub fn render(rule_id: &str) -> Result<String, OutputError> {
+    explain_rule(rule_id).map(|entry| render_entry(&entry))
 }
 
 fn render_entry(entry: &RuleExplanation) -> String {

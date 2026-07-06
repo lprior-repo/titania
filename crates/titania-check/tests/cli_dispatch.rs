@@ -151,17 +151,17 @@ fn release_policy_artifact_path(root: &Path) -> std::path::PathBuf {
 
 #[test]
 fn cli_args_default_scope_edit() {
-    assert_empty_workspace_reject(&[], 7);
+    assert_empty_workspace_reject(&["--emit", "json"], 7);
 }
 
 #[test]
 fn cli_args_scope_prepush() {
-    assert_empty_workspace_reject(&["--scope", "prepush"], 9);
+    assert_empty_workspace_reject(&["--emit", "json", "--scope", "prepush"], 9);
 }
 
 #[test]
 fn cli_args_scope_release() {
-    assert_empty_workspace_reject(&["--scope", "release"], 10);
+    assert_empty_workspace_reject(&["--emit", "json", "--scope", "release"], 10);
 }
 
 #[test]
@@ -173,7 +173,10 @@ fn cli_args_emit_json_flag() {
 fn cli_args_out_path() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
     let out_path = workspace.path().join("report.json");
-    let (code, stdout, _stderr) = run_in(workspace.path(), &["--out", out_path.to_str().unwrap()]);
+    let (code, stdout, _stderr) = run_in(
+        workspace.path(),
+        &["--emit", "json", "--out", out_path.to_str().unwrap()],
+    );
     assert_eq!(code, 1, "reject must exit 1");
     assert!(stdout.is_empty(), "--out must suppress stdout");
     let report_text =
@@ -194,7 +197,7 @@ fn cli_args_unknown_scope_rejected() {
 
 #[test]
 fn dispatch_default_check_aggregates_empty_workspace() {
-    assert_empty_workspace_reject(&[], 7);
+    assert_empty_workspace_reject(&["--emit", "json"], 7);
 }
 
 #[test]
@@ -224,8 +227,8 @@ fn dispatch_run_lane_fmt_writes_typed_clean_artifact() {
         .collect();
     assert_eq!(
         argv,
-        vec!["cargo", "fmt", "--check"],
-        "command argv must be [cargo, fmt, --check]; got {argv:?}"
+        vec!["cargo", "fmt", "--all", "--check"],
+        "command argv must be [cargo, fmt, --all, --check]; got {argv:?}"
     );
     assert!(
         evidence["tool_version"].as_str().is_some(),
@@ -315,7 +318,7 @@ review = "tn-dylint-abi-expect"
 
 #[test]
 fn dispatch_aggregate_subcommand_reads_empty_workspace() {
-    assert_empty_workspace_reject(&["aggregate", "--scope", "edit"], 7);
+    assert_empty_workspace_reject(&["aggregate", "--emit", "json", "--scope", "edit"], 7);
 }
 
 #[test]
@@ -344,7 +347,7 @@ fn dispatch_missing_implementation_unknown_lane() {
 
 #[test]
 fn exit_codes_reject_report_exits_1() {
-    assert_empty_workspace_reject(&[], 7);
+    assert_empty_workspace_reject(&["--emit", "json"], 7);
 }
 
 #[test]
@@ -419,7 +422,7 @@ fn exit_codes_scope_release_emit_json_out() {
 
 #[test]
 fn cli_args_dispatch_missing_implementation_exit_codes() {
-    assert_empty_workspace_reject(&[], 7);
+    assert_empty_workspace_reject(&["--emit", "json"], 7);
     // Doctor now uses real implementation; verify JSON output parses
     let (code, stdout, _stderr) = run(&["doctor", "--scope", "edit", "--emit", "json"]);
     assert!(serde_json::from_str::<serde_json::Value>(&stdout).is_ok(), "doctor JSON must parse");
@@ -437,7 +440,8 @@ fn cli_args_dispatch_missing_implementation_exit_codes() {
 #[test]
 fn m7_check_subcommand_dispatches_to_aggregate() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (code, stdout, stderr) = run_in(workspace.path(), &["check", "--scope", "edit"]);
+    let (code, stdout, stderr) =
+        run_in(workspace.path(), &["check", "--emit", "json", "--scope", "edit"]);
     // If the check subcommand were not recognized, we would get exit code 3
     // with stderr "unknown subcommand 'check'". Instead it should dispatch
     // to aggregate and return a reject report (exit 1).
@@ -456,7 +460,7 @@ fn m7_check_subcommand_dispatches_to_aggregate() {
 #[test]
 fn m7_check_subcommand_default_scope() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (code, stdout, stderr) = run_in(workspace.path(), &["check"]);
+    let (code, stdout, stderr) = run_in(workspace.path(), &["check", "--emit", "json"]);
     assert_eq!(code, 1, "check default on empty workspace must exit 1 (reject), stderr: {stderr}");
     assert!(stderr.is_empty(), "check aggregate path must not write stderr: {stderr}",);
     let report: serde_json::Value =
@@ -528,8 +532,10 @@ fn m8_emit_invalid_value_rejected() {
 fn m8_out_path_writes_report_to_file() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
     let out_path = workspace.path().join("report.json");
-    let (code, stdout, stderr) =
-        run_in(workspace.path(), &["--scope", "edit", "--out", out_path.to_str().unwrap()]);
+    let (code, stdout, stderr) = run_in(
+        workspace.path(),
+        &["--emit", "json", "--scope", "edit", "--out", out_path.to_str().unwrap()],
+    );
     assert_eq!(code, 1, "reject must exit 1, stderr: {stderr}");
     // When --out is specified, stdout must be empty
     assert!(stdout.is_empty(), "--out must suppress stdout; got: {stdout}");
@@ -602,7 +608,10 @@ fn h1_run_lane_clean_clippy_exits_0() {
 #[test]
 fn h1_aggregate_empty_workspace_exits_1_not_0() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (code, stdout, stderr) = run_in(workspace.path(), &["aggregate", "--scope", "edit"]);
+    let (code, stdout, stderr) = run_in(
+        workspace.path(),
+        &["aggregate", "--emit", "json", "--scope", "edit"],
+    );
     assert_eq!(
         code, 1,
         "empty workspace aggregate must exit 1 (reject), not 0 (pass); stderr: {stderr}",

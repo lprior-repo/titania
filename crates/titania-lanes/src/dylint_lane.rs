@@ -62,23 +62,40 @@ pub fn probe_dylint_toolchain(target: &TargetProject) -> DylintProbe {
     }
 
     // Check 2: is libtitania_dylint available and ABI-compatible?
-    if !library_is_available(LIB_TITANIA_DYLINT) {
-        return unavailable_probe(
+    match probe_libtitania_dylint(LIB_TITANIA_DYLINT) {
+        LibraryProbe::Compatible => DylintProbe::Ready,
+        LibraryProbe::Absent => unavailable_probe(
             LIB_TITANIA_DYLINT,
-            format!("{LIB_TITANIA_DYLINT} is unavailable or ABI-mismatched"),
-        );
+            format!("{LIB_TITANIA_DYLINT} unavailable: no plugin library found in target dir"),
+        ),
+        LibraryProbe::Incompatible { path, reason } => unavailable_probe(
+            LIB_TITANIA_DYLINT,
+            format!("{LIB_TITANIA_DYLINT} ABI mismatch at {}: {reason}", path.display()),
+        ),
     }
-
-    DylintProbe::Ready
 }
 
-/// Check whether the `libtitania_dylint` cdylib is available.
+/// Result of probing the `libtitania_dylint` cdylib (bead tn-gkpv).
+#[derive(Debug)]
+enum LibraryProbe {
+    /// Library exists and looks loadable.
+    Compatible,
+    /// Library was not found in any target dir candidate.
+    Absent,
+    /// Library exists but failed ABI / format / magic checks.
+    Incompatible {
+        /// Resolved path to the failing library file.
+        path: std::path::PathBuf,
+        /// Short reason explaining the failure.
+        reason: String,
+    },
+}
+
+/// Check whether the `libtitania_dylint` cdylib is available and ABI-compatible.
 ///
-/// The Dylint framework expects a library named `libtitania_dylint`
-/// (or `titania_dylint.dll` / `titania_dylint.dylib` on Windows / macOS).
-/// We probe for the library's presence in `CARGO_TARGET_DIR`, falling back to
-/// the workspace `target/` directory used by normal Cargo builds.
-fn library_is_available(lib_name: &str) -> bool {
+/// Bead tn-gkpv: a missing OR incompatible library must surface a typed
+/// [`LaneFailure::Infra`] with a distinct reason — never silently pass.
+fn probe_libtitania_dylint(lib_name: &str) -> LibraryProbe {
     let target_dir = cargo_target_dir();
     let candidates = [
         format!("debug/{lib_name}.so"),
@@ -89,7 +106,74 @@ fn library_is_available(lib_name: &str) -> bool {
         format!("release/{lib_name}.dll"),
     ];
 
-    candidates.iter().any(|path| target_dir.join(path).is_file())
+    let Some(path) = candidates
+        .iter()
+        .map(|p| target_dir.join(p))
+        .find(|p| p.is_file())
+    else {
+        return LibraryProbe::Absent;
+    };
+
+    match abi_check(&path) {
+        Ok(()) => LibraryProbe::Compatible,
+        Err(reason) => LibraryProbe::Incompatible { path, reason },
+    }
+}
+
+/// Minimal ABI sanity check on the resolved library path.
+///
+/// Today we verify the file is a loadable dynamic library by checking the
+/// platform magic (ELF on Linux, Mach-O on macOS, PE on Windows). When the
+/// dylint loader evolves to require an exported `dylint_version` symbol, this
+/// is the place to extend it. Returns `Ok(())` on success or `Err` carrying
+/// a short human-readable reason suitable for [`LaneFailure::Infra.reason`].
+///
+/// # Errors
+/// Returns `Err` when the file cannot be read, when the file is too short to
+/// hold a recognised dynamic library magic, or when the leading bytes do not
+/// match ELF / Mach-O / PE magic.
+fn abi_check(path: &std::path::Path) -> Result<(), String> {
+    let bytes = std::fs::read(path)
+        .map_err(|e| format!("cannot read library at {}: {e}", path.display()))?;
+    let head = bytes.first_chunk::<4>().copied().ok_or_else(|| {
+        format!(
+            "library at {} is too short ({} bytes) to be a dynamic library",
+            path.display(),
+            bytes.len()
+        )
+    })?;
+    if !is_dynamic_library_magic(head) {
+        return Err(format!(
+            "library at {} is not a dynamic library (missing ELF/Mach-O/PE magic; got bytes {:02x?})",
+            path.display(),
+            head
+        ));
+    }
+    Ok(())
+}
+
+/// Return `true` when the 4-byte head of a candidate library file matches the
+/// platform magic for an ELF, Mach-O, or PE (DOS MZ) dynamic library.
+const fn is_dynamic_library_magic(head: [u8; 4]) -> bool {
+    // ELF: 0x7F 'E' 'L' 'F'
+    if head[0] == 0x7f && head[1] == b'E' && head[2] == b'L' && head[3] == b'F' {
+        return true;
+    }
+    // Mach-O variants
+    if head[0] == 0xfe && head[1] == 0xed && head[2] == 0xfa && (head[3] == 0xce || head[3] == 0xcf) {
+        return true;
+    }
+    if head[0] == 0xce && head[1] == 0xfa && head[2] == 0xed && head[3] == 0xfe {
+        return true;
+    }
+    if head[0] == 0xcf && head[1] == 0xfa && head[2] == 0xed && head[3] == 0xfe {
+        return true;
+    }
+    // PE / DOS MZ ('M' 'Z')
+    if head[0] == b'M' && head[1] == b'Z' {
+        return true;
+    }
+    false
 }
 
 fn cargo_target_dir() -> std::path::PathBuf {

@@ -233,27 +233,52 @@ fn extract_version(raw: &str) -> Option<String> {
 fn probe_dylint(required: bool) -> Vec<ToolRow> {
     let cargo_dylint_path = find_on_path("cargo-dylint");
     let cargo_dylint_row = cargo_dylint_path.as_ref().map_or_else(
-        || {
-            ToolRow::external(
-                "cargo-dylint",
-                ToolPresence { required, installed: false },
-                None,
-                None,
-            )
-        },
-        |path| {
-            ToolRow::external(
-                "cargo-dylint",
-                ToolPresence { required, installed: true },
-                probe_version(path),
-                Some(path.clone()),
-            )
-        },
+        || missing_cargo_dylint_row(required),
+        |path| installed_cargo_dylint_row(required, path),
     );
     let library_row =
         probe_dylint_library(cargo_dylint_path.is_some(), cargo_dylint_path.as_deref());
 
     vec![cargo_dylint_row, library_row]
+}
+
+const fn missing_cargo_dylint_row(required: bool) -> ToolRow {
+    ToolRow::external(
+        "cargo-dylint",
+        ToolPresence { required, installed: false },
+        None,
+        None,
+    )
+}
+
+fn installed_cargo_dylint_row(required: bool, path: &Path) -> ToolRow {
+    let version = probe_cargo_subcommand_version("dylint").or_else(|| probe_version(path));
+    ToolRow::external(
+        "cargo-dylint",
+        ToolPresence { required, installed: true },
+        version,
+        Some(path.to_owned()),
+    )
+}
+
+/// Probe a cargo subcommand's reported version via `cargo <subcommand> --version`.
+///
+/// Cargo plugins (installed with `cargo install`) cannot be invoked directly
+/// with `--version` because the shim forwards unrecognised arguments to
+/// cargo's subcommand resolution rather than to the plugin binary.
+///
+/// Returns `None` when `cargo` cannot be spawned, exits non-zero, or when the
+/// captured stdout does not contain a parseable version token.
+fn probe_cargo_subcommand_version(subcommand: &str) -> Option<String> {
+    let output = std::process::Command::new("cargo")
+        .arg(subcommand)
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    extract_version(&String::from_utf8_lossy(&output.stdout))
 }
 
 const fn dylint_library_names() -> [&'static str; 3] {
