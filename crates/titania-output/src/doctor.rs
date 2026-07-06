@@ -52,7 +52,12 @@ impl ToolRow {
 
     /// Create a probed external-tool row.
     #[must_use]
-    pub const fn external(name: &'static str, presence: ToolPresence, version: Option<String>, path: Option<PathBuf>) -> Self {
+    pub const fn external(
+        name: &'static str,
+        presence: ToolPresence,
+        version: Option<String>,
+        path: Option<PathBuf>,
+    ) -> Self {
         Self { name, required: presence.required, installed: presence.installed, version, path }
     }
 }
@@ -181,7 +186,14 @@ fn find_on_path(name: &str) -> Option<PathBuf> {
 fn probe_binary(name: &'static str, required: bool) -> ToolRow {
     find_on_path(name).map_or_else(
         || ToolRow::external(name, ToolPresence { required, installed: false }, None, None),
-        |path| ToolRow::external(name, ToolPresence { required, installed: true }, probe_version(&path), Some(path)),
+        |path| {
+            ToolRow::external(
+                name,
+                ToolPresence { required, installed: true },
+                probe_version(&path),
+                Some(path),
+            )
+        },
     )
 }
 
@@ -221,7 +233,14 @@ fn extract_version(raw: &str) -> Option<String> {
 fn probe_dylint(required: bool) -> Vec<ToolRow> {
     let cargo_dylint_path = find_on_path("cargo-dylint");
     let cargo_dylint_row = cargo_dylint_path.as_ref().map_or_else(
-        || ToolRow::external("cargo-dylint", ToolPresence { required, installed: false }, None, None),
+        || {
+            ToolRow::external(
+                "cargo-dylint",
+                ToolPresence { required, installed: false },
+                None,
+                None,
+            )
+        },
         |path| {
             ToolRow::external(
                 "cargo-dylint",
@@ -268,7 +287,12 @@ fn probe_dylint_library(required: bool, cargo_dylint_path: Option<&Path>) -> Too
 }
 
 fn missing_dylint_library(required: bool) -> ToolRow {
-    ToolRow::external("libtitania_dylint", ToolPresence { required, installed: false }, Some("abi:unknown".to_owned()), None)
+    ToolRow::external(
+        "libtitania_dylint",
+        ToolPresence { required, installed: false },
+        Some("abi:unknown".to_owned()),
+        None,
+    )
 }
 
 fn dylint_library_row(required: bool, path: PathBuf) -> ToolRow {

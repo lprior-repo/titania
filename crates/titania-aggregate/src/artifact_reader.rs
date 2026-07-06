@@ -92,12 +92,11 @@ fn read_one(out_dir: &Path, lane: Lane) -> Result<(Lane, LaneOutcome), ReaderErr
         });
     }
 
-    let outcome: LaneOutcome = artifact.into_outcome().into_lane_outcome().map_err(|err| {
-        ReaderError::InputError {
+    let outcome: LaneOutcome =
+        artifact.into_outcome().into_lane_outcome().map_err(|err| ReaderError::InputError {
             lane,
             cause: format!("failed to parse outcome for {lane}: {err}"),
-        }
-    })?;
+        })?;
 
     Ok((artifact_lane, outcome))
 }

@@ -368,9 +368,7 @@ fn read_optional_text(path: &Path) -> Result<Option<String>, AggregateError> {
 fn digest_optional_file(path: &Path, missing_marker: &[u8]) -> Result<Digest, AggregateError> {
     match std::fs::read(path) {
         Ok(bytes) => Ok(Digest::from_bytes(&bytes)),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {
-            Ok(Digest::from_bytes(missing_marker))
-        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Digest::from_bytes(missing_marker)),
         Err(err) => Err(AggregateError::Digest(err)),
     }
 }

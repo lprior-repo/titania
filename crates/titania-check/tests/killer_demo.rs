@@ -667,12 +667,8 @@ fn check_drives_moon_stub_and_aggregates_after() {
     // The captured argv must start with `run` and contain the edit-scope task
     // list from spec §13 (fmt, compile, clippy, ast-grep, dylint, panic-scan,
     // policy-scan).
-    let argv =
-        std::fs::read_to_string(&marker).expect("moon argv marker file must be readable");
-    assert!(
-        argv.contains("run"),
-        "moon must be invoked with `run` subcommand; got argv: {argv}",
-    );
+    let argv = std::fs::read_to_string(&marker).expect("moon argv marker file must be readable");
+    assert!(argv.contains("run"), "moon must be invoked with `run` subcommand; got argv: {argv}",);
     assert!(
         argv.contains(":titania-fmt"),
         "moon must be invoked with :titania-fmt; got argv: {argv}",
@@ -702,10 +698,7 @@ fn write_recording_stub(dir: &Path, marker: &Path) -> String {
     let stub_path = dir.join("moon-recording-stub.sh");
     // `"$@"` preserves argv quoting; `printf %s\\n "$@"` writes each arg on
     // its own line so the test can assert presence of individual task IDs.
-    let script = format!(
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nexit 0\n",
-        marker.display(),
-    );
+    let script = format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nexit 0\n", marker.display(),);
     std::fs::write(&stub_path, script).expect("recording stub script must be written");
     #[cfg(unix)]
     {

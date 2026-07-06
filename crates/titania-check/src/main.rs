@@ -64,13 +64,12 @@ fn check_with_moon(options: &args::CheckOptions) -> CliDisposition {
     let tasks = moon::tasks_for_scope(scope);
     match moon::spawn(&moon_bin, &tasks) {
         Ok(()) => aggregate_with_opts(scope, emit, out),
-        Err(moon::MoonSpawnError::NotFound) => CliDisposition::input_error(format!(
-            "InputError: {}",
-            moon::MISSING_INSTALL_HINT
-        )),
-        Err(moon::MoonSpawnError::Failed(error)) => CliDisposition::internal_error(format!(
-            "InternalError: moon spawn failed: {error}"
-        )),
+        Err(moon::MoonSpawnError::NotFound) => {
+            CliDisposition::input_error(format!("InputError: {}", moon::MISSING_INSTALL_HINT))
+        }
+        Err(moon::MoonSpawnError::Failed(error)) => {
+            CliDisposition::internal_error(format!("InternalError: moon spawn failed: {error}"))
+        }
     }
 }
 

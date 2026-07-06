@@ -73,9 +73,7 @@ fn informational_outcome(lane: Lane) -> LaneOutcome {
 
 /// Minimal helper: build a `LaneOutcome::Failed` with an infra failure.
 fn infra_failure_outcome(tool: &str, reason: &str) -> LaneOutcome {
-    LaneOutcome::Failed {
-        failure: LaneFailure::Infra { tool: tool.into(), reason: reason.into() },
-    }
+    LaneOutcome::Failed { failure: LaneFailure::Infra { tool: tool.into(), reason: reason.into() } }
 }
 
 /// Minimal helper: build a skipped outcome.

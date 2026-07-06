@@ -645,12 +645,8 @@ fn h1_check_and_aggregate_exit_codes_match() {
 /// that to exit 4.
 #[test]
 fn h1_lane_failure_maps_to_internal_error() {
-    let temp = package(
-        "h1_lane_failure",
-        "pub fn value() -> u8 {\n    1\n}\n",
-        "fn main() {}\n",
-    )
-    .expect("temp package must be created");
+    let temp = package("h1_lane_failure", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
+        .expect("temp package must be created");
 
     // Pre-create the artifact directory and make it read-only so the lane's
     // atomic-write step fails. create_dir_all is a no-op on existing dirs, so
@@ -668,19 +664,15 @@ fn h1_lane_failure_maps_to_internal_error() {
         stdout.is_empty(),
         "Failure path must not write stdout (it goes to stderr as a diagnostic), got: {stdout}",
     );
-    assert!(
-        !stderr.is_empty(),
-        "Failure path must write a diagnostic to stderr, got empty stderr",
-    );
+    assert!(!stderr.is_empty(), "Failure path must write a diagnostic to stderr, got empty stderr",);
 }
 
 /// Mark a directory read-only (mode 0555) on Unix so writes inside it fail.
 #[cfg(unix)]
 fn make_read_only(path: &Path) {
     use std::os::unix::fs::PermissionsExt;
-    let mut perms = std::fs::metadata(path)
-        .expect("readonly dir metadata must be readable")
-        .permissions();
+    let mut perms =
+        std::fs::metadata(path).expect("readonly dir metadata must be readable").permissions();
     perms.set_mode(0o555);
     std::fs::set_permissions(path, perms).expect("dir must be made read-only");
 }
@@ -826,23 +818,15 @@ fn check_invokes_moon_aggregate_does_not() {
 /// exits 0. Used to prove the check→moon spawn path is taken.
 fn write_recording_stub(dir: &Path, marker: &Path) -> String {
     let stub_path = dir.join("moon-recording-stub.sh");
-    let script = format!(
-        "#!/bin/sh\ntouch '{}'\nexit 0\n",
-        marker.display()
-    );
+    let script = format!("#!/bin/sh\ntouch '{}'\nexit 0\n", marker.display());
     std::fs::write(&stub_path, script).expect("recording stub script must be written");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&stub_path)
-            .expect("stub metadata must be readable")
-            .permissions();
+        let mut perms =
+            std::fs::metadata(&stub_path).expect("stub metadata must be readable").permissions();
         perms.set_mode(0o755);
-        std::fs::set_permissions(&stub_path, perms)
-            .expect("stub must be made executable");
+        std::fs::set_permissions(&stub_path, perms).expect("stub must be made executable");
     }
-    stub_path
-        .to_str()
-        .expect("stub path must be valid UTF-8")
-        .to_owned()
+    stub_path.to_str().expect("stub path must be valid UTF-8").to_owned()
 }

@@ -243,13 +243,11 @@ fn report_from_deny(result: &DenyNormalization) -> LaneReport {
 
 fn deny_failure_outcome(error: &LaneError) -> LaneOutcome {
     deny_missing_binary().failure().map_or_else(
-        || {
-            LaneOutcome::Failed {
-                failure: LaneFailure::Infra {
-                    tool: String::from(DENY_TOOL),
-                    reason: error.to_string(),
-                },
-            }
+        || LaneOutcome::Failed {
+            failure: LaneFailure::Infra {
+                tool: String::from(DENY_TOOL),
+                reason: error.to_string(),
+            },
         },
         |failure| LaneOutcome::Failed { failure: failure.clone() },
     )

@@ -405,10 +405,8 @@ fn report_pass_rejects_failed_outcome() {
     let failure =
         LaneFailure::Infra { tool: "cargo-test".to_string(), reason: "not found".to_string() };
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
-        Lane::Fmt,
-        LaneOutcome::Failed { failure },
-    )]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> =
+        Box::new([titania_core::PerLaneEntry::new(Lane::Fmt, LaneOutcome::Failed { failure })]);
     let result = Report::pass(receipt, per_lane);
     assert!(result.is_err());
 }
