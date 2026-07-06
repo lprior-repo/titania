@@ -144,6 +144,11 @@ tasks:
       - '!.titania/cache/**'
       - '!.titania/out/**'
 
+    outputs:
+      - '.titania/out/edit/fmt.json'
+      - '.titania/out/prepush/fmt.json'
+      - '.titania/out/release/fmt.json'
+
   titania-compile:
     command: 'CARGO_TARGET_DIR=".titania/cache/compile" cargo run --quiet -p titania-check -- run-lane compile'
     toolchains: [rust]
@@ -155,6 +160,11 @@ tasks:
       - 'Cargo.lock'
       - '.cargo/**'
       - 'rust-toolchain.toml'
+
+    outputs:
+      - '.titania/out/edit/compile.json'
+      - '.titania/out/prepush/compile.json'
+      - '.titania/out/release/compile.json'
 
   titania-clippy:
     command: 'CARGO_TARGET_DIR=".titania/cache/clippy" cargo run --quiet -p titania-check -- run-lane clippy'
@@ -170,12 +180,22 @@ tasks:
       - '!.titania/cache/**'
       - '!.titania/out/**'
 
+    outputs:
+      - '.titania/out/edit/clippy.json'
+      - '.titania/out/prepush/clippy.json'
+      - '.titania/out/release/clippy.json'
+
   titania-ast-grep:
     command: 'cargo run --quiet -p titania-check -- run-lane ast-grep'
     options:
       runInCI: true
     inputs:
       - '@globs(sources)'
+
+    outputs:
+      - '.titania/out/edit/ast-grep.json'
+      - '.titania/out/prepush/ast-grep.json'
+      - '.titania/out/release/ast-grep.json'
 
   titania-dylint:
     command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH" cargo run --quiet -p titania-check -- run-lane dylint'
@@ -185,12 +205,22 @@ tasks:
     inputs:
       - '@globs(sources)'
 
+    outputs:
+      - '.titania/out/edit/dylint.json'
+      - '.titania/out/prepush/dylint.json'
+      - '.titania/out/release/dylint.json'
+
   titania-panic-scan:
     command: 'cargo run --quiet -p titania-check -- run-lane panic-scan'
     options:
       runInCI: true
     inputs:
       - '@globs(sources)'
+
+    outputs:
+      - '.titania/out/edit/panic-scan.json'
+      - '.titania/out/prepush/panic-scan.json'
+      - '.titania/out/release/panic-scan.json'
 
   titania-policy-scan:
     command: 'cargo run --quiet -p titania-check -- run-lane policy-scan'
@@ -204,6 +234,11 @@ tasks:
       - '!.titania/cache/**'
       - '!.titania/out/**'
 
+    outputs:
+      - '.titania/out/edit/policy-scan.json'
+      - '.titania/out/prepush/policy-scan.json'
+      - '.titania/out/release/policy-scan.json'
+
   titania-test:
     command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH" CARGO_TARGET_DIR=".titania/cache/test" cargo run --quiet -p titania-check -- run-lane test'
     deps: ['~:titania-compile']
@@ -214,6 +249,10 @@ tasks:
       - '@globs(sources)'
       - '@globs(tests)'
 
+    outputs:
+      - '.titania/out/prepush/test.json'
+      - '.titania/out/release/test.json'
+
   titania-deny:
     command: 'cargo run --quiet -p titania-check -- run-lane deny'
     options:
@@ -221,6 +260,10 @@ tasks:
     inputs:
       - 'Cargo.lock'
       - 'deny.toml'
+
+    outputs:
+      - '.titania/out/prepush/deny.json'
+      - '.titania/out/release/deny.json'
 
   titania-build:
     command: 'CARGO_TARGET_DIR=".titania/cache/release" cargo run --quiet -p titania-check -- run-lane build'
