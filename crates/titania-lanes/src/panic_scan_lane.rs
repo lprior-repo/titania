@@ -1,8 +1,8 @@
 //! Library runner for the v1 panic-scan lane.
 
-#[path = "bin/check_panic_surface/paths.rs"]
+#[path = "panic_scan_lane/paths.rs"]
 mod paths;
-#[path = "bin/check_panic_surface/scan.rs"]
+#[path = "panic_scan_lane/scan.rs"]
 mod scan;
 
 use std::path::Path;

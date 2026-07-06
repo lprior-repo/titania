@@ -211,14 +211,33 @@ fn function_has_excess_nesting(func: &Node<'_, StrDoc<Rust>>) -> Option<usize> {
     function_nesting_depth(func).filter(|&depth| depth > MAX_NESTING_DEPTH)
 }
 
-/// Compute the deepest block nesting inside a function body.
+/// Compute the deepest control-flow nesting inside a function body.
 ///
-/// Counts nested control-flow blocks: `block`, `if_expression`,
-/// `while_expression`, `for_expression`, `loop_expression`, `match_expression`,
-/// and `match_arm`. Returns `None` for a function without a body block.
+/// Counts nested control-flow nodes: `if_expression`, `while_expression`,
+/// `for_expression`, `loop_expression`, `match_expression`. Plain `block`
+/// nodes (the function body and the bodies of `if`/`for`/etc. arms) do not
+/// contribute — only the control-flow constructs themselves do, so a
+/// simple `if` in the function body stays at depth 1. Returns `None` for a
+/// function without a body block.
 fn function_nesting_depth(func: &Node<'_, StrDoc<Rust>>) -> Option<usize> {
     let body = function_body_block(func)?;
-    Some(max_block_depth(&body, 0))
+    let body_id = body.node_id();
+    Some(body.dfs().map(|current| control_flow_depth(&current, body_id)).fold(0, usize::max))
+}
+/// Depth of a single node: self (1 if control-flow) + control-flow ancestors.
+fn control_flow_depth(node: &Node<'_, StrDoc<Rust>>, body_id: usize) -> usize {
+    self_increment(node).saturating_add(ancestor_count(node, body_id))
+}
+
+fn self_increment(node: &Node<'_, StrDoc<Rust>>) -> usize {
+    usize::from(is_nesting_node(&node.kind()))
+}
+
+fn ancestor_count(node: &Node<'_, StrDoc<Rust>>, body_id: usize) -> usize {
+    node.ancestors()
+        .take_while(|a| a.node_id() != body_id)
+        .filter(|a| is_nesting_node(&a.kind()))
+        .count()
 }
 
 /// Find the function body block (`{ ... }`) under a `function_item` node.
@@ -226,27 +245,14 @@ fn function_body_block<'a>(func: &Node<'a, StrDoc<Rust>>) -> Option<Node<'a, Str
     func.children().find(|child| child.kind() == "block")
 }
 
-/// Maximum nesting depth of control-flow nodes starting at `node`.
-fn max_block_depth(node: &Node<'_, StrDoc<Rust>>, depth: usize) -> usize {
-    let kind_owned = node.kind().into_owned();
-    let nested = if is_nesting_node(&kind_owned) { depth.saturating_add(1) } else { depth };
-    match node.children().map(|child| max_block_depth(&child, nested)).max() {
-        Some(child_max) if child_max >= nested => child_max,
-        _ => nested,
-    }
-}
-
-/// Kinds that increase control-flow nesting depth.
 fn is_nesting_node(kind: &str) -> bool {
     matches!(
         kind,
-        "block"
-            | "if_expression"
+        "if_expression"
             | "while_expression"
             | "for_expression"
             | "loop_expression"
             | "match_expression"
-            | "match_arm"
     )
 }
 

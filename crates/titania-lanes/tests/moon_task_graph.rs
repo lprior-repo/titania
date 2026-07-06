@@ -371,13 +371,13 @@ const LANE_COMMANDS: &[(&str, &str)] = &[
     ("titania-ast-grep", "cargo run --quiet -p titania-check -- run-lane ast-grep"),
     (
         "titania-dylint",
-        "PATH=\"$PATH:$HOME/.cargo/bin\" cargo run --quiet -p titania-check -- run-lane dylint",
+        "PATH=\"$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH\" cargo run --quiet -p titania-check -- run-lane dylint",
     ),
     ("titania-panic-scan", "cargo run --quiet -p titania-check -- run-lane panic-scan"),
     ("titania-policy-scan", "cargo run --quiet -p titania-check -- run-lane policy-scan"),
     (
         "titania-test",
-        "PATH=\"$PATH:$HOME/.cargo/bin\" CARGO_TARGET_DIR=\".titania/cache/test\" cargo run --quiet -p titania-check -- run-lane test",
+        "PATH=\"$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH\" CARGO_TARGET_DIR=\".titania/cache/test\" cargo run --quiet -p titania-check -- run-lane test",
     ),
     ("titania-deny", "cargo run --quiet -p titania-check -- run-lane deny"),
     (

@@ -20,7 +20,7 @@ const RULE_DYLINT_INFRA: &str = "DYLINT_INFRA_FAILURE";
 /// the `cargo-dylint` shim). Checks `.success()`.
 fn cargo_dylint_available(target: &TargetProject) -> bool {
     crate::command::CommandIn::new(target, "cargo")
-        .and_then(|mut cmd| cmd.args(&["dylint", "--help"]).run_capture_raw())
+        .and_then(|mut cmd| cmd.inherit_env().args(&["dylint", "--help"]).run_capture_raw())
         .is_ok_and(|output| output.success())
 }
 /// Result of the Dylint lane pre-flight checks.

@@ -26,22 +26,12 @@ const MOON_BIN_ENV: &str = "TITANIA_MOON_BIN";
 const DEFAULT_MOON_BIN: &str = "moon";
 
 /// Resolve the moon binary path, honoring the `TITANIA_MOON_BIN` override.
-///
-/// The `match` form is preferred over `Result::map_or_else`: clippy's
-/// `option_if_let_else` fires on the `match`, but `map_or_else` with an
-/// identity Ok-closure triggers `unnecessary_result_map_or_else`, and the
-/// disallowed-methods policy bans `Result::unwrap_or_else`. There is no
-/// form that satisfies all three gates simultaneously.
-#[expect(
-    clippy::option_if_let_else,
-    reason = "map_or_else with identity closure trips unnecessary_result_map_or_else; unwrap_or_else is disallowed by policy"
-)]
 #[must_use]
 pub(crate) fn binary_path() -> String {
-    match env::var(MOON_BIN_ENV) {
-        Ok(value) => value,
-        Err(_) => String::from(DEFAULT_MOON_BIN),
+    if let Ok(value) = env::var(MOON_BIN_ENV) {
+        return value;
     }
+    String::from(DEFAULT_MOON_BIN)
 }
 
 /// Build the ordered list of `moon run` task IDs for a scope.
