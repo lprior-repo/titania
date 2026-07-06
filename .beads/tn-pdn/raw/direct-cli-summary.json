@@ -1,0 +1,47 @@
+[
+  {
+    "case": "bad",
+    "tempdir": "/tmp/titania-pdn-bad-x2mvq20w",
+    "exit_code": 1,
+    "stderr_empty": true,
+    "variant": "reject",
+    "code_findings": [
+      "CLIPPY_UNWRAP_USED",
+      "FUNC_LOOPS_FOR"
+    ],
+    "gate_failures": 0,
+    "per_lane": [
+      "Fmt",
+      "Compile",
+      "Clippy",
+      "AstGrep",
+      "Dylint",
+      "PanicScan",
+      "PolicyScan"
+    ],
+    "receipt_schema": null,
+    "stdout_path": "/home/lewis/src/titania/.worktrees/v1-combined-dispatch/.beads/tn-pdn/raw/bad-stdout.json",
+    "stderr_path": "/home/lewis/src/titania/.worktrees/v1-combined-dispatch/.beads/tn-pdn/raw/bad-stderr.txt"
+  },
+  {
+    "case": "repaired",
+    "tempdir": "/tmp/titania-pdn-repaired-azhxjbdm",
+    "exit_code": 0,
+    "stderr_empty": true,
+    "variant": "pass",
+    "code_findings": [],
+    "gate_failures": 0,
+    "per_lane": [
+      "Fmt",
+      "Compile",
+      "Clippy",
+      "AstGrep",
+      "Dylint",
+      "PanicScan",
+      "PolicyScan"
+    ],
+    "receipt_schema": 1,
+    "stdout_path": "/home/lewis/src/titania/.worktrees/v1-combined-dispatch/.beads/tn-pdn/raw/repaired-stdout.json",
+    "stderr_path": "/home/lewis/src/titania/.worktrees/v1-combined-dispatch/.beads/tn-pdn/raw/repaired-stderr.txt"
+  }
+]

@@ -33,6 +33,67 @@ impl ReportJson {
     pub(crate) const fn status(&self) -> ReportStatus {
         self.status
     }
+
+    /// Render the report as human-readable text.
+    #[must_use]
+    pub(crate) fn render_human(&self) -> String {
+        render_report_human(&self.json)
+    }
+}
+
+fn render_report_human(json: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(json) {
+        Ok(parsed) => render_parsed_report(&parsed),
+        Err(error) => render_unparseable_report(json, &error),
+    }
+}
+
+fn render_unparseable_report(json: &str, error: &serde_json::Error) -> String {
+    format!(
+        "titania-check aggregate report — status: unknown\nUnparseable report JSON: {error}\n\nRaw report:\n{json}"
+    )
+}
+
+fn render_parsed_report(parsed: &serde_json::Value) -> String {
+    let variant = parsed
+        .get("variant")
+        .and_then(serde_json::Value::as_str)
+        .map_or("unknown", std::convert::identity);
+    let gate_failures = parsed
+        .get("gate_failures")
+        .and_then(serde_json::Value::as_array)
+        .map_or(0, std::vec::Vec::len);
+    let code_findings = parsed
+        .get("code_findings")
+        .and_then(serde_json::Value::as_array)
+        .map_or(0, std::vec::Vec::len);
+    let per_lane =
+        parsed.get("per_lane").and_then(serde_json::Value::as_array).map_or(0, std::vec::Vec::len);
+
+    let mut lines = Vec::new();
+    lines.push(format!("titania-check aggregate report — status: {variant}"));
+    lines.push(String::new());
+    lines.push(format!("Gate failures: {gate_failures}"));
+    lines.push(format!("Code findings: {code_findings}"));
+    lines.push(format!("Lanes evaluated: {per_lane}"));
+    lines.extend(gate_failure_lines(parsed));
+    lines.push(String::new());
+    lines.push(format!("Report variant: {variant}"));
+    lines.join("\n")
+}
+/// Extract gate failure reason lines from the parsed report JSON.
+fn gate_failure_lines(parsed: &serde_json::Value) -> Vec<String> {
+    parsed.get("gate_failures").and_then(|v| v.as_array()).map_or_else(Vec::new, |gates| {
+        gates.iter().enumerate().filter_map(gate_failure_reason).collect::<Vec<_>>()
+    })
+}
+
+/// Extract a single gate failure reason line from a gate JSON object.
+fn gate_failure_reason((i, gate): (usize, &serde_json::Value)) -> Option<String> {
+    gate.get("infra_failure")
+        .and_then(|f| f.get("reason"))
+        .and_then(|r| r.as_str())
+        .map(|reason_str| format!("  gate failure {i}: {}", reason_str.trim()))
 }
 
 /// Exit-code classification for a typed report.
@@ -70,17 +131,20 @@ pub(crate) fn report_json(
     target_root: &Path,
     scope: GateScope,
 ) -> Result<ReportJson, AggregateError> {
+    // No Cargo.toml gate here: both `aggregate` and `check` read existing lane
+    // artifacts (or report them missing).  Lane execution that needs a project
+    // is handled separately by the `run-lane` subcommand.
     let lane_artifacts = read_lane_artifacts(target_root, scope).map_err(AggregateError::Read)?;
     let receipt = quality_receipt(target_root, scope, &lane_artifacts)?;
-    let outcomes = lane_artifacts
-        .iter()
-        .map(|(_, outcome)| outcome.clone())
-        .collect::<Vec<_>>()
-        .into_boxed_slice();
-    let report = assemble_report(scope, outcomes, receipt, Box::new([]), Box::new([]))?;
+    let entries: Box<[_]> = lane_artifacts
+        .into_iter()
+        .map(|(lane, outcome)| titania_core::PerLaneEntry { lane, outcome })
+        .collect();
+    let report = assemble_report(scope, entries, receipt, Box::new([]), Box::new([]))?;
     let status = ReportStatus::from_report(&report);
-    let json = serde_json::to_string(&report).map_err(AggregateError::Serialize)?;
-    Ok(ReportJson { json, status })
+    serde_json::to_string(&report)
+        .map(|json| ReportJson { json, status })
+        .map_err(AggregateError::Serialize)
 }
 
 /// Aggregate dispatch failure.

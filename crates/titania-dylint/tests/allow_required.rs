@@ -88,7 +88,13 @@ fn dylint_library_path() -> PathBuf {
         "cargo dylint list --all must build and load libtitania_dylint before fixture runs:\n{}",
         combined_output(&output)
     );
-    find_titania_dylint_library(&workspace_root().join("target").join("dylint").join("libraries"))
+    let target_dir = std::env::var("CARGO_TARGET_DIR")
+        .ok()
+        .map(|s| PathBuf::from(&s))
+        .unwrap_or_else(|| workspace_root().join("target"));
+    let target_dir =
+        if target_dir.is_absolute() { target_dir } else { workspace_root().join(target_dir) };
+    find_titania_dylint_library(&target_dir.join("dylint").join("libraries"))
         .expect("cargo dylint must build libtitania_dylint into target/dylint/libraries")
 }
 
@@ -378,6 +384,32 @@ fn bypass_required_lint_weakening_detects_expect_used_removal() {
 fn bypass_required_lint_weakening_detects_panic_removal() {
     let output = run_dylint_on_fixture("weaken_panic", FIXTURE_WEAKEN_PANIC);
     assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "clippy::panic allow");
+}
+
+// ── lint-group weakening (H2: group-level allow bypass) ─────────────────
+
+const FIXTURE_WEAKEN_UNUSED: &str = r#"
+#![allow(unused)]
+
+pub fn kept() {}
+"#;
+
+const FIXTURE_WEAKEN_CLIPPY_STYLE: &str = r#"
+#![allow(clippy::style)]
+
+pub fn kept() {}
+"#;
+
+#[test]
+fn bypass_required_lint_weakening_detects_unused_group() {
+    let output = run_dylint_on_fixture("weaken_unused", FIXTURE_WEAKEN_UNUSED);
+    assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "`#![allow(unused)]`");
+}
+
+#[test]
+fn bypass_required_lint_weakening_detects_clippy_style_group() {
+    let output = run_dylint_on_fixture("weaken_clippy_style", FIXTURE_WEAKEN_CLIPPY_STYLE);
+    assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "`#![allow(clippy::style)]`");
 }
 
 #[test]

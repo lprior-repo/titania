@@ -41,7 +41,7 @@ pub mod source_line;
 
 pub use command::{CommandBudget, CommandIn, CommandOutput, EnvPolicy, LaneError, OutputStream};
 pub use run_lane::run_lane_sources::{SourceWalkError, collect_rust_sources};
-pub use source_line::SourceLine;
+pub use source_line::{SourceLine, SourceLineState};
 pub use titania_core::{RuleId, RuleIdError};
 
 /// Errors produced while resolving the target project from the process CWD.

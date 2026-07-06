@@ -119,3 +119,19 @@ fn validate_program(program: &str) -> Result<(), LaneError> {
         Ok(())
     }
 }
+
+/// Construct a [`CommandOutput`] for tests.
+///
+/// This `pub(crate)` helper lets sibling modules fabricate mock outputs
+/// without exposing a public constructor.
+#[cfg(test)]
+pub(crate) fn mock_output(
+    exit_code: i32,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> Result<CommandOutput, std::io::Error> {
+    let status = std::process::Command::new(if exit_code == 0 { "true" } else { "false" })
+        .output()
+        .map(|o| o.status)?;
+    Ok(CommandOutput::new(status, stdout.to_vec(), stderr.to_vec(), String::from("test")))
+}

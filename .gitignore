@@ -33,6 +33,7 @@
 /.titania/cache/
 /.titania/out/
 /crates/titania-lanes/.titania/
+/crates/titania-check/.titania/
 
 # ----- Beads -----------------------------------------------------
 # Dolt data plane (issue tracker lives outside git history).

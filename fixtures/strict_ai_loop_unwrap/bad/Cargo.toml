@@ -1,0 +1,6 @@
+[package]
+name = "strict_ai_loop_unwrap_bad"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]

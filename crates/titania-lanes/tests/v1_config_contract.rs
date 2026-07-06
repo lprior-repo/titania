@@ -1,6 +1,8 @@
 //! Contract tests for the strict workspace lint configuration.
 
 use std::collections::BTreeMap;
+use titania_lanes::{LaneReport, policy_scan::exceptions::parse_exception_content};
+use titania_policy::{ExceptionError, parse_exceptions};
 
 const ROOT_CARGO: &str = include_str!("../../../Cargo.toml");
 const CLIPPY: &str = include_str!("../../../clippy.toml");
@@ -176,4 +178,92 @@ fn quoted(value: &str) -> Option<&str> {
 fn inline_table(value: &str) -> Option<BTreeMap<&str, &str>> {
     let inner = value.trim().strip_prefix('{')?.strip_suffix('}')?;
     Some(inner.split(',').filter_map(|part| split_entry(part.trim())).collect())
+}
+
+// ── strict-ai exceptions.toml contract tests ──────────────────────────
+
+const EXCEPTIONS: &str = include_str!("../../../.titania/profiles/strict-ai/exceptions.toml");
+const POLICY_TODAY: &str = "2026-07-05";
+
+#[test]
+fn strict_ai_exceptions_all_fields_present() {
+    let exceptions =
+        parse_exceptions(EXCEPTIONS, POLICY_TODAY).expect("checked-in exceptions.toml must parse");
+
+    assert_eq!(exceptions.len(), 1, "expected exactly one reviewed self exception");
+
+    exceptions.iter().for_each(|exception| {
+        assert!(!exception.rule_id.as_str().is_empty(), "rule_id must be present");
+        assert!(!exception.path.as_str().is_empty(), "path must be present");
+        assert!(!exception.owner.is_empty(), "owner must be present");
+        assert!(!exception.reason.is_empty(), "reason must be present");
+        assert!(!exception.expires_on.is_empty(), "expires_on must be present");
+        assert!(!exception.review.is_empty(), "review must be present");
+    });
+}
+
+#[test]
+fn strict_ai_exceptions_metadata_matches_audit() {
+    let exceptions =
+        parse_exceptions(EXCEPTIONS, POLICY_TODAY).expect("checked-in exceptions.toml must parse");
+    let exception = exceptions.first().expect("one audited exception must exist");
+
+    assert_eq!(exception.rule_id.as_str(), "BYPASS_EXPECT_ATTR");
+    assert_eq!(exception.path.as_str(), "crates/titania-dylint/src/lib.rs");
+    assert_eq!(exception.owner.as_ref(), "titania-maintainers");
+    assert_eq!(
+        exception.reason.as_ref(),
+        "Dylint ABI exports require audited #[expect(unsafe_code)] on unsafe no_mangle exports, and register_lints also requires #[expect(clippy::no_mangle_with_rust_abi)] because Dylint documents a Rust-ABI no_mangle registration hook."
+    );
+    assert_eq!(exception.expires_on.as_ref(), "2026-10-01");
+    assert_eq!(exception.review.as_ref(), "tn-dylint-abi-expect");
+}
+
+#[test]
+fn strict_ai_exceptions_expired_fixture_rejected_by_policy_parser() {
+    let err = parse_exceptions(expired_exception_fixture(), POLICY_TODAY)
+        .expect_err("expired exception must fail through production parser");
+
+    assert_eq!(
+        err,
+        ExceptionError::ExceptionExpired {
+            rule_id: Box::<str>::from("BYPASS_EXPECT_ATTR"),
+            expires_on: Box::<str>::from("2020-01-01"),
+            today: Box::<str>::from(POLICY_TODAY),
+        }
+    );
+    assert_eq!(err.code(), "POLICY_EXCEPTION_EXPIRED");
+}
+
+#[test]
+fn strict_ai_exceptions_expired_fixture_emits_policy_finding() {
+    let mut report = LaneReport::new();
+    let exceptions =
+        parse_exception_content(expired_exception_fixture(), POLICY_TODAY, &mut report)
+            .expect("expired exception diagnostic rule id must be valid");
+
+    assert!(exceptions.is_empty(), "expired exceptions must not become active suppressions");
+    assert_eq!(report.finding_count(), 1, "expired exception must emit one policy finding");
+
+    let finding = report.findings().first().expect("one expired-exception finding must exist");
+    assert_eq!(finding.rule().as_str(), "POLICY_EXCEPTION_EXPIRED");
+    assert_eq!(finding.path(), ".titania/profiles/strict-ai/exceptions.toml");
+    assert_eq!(finding.line(), 0);
+    assert!(
+        finding.message().contains("BYPASS_EXPECT_ATTR"),
+        "finding must name the expired rule, got: {}",
+        finding.message()
+    );
+}
+
+fn expired_exception_fixture() -> &'static str {
+    r#"
+[[exceptions]]
+rule_id = "BYPASS_EXPECT_ATTR"
+path = "crates/titania-dylint/src/lib.rs"
+owner = "titania-maintainers"
+reason = "Dylint ABI exports require audited temporary exception"
+expires_on = "2020-01-01"
+review = "tn-dylint-abi-expect"
+"#
 }

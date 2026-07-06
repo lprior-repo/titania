@@ -1,136 +1,28 @@
-use std::{iter::Peekable, str::Chars};
-
+/// Collapse whitespace to single spaces.
 pub(super) fn compact(line: &str) -> String {
     line.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Remove all whitespace characters.
 pub(super) fn remove_spaces(line: &str) -> String {
     line.chars().filter(|ch| !ch.is_whitespace()).collect()
 }
 
+/// Source line after comments and strings are stripped.
+/// Delegates to the shared `titania_lanes::SourceLine::parse`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ApiSourceLine {
     code: String,
 }
 
 impl ApiSourceLine {
-    pub(super) fn parse(raw: &str, block_comment: &mut bool) -> Self {
-        Self { code: strip_non_code(raw, block_comment).trim().to_owned() }
+    /// Strip non-code segments. Delegates to the shared parser.
+    pub(super) fn parse(raw: &str, state: &mut titania_lanes::SourceLineState) -> Self {
+        let shared = titania_lanes::SourceLine::parse(raw, state);
+        Self { code: shared.code().to_owned() }
     }
 
     pub(super) fn code(&self) -> &str {
-        self.code.as_str()
-    }
-}
-
-#[derive(Clone, Copy)]
-struct StripState {
-    block_comment: bool,
-    in_string: bool,
-    escaped: bool,
-}
-
-impl StripState {
-    const fn new(block_comment: bool) -> Self {
-        Self { block_comment, in_string: false, escaped: false }
-    }
-}
-
-fn consume_block_comment(
-    state: &mut StripState,
-    ch: char,
-    chars: &mut Peekable<Chars<'_>>,
-) -> bool {
-    if !state.block_comment {
-        return false;
-    }
-    if ch == '*' && chars.peek().is_some_and(|next| *next == '/') {
-        let _slash = chars.next();
-        state.block_comment = false;
-    }
-    true
-}
-
-const fn consume_string(state: &mut StripState, ch: char) -> bool {
-    if !state.in_string {
-        return false;
-    }
-    if state.escaped {
-        state.escaped = false;
-        return true;
-    }
-    if ch == '\\' {
-        state.escaped = true;
-        return true;
-    }
-    if ch == '"' {
-        state.in_string = false;
-    }
-    true
-}
-
-fn start_comment_or_string(
-    state: &mut StripState,
-    ch: char,
-    chars: &mut Peekable<Chars<'_>>,
-) -> bool {
-    if ch == '/' && chars.peek().is_some_and(|next| *next == '*') {
-        let _star = chars.next();
-        state.block_comment = true;
-        return true;
-    }
-    if ch == '"' {
-        state.in_string = true;
-        return true;
-    }
-    false
-}
-
-enum StripAction {
-    Skip,
-    Stop,
-    Space,
-    Push(char),
-}
-
-fn strip_action(state: &mut StripState, ch: char, chars: &mut Peekable<Chars<'_>>) -> StripAction {
-    if consume_block_comment(state, ch, chars) || consume_string(state, ch) {
-        return StripAction::Skip;
-    }
-    if begins_line_comment(ch, chars) {
-        return StripAction::Stop;
-    }
-    if start_comment_or_string(state, ch, chars) {
-        return StripAction::Space;
-    }
-    StripAction::Push(ch)
-}
-
-fn begins_line_comment(ch: char, chars: &mut Peekable<Chars<'_>>) -> bool {
-    ch == '/' && chars.peek().is_some_and(|next| *next == '/')
-}
-
-fn strip_non_code(raw: &str, block_comment: &mut bool) -> String {
-    let mut code = String::with_capacity(raw.len());
-    let mut chars = raw.chars().peekable();
-    let mut state = StripState::new(*block_comment);
-    strip_chars(&mut chars, &mut state, &mut code);
-    *block_comment = state.block_comment;
-    code
-}
-
-fn strip_chars(chars: &mut Peekable<Chars<'_>>, state: &mut StripState, code: &mut String) {
-    let Some(ch) = chars.next() else { return };
-    match strip_action(state, ch, chars) {
-        StripAction::Skip => strip_chars(chars, state, code),
-        StripAction::Stop => {}
-        StripAction::Space => {
-            code.push(' ');
-            strip_chars(chars, state, code);
-        }
-        StripAction::Push(value) => {
-            code.push(value);
-            strip_chars(chars, state, code);
-        }
+        &self.code
     }
 }

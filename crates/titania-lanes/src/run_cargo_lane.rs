@@ -88,6 +88,9 @@ fn run_lane(
     extra_args: &[String],
 ) -> Result<LaneOutcome, RunCargoError> {
     let output = cargo_output(target, lane, extra_args).map_err(RunCargoError::Command)?;
+    if lane == CargoLane::Clippy {
+        return normalize_clippy_output(target, lane, extra_args, &output);
+    }
     let mut report = LaneReport::new();
     report.record_scan();
     record_command_result(&output, lane, rule, &mut report);
@@ -169,4 +172,115 @@ fn cargo_output(
     let _ = command.args(args_for_lane(lane));
     let _ = command.args_strings(extra_args);
     command.run_capture_raw()
+}
+/// Normalize clippy JSONL output into a typed lane outcome.
+///
+/// # Errors
+/// Returns [`RunCargoError`] when the clippy JSONL cannot be parsed or the
+/// lane execution fails unexpectedly.
+fn normalize_clippy_output(
+    target: &TargetProject,
+    lane: CargoLane,
+    extra_args: &[String],
+    output: &crate::CommandOutput,
+) -> Result<LaneOutcome, RunCargoError> {
+    let stdout = output.stdout_str().map_or("", |text| text);
+    let normalized = crate::clippy_normalizer::normalize_clippy_jsonl(stdout);
+    match normalized {
+        crate::clippy_normalizer::ClippyNormalization::SuspiciousFailure(failure) => {
+            Ok(LaneOutcome::Failed(failure))
+        }
+        crate::clippy_normalizer::ClippyNormalization::Findings(report) if !report.is_clean() => {
+            Ok(findings_outcome(lane, &report))
+        }
+        crate::clippy_normalizer::ClippyNormalization::Findings(_) if !output.success() => {
+            Ok(LaneOutcome::Failed(tool_failure(output)))
+        }
+        crate::clippy_normalizer::ClippyNormalization::Findings(_) => {
+            clean_outcome(target, lane, extra_args, output)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CargoLane, normalize_clippy_output};
+    use crate::command::mock_output;
+    use std::error::Error;
+    use titania_core::{LaneOutcome, TargetProject};
+
+    fn make_target() -> Result<(tempfile::TempDir, TargetProject), Box<dyn Error>> {
+        let dir = tempfile::tempdir().map_err(std::io::Error::other)?;
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(std::io::Error::other)?;
+        let target = TargetProject::try_from_path(dir.path()).map_err(std::io::Error::other)?;
+        Ok((dir, target))
+    }
+
+    /// Regression: nonzero clippy exit + empty stdout → Failed, not Clean.
+    #[test]
+    fn nonzero_exit_empty_stdout_becomes_failed_not_clean() -> Result<(), Box<dyn Error>> {
+        let (_dir, target) = make_target()?;
+        let output = mock_output(1, b"", b"")?;
+        let outcome = normalize_clippy_output(&target, CargoLane::Clippy, &[], &output)
+            .map_err(|e| std::io::Error::other(format!("{e:?}")))?;
+        assert!(
+            matches!(outcome, LaneOutcome::Failed { .. }),
+            "nonzero exit + empty stdout should yield Failed, got {outcome:?}"
+        );
+        Ok(())
+    }
+
+    /// Nonzero clippy exit + clean JSON (no findings) → Failed.
+    #[test]
+    fn nonzero_exit_clean_json_becomes_failed_not_clean() -> Result<(), Box<dyn Error>> {
+        let (_dir, target) = make_target()?;
+        let output = mock_output(1, b"", b"")?;
+        let outcome = normalize_clippy_output(&target, CargoLane::Clippy, &[], &output)
+            .map_err(|e| std::io::Error::other(format!("{e:?}")))?;
+        assert!(
+            matches!(outcome, LaneOutcome::Failed { .. }),
+            "nonzero exit + clean JSON should yield Failed, got {outcome:?}"
+        );
+        Ok(())
+    }
+
+    /// Nonzero clippy exit + valid JSON with unwrap findings → CLIPPY_UNWRAP_USED.
+    #[test]
+    fn nonzero_exit_with_unwrap_json_becomes_findings() -> Result<(), Box<dyn Error>> {
+        let (_dir, target) = make_target()?;
+        let fixture = include_str!("../tests/fixtures/clippy/unwrap.jsonl");
+        let output = mock_output(1, fixture.as_bytes(), b"")?;
+        let outcome = normalize_clippy_output(&target, CargoLane::Clippy, &[], &output)
+            .map_err(|e| std::io::Error::other(format!("{e:?}")))?;
+        assert!(
+            matches!(outcome, LaneOutcome::Findings { .. }),
+            "nonzero exit + unwrap JSON should yield Findings, got {outcome:?}"
+        );
+        if let LaneOutcome::Findings { findings, .. } = outcome {
+            assert!(!findings.is_empty(), "report should have findings");
+            assert!(
+                findings.iter().any(|f| f.rule_id().to_string() == "CLIPPY_UNWRAP_USED"),
+                "should contain CLIPPY_UNWRAP_USED finding; got: {findings:?}"
+            );
+        }
+        Ok(())
+    }
+
+    /// Zero exit + clean JSON → Clean (sanity check, existing behavior preserved).
+    #[test]
+    fn zero_exit_clean_json_becomes_clean() -> Result<(), Box<dyn Error>> {
+        let (_dir, target) = make_target()?;
+        let output = mock_output(0, b"", b"")?;
+        let outcome = normalize_clippy_output(&target, CargoLane::Clippy, &[], &output)
+            .map_err(|e| std::io::Error::other(format!("{e:?}")))?;
+        assert!(
+            matches!(outcome, LaneOutcome::Clean { .. }),
+            "zero exit + clean JSON should yield Clean, got {outcome:?}"
+        );
+        Ok(())
+    }
 }

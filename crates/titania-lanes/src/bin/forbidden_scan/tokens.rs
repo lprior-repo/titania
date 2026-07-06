@@ -190,4 +190,25 @@ mod token_tests {
         let token = macro_token("dbg!");
         assert!(token.is_present_in("dbg!(x)"));
     }
+
+    #[test]
+    fn unwrap_or_method_token_matches() {
+        let token = macro_token("unwrap_or");
+        assert!(token.is_present_in("x.unwrap_or(1)"));
+        assert!(!token.is_present_in("x.unwrap_or_default(1)"));
+        assert!(!token.is_present_in("x.unwrap_or_else(f)"));
+    }
+
+    #[test]
+    fn unwrap_or_else_method_token_matches() {
+        let token = macro_token("unwrap_or_else");
+        assert!(token.is_present_in("x.unwrap_or_else(|_| 1)"));
+        assert!(!token.is_present_in("x.unwrap_or_default(1)"));
+    }
+
+    #[test]
+    fn unwrap_or_default_method_token_matches() {
+        let token = macro_token("unwrap_or_default");
+        assert!(token.is_present_in("x.unwrap_or_default()"));
+    }
 }

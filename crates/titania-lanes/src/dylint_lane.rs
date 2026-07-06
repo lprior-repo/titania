@@ -1,9 +1,8 @@
 //! Dylint lane loader — checks tool availability and reports typed infra failures.
 //!
 //! This module owns the Dylint lane's pre-flight checks:
-//!
-//! 1. Is `cargo-dylint` on the PATH? If not, return [`LaneFailure::Infra`] with
-//!    `tool = "cargo-dylint"`.
+//! 1. Is `cargo-dylint` available (via `cargo dylint --version`)? If not,
+//!    return [`LaneFailure::Infra`] with `tool = "cargo-dylint"`.
 //! 2. Is the `libtitania_dylint` cdylib available and ABI-compatible? If not,
 //!    return [`LaneFailure::Infra`] with `tool = "libtitania_dylint"`.
 //!
@@ -11,25 +10,24 @@
 
 use std::process::Command;
 
-use thiserror::Error;
 use titania_core::LaneFailure;
 
 use crate::{LaneReport, RuleId};
 
-const CARGO_DYLINT: &str = "cargo-dylint";
 const LIB_TITANIA_DYLINT: &str = "libtitania_dylint";
 const RULE_DYLINT_INFRA: &str = "DYLINT_INFRA_FAILURE";
-
-/// Errors produced while probing the Dylint toolchain.
-#[derive(Debug, Error)]
-pub enum DylintLaneError {
-    /// `cargo-dylint` binary could not be spawned (missing from PATH).
-    #[error("cargo-dylint binary is unavailable")]
-    CargoDylintMissing,
-    /// `libtitania_dylint` cdylib is missing or ABI-mismatched.
-    #[error("libtitania_dylint is unavailable or ABI-mismatched")]
-    LibraryMissing,
+/// Probe `cargo dylint --version` availability.
+///
+/// Uses `cargo dylint` (not the broken `cargo-dylint` shim) and checks `.success()`.
+fn cargo_dylint_available() -> bool {
+    Command::new("cargo")
+        .args(["dylint", "--version"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
 }
+
 
 /// Result of the Dylint lane pre-flight checks.
 #[derive(Debug)]
@@ -64,9 +62,9 @@ impl DylintProbe {
 /// on the first infrastructure failure encountered.
 #[must_use]
 pub fn probe_dylint_toolchain() -> DylintProbe {
-    // Check 1: is cargo-dylint on PATH?
-    if !tool_is_available(CARGO_DYLINT) {
-        return unavailable_probe(CARGO_DYLINT, format!("{CARGO_DYLINT} binary is unavailable"));
+    // Check 1: is cargo-dylint available (via `cargo dylint --version`)?
+    if !cargo_dylint_available() {
+        return unavailable_probe("cargo-dylint", String::from("subcommand unavailable"));
     }
 
     // Check 2: is libtitania_dylint available and ABI-compatible?
@@ -80,14 +78,6 @@ pub fn probe_dylint_toolchain() -> DylintProbe {
     DylintProbe::Ready
 }
 
-/// Check whether a binary is available on the PATH.
-///
-/// Uses `std::process::Command` to run `<tool> --version` to completion. If
-/// the process can be started and reaped, the binary exists; the exit status
-/// itself is not part of the availability contract.
-fn tool_is_available(tool: &str) -> bool {
-    Command::new(tool).arg("--version").status().is_ok()
-}
 
 /// Check whether the `libtitania_dylint` cdylib is available.
 ///

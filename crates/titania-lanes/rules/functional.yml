@@ -9,6 +9,7 @@ message: "FUNC_LOOPS_FOR: replace imperative for loops with iterator pipelines"
 files:
   - "**/*.rs"
 ignores:
+  - "**/fixtures/**"
   - "**/tests/**"
   - "**/benches/**"
   - "**/examples/**"
@@ -26,6 +27,7 @@ message: "FUNC_LOOPS_WHILE: replace while loops with bounded iterator or state-m
 files:
   - "**/*.rs"
 ignores:
+  - "**/fixtures/**"
   - "**/tests/**"
   - "**/benches/**"
   - "**/examples/**"
@@ -43,6 +45,7 @@ message: "FUNC_LOOPS_LOOP: replace open-ended loop blocks with explicit bounded 
 files:
   - "**/*.rs"
 ignores:
+  - "**/fixtures/**"
   - "**/tests/**"
   - "**/benches/**"
   - "**/examples/**"
@@ -60,6 +63,7 @@ message: "FUNC_PRINT_STDOUT: use typed output/reporting instead of print! or pri
 files:
   - "**/*.rs"
 ignores:
+  - "**/fixtures/**"
   - "**/tests/**"
   - "**/benches/**"
   - "**/examples/**"
@@ -79,6 +83,7 @@ message: "FUNC_PRINT_STDERR: use typed diagnostics instead of eprint! or eprintl
 files:
   - "**/*.rs"
 ignores:
+  - "**/fixtures/**"
   - "**/tests/**"
   - "**/benches/**"
   - "**/examples/**"
@@ -98,6 +103,7 @@ message: "FUNC_WILDCARD_IMPORT: replace wildcard imports with explicit imports"
 files:
   - "**/*.rs"
 ignores:
+  - "**/fixtures/**"
   - "**/tests/**"
   - "**/benches/**"
   - "**/examples/**"
@@ -114,6 +120,7 @@ message: "FUNC_UNWRAP_OR: replace unwrap_or defaults with explicit typed recover
 files:
   - "**/*.rs"
 ignores:
+  - "**/fixtures/**"
   - "**/tests/**"
   - "**/benches/**"
   - "**/examples/**"
@@ -134,6 +141,7 @@ message: "FUNC_RESULT_STRING: use typed error types instead of String for Result
 files:
   - "**/*.rs"
 ignores:
+  - "**/fixtures/**"
   - "**/tests/**"
   - "**/benches/**"
   - "**/examples/**"

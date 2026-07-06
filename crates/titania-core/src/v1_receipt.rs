@@ -53,9 +53,9 @@ impl<'de> Deserialize<'de> for QualityReceiptV1 {
 ///
 /// Returns a serde error when the payload schema version is not v1.
 fn validate_schema_version<E: serde::de::Error>(schema_version: u16) -> Result<(), E> {
-    (schema_version == RECEIPT_SCHEMA_VERSION).then_some(()).ok_or_else(|| {
+    (schema_version == V1_SCHEMA_VERSION).then_some(()).ok_or_else(|| {
         E::custom(format!(
-            "unsupported schema version: expected {RECEIPT_SCHEMA_VERSION}, got {schema_version}"
+            "unsupported schema version: expected {V1_SCHEMA_VERSION}, got {schema_version}"
         ))
     })
 }
@@ -105,7 +105,7 @@ impl QualityReceiptV1 {
         let lanes =
             (!lanes.is_empty()).then_some(lanes).ok_or(ReceiptError::EmptyLaneReceiptList)?;
         Ok(Self {
-            schema_version: RECEIPT_SCHEMA_VERSION,
+            schema_version: V1_SCHEMA_VERSION,
             scope,
             source_digest: source,
             cargo_lock_digest: lock,
@@ -117,4 +117,4 @@ impl QualityReceiptV1 {
 }
 
 /// Schema version constant for v1 Quality Receipts.
-const RECEIPT_SCHEMA_VERSION: u16 = 1;
+const V1_SCHEMA_VERSION: u16 = 1;

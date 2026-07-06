@@ -26,7 +26,10 @@ fn lane_digest_rejects_passed_greater_than_scanned() {
     kani::cover!(passed > scanned, "passed greater than scanned reachable");
     let lane = match LaneName::new("fmt") {
         Ok(lane) => lane,
-        Err(_) => return,
+        Err(_) => {
+            kani::assert(false, "LaneName should never fail for valid 'fmt'");
+            return;
+        }
     };
     let result = LaneDigest::new(lane, ReceiptLaneExit::Clean, scanned, passed, 0);
     match result {
@@ -47,7 +50,10 @@ fn lane_digest_accepts_passed_not_greater_than_scanned() {
     kani::cover!(passed < scanned, "passed below scanned reachable");
     let lane = match LaneName::new("fmt") {
         Ok(lane) => lane,
-        Err(_) => return,
+        Err(_) => {
+            kani::assert(false, "lane creation should not fail for valid input");
+            return;
+        }
     };
     let result = LaneDigest::new(lane, ReceiptLaneExit::Clean, scanned, passed, 0);
     match result {

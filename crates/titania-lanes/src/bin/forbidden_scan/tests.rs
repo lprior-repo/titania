@@ -104,3 +104,58 @@ fn production_tests_rs_is_scanned_under_tests_checkout_path() -> Result<(), Box<
     }));
     Ok(())
 }
+
+#[test]
+fn cfg_test_block_skips_forbidden_tokens() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let root = temp.path().join("tests").join("checkout");
+    let file = root.join("crates/example/src/lib.rs");
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(
+        &file,
+        "pub fn good() -> i32 { 42 }\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn panics() {\n        panic!(\"boom\");\n    }\n\n    #[test]\n    fn unwraps() {\n        let _ = Some(1).unwrap();\n    }\n\n    #[test]\n    fn expects() {\n        let _ = Result::<i32, _>::Ok(1).expect(\"fail\");\n    }\n}\n",
+    )?;
+
+    let forbidden = default_forbidden_set();
+    let rule = RuleId::new("FORBIDDEN_001")?;
+    let findings = collect_source_files(&root)
+        .iter()
+        .flat_map(|source| scan_file(&root, source, &forbidden, &rule))
+        .collect::<Vec<_>>();
+
+    assert!(findings.is_empty(), "cfg(test) block should not produce findings, got: {findings:?}");
+    Ok(())
+}
+#[test]
+fn cfg_test_single_item_skips_then_reports_production() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let root = temp.path().join("tests").join("checkout");
+    let file = root.join("crates/example/src/lib.rs");
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(
+        &file,
+        "pub fn good() -> i32 { 42 }\n\n#[cfg(test)]\nfn panics() { panic!(\"boom\"); }\n\n#[cfg(test)]\n#[test]\nfn panics() { panic!(\"boom\"); }\npub fn bad() { panic!(\"prod\"); }\n",
+    )?;
+
+    let forbidden = default_forbidden_set();
+    let rule = RuleId::new("FORBIDDEN_001")?;
+    let findings = collect_source_files(&root)
+        .iter()
+        .flat_map(|source| scan_file(&root, source, &forbidden, &rule))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        findings.len(),
+        1,
+        "production panic should be reported once, got: {findings:?}"
+    );
+    let finding = &findings[0];
+    assert_eq!(finding.path(), "crates/example/src/lib.rs");
+    assert_eq!(finding.line(), 9);
+    assert_eq!(finding.rule().as_str(), "FORBIDDEN_001");
+    Ok(())
+}

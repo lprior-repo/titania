@@ -107,17 +107,19 @@ fn test_receipt(scope: GateScope) -> QualityReceiptV1 {
 #[test]
 fn code_findings_yield_reject_codonly() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> = Box::from(
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from(
         scope
             .lanes()
             .iter()
             .copied()
             .enumerate()
-            .map(
-                |(index, lane)| {
-                    if index == 0 { findings_outcome(lane) } else { clean_outcome(lane) }
-                },
-            )
+            .map(|(index, lane)| {
+                if index == 0 {
+                    titania_core::PerLaneEntry { lane, outcome: findings_outcome(lane) }
+                } else {
+                    titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) }
+                }
+            })
             .collect::<Vec<_>>(),
     );
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([]);
@@ -151,7 +153,7 @@ fn code_findings_yield_reject_codonly() {
 #[test]
 fn gate_failures_yield_reject_gateonly() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> = Box::from(
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from(
         scope
             .lanes()
             .iter()
@@ -159,9 +161,12 @@ fn gate_failures_yield_reject_gateonly() {
             .enumerate()
             .map(|(index, lane)| {
                 if index == 0 {
-                    infra_failure_outcome("clippy", "binary not found")
+                    titania_core::PerLaneEntry {
+                        lane,
+                        outcome: infra_failure_outcome("clippy", "binary not found"),
+                    }
                 } else {
-                    clean_outcome(lane)
+                    titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) }
                 }
             })
             .collect::<Vec<_>>(),
@@ -193,16 +198,19 @@ fn gate_failures_yield_reject_gateonly() {
 #[test]
 fn both_findings_and_failures_yield_reject_mixed() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> = Box::from(
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from(
         scope
             .lanes()
             .iter()
             .copied()
             .enumerate()
             .map(|(index, lane)| match index {
-                0 => findings_outcome(lane),
-                1 => infra_failure_outcome("dylint", "ABI mismatch"),
-                _ => clean_outcome(lane),
+                0 => titania_core::PerLaneEntry { lane, outcome: findings_outcome(lane) },
+                1 => titania_core::PerLaneEntry {
+                    lane,
+                    outcome: infra_failure_outcome("dylint", "ABI mismatch"),
+                },
+                _ => titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) },
             })
             .collect::<Vec<_>>(),
     );
@@ -231,8 +239,14 @@ fn both_findings_and_failures_yield_reject_mixed() {
 #[test]
 fn all_scope_lanes_clean_yields_pass() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> =
-        Box::from(scope.lanes().iter().copied().map(clean_outcome).collect::<Vec<_>>());
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from(
+        scope
+            .lanes()
+            .iter()
+            .copied()
+            .map(|lane| titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) })
+            .collect::<Vec<_>>(),
+    );
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([]);
     let input_diags: Box<[InputDiagnostic]> = Box::from([]);
     let receipt = test_receipt(scope);
@@ -244,7 +258,7 @@ fn all_scope_lanes_clean_yields_pass() {
         titania_core::Report::Pass { per_lane, .. } => {
             assert_eq!(per_lane.len(), scope.lanes().len());
             for outcome in per_lane.iter() {
-                assert!(outcome.is_pass());
+                assert!(outcome.outcome.is_pass());
             }
         }
         other => panic!("expected Report::Pass, got {:?}", other),
@@ -256,15 +270,21 @@ fn all_scope_lanes_clean_yields_pass() {
 #[test]
 fn skipped_lanes_do_not_prevent_pass() {
     let scope = GateScope::Edit;
-    let outcomes: Vec<LaneOutcome> = scope
+    let outcomes: Vec<titania_core::PerLaneEntry> = scope
         .lanes()
         .iter()
         .copied()
         .enumerate()
-        .map(|(index, lane)| if index == 0 { skipped_outcome() } else { clean_outcome(lane) })
+        .map(|(index, lane)| {
+            if index == 0 {
+                titania_core::PerLaneEntry { lane, outcome: skipped_outcome() }
+            } else {
+                titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) }
+            }
+        })
         .collect::<Vec<_>>();
 
-    let outcomes: Box<[LaneOutcome]> = Box::from(outcomes);
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from(outcomes);
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([]);
     let input_diags: Box<[InputDiagnostic]> = Box::from([]);
     let receipt = test_receipt(scope);
@@ -283,7 +303,10 @@ fn skipped_lanes_do_not_prevent_pass() {
 #[test]
 fn policy_diagnostics_yield_policy_error_not_reject() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> = Box::from([clean_outcome(Lane::Fmt)]);
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from([titania_core::PerLaneEntry {
+        lane: Lane::Fmt,
+        outcome: clean_outcome(Lane::Fmt),
+    }]);
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([PolicyDiagnostic {
         message: "missing required tool config".into(),
         file: None,
@@ -312,7 +335,10 @@ fn policy_diagnostics_yield_policy_error_not_reject() {
 #[test]
 fn input_diagnostics_yield_input_error_not_reject() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> = Box::from([clean_outcome(Lane::Fmt)]);
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from([titania_core::PerLaneEntry {
+        lane: Lane::Fmt,
+        outcome: clean_outcome(Lane::Fmt),
+    }]);
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([]);
     let input_diags: Box<[InputDiagnostic]> = Box::from([InputDiagnostic::new(
         "invalid gate scope".into(),
@@ -341,7 +367,7 @@ fn input_diagnostics_yield_input_error_not_reject() {
 #[test]
 fn empty_outcomes_return_error_not_pass() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> = Box::from([]);
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from([]);
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([]);
     let input_diags: Box<[InputDiagnostic]> = Box::from([]);
 
@@ -368,8 +394,13 @@ fn empty_outcomes_return_error_not_pass() {
 #[test]
 fn informational_findings_do_not_reject() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> = Box::from(
-        scope.lanes().iter().copied().map(|lane| informational_outcome(lane)).collect::<Vec<_>>(),
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from(
+        scope
+            .lanes()
+            .iter()
+            .copied()
+            .map(|lane| titania_core::PerLaneEntry { lane, outcome: informational_outcome(lane) })
+            .collect::<Vec<_>>(),
     );
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([]);
     let input_diags: Box<[InputDiagnostic]> = Box::from([]);
@@ -393,7 +424,10 @@ fn informational_findings_do_not_reject() {
 #[test]
 fn policy_diagnostics_precede_findings_in_report() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> = Box::from([findings_outcome(Lane::Fmt)]);
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from([titania_core::PerLaneEntry {
+        lane: Lane::Fmt,
+        outcome: findings_outcome(Lane::Fmt),
+    }]);
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([PolicyDiagnostic {
         message: "misconfigured scope".into(),
         file: None,
@@ -420,7 +454,7 @@ fn policy_diagnostics_precede_findings_in_report() {
 #[test]
 fn empty_outcomes_with_diagnostics_returns_empty_outcomes_error() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[LaneOutcome]> = Box::from([]);
+    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from([]);
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([PolicyDiagnostic {
         message: "misconfigured scope".into(),
         file: None,

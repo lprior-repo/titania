@@ -4,6 +4,7 @@ use super::{
     Finding, LaneReport, PANIC_MACROS, PANIC_SURFACE_RULE, PanicMacroRule, RuleId, SourceLine,
     paths::rel_str,
 };
+use crate::SourceLineState;
 
 /// Scan one Rust source file and append any panic-surface findings.
 pub(super) fn scan_file(root: &Path, path: &Path, report: &mut LaneReport) {
@@ -32,7 +33,7 @@ struct ScanState {
     global_depth: u32,
     cfg_scope_depths: Vec<u32>,
     kani_scope_depths: Vec<u32>,
-    block_comment: bool,
+    state: SourceLineState,
 }
 
 impl ScanState {
@@ -42,7 +43,7 @@ impl ScanState {
 }
 
 fn scan_state_line(state: &mut ScanState, raw: &str, line_no: u32, sink: &mut ScanSink<'_>) {
-    let parsed = SourceLine::parse(raw, &mut state.block_comment);
+    let parsed = SourceLine::parse(raw, &mut state.state);
     if parsed.is_non_code() {
         apply_brace_delta(state, raw.trim_start());
         return;

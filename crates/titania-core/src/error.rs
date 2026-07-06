@@ -1,6 +1,7 @@
 //! Typed errors for the domain primitives. One error enum per constructor,
 //! using `thiserror` so the messages are stable and machine-consumable.
 
+use crate::Lane;
 use std::io;
 
 use thiserror::Error;
@@ -28,6 +29,9 @@ pub enum RuleIdError {
     /// Rule identifier contained a non-uppercase-ASCII character.
     #[error("rule id must be uppercase ASCII; bad character {0:?} at byte {1}")]
     NotUppercase(char, usize),
+    /// Rule identifier exceeded the maximum allowed length of 96 characters.
+    #[error("rule id must not exceed 96 characters; got {0}")]
+    TooLong(usize),
 }
 
 /// Errors produced by [`crate::WorkspacePath::new`].
@@ -235,7 +239,6 @@ pub enum OutcomeError {
     #[error("exit status must be Exited(0) for Clean lanes")]
     NonZeroExit,
 }
-
 /// Errors produced by [`crate::Report::reject`] and [`crate::Report::pass`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ReportError {
@@ -245,8 +248,13 @@ pub enum ReportError {
     /// Pass report did not contain any lane outcomes.
     #[error("pass must have at least one lane outcome")]
     EmptyPerLane,
+    /// Pass report contained a lane outcome that is not pass-shaped
+    /// (rejecting finding or failed lane execution).
+    #[error(
+        "pass requires all lane outcomes to be Clean, Skipped, or informational-only Findings; lane {0} has {1}"
+    )]
+    NonPassLaneOutcome(Lane, String),
 }
-
 /// Aggregate for callers that want a single error type across primitives.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CoreError {

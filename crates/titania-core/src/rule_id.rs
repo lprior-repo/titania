@@ -33,6 +33,7 @@ impl RuleId {
     /// - [`RuleIdError::NoUnderscore`] if `s` has no underscore.
     /// - [`RuleIdError::NotUppercase`] if `s` contains any character that
     ///   is not uppercase ASCII (`A-Z`, `0-9`).
+    /// - [`RuleIdError::TooLong`] if `s` exceeds [`RuleId::MAX_LEN`] characters.
     pub fn new(s: &str) -> Result<Self, RuleIdError> {
         check_rule_id(s)?;
         Ok(Self(s.to_owned()))
@@ -68,15 +69,18 @@ impl RuleId {
 }
 
 /// Validate a rule identifier string.
-///
 /// # Errors
 /// - [`RuleIdError::Empty`] if `s` is empty.
 /// - [`RuleIdError::NoUnderscore`] if `s` lacks an underscore.
 /// - [`RuleIdError::NotUppercase`] if `s` contains invalid characters.
+/// - [`RuleIdError::TooLong`] if `s` exceeds [`RuleId::MAX_LEN`] characters.
 fn check_rule_id(s: &str) -> Result<(), RuleIdError> {
     check_non_empty(s)?;
     check_has_underscore(s)?;
     check_uppercase(s)?;
+    if s.len() > RuleId::MAX_LEN {
+        return Err(RuleIdError::TooLong(s.len()));
+    }
     Ok(())
 }
 

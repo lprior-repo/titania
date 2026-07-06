@@ -4,15 +4,23 @@ use std::{
     process::ExitCode,
 };
 
-use titania_lanes::{
+use titania_lanes::{SourceLineState,
     Finding, LaneExit, LaneReport, RuleId, SourceLine, current_target_project, exit,
     helpers::{line_no_from_idx, relative_path},
 };
 
-
 /// Default forbidden tokens (Holzman Rust slice 1).
-const DEFAULT_FORBIDDEN: &[&str] =
-    &["panic!", "unwrap", "expect", "todo!", "unimplemented!", "dbg!"];
+const DEFAULT_FORBIDDEN: &[&str] = &[
+    "panic!",
+    "unwrap",
+    "unwrap_or",
+    "unwrap_or_else",
+    "unwrap_or_default",
+    "expect",
+    "todo!",
+    "unimplemented!",
+    "dbg!",
+];
 const FORBIDDEN_FLAG: &str = "--forbidden=";
 const FORBIDDEN_RULE: &str = "FORBIDDEN_001";
 
@@ -45,12 +53,8 @@ fn main_exit(args: &[String]) -> ExitCode {
     scan_and_exit(&root, &forbidden, &rule)
 }
 
-/// Resolve the target-project root used as the scan base.
-///
 /// # Errors
-///
-/// Returns an exit code after emitting a usage message when the target
-/// project cannot be resolved from the current environment.
+/// Returns an [`ExitCode`] if the target project cannot be resolved.
 fn target_root() -> Result<PathBuf, ExitCode> {
     current_target_project().map(|target| target.as_std_path().to_path_buf()).map_err(|error| {
         exit_after_io(
@@ -62,11 +66,8 @@ fn target_root() -> Result<PathBuf, ExitCode> {
     })
 }
 
-/// Emit the scanner header before findings.
-///
 /// # Errors
-///
-/// Returns the underlying stderr write error if a header line cannot be emitted.
+/// Returns the underlying stderr write error.
 fn emit_scan_header(root: &Path, forbidden: &[ForbiddenToken]) -> io::Result<()> {
     write_stderr_line(format_args!("CWD: {}", root.display()))?;
     write_stderr_line(format_args!("ScanDomain: crates/*/src"))?;
@@ -192,63 +193,114 @@ fn scan_content(
     forbidden: &[ForbiddenToken],
     rule: &RuleId,
 ) -> Vec<Finding> {
-    let mut block_comment = false;
+    let mut state = SourceLineState::default();
+    let mut cfg_depth: i32 = 0;
+    let mut cfg_scope_depths: Vec<i32> = Vec::new();
+    let mut global_depth: i32 = 0;
+    let ctx = ScanContext { display, forbidden, rule };
     content
         .lines()
         .enumerate()
         .flat_map(|(idx, line)| {
-            let source_line = SourceLine::parse(line, &mut block_comment);
-            scan_source_line(&source_line, idx, display, forbidden, rule)
+            let trimmed = line.trim_start();
+            let cfg_depth_for_line =
+                handle_cfg_attr(trimmed, &mut global_depth, &mut cfg_depth, &mut cfg_scope_depths);
+            let source_line = SourceLine::parse(line, &mut state);
+            scan_line(&ctx, &source_line, idx, cfg_depth_for_line)
         })
         .collect()
 }
-
-fn scan_source_line(
+#[derive(Clone, Copy)]
+struct ScanContext<'a> {
+    display: &'a str,
+    forbidden: &'a [ForbiddenToken],
+    rule: &'a RuleId,
+}
+fn scan_line(
+    ctx: &ScanContext<'_>,
     line: &SourceLine<'_>,
     idx: usize,
-    display: &str,
-    forbidden: &[ForbiddenToken],
-    rule: &RuleId,
+    cfg_depth: i32,
 ) -> Vec<Finding> {
-    if line.is_non_code() {
-        return Vec::new();
+    if cfg_depth == 0 && !line.is_non_code() {
+        let line_no = line_no_from_idx(idx);
+        ctx.forbidden
+            .iter()
+            .filter(|token| token.is_present_in(line.code()))
+            .map(|token| make_finding(ctx.rule.clone(), ctx.display, line_no, token))
+            .collect()
+    } else {
+        Vec::new()
     }
-    let line_no = line_no_from_idx(idx);
-    forbidden
-        .iter()
-        .filter(|token| token.is_present_in(line.code()))
-        .map(|token| {
-            Finding::new(
-                rule.clone(),
-                display,
-                line_no,
-                format!("forbidden token `{}`", token.as_str()),
-            )
-        })
-        .collect()
 }
-
-/// Write one formatted line to stderr.
-///
+fn make_finding(rule: RuleId, display: &str, line_no: u32, token: &ForbiddenToken) -> Finding {
+    Finding::new(
+        rule,
+        display,
+        line_no,
+        format!("forbidden token `{}`", token.as_str()),
+    )
+}
+fn is_cfg_attr_open(trimmed: &str) -> bool {
+    let Some(rest) = trimmed.strip_prefix("#[cfg(") else {
+        return false;
+    };
+    let Some(inside) = rest.strip_suffix(")]") else {
+        return false;
+    };
+    inside.split(',').any(|p| p.trim() == "test")
+}
+fn line_brace_delta(line: &str) -> i32 {
+    line.bytes().fold((0i32, 0i32), |(o, c), b| match b {
+        b'{' => (o.saturating_add(1), c),
+        b'}' => (o, c.saturating_add(1)),
+        _ => (o, c),
+    })
+    .0
+    .saturating_sub(
+        line.bytes().fold((0i32, 0i32), |(o, c), b| match b {
+            b'}' => (o, c.saturating_add(1)),
+            _ => (o, c),
+        })
+        .1,
+    )
+}
+/// Update global brace depth and enter/exit cfg(test) scopes.
+fn handle_cfg_attr(
+    trimmed: &str,
+    global_depth: &mut i32,
+    cfg_depth: &mut i32,
+    cfg_scope_depths: &mut Vec<i32>,
+) -> i32 {
+    let delta = line_brace_delta(trimmed);
+    let opens = is_cfg_attr_open(trimmed);
+    let pre_depth = *global_depth;
+    *global_depth = global_depth.saturating_add(delta);
+    if opens {
+        *cfg_depth = cfg_depth.saturating_add(1);
+        cfg_scope_depths.push(pre_depth.saturating_add(1));
+    }
+    let scan_cfg_depth = *cfg_depth;
+    if !opens && !trimmed.starts_with("#[") && *cfg_depth > 0
+        && *global_depth < cfg_scope_depths.last().copied().map_or(i32::MAX, |d| d) {
+        *cfg_depth = cfg_depth.saturating_sub(1);
+        let _ = cfg_scope_depths.pop();
+    }
+    scan_cfg_depth
+}
 /// # Errors
-///
 /// Returns the underlying stderr write error.
 fn write_stderr_line(args: std::fmt::Arguments<'_>) -> io::Result<()> {
     let mut stderr = std::io::stderr().lock();
     stderr.write_fmt(args)?;
     stderr.write_all(b"\n")
 }
-
-/// Write raw formatted text to stderr.
-///
 /// # Errors
-///
 /// Returns the underlying stderr write error.
 fn write_stderr_raw(args: std::fmt::Arguments<'_>) -> io::Result<()> {
     let mut stderr = std::io::stderr().lock();
     stderr.write_fmt(args)
 }
-
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

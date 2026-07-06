@@ -1,8 +1,8 @@
 //! Structured findings from lane analysis.
-// !
-// ! A `Finding` records a single violation (or informational note) observed
-// ! during lane execution, together with where it occurred and how it should
-// ! be repaired.
+//!
+//! A `Finding` records a single violation (or informational note) observed
+//! during lane execution, together with where it occurred and how it should
+//! be repaired.
 
 use serde::{Deserialize, Serialize};
 

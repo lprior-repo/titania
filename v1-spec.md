@@ -307,7 +307,7 @@ into the clippy driver process.
 |---|---|---|
 | `BYPASS_PUB_ALLOW` | `#[allow(...)]` on `pub` items specifically (not `pub(crate)`) | Needs scope/visibility resolution |
 | `BYPASS_REQUIRED_LINT_WEAKENING` | `#![allow(...)]` of lints that are in the required set | Needs knowledge of which lints are required |
-| `BYPASS_ATTR_CONTEXT` | `#[allow]` in proc-macro-expanded code vs hand-written source | Needs macro expansion context |
+| `BYPASS_ATTR_CONTEXT` | `#[allow]` on public items introduced by proc-macro expansion rather than hand-written source | Needs macro expansion context plus visibility resolution |
 | `BYPASS_INTERNAL_UNSTABLE` | `#[allow_internal_unstable]` | Rare but critical escape hatch |
 | `BYPASS_INTERNAL_UNSAFE` | `#[allow_internal_unsafe]` | Rare but critical escape hatch |
 
