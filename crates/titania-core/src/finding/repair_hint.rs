@@ -83,7 +83,7 @@ impl RepairHintInner {
 pub struct RepairHint(RepairHintInner);
 
 impl RepairHint {
-    /// Construct a [`RepairHint::Patch`].
+    /// Construct a [`RepairHint`] that proposes an auto-applicable text patch over a [`TextRange`].
     ///
     /// # Errors
     /// - [`RepairHintError::EmptyRange`] if `range.width() == 0`.
@@ -96,37 +96,37 @@ impl RepairHint {
         Ok(Self(RepairHintInner::Patch { file, range, replacement }))
     }
 
-    /// Construct a [`RepairHint::UseIteratorPipeline`].
+    /// Construct a [`RepairHint`] suggesting an iterator-pipeline rewrite.
     #[must_use]
     pub const fn use_iterator_pipeline(suggestion: String) -> Self {
         Self(RepairHintInner::UseIteratorPipeline { suggestion })
     }
 
-    /// Construct a [`RepairHint::FlattenNesting`].
+    /// Construct a [`RepairHint`] suggesting flattening nested option/result levels.
     #[must_use]
     pub const fn flatten_nesting(suggestion: String) -> Self {
         Self(RepairHintInner::FlattenNesting { suggestion })
     }
 
-    /// Construct a [`RepairHint::UseCheckedArithmetic`].
+    /// Construct a [`RepairHint`] suggesting checked arithmetic to avoid overflow.
     #[must_use]
     pub const fn use_checked_arithmetic(op: String) -> Self {
         Self(RepairHintInner::UseCheckedArithmetic { op })
     }
 
-    /// Construct a [`RepairHint::RemoveAllowAttribute`].
+    /// Construct a [`RepairHint`] suggesting removal of a `#[allow(...)]` attribute.
     #[must_use]
     pub const fn remove_allow_attribute(attr: String) -> Self {
         Self(RepairHintInner::RemoveAllowAttribute { attr })
     }
 
-    /// Construct a [`RepairHint::ReplaceDependency`].
+    /// Construct a [`RepairHint`] suggesting a dependency version or source replacement.
     #[must_use]
     pub const fn replace_dependency(from: String, to: String) -> Self {
         Self(RepairHintInner::ReplaceDependency { from, to })
     }
 
-    /// Construct a [`RepairHint::RequiresHumanReview`].
+    /// Construct a [`RepairHint`] flagging the finding for manual human review.
     #[must_use]
     pub const fn requires_human_review(note: String) -> Self {
         Self(RepairHintInner::RequiresHumanReview { note })
@@ -156,7 +156,7 @@ enum RepairHintReadWire {
     RequiresHumanReview { note: String },
 }
 
-/// Construct a [`RepairHint::Patch`].
+/// Construct a [`RepairHint`] that proposes an auto-applicable text patch over a [`TextRange`].
 ///
 /// # Errors
 /// - [`RepairHintError::EmptyRange`] if `range.width() == 0`.
@@ -169,32 +169,32 @@ fn construct_patch(
     Ok(RepairHint(RepairHintInner::Patch { file, range, replacement }))
 }
 
-/// Construct [`RepairHint::UseIteratorPipeline`].
+/// Construct a [`RepairHint`] suggesting an iterator-pipeline rewrite.
 const fn iterator_pipeline(suggestion: String) -> RepairHint {
     RepairHint(RepairHintInner::UseIteratorPipeline { suggestion })
 }
 
-/// Construct [`RepairHint::FlattenNesting`].
+/// Construct a [`RepairHint`] suggesting flattening nested option/result levels.
 const fn flatten_nesting(suggestion: String) -> RepairHint {
     RepairHint(RepairHintInner::FlattenNesting { suggestion })
 }
 
-/// Construct [`RepairHint::UseCheckedArithmetic`].
+/// Construct a [`RepairHint`] suggesting checked arithmetic to avoid overflow.
 const fn checked_arithmetic(op: String) -> RepairHint {
     RepairHint(RepairHintInner::UseCheckedArithmetic { op })
 }
 
-/// Construct [`RepairHint::RemoveAllowAttribute`].
+/// Construct a [`RepairHint`] suggesting removal of a `#[allow(...)]` attribute.
 const fn remove_allow(attr: String) -> RepairHint {
     RepairHint(RepairHintInner::RemoveAllowAttribute { attr })
 }
 
-/// Construct [`RepairHint::ReplaceDependency`].
+/// Construct a [`RepairHint`] suggesting a dependency version or source replacement.
 const fn replace_dependency(from: String, to: String) -> RepairHint {
     RepairHint(RepairHintInner::ReplaceDependency { from, to })
 }
 
-/// Construct [`RepairHint::RequiresHumanReview`].
+/// Construct a [`RepairHint`] flagging the finding for manual human review.
 const fn human_review(note: String) -> RepairHint {
     RepairHint(RepairHintInner::RequiresHumanReview { note })
 }

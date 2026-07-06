@@ -475,7 +475,8 @@ const LANE_INPUTS: &[(&str, &[&str])] = &[
 ];
 
 /// Expected outputs per v1 lane task (§13).
-const LANE_OUTPUTS: &[(&str, &[&str])] = &[("titania-build", &["target/release/titania-check"])];
+const LANE_OUTPUTS: &[(&str, &[&str])] =
+    &[("titania-build", &["target/release/titania-check", ".titania/out/release/build.json"])];
 
 /// Lane tasks keep cache/PATH exports inline so Moon shell expansion, not YAML
 /// env interpolation, controls target directories and rustup availability.

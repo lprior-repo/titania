@@ -83,7 +83,7 @@ impl LocationInner {
 pub struct Location(LocationInner);
 
 impl Location {
-    /// Construct a [`Location::Span`].
+    /// Construct a [`Location`] from a workspace root file path.
     ///
     /// # Errors
     /// - [`LocationError::LineStartBeforeOne`] if `line_start < 1`.
@@ -103,25 +103,25 @@ impl Location {
         Ok(Self(LocationInner::Span { file, line_start, col_start, line_end, col_end }))
     }
 
-    /// Construct a [`Location::Dependency`].
+    /// Construct a [`Location`] for a foreign dependency reference.
     #[must_use]
     pub const fn dependency(crate_name: String, version: String) -> Self {
         Self(LocationInner::Dependency { crate_name, version })
     }
 
-    /// Construct a [`Location::Manifest`].
+    /// Construct a [`Location`] for a `Cargo.toml` manifest reference.
     #[must_use]
     pub const fn manifest(file: WorkspacePath) -> Self {
         Self(LocationInner::Manifest { file })
     }
 
-    /// Construct a [`Location::Workspace`].
+    /// Construct a [`Location`] at the workspace level (no specific file).
     #[must_use]
     pub const fn workspace() -> Self {
         Self(LocationInner::Workspace)
     }
 
-    /// Construct a [`Location::Tool`].
+    /// Construct a [`Location`] for a tooling-produced finding.
     #[must_use]
     pub const fn tool(name: String, version: String) -> Self {
         Self(LocationInner::Tool { name, version })

@@ -202,7 +202,7 @@ pub enum RepairHintError {
     EmptyRange,
 }
 
-/// Errors produced by [`crate::Finding::new`].
+/// Errors produced by [`crate::Finding`] construction.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum FindingError {
     /// Finding location failed validation.

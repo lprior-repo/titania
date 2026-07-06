@@ -1,7 +1,7 @@
 //! Embedded ast-grep lane runner.
 //!
 //! The v1 lane parses every source file with the real ast-grep Rust
-//! engine ([`engine::AstEngine`]), runs the embedded rule YAML catalog,
+//! engine, the embedded ast-grep Rust driver, runs the embedded rule YAML catalog,
 //! and emits typed [`LaneOutcome`] values. It does not shell out to an
 //! `ast-grep` binary.
 

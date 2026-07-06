@@ -275,6 +275,7 @@ tasks:
       - '@globs(sources)'
     outputs:
       - 'target/release/titania-check'
+      - '.titania/out/release/build.json'
 
   gate-edit:
     command: 'cargo run --quiet -p titania-check -- aggregate --scope edit'

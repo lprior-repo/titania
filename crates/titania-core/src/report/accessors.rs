@@ -20,7 +20,7 @@ use crate::{
 };
 
 impl Report {
-    /// Create a [`Report::Reject`], validating the invariant.
+    /// Create a [`Report`] in the reject state, validating the invariant.
     ///
     /// # Errors
     /// - [`ReportError::EmptyReject`] if both `code_findings` and
@@ -34,7 +34,7 @@ impl Report {
         Ok(Self(ReportInner::Reject { code_findings, gate_failures, per_lane }))
     }
 
-    /// Create a [`Report::Pass`].
+    /// Create a [`Report`] in the pass state.
     ///
     /// # Errors
     /// - [`ReportError::EmptyPerLane`] if `per_lane` is empty.
@@ -50,13 +50,13 @@ impl Report {
         Ok(Self(ReportInner::Pass { receipt, per_lane }))
     }
 
-    /// Create a [`Report::PolicyError`].
+    /// Create a [`Report`] in the policy-error state.
     #[must_use]
     pub const fn policy_error(diagnostics: Box<[PolicyDiagnostic]>) -> Self {
         Self(ReportInner::PolicyError { diagnostics })
     }
 
-    /// Create a [`Report::InputError`].
+    /// Create a [`Report`] in the input-error state.
     #[must_use]
     pub const fn input_error(diagnostics: Box<[InputDiagnostic]>) -> Self {
         Self(ReportInner::InputError { diagnostics })
