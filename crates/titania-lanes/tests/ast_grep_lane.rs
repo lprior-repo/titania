@@ -264,29 +264,17 @@ fn ast_grep_lane_findings_outcome_serializes_with_variant_and_findings() -> Test
     let finding_1 = Finding::reject(
         Lane::AstGrep,
         RuleId::new("FUNC_PRINT_STDOUT").unwrap(),
-        Location::Span {
-            file: WorkspacePath::new("src/main.rs").unwrap(),
-            line_start: 12,
-            col_start: 5,
-            line_end: 12,
-            col_end: 25,
-        },
+        Location::span(WorkspacePath::new("src/main.rs").unwrap(), 12, 5, 12, 25).unwrap(),
         "Found `println!` in production source".into(),
-        RepairHint::RequiresHumanReview { note: "Replace with tracing".into() },
+        RepairHint::requires_human_review("Replace with tracing".into()),
     );
 
     let finding_2 = Finding::reject(
         Lane::AstGrep,
         RuleId::new("BYPASS_ALLOW_ATTR").unwrap(),
-        Location::Span {
-            file: WorkspacePath::new("src/lib.rs").unwrap(),
-            line_start: 1,
-            col_start: 1,
-            line_end: 1,
-            col_end: 30,
-        },
+        Location::span(WorkspacePath::new("src/lib.rs").unwrap(), 1, 1, 1, 30).unwrap(),
         "Found `#[allow(...)]` suppression".into(),
-        RepairHint::RemoveAllowAttribute { attr: "allow(clippy::unwrap_used)".into() },
+        RepairHint::remove_allow_attribute("allow(clippy::unwrap_used)".into()),
     );
 
     // Construct a LaneOutcome::Findings manually to verify the shape.
@@ -702,6 +690,8 @@ fn all_rule_fixture_paths() -> Vec<PathBuf> {
         "functional/func_loops_for_violation.rs",
         "functional/func_loops_while_violation.rs",
         "functional/func_loops_loop_violation.rs",
+        "functional/func_nesting_depth_violation.rs",
+        "functional/func_recursion_direct_violation.rs",
         "functional/func_print_stdout_violation.rs",
         "functional/func_print_stderr_violation.rs",
         "functional/func_wildcard_import_violation.rs",

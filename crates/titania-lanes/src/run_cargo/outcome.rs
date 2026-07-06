@@ -109,8 +109,8 @@ fn core_finding(lane: CargoLane, finding: &Finding) -> CoreFinding {
     CoreFinding::reject(
         core_lane(lane),
         finding.rule().clone(),
-        Location::Workspace,
+        Location::workspace(),
         finding.message().to_owned(),
-        RepairHint::RequiresHumanReview { note: finding.path().to_owned() },
+        RepairHint::requires_human_review(finding.path().to_owned()),
     )
 }

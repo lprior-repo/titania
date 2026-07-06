@@ -7,11 +7,13 @@ pub mod aggregate;
 pub mod args;
 pub mod doctor;
 pub mod explain;
+pub mod moon;
 
 use std::{env, io, io::Write, process::ExitCode};
 
 use args::{Cli, Command};
 use titania_core::{GateScope, Lane, RuleId};
+use titania_lanes::LaneExit;
 
 const EXIT_PASS: u8 = 0;
 const EXIT_REJECT: u8 = 1;
@@ -29,21 +31,46 @@ where
 {
     match Cli::parse_from_os(args) {
         Ok(cli) => dispatch(cli),
+        Err(error) if error.is_help() => CliDisposition::report(error.diagnostic(), EXIT_PASS),
         Err(error) => CliDisposition::input_error(error.diagnostic()),
     }
 }
 
 fn dispatch(cli: Cli) -> CliDisposition {
     match cli.command {
-        Command::Check(options) => {
-            aggregate_with_opts(options.scope, options.emit(), options.out())
-        }
+        Command::Check(options) => check_with_moon(&options),
         Command::Aggregate(options) => {
             aggregate_with_opts(options.scope, options.emit(), options.out())
         }
         Command::RunLane { lane } => run_lane(lane),
         Command::Doctor(options) => doctor_scope(options.scope, options.emit()),
         Command::Explain { rule_id } => explain_rule(&rule_id),
+    }
+}
+
+/// Drive `Command::Check` through Moon (spec §12, §13).
+///
+/// Builds the moon task list for the scope, spawns `moon run <tasks...>` with
+/// stderr inherited so the user sees lane progress, then runs the in-process
+/// aggregate (`aggregate::report_json`) with the user's `--emit`/`--out` flags.
+/// Individual lane outcomes are read from the artifacts Moon's tasks wrote. A
+/// missing `moon` binary surfaces as `InputError(3)`; an unreadable artifact or
+/// spawn failure (other than `NotFound`) surfaces as `InternalError(>=4)`.
+fn check_with_moon(options: &args::CheckOptions) -> CliDisposition {
+    let scope = options.scope;
+    let emit = options.emit();
+    let out = options.out();
+    let moon_bin = moon::binary_path();
+    let tasks = moon::tasks_for_scope(scope);
+    match moon::spawn(&moon_bin, &tasks) {
+        Ok(()) => aggregate_with_opts(scope, emit, out),
+        Err(moon::MoonSpawnError::NotFound) => CliDisposition::input_error(format!(
+            "InputError: {}",
+            moon::MISSING_INSTALL_HINT
+        )),
+        Err(moon::MoonSpawnError::Failed(error)) => CliDisposition::internal_error(format!(
+            "InternalError: moon spawn failed: {error}"
+        )),
     }
 }
 
@@ -118,7 +145,17 @@ const fn report_code(status: aggregate::ReportStatus) -> u8 {
 
 fn run_lane(lane: Lane) -> CliDisposition {
     let execution = titania_lanes::run_lane::execute_lane(lane);
-    CliDisposition::lane_execution(execution.exit().as_u8(), execution.stderr())
+    CliDisposition::lane_execution(map_lane_exit(execution.exit()), execution.stderr())
+}
+
+/// Map lane exit disposition to a stable process exit code.
+const fn map_lane_exit(exit: LaneExit) -> u8 {
+    match exit {
+        LaneExit::Clean | LaneExit::NotApplicable => EXIT_PASS,
+        LaneExit::Violations => EXIT_REJECT,
+        LaneExit::Usage => EXIT_INPUT_ERROR,
+        LaneExit::Failure => EXIT_INTERNAL_ERROR,
+    }
 }
 
 fn doctor_scope(scope: GateScope, emit: args::EmitFormat) -> CliDisposition {

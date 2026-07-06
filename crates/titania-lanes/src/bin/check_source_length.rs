@@ -10,7 +10,9 @@
 
 use std::path::Path;
 
-use titania_lanes::{LaneExit, LaneReport, RuleIdError, current_target_project, exit};
+use titania_lanes::{
+    LaneExit, LaneReport, RuleIdError, current_target_project, exit, helpers::WalkError,
+};
 
 #[path = "check_source_length/compile_split.rs"]
 /// Legacy compile-split layout checks.
@@ -34,6 +36,22 @@ pub mod source_limit;
 const FN_LINE_LIMIT: usize = 25;
 const SOURCE_LINE_LIMIT: usize = 300;
 const LEDGER_PATH: &str = ".config/source-length-exceptions.txt";
+/// Error type for check-source-length subchecks.
+#[derive(Debug, thiserror::Error)]
+pub enum CheckSourceLengthError {
+    /// Rule identifier construction failed.
+    #[error("rule id error: {0}")]
+    RuleId(#[from] RuleIdError),
+    /// File system I/O error.
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+    /// Directory walk failed.
+    #[error(transparent)]
+    Walk(#[from] WalkError),
+    /// Cargo-mutants residue subcheck failed.
+    #[error(transparent)]
+    Mutants(#[from] mutants::MutantsError),
+}
 
 fn main() -> std::process::ExitCode {
     let target = match current_target_project() {
@@ -48,26 +66,26 @@ fn main() -> std::process::ExitCode {
     let mut report = LaneReport::new();
     if let Err(error) = run(target.as_std_path(), &mut report) {
         return exit_after_stderr_line(
-            format_args!("[check-source-length] rule id configuration error: {error}"),
+            format_args!("[check-source-length] check failed: {error}"),
             LaneExit::Failure,
         );
     }
     print_and_exit(&report)
 }
 
-/// Run all source-length checks.
+/// Execute all check-source-length subchecks.
 ///
 /// # Errors
 ///
-/// Returns a rule-id construction error from any source-length subcheck.
-fn run(root: &Path, report: &mut LaneReport) -> Result<(), RuleIdError> {
+/// Returns `CheckSourceLengthError` when any subcheck fails.
+fn run(root: &Path, report: &mut LaneReport) -> Result<(), CheckSourceLengthError> {
     mutants::check_mutants_residue(root, report)?;
     compile_split::check_compile_split_sources(root, report)?;
-    let tracked = paths::tracked_rust_files(root);
+    let tracked = paths::tracked_rust_files(root)?;
     let exceptions = ledger::load_ledger(root, report)?;
-    if let Some(files) = tracked.as_deref() {
-        source_limit::check_source_line_limit(root, files, &exceptions, report)?;
-        check_hot_functions(root, files, report)?;
+    if !tracked.is_empty() {
+        source_limit::check_source_line_limit(root, &tracked, &exceptions, report)?;
+        check_hot_functions(root, &tracked, report)?;
     }
     Ok(())
 }

@@ -6,10 +6,16 @@ use titania_core::{GateScope, Lane, RuleId};
 
 use super::{
     AggregateOptions, AggregateState, CheckOptions, Cli, CliError, Command, DoctorOptions,
-    EmitFormat, ValueTail,
+    EmitFormat, USAGE, ValueTail,
 };
 
 /// Parse OS arguments into a typed CLI invocation.
+///
+/// `--help`, `-h`, and the `help` subcommand are handled eagerly before strict
+/// flag validation: any of these tokens (anywhere in the top-level position, or
+/// immediately after a known subcommand) yields [`CliError::HelpRequested`]
+/// carrying the rendered [`USAGE`] text. The caller routes that variant to
+/// stdout with exit code 0.
 ///
 /// # Errors
 ///
@@ -40,16 +46,56 @@ fn collect_utf8<I: IntoIterator<Item = OsString>>(args: I) -> Result<Vec<String>
 /// Returns [`CliError`] when this stage receives missing, extra, invalid,
 /// or unsupported CLI input.
 fn parse_command(args: &[String]) -> Result<Cli, CliError> {
-    match args.split_first() {
-        None => Ok(Cli { command: Command::Check(CheckOptions::default()) }),
-        Some((head, tail)) if head == "check" => parse_check(tail),
-        Some((head, tail)) if head == "run-lane" => parse_run_lane(tail),
-        Some((head, tail)) if head == "aggregate" => parse_aggregate(tail),
-        Some((head, tail)) if head == "doctor" => parse_doctor(tail),
-        Some((head, tail)) if head == "explain" => parse_explain(tail),
-        Some((head, _)) if head.starts_with('-') => parse_check(args),
-        Some((head, _)) => Err(CliError::UnknownSubcommand(head.clone())),
+    let Some((head, tail)) = args.split_first() else {
+        return Ok(Cli { command: Command::Check(CheckOptions::default()) });
+    };
+    if is_top_level_help(head) {
+        return help_request();
     }
+    parse_subcommand(head, tail, args)
+}
+
+/// Dispatch a recognized subcommand or fall back to check/default-flag handling.
+///
+/// # Errors
+///
+/// Returns [`CliError`] for unknown subcommands or per-subcommand parse errors.
+fn parse_subcommand(head: &str, tail: &[String], full_args: &[String]) -> Result<Cli, CliError> {
+    match head {
+        "check" => parse_check(tail),
+        "run-lane" => parse_run_lane(tail),
+        "aggregate" => parse_aggregate(tail),
+        "doctor" => parse_doctor(tail),
+        "explain" => parse_explain(tail),
+        candidate if candidate.starts_with('-') => parse_check(full_args),
+        _ => Err(CliError::UnknownSubcommand(head.to_owned())),
+    }
+}
+
+/// Return `true` when `token` is a top-level help request.
+fn is_top_level_help(token: &str) -> bool {
+    matches!(token, "--help" | "-h" | "help")
+}
+
+/// Return `true` when `token` is a subcommand-level help flag (`--help` or `-h`).
+fn is_help_flag(token: &str) -> bool {
+    matches!(token, "--help" | "-h")
+}
+
+/// Build the [`CliError::HelpRequested`] variant carrying the static usage text.
+///
+/// # Errors
+///
+/// Always returns [`Err`](`Result::Err`) with [`CliError::HelpRequested`]; the
+/// `Result` wrapper exists so callers can `return help_request()` directly from
+/// other `Result<Cli, CliError>` parsers.
+fn help_request() -> Result<Cli, CliError> {
+    Err(help_request_error())
+}
+
+/// Build the [`CliError::HelpRequested`] value carrying the static usage text.
+fn help_request_error() -> CliError {
+    CliError::HelpRequested(String::from(USAGE))
 }
 
 /// Parse one CLI argument stage.
@@ -72,6 +118,7 @@ fn parse_check(args: &[String]) -> Result<Cli, CliError> {
 fn parse_check_options(args: &[String], options: CheckOptions) -> Result<CheckOptions, CliError> {
     match args.split_first() {
         None => Ok(options),
+        Some((flag, _)) if is_help_flag(flag) => Err(help_request_error()),
         Some((flag, tail)) if flag == "--scope" => parse_check_scope(tail, options),
         Some((flag, tail)) if flag == "--emit" => parse_check_emit(tail, options),
         Some((flag, tail)) if flag == "--out" => parse_check_out(tail, &options),
@@ -150,6 +197,7 @@ fn parse_aggregate_options(
 ) -> Result<AggregateState, CliError> {
     match args.split_first() {
         None => Ok(state),
+        Some((flag, _)) if is_help_flag(flag) => Err(help_request_error()),
         Some((flag, tail)) if flag == "--scope" => parse_aggregate_scope(tail, state),
         Some((flag, tail)) if flag == "--emit" => parse_aggregate_emit(tail, state),
         Some((flag, tail)) if flag == "--out" => parse_aggregate_out(tail, &state),
@@ -233,6 +281,7 @@ fn parse_doctor_options(
 ) -> Result<DoctorOptions, CliError> {
     match args.split_first() {
         None => Ok(options),
+        Some((flag, _)) if is_help_flag(flag) => Err(help_request_error()),
         Some((flag, tail)) if flag == "--scope" => parse_doctor_scope(tail, options),
         Some((flag, tail)) if flag == "--emit" => parse_doctor_emit(tail, options),
         Some((flag, _)) if flag.starts_with('-') => Err(CliError::UnknownFlag(flag.clone())),
@@ -275,6 +324,7 @@ fn parse_doctor_emit(args: &[String], options: DoctorOptions) -> Result<DoctorOp
 fn parse_explain(args: &[String]) -> Result<Cli, CliError> {
     match args.split_first() {
         None => Err(CliError::MissingRuleId),
+        Some((flag, _)) if is_help_flag(flag) => help_request(),
         Some((rule_id, [])) => {
             parse_rule_id(rule_id).map(|rule_id| Cli { command: Command::Explain { rule_id } })
         }
@@ -291,6 +341,7 @@ fn parse_explain(args: &[String]) -> Result<Cli, CliError> {
 fn parse_run_lane(args: &[String]) -> Result<Cli, CliError> {
     match args.split_first() {
         None => Err(CliError::MissingLaneName),
+        Some((flag, _)) if is_help_flag(flag) => help_request(),
         Some((lane, [])) => parse_lane(lane).map(|lane| Cli { command: Command::RunLane { lane } }),
         Some((_, tail)) => extra_arg("run-lane", tail),
     }

@@ -5,8 +5,8 @@
 //! and returns a vector of `(Lane, LaneOutcome)` tuples in scope order.
 //!
 //! Missing artifact files are not fatal to aggregation: the missing lane is
-//! returned as `LaneOutcome::Failed(LaneFailure::Infra { reason:
-//! "output file missing" })` so the final report records a gate failure instead
+//! returned as `LaneOutcome::Failed { failure: LaneFailure::Infra { reason:
+//! "output file missing" } }` so the final report records a gate failure instead
 //! of silently skipping or aborting.
 //!
 //! # Errors
@@ -16,10 +16,8 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
-use serde_json::Value;
 use thiserror::Error;
-use titania_core::{GateScope, Lane, LaneFailure, LaneOutcome};
+use titania_core::{GateScope, Lane, LaneArtifact, LaneFailure, LaneOutcome};
 
 /// Errors returned by the lane-artifact reader.
 #[derive(Debug, Error)]
@@ -48,13 +46,6 @@ pub enum ReaderError {
     },
 }
 
-/// One deserialised lane-artifact record (flexible outcome shape).
-#[derive(Debug, Deserialize)]
-struct LaneArtifact {
-    lane: Lane,
-    outcome: Value,
-}
-
 /// Result of reading lane artifacts for a [`GateScope`].
 pub type ReaderResult = Result<Vec<(Lane, LaneOutcome)>, ReaderError>;
 
@@ -64,7 +55,7 @@ pub type ReaderResult = Result<Vec<(Lane, LaneOutcome)>, ReaderError>;
 ///
 /// # Errors
 ///
-/// Returns one [`LaneOutcome::Failed`] per missing lane output, preserving scope
+/// Returns one [`LaneOutcome::Failed { .. }`] per missing lane output, preserving scope
 /// order. Returns [`ReaderError::InputError`] when an existing artifact cannot be
 /// read, parsed, or matched to its lane, and [`ReaderError::UnsupportedScope`]
 /// [`ReaderError::UnsupportedScope`] for future gate-scope variants unknown to
@@ -80,7 +71,7 @@ pub fn read_lane_artifacts(target_root: &Path, scope: GateScope) -> ReaderResult
 ///
 /// # Errors
 ///
-/// Returns [`LaneOutcome::Failed`] when the lane output file is missing, or
+/// Returns [`LaneOutcome::Failed { .. }`] when the lane output file is missing, or
 /// [`ReaderError::InputError`] when the file cannot be read, decoded as JSON,
 /// deserialized as a [`LaneOutcome`], or its embedded lane name does not match
 /// match the expected `lane`.
@@ -93,20 +84,22 @@ fn read_one(out_dir: &Path, lane: Lane) -> Result<(Lane, LaneOutcome), ReaderErr
         ReaderError::InputError { lane, cause: format!("malformed JSON for {lane}: {err}") }
     })?;
 
-    if artifact.lane != lane {
+    let artifact_lane = artifact.lane();
+    if artifact_lane != lane {
         return Err(ReaderError::InputError {
             lane,
-            cause: format!("lane mismatch in artifact: expected {lane}, got {}", artifact.lane),
+            cause: format!("lane mismatch in artifact: expected {lane}, got {artifact_lane}"),
         });
     }
 
-    let outcome: LaneOutcome =
-        serde_json::from_value(artifact.outcome).map_err(|err| ReaderError::InputError {
+    let outcome: LaneOutcome = artifact.into_outcome().into_lane_outcome().map_err(|err| {
+        ReaderError::InputError {
             lane,
             cause: format!("failed to parse outcome for {lane}: {err}"),
-        })?;
+        }
+    })?;
 
-    Ok((artifact.lane, outcome))
+    Ok((artifact_lane, outcome))
 }
 
 /// Read a lane artifact file.
@@ -138,10 +131,12 @@ fn read_file_error(lane: Lane, err: &std::io::Error) -> Result<Option<String>, R
 }
 
 fn missing_lane_outcome(lane: Lane) -> LaneOutcome {
-    LaneOutcome::Failed(LaneFailure::Infra {
-        tool: lane.name().to_owned(),
-        reason: "output file missing".to_owned(),
-    })
+    LaneOutcome::Failed {
+        failure: LaneFailure::Infra {
+            tool: lane.name().to_owned(),
+            reason: "output file missing".to_owned(),
+        },
+    }
 }
 /// Return the output directory name for a gate scope.
 ///

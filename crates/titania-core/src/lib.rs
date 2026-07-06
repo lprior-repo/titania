@@ -20,6 +20,7 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
+mod artifact;
 mod diagnostic;
 mod digest;
 mod discover;
@@ -39,13 +40,14 @@ mod text_range;
 mod v1_receipt;
 mod workspace_path;
 
+pub use artifact::{ArtifactOutcome, ArtifactVariant, LaneArtifact};
 pub use diagnostic::{DiagnosticSeverity, InputDiagnostic, PolicyDiagnostic};
 pub use digest::Digest;
 pub use discover::discover_target;
 pub use error::{
-    CoreError, DigestError, FailureError, FindingError, GateScopeError, LaneError, LocationError,
-    OutcomeError, ReceiptError, RepairHintError, ReportError, RuleIdError, TargetProjectError,
-    TextRangeError, WorkspacePathError,
+    ArtifactError, CoreError, DigestError, FailureError, FindingError, GateScopeError, LaneError,
+    LocationError, OutcomeError, ReceiptError, RepairHintError, ReportError, RuleIdError,
+    TargetProjectError, TextRangeError, WorkspacePathError,
 };
 pub use failure::{LaneFailure, ProcessTermination};
 pub use finding::{Finding, FindingEffect, Location, RepairHint};
@@ -53,10 +55,10 @@ pub use gate_scope::GateScope;
 pub use lane::Lane;
 pub use outcome::{CommandEvidence, LaneEvidence, LaneOutcome, SkipReason};
 pub use receipt::{
-    LaneDigest, LaneName, RECEIPT_SCHEMA_VERSION, ReceiptDigests, ReceiptEnvelope, ReceiptLaneExit,
-    ReceiptPeriod, RecordedTargetRoot,
+    LaneDigest, LaneName, RECEIPT_ENVELOPE_SCHEMA_VERSION, ReceiptDigests, ReceiptEnvelope,
+    ReceiptLaneExit, ReceiptPeriod, RecordedTargetRoot,
 };
-pub use report::{PerLaneEntry, RejectKind, Report};
+pub use report::{PerLaneEntry, RejectKind, Report, ReportKind};
 pub use rule_id::RuleId;
 pub use target_project::TargetProject;
 pub use text_range::TextRange;

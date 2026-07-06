@@ -73,7 +73,9 @@ fn informational_outcome(lane: Lane) -> LaneOutcome {
 
 /// Minimal helper: build a `LaneOutcome::Failed` with an infra failure.
 fn infra_failure_outcome(tool: &str, reason: &str) -> LaneOutcome {
-    LaneOutcome::Failed(LaneFailure::Infra { tool: tool.into(), reason: reason.into() })
+    LaneOutcome::Failed {
+        failure: LaneFailure::Infra { tool: tool.into(), reason: reason.into() },
+    }
 }
 
 /// Minimal helper: build a skipped outcome.
@@ -115,9 +117,9 @@ fn code_findings_yield_reject_codonly() {
             .enumerate()
             .map(|(index, lane)| {
                 if index == 0 {
-                    titania_core::PerLaneEntry { lane, outcome: findings_outcome(lane) }
+                    titania_core::PerLaneEntry::new(lane, findings_outcome(lane))
                 } else {
-                    titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) }
+                    titania_core::PerLaneEntry::new(lane, clean_outcome(lane))
                 }
             })
             .collect::<Vec<_>>(),
@@ -129,23 +131,21 @@ fn code_findings_yield_reject_codonly() {
         .expect("report assembled");
 
     // Must be a Reject, not Pass.
-    match &report {
-        titania_core::Report::Reject { code_findings, gate_failures, .. } => {
-            assert!(!code_findings.is_empty(), "code_findings must be non-empty");
-            assert!(gate_failures.is_empty(), "gate_failures must be empty for CodeOnly");
+    assert!(report.is_reject(), "report must be Reject");
+    let code_findings = report.code_findings().expect("Reject must have code_findings");
+    let gate_failures = report.gate_failures().expect("Reject must have gate_failures");
+    assert!(!code_findings.is_empty(), "code_findings must be non-empty");
+    assert!(gate_failures.is_empty(), "gate_failures must be empty for CodeOnly");
 
-            assert_eq!(
-                report.reject_kind(),
-                Some(titania_core::RejectKind::CodeOnly),
-                "RejectKind must be CodeOnly"
-            );
+    assert_eq!(
+        report.reject_kind(),
+        Some(titania_core::RejectKind::CodeOnly),
+        "RejectKind must be CodeOnly"
+    );
 
-            assert_eq!(code_findings.len(), 1);
-            assert_eq!(code_findings[0].message(), "lint violation");
-            assert_eq!(code_findings[0].lane(), Lane::Fmt);
-        }
-        other => panic!("expected Report::Reject, got {:?}", other),
-    }
+    assert_eq!(code_findings.len(), 1);
+    assert_eq!(code_findings[0].message(), "lint violation");
+    assert_eq!(code_findings[0].lane(), Lane::Fmt);
 }
 
 // ── Test 2: gate failures produce Reject with GateOnly ──────────────────────
@@ -161,12 +161,12 @@ fn gate_failures_yield_reject_gateonly() {
             .enumerate()
             .map(|(index, lane)| {
                 if index == 0 {
-                    titania_core::PerLaneEntry {
+                    titania_core::PerLaneEntry::new(
                         lane,
-                        outcome: infra_failure_outcome("clippy", "binary not found"),
-                    }
+                        infra_failure_outcome("clippy", "binary not found"),
+                    )
                 } else {
-                    titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) }
+                    titania_core::PerLaneEntry::new(lane, clean_outcome(lane))
                 }
             })
             .collect::<Vec<_>>(),
@@ -177,22 +177,19 @@ fn gate_failures_yield_reject_gateonly() {
     let report = assemble_report(scope, outcomes, test_receipt(scope), policy_diags, input_diags)
         .expect("report assembled");
 
-    match &report {
-        titania_core::Report::Reject { code_findings, gate_failures, .. } => {
-            assert!(code_findings.is_empty(), "code_findings must be empty for GateOnly");
-            assert_eq!(gate_failures.len(), 1, "must have one gate failure");
-            assert!(gate_failures[0].is_infra(), "failure must be infra type");
+    assert!(report.is_reject(), "report must be Reject");
+    let code_findings = report.code_findings().expect("Reject must have code_findings");
+    let gate_failures = report.gate_failures().expect("Reject must have gate_failures");
+    assert!(code_findings.is_empty(), "code_findings must be empty for GateOnly");
+    assert_eq!(gate_failures.len(), 1, "must have one gate failure");
+    assert!(gate_failures[0].is_infra(), "failure must be infra type");
 
-            assert_eq!(
-                report.reject_kind(),
-                Some(titania_core::RejectKind::GateOnly),
-                "RejectKind must be GateOnly"
-            );
-        }
-        other => panic!("expected Report::Reject, got {:?}", other),
-    }
+    assert_eq!(
+        report.reject_kind(),
+        Some(titania_core::RejectKind::GateOnly),
+        "RejectKind must be GateOnly"
+    );
 }
-
 // ── Test 3: both findings and failures produce Reject with Mixed ────────────
 
 #[test]
@@ -205,12 +202,12 @@ fn both_findings_and_failures_yield_reject_mixed() {
             .copied()
             .enumerate()
             .map(|(index, lane)| match index {
-                0 => titania_core::PerLaneEntry { lane, outcome: findings_outcome(lane) },
-                1 => titania_core::PerLaneEntry {
+                0 => titania_core::PerLaneEntry::new(lane, findings_outcome(lane)),
+                1 => titania_core::PerLaneEntry::new(
                     lane,
-                    outcome: infra_failure_outcome("dylint", "ABI mismatch"),
-                },
-                _ => titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) },
+                    infra_failure_outcome("dylint", "ABI mismatch"),
+                ),
+                _ => titania_core::PerLaneEntry::new(lane, clean_outcome(lane)),
             })
             .collect::<Vec<_>>(),
     );
@@ -220,18 +217,16 @@ fn both_findings_and_failures_yield_reject_mixed() {
     let report = assemble_report(scope, outcomes, test_receipt(scope), policy_diags, input_diags)
         .expect("report assembled");
 
-    match &report {
-        titania_core::Report::Reject { code_findings, gate_failures, .. } => {
-            assert_eq!(
-                report.reject_kind(),
-                Some(titania_core::RejectKind::Mixed),
-                "RejectKind must be Mixed"
-            );
-            assert_eq!(code_findings.len(), 1, "must contain the code finding");
-            assert_eq!(gate_failures.len(), 1, "must contain the infra failure");
-        }
-        other => panic!("expected Report::Reject, got {:?}", other),
-    }
+    assert!(report.is_reject(), "report must be Reject");
+    let code_findings = report.code_findings().expect("Reject must have code_findings");
+    let gate_failures = report.gate_failures().expect("Reject must have gate_failures");
+    assert_eq!(
+        report.reject_kind(),
+        Some(titania_core::RejectKind::Mixed),
+        "RejectKind must be Mixed"
+    );
+    assert_eq!(code_findings.len(), 1, "must contain the code finding");
+    assert_eq!(gate_failures.len(), 1, "must contain the infra failure");
 }
 
 // ── Test 4: Pass when every scope lane is Clean + valid receipt ─────────────
@@ -244,27 +239,22 @@ fn all_scope_lanes_clean_yields_pass() {
             .lanes()
             .iter()
             .copied()
-            .map(|lane| titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) })
+            .map(|lane| titania_core::PerLaneEntry::new(lane, clean_outcome(lane)))
             .collect::<Vec<_>>(),
     );
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([]);
     let input_diags: Box<[InputDiagnostic]> = Box::from([]);
     let receipt = test_receipt(scope);
 
-    let report = assemble_report(scope, outcomes, receipt, policy_diags, input_diags)
-        .expect("report assembled");
+    let report = assemble_report(scope, outcomes, receipt, policy_diags, input_diags).unwrap();
 
-    match &report {
-        titania_core::Report::Pass { per_lane, .. } => {
-            assert_eq!(per_lane.len(), scope.lanes().len());
-            for outcome in per_lane.iter() {
-                assert!(outcome.outcome.is_pass());
-            }
-        }
-        other => panic!("expected Report::Pass, got {:?}", other),
+    assert!(report.is_pass(), "report must be Pass");
+    let per_lane = report.per_lane().expect("Pass must have per_lane");
+    assert_eq!(per_lane.len(), scope.lanes().len());
+    for outcome in per_lane.iter() {
+        assert!(outcome.outcome().is_pass());
     }
 }
-
 // ── Test 5: skipped lanes do not prevent Pass ───────────────────────────────
 
 #[test]
@@ -277,9 +267,9 @@ fn skipped_lanes_do_not_prevent_pass() {
         .enumerate()
         .map(|(index, lane)| {
             if index == 0 {
-                titania_core::PerLaneEntry { lane, outcome: skipped_outcome() }
+                titania_core::PerLaneEntry::new(lane, skipped_outcome())
             } else {
-                titania_core::PerLaneEntry { lane, outcome: clean_outcome(lane) }
+                titania_core::PerLaneEntry::new(lane, clean_outcome(lane))
             }
         })
         .collect::<Vec<_>>();
@@ -292,10 +282,7 @@ fn skipped_lanes_do_not_prevent_pass() {
     let report = assemble_report(scope, outcomes, receipt, policy_diags, input_diags)
         .expect("report assembled");
 
-    match &report {
-        titania_core::Report::Pass { .. } => {}
-        other => panic!("expected Report::Pass (skipped lanes ok), got {:?}", other),
-    }
+    assert!(report.is_pass(), "report must be Pass (skipped lanes ok)");
 }
 
 // ── Test 6: policy diagnostics produce PolicyError, not Reject ──────────────
@@ -303,10 +290,8 @@ fn skipped_lanes_do_not_prevent_pass() {
 #[test]
 fn policy_diagnostics_yield_policy_error_not_reject() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from([titania_core::PerLaneEntry {
-        lane: Lane::Fmt,
-        outcome: clean_outcome(Lane::Fmt),
-    }]);
+    let outcomes: Box<[titania_core::PerLaneEntry]> =
+        Box::from([titania_core::PerLaneEntry::new(Lane::Fmt, clean_outcome(Lane::Fmt))]);
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([PolicyDiagnostic {
         message: "missing required tool config".into(),
         file: None,
@@ -318,16 +303,10 @@ fn policy_diagnostics_yield_policy_error_not_reject() {
     let report = assemble_report(scope, outcomes, receipt, policy_diags, input_diags)
         .expect("report assembled");
 
-    match &report {
-        titania_core::Report::PolicyError { diagnostics } => {
-            assert_eq!(diagnostics.len(), 1);
-            assert_eq!(diagnostics[0].message, "missing required tool config");
-        }
-        other => panic!(
-            "expected Report::PolicyError, got {:?} (policy diags must not encode into Reject)",
-            other
-        ),
-    }
+    assert!(report.is_policy_error(), "expected PolicyError");
+    let diagnostics = report.policy_diagnostics().expect("PolicyError must have diagnostics");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].message, "missing required tool config");
 }
 
 // ── Test 7: input diagnostics produce InputError, not Reject ────────────────
@@ -335,10 +314,8 @@ fn policy_diagnostics_yield_policy_error_not_reject() {
 #[test]
 fn input_diagnostics_yield_input_error_not_reject() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from([titania_core::PerLaneEntry {
-        lane: Lane::Fmt,
-        outcome: clean_outcome(Lane::Fmt),
-    }]);
+    let outcomes: Box<[titania_core::PerLaneEntry]> =
+        Box::from([titania_core::PerLaneEntry::new(Lane::Fmt, clean_outcome(Lane::Fmt))]);
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([]);
     let input_diags: Box<[InputDiagnostic]> = Box::from([InputDiagnostic::new(
         "invalid gate scope".into(),
@@ -350,16 +327,10 @@ fn input_diagnostics_yield_input_error_not_reject() {
     let report = assemble_report(scope, outcomes, receipt, policy_diags, input_diags)
         .expect("report assembled");
 
-    match &report {
-        titania_core::Report::InputError { diagnostics } => {
-            assert_eq!(diagnostics.len(), 1);
-            assert_eq!(diagnostics[0].message, "invalid gate scope");
-        }
-        other => panic!(
-            "expected Report::InputError, got {:?} (input diags must not encode into Reject)",
-            other
-        ),
-    }
+    assert!(report.is_input_error(), "expected InputError");
+    let diagnostics = report.input_diagnostics().expect("InputError must have diagnostics");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].message, "invalid gate scope");
 }
 
 // ── Test 8: empty outcomes return exact error, never Pass ───────────────────
@@ -399,7 +370,7 @@ fn informational_findings_do_not_reject() {
             .lanes()
             .iter()
             .copied()
-            .map(|lane| titania_core::PerLaneEntry { lane, outcome: informational_outcome(lane) })
+            .map(|lane| titania_core::PerLaneEntry::new(lane, informational_outcome(lane)))
             .collect::<Vec<_>>(),
     );
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([]);
@@ -410,13 +381,7 @@ fn informational_findings_do_not_reject() {
         .expect("report assembled");
 
     // Informational findings should NOT produce Reject — yields Pass with receipt.
-    match &report {
-        titania_core::Report::Pass { .. } => {}
-        other => panic!(
-            "informational findings must NOT reject — expected Report::Pass, got {:?}",
-            other
-        ),
-    }
+    assert!(report.is_pass(), "informational findings must NOT reject");
 }
 
 // ── Test 10: policy diagnostics take precedence over findings ───────────────
@@ -424,10 +389,8 @@ fn informational_findings_do_not_reject() {
 #[test]
 fn policy_diagnostics_precede_findings_in_report() {
     let scope = GateScope::Edit;
-    let outcomes: Box<[titania_core::PerLaneEntry]> = Box::from([titania_core::PerLaneEntry {
-        lane: Lane::Fmt,
-        outcome: findings_outcome(Lane::Fmt),
-    }]);
+    let outcomes: Box<[titania_core::PerLaneEntry]> =
+        Box::from([titania_core::PerLaneEntry::new(Lane::Fmt, findings_outcome(Lane::Fmt))]);
     let policy_diags: Box<[PolicyDiagnostic]> = Box::from([PolicyDiagnostic {
         message: "misconfigured scope".into(),
         file: None,
@@ -441,13 +404,10 @@ fn policy_diagnostics_precede_findings_in_report() {
 
     // PolicyError should take precedence: even though findings exist,
     // the report should be PolicyError, not Reject.
-    match &report {
-        titania_core::Report::PolicyError { .. } => {}
-        other => panic!(
-            "expected Report::PolicyError (policy takes precedence over findings), got {:?}",
-            other
-        ),
-    }
+    assert!(
+        report.is_policy_error(),
+        "expected PolicyError (policy takes precedence over findings)"
+    );
 }
 // ── Test 11: empty outcomes + diagnostics still returns EmptyOutcomes ───────
 

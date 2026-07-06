@@ -25,6 +25,12 @@ fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     let _ = cmd.stdout(Stdio::piped());
     let _ = cmd.stderr(Stdio::piped());
 
+    // Stub Moon via TITANIA_MOON_BIN so `Command::Check` does not invoke the
+    // real moon binary (which would error on tempdirs without `.moon/`).
+    // `/bin/true` exits 0 with any args. The moon-dispatch integration test
+    // (`check_drives_moon_stub` below) sets its own recording stub.
+    let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
+
     // Pass CARGO_TARGET_DIR through as-is so that library_is_available
     // can resolve it relative to the workspace root when walking up
     // from CARGO_MANIFEST_DIR.  Converting to absolute here would
@@ -451,23 +457,19 @@ fn mixed_report_separates_code_findings_from_gate_failures() {
 
     // Then: reject_kind is Mixed
     let report = report.expect("must deserialize Reject from JSON");
-    match &report {
-        titania_core::Report::Reject { code_findings, gate_failures, .. } => {
-            assert_eq!(code_findings.len(), 2, "must have 2 code findings");
-            assert_eq!(gate_failures.len(), 1, "must have 1 gate failure");
-        }
-        other => panic!("expected Reject, got variant: {other:?}"),
-    }
+    assert!(report.is_reject(), "must be Reject");
+    let code_findings = report.code_findings().expect("Reject must have code_findings");
+    let gate_failures = report.gate_failures().expect("Reject must have gate_failures");
+    assert_eq!(code_findings.len(), 2, "must have 2 code findings");
+    assert_eq!(gate_failures.len(), 1, "must have 1 gate failure");
 
     let kind = report.reject_kind().expect("reject must have reject_kind");
     assert_eq!(kind, titania_core::RejectKind::Mixed, "reject_kind must be Mixed");
 
     // Functional lanes only in code_findings
-    let code_lanes: Vec<&str> = match &report {
-        titania_core::Report::Reject { code_findings: cf, .. } => {
-            cf.iter().map(|f| f.lane().name()).collect()
-        }
-        _ => panic!("expected Reject report for mixed test"),
+    let code_lanes: Vec<&str> = {
+        let cf = report.code_findings().expect("Reject must have code_findings");
+        cf.iter().map(|f| f.lane().name()).collect()
     };
 
     // Functional lanes: AstGrep, Clippy (not infrastructure-only lanes)
@@ -505,13 +507,11 @@ fn report_reject_gate_only() {
     let kind = report.reject_kind().expect("reject must have reject_kind");
     assert_eq!(kind, titania_core::RejectKind::GateOnly, "reject_kind must be GateOnly");
 
-    match &report {
-        titania_core::Report::Reject { code_findings, gate_failures, .. } => {
-            assert_eq!(code_findings.len(), 0, "code_findings must be empty");
-            assert_eq!(gate_failures.len(), 1, "gate_failures must have 1 entry");
-        }
-        other => panic!("expected Reject, got variant: {other:?}"),
-    }
+    assert!(report.is_reject(), "must be Reject");
+    let code_findings = report.code_findings().expect("Reject must have code_findings");
+    let gate_failures = report.gate_failures().expect("Reject must have gate_failures");
+    assert_eq!(code_findings.len(), 0, "code_findings must be empty");
+    assert_eq!(gate_failures.len(), 1, "gate_failures must have 1 entry");
 }
 
 /// B14: Mixed — one code finding + one gate failure → RejectKind::Mixed.
@@ -549,13 +549,11 @@ fn report_reject_mixed() {
     let kind = report.reject_kind().expect("reject must have reject_kind");
     assert_eq!(kind, titania_core::RejectKind::Mixed, "reject_kind must be Mixed");
 
-    match &report {
-        titania_core::Report::Reject { code_findings, gate_failures, .. } => {
-            assert_eq!(code_findings.len(), 1, "must have 1 code finding");
-            assert_eq!(gate_failures.len(), 1, "must have 1 gate failure");
-        }
-        other => panic!("expected Reject, got variant: {other:?}"),
-    }
+    assert!(report.is_reject(), "must be Reject");
+    let code_findings = report.code_findings().expect("Reject must have code_findings");
+    let gate_failures = report.gate_failures().expect("Reject must have gate_failures");
+    assert_eq!(code_findings.len(), 1, "must have 1 code finding");
+    assert_eq!(gate_failures.len(), 1, "must have 1 gate failure");
 }
 
 // ---------------------------------------------------------------------------
@@ -629,4 +627,93 @@ mod fixtures {
         }
         Ok(())
     }
+}
+
+// ---------------------------------------------------------------------------
+// Integration: Command::Check drives Moon (spec §12, §13)
+// ---------------------------------------------------------------------------
+
+/// `Command::Check` must invoke Moon before aggregating. Proven by pointing
+/// `TITANIA_MOON_BIN` at a recording stub that writes a marker file with its
+/// argv when invoked: the marker must exist and contain `moon run` plus the
+/// scope's task list. This is the central fraud fix — `check` is no longer a
+/// synonym for `aggregate`; it actually drives Moon.
+#[test]
+fn check_drives_moon_stub_and_aggregates_after() {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+
+    // Write a recording stub that captures argv to a marker file.
+    let marker = workspace.path().join("moon_argv.txt");
+    let stub_path = write_recording_stub(workspace.path(), &marker);
+
+    let mut cmd = Command::new(binary());
+    let _ = cmd.current_dir(workspace.path());
+    let _ = cmd.args(&["--scope", "edit", "--emit", "json"]);
+    let _ = cmd.stdout(Stdio::piped());
+    let _ = cmd.stderr(Stdio::piped());
+    let _ = cmd.env("TITANIA_MOON_BIN", &stub_path);
+    if let Ok(ctd) = env::var("CARGO_TARGET_DIR") {
+        let _ = cmd.env("CARGO_TARGET_DIR", ctd);
+    }
+    let output = cmd.output().expect("failed to spawn titania-check");
+
+    // Moon was invoked (marker exists).
+    assert!(
+        marker.exists(),
+        "check must invoke moon (marker file should exist at {})",
+        marker.display(),
+    );
+
+    // The captured argv must start with `run` and contain the edit-scope task
+    // list from spec §13 (fmt, compile, clippy, ast-grep, dylint, panic-scan,
+    // policy-scan).
+    let argv =
+        std::fs::read_to_string(&marker).expect("moon argv marker file must be readable");
+    assert!(
+        argv.contains("run"),
+        "moon must be invoked with `run` subcommand; got argv: {argv}",
+    );
+    assert!(
+        argv.contains(":titania-fmt"),
+        "moon must be invoked with :titania-fmt; got argv: {argv}",
+    );
+    assert!(
+        argv.contains(":titania-policy-scan"),
+        "moon must be invoked with :titania-policy-scan; got argv: {argv}",
+    );
+
+    // After the (stubbed, exit-0) moon run, check must run the in-process
+    // aggregate, producing a typed report on stdout. On an empty workspace
+    // (no lane artifacts) the aggregate classifies this as Reject (exit 1).
+    let code = output.status.code().unwrap_or(-1);
+    assert_eq!(
+        code, 1,
+        "check after moon-stub must run aggregate (exit 1 reject on empty workspace), got {code}",
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let report: Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|_| panic!("check must emit JSON report after moon; got: {stdout}"));
+    assert_eq!(report["variant"], "reject", "empty workspace aggregate must be reject");
+}
+
+/// Write a tiny POSIX shell stub that captures its argv to `marker` on
+/// invocation, then exits 0. Used to prove the check→moon spawn path.
+fn write_recording_stub(dir: &Path, marker: &Path) -> String {
+    let stub_path = dir.join("moon-recording-stub.sh");
+    // `"$@"` preserves argv quoting; `printf %s\\n "$@"` writes each arg on
+    // its own line so the test can assert presence of individual task IDs.
+    let script = format!(
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nexit 0\n",
+        marker.display(),
+    );
+    std::fs::write(&stub_path, script).expect("recording stub script must be written");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms =
+            std::fs::metadata(&stub_path).expect("stub metadata must be readable").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&stub_path, perms).expect("stub must be made executable");
+    }
+    stub_path.to_str().expect("stub path must be valid UTF-8").to_owned()
 }

@@ -1,9 +1,11 @@
 //! Embedded ast-grep lane runner.
 //!
-//! The v1 lane consumes rule YAML embedded with `include_str!`, reads caller
-//! supplied Rust files, and emits typed [`LaneOutcome`] values. It does not shell
-//! out to an `ast-grep` binary.
+//! The v1 lane parses every source file with the real ast-grep Rust
+//! engine ([`engine::AstEngine`]), runs the embedded rule YAML catalog,
+//! and emits typed [`LaneOutcome`] values. It does not shell out to an
+//! `ast-grep` binary.
 
+mod engine;
 mod rules;
 
 use std::{
@@ -11,9 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rules::{
-    RULES, RuleDef, first_matching_line as rule_first_matching_line, repair_hint, rule_applies,
-};
+use rules::{RULES, RuleDef, repair_hint, rule_applies};
 use thiserror::Error;
 use titania_core::{
     CommandEvidence, Digest, Finding, FindingEffect, Lane, LaneEvidence, LaneOutcome, Location,
@@ -102,6 +102,11 @@ pub fn run(
 
 /// Scan one source file against all enabled rule definitions.
 ///
+/// The file is parsed once by the real ast-grep engine; every rule whose
+/// YAML id is enabled is asked to detect against the parsed [`AstEngine`].
+/// Rules that the engine cannot yet express (architecture import paths,
+/// inline-suppression comments) fall back to the legacy string detectors.
+///
 /// # Errors
 /// Returns [`AstGrepLaneError`] when the source path cannot be read or converted
 /// to a workspace path, or when a finding cannot be constructed.
@@ -112,13 +117,14 @@ fn scan_path(
 ) -> Result<Vec<Finding>, AstGrepLaneError> {
     let source = read_source(path)?;
     let workspace_path = workspace_path(path)?;
+    let engine = engine::AstEngine::new(&source);
     RULES
         .iter()
         .copied()
         .filter(|rule| rule_enabled(catalog, rule.id))
         .filter(|rule| rule_applies(rule, &workspace_path))
-        .filter(|rule| (rule.detects)(&source))
-        .map(|rule| finding(rule, &source, &workspace_path))
+        .filter_map(|rule| detect_line(rule, &engine, &source).map(|line| (rule, line)))
+        .map(|(rule, line)| finding(rule, line, &workspace_path))
         .collect::<Result<Vec<_>, _>>()
         .map(|findings| suppress_exceptions(findings, exceptions))
 }
@@ -171,17 +177,17 @@ fn path_to_str(path: &Path) -> Result<String, AstGrepLaneError> {
         .ok_or_else(|| AstGrepLaneError::NonUtf8Path { path: path_display(path) })
 }
 
-/// Build a typed finding for a matching rule.
+/// Build a typed finding for a matching rule at the given 0-based line.
 ///
 /// # Errors
 /// Returns [`AstGrepLaneError`] when rule id or source span validation fails.
 fn finding(
     rule: RuleDef,
-    source: &str,
+    line_index: usize,
     workspace_path: &WorkspacePath,
 ) -> Result<Finding, AstGrepLaneError> {
     let rule_id = RuleId::new(rule.id)?;
-    let line = first_matching_line(source, rule.detects)?;
+    let line = checked_line_number(line_index)?;
     let location = Location::span(workspace_path.clone(), line, 0, line, 1)?;
     let repair = repair_hint(rule.repair);
     Ok(match rule.effect {
@@ -198,13 +204,15 @@ fn finding(
     })
 }
 
-/// Find the one-based line number of the first matching source line.
+/// Run a rule's detector and return the 0-based line of its first match.
 ///
-/// # Errors
-/// Returns [`AstGrepLaneError::LineNumberOverflow`] when the matching line index
-/// does not fit in `u32`.
-fn first_matching_line(source: &str, detects: fn(&str) -> bool) -> Result<u32, AstGrepLaneError> {
-    rule_first_matching_line(source, detects).map_or(Ok(1), checked_line_number)
+/// `None` when the rule does not apply. Engine-aware: the ast-grep parse
+/// always succeeds (syntax errors surface as error nodes inside the tree),
+/// so engine detectors run unconditionally and string detectors fall back
+/// only for the few rules ast-grep cannot express (inline-suppression
+/// comments, path-filtered architecture imports).
+fn detect_line(rule: RuleDef, engine: &engine::AstEngine, source: &str) -> Option<usize> {
+    rule.detect.run(engine, source)
 }
 
 /// Convert a zero-based line index into a one-based `u32` line number.

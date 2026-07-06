@@ -63,7 +63,7 @@ pub(super) enum PanicRun {
 }
 
 pub(super) fn run(target: &TargetProject) -> PanicRun {
-    if !rg_available() {
+    if !rg_available(target) {
         return PanicRun::Infra(String::from("tool rg unavailable for panic-scan"));
     }
     if let Err(error) = panic_surface_rules() {
@@ -86,10 +86,8 @@ fn scan_target(root: &Path) -> LaneReport {
         report
     })
 }
-
-fn rg_available() -> bool {
-    std::process::Command::new(RG_TOOL)
-        .arg("--version")
-        .output()
-        .is_ok_and(|output| output.status.success())
+fn rg_available(target: &TargetProject) -> bool {
+    crate::command::CommandIn::new(target, RG_TOOL)
+        .and_then(|mut cmd| cmd.arg("--version").run_capture_raw())
+        .is_ok_and(|output| output.success())
 }

@@ -6,8 +6,10 @@ use crate::{
 };
 
 pub(super) fn outcome(target: &TargetProject) -> LaneOutcome {
-    match probe_dylint_toolchain() {
-        DylintProbe::Infra(failure, _) => return LaneOutcome::Failed(failure),
+    match probe_dylint_toolchain(target) {
+        DylintProbe::Infra(failure, _) => {
+            return LaneOutcome::Failed { failure };
+        }
         DylintProbe::Ready => {}
     }
 
@@ -23,10 +25,12 @@ pub(super) fn outcome(target: &TargetProject) -> LaneOutcome {
             output.stdout(),
         );
     }
-    LaneOutcome::Failed(LaneFailure::Suspicious {
-        tool: String::from("cargo-dylint"),
-        evidence: failure_evidence(&output),
-    })
+    LaneOutcome::Failed {
+        failure: LaneFailure::Suspicious {
+            tool: String::from("cargo-dylint"),
+            evidence: failure_evidence(&output),
+        },
+    }
 }
 
 fn failure_evidence(output: &CommandOutput) -> String {
@@ -44,8 +48,10 @@ fn stderr_or_status(stderr: &str, output: &CommandOutput) -> String {
 }
 
 fn failure_outcome(error: &LaneError) -> LaneOutcome {
-    LaneOutcome::Failed(LaneFailure::Infra {
-        tool: String::from("cargo-dylint"),
-        reason: error.to_string(),
-    })
+    LaneOutcome::Failed {
+        failure: LaneFailure::Infra {
+            tool: String::from("cargo-dylint"),
+            reason: error.to_string(),
+        },
+    }
 }

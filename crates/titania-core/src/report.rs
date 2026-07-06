@@ -18,15 +18,47 @@ use crate::{
 /// A single per-lane entry: lane name plus its outcome.
 ///
 /// Serialized as `{"lane": "Fmt", "outcome": {"variant": "clean", ...}}`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct PerLaneEntry {
+///
+/// Constructed via [`PerLaneEntry::new`] — direct field access is forbidden
+/// to prevent illegal state construction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PerLaneEntry(PerLaneEntryInner);
+
+impl PerLaneEntry {
+    /// Construct a new [`PerLaneEntry`].
+    #[must_use]
+    pub const fn new(lane: Lane, outcome: LaneOutcome) -> Self {
+        Self(PerLaneEntryInner { lane, outcome })
+    }
+
     /// Lane identifier (e.g. `Fmt`, `Clippy`, `Check`).
-    pub lane: Lane,
+    #[must_use]
+    pub const fn lane(&self) -> &Lane {
+        &self.0.lane
+    }
+
     /// Outcome of the lane run (clean, failed, or errored).
-    pub outcome: LaneOutcome,
+    #[must_use]
+    pub const fn outcome(&self) -> &LaneOutcome {
+        &self.0.outcome
+    }
 }
-/// Classification of a [`Report::Reject`] by which collections are populated.
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+struct PerLaneEntryInner {
+    lane: Lane,
+    outcome: LaneOutcome,
+}
+
+impl<'de> Deserialize<'de> for PerLaneEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        let inner = PerLaneEntryInner::deserialize(de)?;
+        Ok(Self(inner))
+    }
+}
+
+/// Classification of a [`Report::reject`] by which collections are populated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RejectKind {
@@ -42,9 +74,17 @@ pub enum RejectKind {
 ///
 /// A `Report` is the final output: either a pass (with a receipt), a reject
 /// (with findings and failures), or an error (policy or input diagnostics).
+///
+/// Constructed via [`Report::pass`], [`Report::reject`], [`Report::policy_error`],
+/// or [`Report::input_error`] — direct construction of inner variants is
+/// forbidden to prevent illegal state construction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct Report(ReportInner);
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "variant", rename_all = "snake_case")]
-pub enum Report {
+enum ReportInner {
     /// All lanes passed.
     Pass {
         /// Receipt summarizing the successful run.
@@ -74,6 +114,19 @@ pub enum Report {
         /// Input diagnostics explaining why invocation validation failed.
         diagnostics: Box<[InputDiagnostic]>,
     },
+}
+
+/// Discriminator for the four report states.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportKind {
+    /// All lanes passed.
+    Pass,
+    /// One or more lanes rejected or failed.
+    Reject,
+    /// Policy configuration error.
+    PolicyError,
+    /// Input or argument error.
+    InputError,
 }
 
 #[derive(Deserialize)]
@@ -109,8 +162,8 @@ impl ReportWire {
         match self {
             Self::Pass { receipt, per_lane } => Report::pass(receipt, per_lane).map_err(E::custom),
             Self::Reject { code, gate, lane } => reject::<E>(code, gate, lane),
-            Self::PolicyError { diagnostics } => Ok(Report::PolicyError { diagnostics }),
-            Self::InputError { diagnostics } => Ok(Report::InputError { diagnostics }),
+            Self::PolicyError { diagnostics } => Ok(Report::policy_error(diagnostics)),
+            Self::InputError { diagnostics } => Ok(Report::input_error(diagnostics)),
         }
     }
 }
@@ -153,6 +206,7 @@ fn check_reject_not_empty(
 fn check_per_lane_not_empty(per_lane: &[PerLaneEntry]) -> Result<(), ReportError> {
     (!per_lane.is_empty()).then_some(()).ok_or(ReportError::EmptyPerLane)
 }
+
 /// Check every lane outcome in `per_lane` is pass-shaped (Clean, Skipped,
 /// or Findings with only informational findings).
 ///
@@ -161,14 +215,30 @@ fn check_per_lane_not_empty(per_lane: &[PerLaneEntry]) -> Result<(), ReportError
 /// Returns [`ReportError::NonPassLaneOutcome`] for the first lane outcome
 /// that is not pass-shaped.
 fn validate_per_lane_pass(per_lane: &[PerLaneEntry]) -> Result<(), ReportError> {
-    per_lane.iter().find(|e| !e.outcome.is_pass()).map_or(Ok(()), |first_bad| {
-        Err(ReportError::NonPassLaneOutcome(first_bad.lane, format!("{:?}", first_bad.outcome)))
+    per_lane.iter().find(|e| !e.outcome().is_pass()).map_or(Ok(()), |first_bad| {
+        Err(ReportError::NonPassLaneOutcome(
+            *first_bad.lane(),
+            format!("{:?}", first_bad.outcome()),
+        ))
     })
 }
 
+/// Which reject collections are empty, used to classify a reject report.
+///
+/// Grouping the two emptiness flags into one typed record keeps
+/// `reject_kind_from_empty` under the workspace `max-fn-params-bools = 1`
+/// policy while remaining explicit and pattern-matchable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RejectEmptiness {
+    /// Whether `code_findings` is empty.
+    code_empty: bool,
+    /// Whether `gate_failures` is empty.
+    gate_empty: bool,
+}
+
 #[must_use]
-const fn reject_kind_from_empty(code_empty: bool, gate_empty: bool) -> Option<RejectKind> {
-    match (code_empty, gate_empty) {
+const fn reject_kind_from_empty(emptiness: RejectEmptiness) -> Option<RejectKind> {
+    match (emptiness.code_empty, emptiness.gate_empty) {
         (false, true) => Some(RejectKind::CodeOnly),
         (true, false) => Some(RejectKind::GateOnly),
         (false, false) => Some(RejectKind::Mixed),
@@ -181,11 +251,14 @@ const fn reject_kind_for(
     code_findings: &[Finding],
     gate_failures: &[LaneFailure],
 ) -> Option<RejectKind> {
-    reject_kind_from_empty(code_findings.is_empty(), gate_failures.is_empty())
+    reject_kind_from_empty(RejectEmptiness {
+        code_empty: code_findings.is_empty(),
+        gate_empty: gate_failures.is_empty(),
+    })
 }
 
 impl Report {
-    /// Create a `Report::Reject`, validating the invariant.
+    /// Create a [`Report::Reject`], validating the invariant.
     ///
     /// # Errors
     /// - [`ReportError::EmptyReject`] if both `code_findings` and
@@ -196,9 +269,10 @@ impl Report {
         per_lane: Box<[PerLaneEntry]>,
     ) -> Result<Self, ReportError> {
         check_reject_not_empty(&code_findings, &gate_failures)?;
-        Ok(Self::Reject { code_findings, gate_failures, per_lane })
+        Ok(Self(ReportInner::Reject { code_findings, gate_failures, per_lane }))
     }
-    /// Create a `Report::Pass`.
+
+    /// Create a [`Report::Pass`].
     ///
     /// # Errors
     /// - [`ReportError::EmptyPerLane`] if `per_lane` is empty.
@@ -211,7 +285,19 @@ impl Report {
     ) -> Result<Self, ReportError> {
         check_per_lane_not_empty(&per_lane)?;
         validate_per_lane_pass(&per_lane)?;
-        Ok(Self::Pass { receipt, per_lane })
+        Ok(Self(ReportInner::Pass { receipt, per_lane }))
+    }
+
+    /// Create a [`Report::PolicyError`].
+    #[must_use]
+    pub const fn policy_error(diagnostics: Box<[PolicyDiagnostic]>) -> Self {
+        Self(ReportInner::PolicyError { diagnostics })
+    }
+
+    /// Create a [`Report::InputError`].
+    #[must_use]
+    pub const fn input_error(diagnostics: Box<[InputDiagnostic]>) -> Self {
+        Self(ReportInner::InputError { diagnostics })
     }
 
     /// Classify the reject kind, if this report is a reject.
@@ -220,8 +306,8 @@ impl Report {
     /// empty (invariant violation).
     #[must_use]
     pub fn reject_kind(&self) -> Option<RejectKind> {
-        match self {
-            Self::Reject { code_findings: c, gate_failures: g, .. } => reject_kind_for(c, g),
+        match &self.0 {
+            ReportInner::Reject { code_findings: c, gate_failures: g, .. } => reject_kind_for(c, g),
             _ => None,
         }
     }
@@ -229,32 +315,32 @@ impl Report {
     /// Whether this report represents a pass.
     #[must_use]
     pub const fn is_pass(&self) -> bool {
-        matches!(self, Self::Pass { .. })
+        matches!(&self.0, ReportInner::Pass { .. })
     }
 
     /// Whether this report represents a reject.
     #[must_use]
     pub const fn is_reject(&self) -> bool {
-        matches!(self, Self::Reject { .. })
+        matches!(&self.0, ReportInner::Reject { .. })
     }
 
     /// Whether this report is a policy error.
     #[must_use]
     pub const fn is_policy_error(&self) -> bool {
-        matches!(self, Self::PolicyError { .. })
+        matches!(&self.0, ReportInner::PolicyError { .. })
     }
 
     /// Whether this report is an input error.
     #[must_use]
     pub const fn is_input_error(&self) -> bool {
-        matches!(self, Self::InputError { .. })
+        matches!(&self.0, ReportInner::InputError { .. })
     }
 
     /// If this is a reject, return the code findings.
     #[must_use]
     pub fn code_findings(&self) -> Option<&[Finding]> {
-        match self {
-            Self::Reject { code_findings, .. } => Some(code_findings),
+        match &self.0 {
+            ReportInner::Reject { code_findings, .. } => Some(code_findings),
             _ => None,
         }
     }
@@ -262,9 +348,56 @@ impl Report {
     /// If this is a reject, return the gate failures.
     #[must_use]
     pub fn gate_failures(&self) -> Option<&[LaneFailure]> {
-        match self {
-            Self::Reject { gate_failures, .. } => Some(gate_failures),
+        match &self.0 {
+            ReportInner::Reject { gate_failures, .. } => Some(gate_failures),
             _ => None,
+        }
+    }
+
+    /// If this is a pass, return the receipt.
+    #[must_use]
+    pub const fn receipt(&self) -> Option<&QualityReceipt> {
+        match &self.0 {
+            ReportInner::Pass { receipt, .. } => Some(receipt),
+            _ => None,
+        }
+    }
+
+    /// If this is a pass, return the per-lane outcomes.
+    #[must_use]
+    pub fn per_lane(&self) -> Option<&[PerLaneEntry]> {
+        Some(match &self.0 {
+            ReportInner::Pass { per_lane, .. } | ReportInner::Reject { per_lane, .. } => per_lane,
+            _ => return None,
+        })
+    }
+
+    /// If this is a policy error, return the diagnostics.
+    #[must_use]
+    pub fn policy_diagnostics(&self) -> Option<&[PolicyDiagnostic]> {
+        match &self.0 {
+            ReportInner::PolicyError { diagnostics } => Some(diagnostics),
+            _ => None,
+        }
+    }
+
+    /// If this is an input error, return the diagnostics.
+    #[must_use]
+    pub fn input_diagnostics(&self) -> Option<&[InputDiagnostic]> {
+        match &self.0 {
+            ReportInner::InputError { diagnostics } => Some(diagnostics),
+            _ => None,
+        }
+    }
+
+    /// Return the kind of this report.
+    #[must_use]
+    pub const fn kind(&self) -> ReportKind {
+        match &self.0 {
+            ReportInner::Pass { .. } => ReportKind::Pass,
+            ReportInner::Reject { .. } => ReportKind::Reject,
+            ReportInner::PolicyError { .. } => ReportKind::PolicyError,
+            ReportInner::InputError { .. } => ReportKind::InputError,
         }
     }
 }

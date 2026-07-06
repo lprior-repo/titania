@@ -9,9 +9,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::Serialize;
 use thiserror::Error;
-use titania_core::{Finding, GateScope, Lane, LaneEvidence, LaneFailure, LaneOutcome, SkipReason};
+use titania_core::{ArtifactOutcome, GateScope, Lane, LaneArtifact, LaneOutcome};
 
 /// Errors returned while writing a lane artifact.
 #[derive(Debug, Error)]
@@ -62,78 +61,6 @@ pub enum ArtifactWriterError {
     UnsupportedScope,
 }
 
-#[derive(Serialize)]
-struct LaneArtifact<'a> {
-    lane: Lane,
-    outcome: ArtifactOutcome<'a>,
-}
-
-#[derive(Serialize)]
-struct ArtifactOutcome<'a> {
-    variant: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    evidence: Option<&'a LaneEvidence>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    findings: Option<&'a [Finding]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    failure: Option<&'a LaneFailure>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    skipped: Option<SkipReason>,
-}
-
-impl<'a> ArtifactOutcome<'a> {
-    const fn clean(evidence: &'a LaneEvidence) -> Self {
-        Self {
-            variant: "clean",
-            evidence: Some(evidence),
-            findings: None,
-            failure: None,
-            skipped: None,
-        }
-    }
-
-    const fn findings(findings: &'a [Finding]) -> Self {
-        Self {
-            variant: "findings",
-            evidence: None,
-            findings: Some(findings),
-            failure: None,
-            skipped: None,
-        }
-    }
-
-    const fn failed(failure: &'a LaneFailure) -> Self {
-        Self {
-            variant: "failed",
-            evidence: None,
-            findings: None,
-            failure: Some(failure),
-            skipped: None,
-        }
-    }
-
-    const fn skipped(reason: SkipReason) -> Self {
-        Self {
-            variant: "skipped",
-            evidence: None,
-            findings: None,
-            failure: None,
-            skipped: Some(reason),
-        }
-    }
-}
-
-impl<'a> From<&'a LaneOutcome> for ArtifactOutcome<'a> {
-    fn from(outcome: &'a LaneOutcome) -> Self {
-        match outcome {
-            LaneOutcome::Clean { evidence } => Self::clean(evidence),
-            LaneOutcome::Findings { findings } => Self::findings(findings),
-            LaneOutcome::Failed(failure) => Self::failed(failure),
-            LaneOutcome::Skipped { reason } => Self::skipped(*reason),
-        }
-    }
-}
-
 /// Write one lane outcome to `.titania/out/<scope>/<lane>.json`.
 ///
 /// The returned path is the final artifact path inside `target_root`.
@@ -158,8 +85,8 @@ pub fn write_lane_artifact(
 
     let final_path = artifact_dir.join(lane_file_name(lane));
     let temp_path = artifact_dir.join(temp_file_name(lane));
-    let payload =
-        serde_json::to_vec_pretty(&LaneArtifact { lane, outcome: ArtifactOutcome::from(outcome) })?;
+    let artifact = LaneArtifact::new(lane, ArtifactOutcome::from(outcome));
+    let payload = serde_json::to_vec_pretty(&artifact)?;
 
     fs::write(&temp_path, payload)
         .map_err(|source| ArtifactWriterError::WriteTemp { path: temp_path.clone(), source })?;

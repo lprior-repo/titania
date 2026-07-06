@@ -1,1 +1,3 @@
-1
+$ titania-check --scope release --emit json | jq -e '.variant == "pass"'
+jq: parse error: Invalid numeric literal at line 1, column 11
+EXIT=5 (expected 0 for pass; got non-zero => command does not currently emit variant==pass)

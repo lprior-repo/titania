@@ -15,7 +15,7 @@ mod target_root;
 
 pub use digests::ReceiptDigests;
 pub use lane_name::LaneName;
-pub use schema::RECEIPT_SCHEMA_VERSION;
+pub use schema::RECEIPT_ENVELOPE_SCHEMA_VERSION;
 pub use target_root::RecordedTargetRoot;
 
 /// Receipt-local subprocess outcome.
@@ -168,7 +168,7 @@ pub struct ReceiptEnvelope {
 /// Returns [`ReceiptError::UnsupportedSchemaVersion`] when the schema version
 /// is not the current v1 receipt schema.
 fn check_supported_schema_version(schema_version: u32) -> Result<(), ReceiptError> {
-    (schema_version == RECEIPT_SCHEMA_VERSION)
+    (schema_version == RECEIPT_ENVELOPE_SCHEMA_VERSION)
         .then_some(())
         .ok_or(ReceiptError::UnsupportedSchemaVersion(schema_version))
 }
@@ -185,7 +185,7 @@ impl ReceiptEnvelope {
         digests: ReceiptDigests,
     ) -> Result<Self, ReceiptError> {
         Self::from_parts(
-            RECEIPT_SCHEMA_VERSION,
+            RECEIPT_ENVELOPE_SCHEMA_VERSION,
             RecordedTargetRoot::from_target_project(target_root),
             period,
             lane_results,

@@ -146,7 +146,7 @@ fn lane_outcome(
         return clean_outcome(target, lane, extra_args, output);
     }
     if report.is_clean() {
-        return Ok(LaneOutcome::Failed(tool_failure(output)));
+        return Ok(LaneOutcome::Failed { failure: tool_failure(output) });
     }
     Ok(findings_outcome(lane, report))
 }
@@ -188,13 +188,13 @@ fn normalize_clippy_output(
     let normalized = crate::clippy_normalizer::normalize_clippy_jsonl(stdout);
     match normalized {
         crate::clippy_normalizer::ClippyNormalization::SuspiciousFailure(failure) => {
-            Ok(LaneOutcome::Failed(failure))
+            Ok(LaneOutcome::Failed { failure })
         }
         crate::clippy_normalizer::ClippyNormalization::Findings(report) if !report.is_clean() => {
             Ok(findings_outcome(lane, &report))
         }
         crate::clippy_normalizer::ClippyNormalization::Findings(_) if !output.success() => {
-            Ok(LaneOutcome::Failed(tool_failure(output)))
+            Ok(LaneOutcome::Failed { failure: tool_failure(output) })
         }
         crate::clippy_normalizer::ClippyNormalization::Findings(_) => {
             clean_outcome(target, lane, extra_args, output)

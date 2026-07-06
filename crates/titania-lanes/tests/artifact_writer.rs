@@ -40,15 +40,9 @@ fn stub_finding() -> Finding {
     Finding::reject(
         Lane::Fmt,
         RuleId::new("FUNC_PRINT_STDOUT").unwrap(),
-        Location::Span {
-            file: WorkspacePath::new("src/main.rs").unwrap(),
-            line_start: 42,
-            col_start: 5,
-            line_end: 42,
-            col_end: 30,
-        },
+        Location::span(WorkspacePath::new("src/main.rs").unwrap(), 42, 5, 42, 30).unwrap(),
         "Found `println!` in production source".into(),
-        RepairHint::RequiresHumanReview { note: "Replace with tracing or a logging facade".into() },
+        RepairHint::requires_human_review("Replace with tracing or a logging facade".into()),
     )
 }
 

@@ -8,9 +8,7 @@
 //!
 //! No lint logic lives here — only the load / wiring contract.
 
-use std::process::Command;
-
-use titania_core::LaneFailure;
+use titania_core::{LaneFailure, TargetProject};
 
 use crate::{LaneReport, RuleId};
 
@@ -20,15 +18,11 @@ const RULE_DYLINT_INFRA: &str = "DYLINT_INFRA_FAILURE";
 ///
 /// Uses `cargo dylint --help` (the subcommand form avoids
 /// the `cargo-dylint` shim). Checks `.success()`.
-fn cargo_dylint_available() -> bool {
-    Command::new("cargo")
-        .args(["dylint", "--help"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+fn cargo_dylint_available(target: &TargetProject) -> bool {
+    crate::command::CommandIn::new(target, "cargo")
+        .and_then(|mut cmd| cmd.args(&["dylint", "--help"]).run_capture_raw())
+        .is_ok_and(|output| output.success())
 }
-
 /// Result of the Dylint lane pre-flight checks.
 #[derive(Debug)]
 pub enum DylintProbe {
@@ -61,9 +55,9 @@ impl DylintProbe {
 /// `libtitania_dylint` are available. Returns [`DylintProbe::Infra`]
 /// on the first infrastructure failure encountered.
 #[must_use]
-pub fn probe_dylint_toolchain() -> DylintProbe {
+pub fn probe_dylint_toolchain(target: &TargetProject) -> DylintProbe {
     // Check 1: is cargo-dylint available (via `cargo dylint --help`)?
-    if !cargo_dylint_available() {
+    if !cargo_dylint_available(target) {
         return unavailable_probe("cargo-dylint", String::from("subcommand unavailable"));
     }
 

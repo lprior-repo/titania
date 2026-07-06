@@ -20,7 +20,7 @@ fn clean_artifact_json(lane: Lane) -> String {
 /// Helper: build a skipped-artifact JSON string.
 fn skipped_artifact_json(lane: Lane) -> String {
     format!(
-        r#"{{"lane":"{}","outcome":{{"variant":"skipped","reason":"not_selected_by_scope"}}}}"#,
+        r#"{{"lane":"{}","outcome":{{"variant":"skipped","skipped":"not_selected_by_scope"}}}}"#,
         lane.name()
     )
 }
@@ -203,7 +203,7 @@ fn dylint_specific_missing_file_becomes_failed_outcome() {
 fn assert_missing_lane(records: &[(Lane, LaneOutcome)], expected: Lane) {
     let (_, outcome) = records.iter().find(|(lane, _)| *lane == expected).unwrap();
     match outcome {
-        LaneOutcome::Failed(LaneFailure::Infra { tool, reason }) => {
+        LaneOutcome::Failed { failure: LaneFailure::Infra { tool, reason } } => {
             assert_eq!(tool, expected.name());
             assert_eq!(reason, "output file missing");
         }

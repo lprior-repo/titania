@@ -108,6 +108,12 @@ pub enum EmitFormat {
 /// Input validation failure produced by CLI parsing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliError {
+    /// Help was requested via `--help`, `-h`, or `help`. Carries the rendered
+    /// usage text. This is a success path (exit 0 with the help on stdout),
+    /// modeled as a `CliError` variant so that [`Cli::parse_from_os`] can
+    /// return it through the existing `Result` channel without a separate
+    /// outcome type.
+    HelpRequested(String),
     /// An argument could not be converted to UTF-8.
     NonUtf8Argument(String),
     /// The first positional token is not a known command.
@@ -165,6 +171,7 @@ impl CliError {
     #[must_use]
     pub fn diagnostic(&self) -> String {
         match self {
+            Self::HelpRequested(text) => text.clone(),
             Self::NonUtf8Argument(value) => diagnostic_non_utf8(value),
             Self::UnknownSubcommand(value) => format!("InputError: unknown subcommand '{value}'"),
             Self::UnknownFlag(value) => format!("InputError: unknown flag '{value}'"),
@@ -177,6 +184,22 @@ impl CliError {
             Self::MissingRuleId => String::from("InputError: explain requires a rule id"),
             Self::InvalidRuleId { value, reason } => diagnostic_rule_id(value, reason),
             Self::AggregateScopeRequired => diagnostic_aggregate_scope_required(),
+        }
+    }
+
+    /// Return `true` when this error carries a help/usage payload that must be
+    /// routed to stdout with exit code 0 (instead of stderr with exit code 3).
+    #[must_use]
+    pub const fn is_help(&self) -> bool {
+        matches!(self, Self::HelpRequested(_))
+    }
+
+    /// Borrow the help text when this error is [`Self::HelpRequested`].
+    #[must_use]
+    pub fn help_text(&self) -> Option<&str> {
+        match self {
+            Self::HelpRequested(text) => Some(text.as_str()),
+            _ => None,
         }
     }
 }
@@ -220,3 +243,40 @@ impl Default for DoctorOptions {
         Self { scope: GateScope::Edit, emit: EmitFormat::Human }
     }
 }
+
+/// Concise top-level usage summary printed for `--help`, `-h`, and `help`.
+///
+/// Lists the five subcommands (check, run-lane, aggregate, doctor, explain) and
+/// the global flags (`--scope`, `--emit`, `--out`). Kept as a single `&str` so
+/// the help path performs no formatting work and is trivially auditable.
+pub(crate) const USAGE: &str = "\
+titania-check — Titania quality gate CLI
+
+USAGE:
+    titania-check [OPTIONS]                 Run scoped quality lanes via Moon (default: check).
+    titania-check check [OPTIONS]           Run scoped quality lanes via Moon.
+    titania-check run-lane <lane-name>      Run a single lane and write findings artifact.
+    titania-check aggregate --scope <s> [OPTIONS]
+                                            Read existing lane artifacts and emit a report.
+    titania-check doctor [OPTIONS]          Report required tools and versions for a scope.
+    titania-check explain <rule-id>         Print rule description and metadata.
+
+OPTIONS:
+    --scope <edit|prepush|release>          Gate scope (default: edit).
+    --emit <human|json>                     Output format (default: json for check/aggregate,
+                                             human for doctor).
+    --out <path>                            Write report to file instead of stdout.
+
+LANES (run-lane):
+    fmt, compile, clippy, ast-grep, dylint, panic-scan, policy-scan,
+    test, deny, build
+
+EXIT CODES:
+    0  Pass
+    1  Reject (code findings and/or gate failures)
+    2  PolicyError
+    3  InputError
+    >=4 Internal error
+
+See `titania-check explain <rule-id>` for rule details and v1-spec.md for the
+full specification.";

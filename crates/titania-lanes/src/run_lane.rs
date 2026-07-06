@@ -145,7 +145,7 @@ fn non_cargo_outcome(target: &TargetProject, lane: Lane) -> Result<LaneOutcome, 
 /// Returns [`RunLaneError`] when source discovery or ast-grep outcome building fails.
 fn ast_grep_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
     let sources = collect_rust_sources(target.as_std_path())?;
-    let today = policy_run_lane::policy_date()?;
+    let today = policy_run_lane::policy_date(target)?;
     let mut report = LaneReport::new();
     let exceptions = load_exceptions(target.as_std_path(), &today, &mut report)?;
     if !report.is_clean() {
@@ -166,9 +166,9 @@ fn panic_scan_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneErro
         PanicRun::Report(report) => {
             outcome_from_report(Lane::PanicScan, &report, "panic-scan-v1").map_err(Into::into)
         }
-        PanicRun::Infra(reason) => {
-            Ok(LaneOutcome::Failed(LaneFailure::Infra { tool: String::from("rg"), reason }))
-        }
+        PanicRun::Infra(reason) => Ok(LaneOutcome::Failed {
+            failure: LaneFailure::Infra { tool: String::from("rg"), reason },
+        }),
         PanicRun::RuleId(error) => Err(error.into()),
     }
 }
@@ -218,17 +218,19 @@ fn deny_normalization(output: &CommandOutput) -> Result<DenyNormalization, RunLa
 
 fn deny_normalization_outcome(output: &CommandOutput, result: &DenyNormalization) -> LaneOutcome {
     if let Some(failure) = result.failure() {
-        return LaneOutcome::Failed(failure.clone());
+        return LaneOutcome::Failed { failure: failure.clone() };
     }
     let report = report_from_deny(result);
     if output.success() && report.is_clean() {
         return clean_outcome_unchecked(Lane::Deny, "cargo-deny-json", b"deny-clean");
     }
     if report.is_clean() {
-        return LaneOutcome::Failed(LaneFailure::Tool {
-            tool: String::from(DENY_TOOL),
-            termination: process_termination(output),
-        });
+        return LaneOutcome::Failed {
+            failure: LaneFailure::Tool {
+                tool: String::from(DENY_TOOL),
+                termination: process_termination(output),
+            },
+        };
     }
     findings_outcome(Lane::Deny, &report)
 }
@@ -242,12 +244,14 @@ fn report_from_deny(result: &DenyNormalization) -> LaneReport {
 fn deny_failure_outcome(error: &LaneError) -> LaneOutcome {
     deny_missing_binary().failure().map_or_else(
         || {
-            LaneOutcome::Failed(LaneFailure::Infra {
-                tool: String::from(DENY_TOOL),
-                reason: error.to_string(),
-            })
+            LaneOutcome::Failed {
+                failure: LaneFailure::Infra {
+                    tool: String::from(DENY_TOOL),
+                    reason: error.to_string(),
+                },
+            }
         },
-        |failure| LaneOutcome::Failed(failure.clone()),
+        |failure| LaneOutcome::Failed { failure: failure.clone() },
     )
 }
 
@@ -259,7 +263,7 @@ fn execution_from_outcome(outcome: &LaneOutcome) -> LaneExecution {
         LaneOutcome::Findings { findings } => {
             LaneExecution::new(LaneExit::Violations, format!("{} finding(s)\n", findings.len()))
         }
-        LaneOutcome::Failed(failure) => {
+        LaneOutcome::Failed { failure } => {
             LaneExecution::new(LaneExit::Failure, format!("lane failed: {failure:?}\n"))
         }
     }

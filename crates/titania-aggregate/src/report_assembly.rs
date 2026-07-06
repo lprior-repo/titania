@@ -77,11 +77,11 @@ pub fn assemble_report(
     check_outcomes_not_empty(&outcomes)?;
 
     if !input_diagnostics.is_empty() {
-        return Ok(Report::InputError { diagnostics: input_diagnostics });
+        return Ok(Report::input_error(input_diagnostics));
     }
 
     if !policy_diagnostics.is_empty() {
-        return Ok(Report::PolicyError { diagnostics: policy_diagnostics });
+        return Ok(Report::policy_error(policy_diagnostics));
     }
 
     check_scope_outcome_count(scope, &outcomes)?;
@@ -100,7 +100,7 @@ pub fn assemble_report(
 fn rejecting_findings(entries: &[PerLaneEntry]) -> Box<[Finding]> {
     entries
         .iter()
-        .filter_map(|e| findings(&e.outcome))
+        .filter_map(|e| findings(e.outcome()))
         .flatten()
         .filter(|finding| finding.is_reject())
         .cloned()
@@ -111,14 +111,16 @@ fn rejecting_findings(entries: &[PerLaneEntry]) -> Box<[Finding]> {
 fn findings(outcome: &LaneOutcome) -> Option<std::slice::Iter<'_, Finding>> {
     match outcome {
         LaneOutcome::Findings { findings } => Some(findings.iter()),
-        LaneOutcome::Clean { .. } | LaneOutcome::Failed(_) | LaneOutcome::Skipped { .. } => None,
+        LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {
+            None
+        }
     }
 }
 
 fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {
     entries
         .iter()
-        .filter_map(|e| failed(&e.outcome))
+        .filter_map(|e| failed(e.outcome()))
         .cloned()
         .collect::<Vec<_>>()
         .into_boxed_slice()
@@ -126,7 +128,7 @@ fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {
 
 const fn failed(outcome: &LaneOutcome) -> Option<&LaneFailure> {
     match outcome {
-        LaneOutcome::Failed(failure) => Some(failure),
+        LaneOutcome::Failed { failure } => Some(failure),
         LaneOutcome::Clean { .. } | LaneOutcome::Findings { .. } | LaneOutcome::Skipped { .. } => {
             None
         }
@@ -182,9 +184,8 @@ fn check_receipt_scope(
     scope: GateScope,
     pass_receipt: &QualityReceipt,
 ) -> Result<(), ReportAssemblyError> {
-    (pass_receipt.scope == scope).then_some(()).ok_or(ReportAssemblyError::ReceiptScopeMismatch {
-        expected: scope,
-        found: pass_receipt.scope,
+    (*pass_receipt.scope() == scope).then_some(()).ok_or_else(|| {
+        ReportAssemblyError::ReceiptScopeMismatch { expected: scope, found: *pass_receipt.scope() }
     })
 }
 
@@ -198,7 +199,7 @@ fn check_receipt_lane_count(
     pass_receipt: &QualityReceipt,
 ) -> Result<(), ReportAssemblyError> {
     let expected = scope.lanes().len();
-    let actual = pass_receipt.lanes.len();
+    let actual = pass_receipt.lanes().len();
     (actual == expected).then_some(()).ok_or(ReportAssemblyError::ReceiptLaneCountMismatch {
         scope,
         expected,

@@ -25,10 +25,10 @@ fn receipt_builder_source_digest_alters_quality_receipt() -> TestResult {
         lane_receipts(),
     )?;
 
-    assert_ne!(left.source_digest, right.source_digest);
-    assert_eq!(left.cargo_lock_digest, right.cargo_lock_digest);
-    assert_eq!(left.policy_digest, right.policy_digest);
-    assert_eq!(left.toolchain_digest, right.toolchain_digest);
+    assert_ne!(left.source_digest(), right.source_digest());
+    assert_eq!(left.cargo_lock_digest(), right.cargo_lock_digest());
+    assert_eq!(left.policy_digest(), right.policy_digest());
+    assert_eq!(left.toolchain_digest(), right.toolchain_digest());
     Ok(())
 }
 
@@ -45,10 +45,10 @@ fn receipt_builder_cargo_lock_digest_alters_quality_receipt() -> TestResult {
         lane_receipts(),
     )?;
 
-    assert_eq!(left.source_digest, right.source_digest);
-    assert_ne!(left.cargo_lock_digest, right.cargo_lock_digest);
-    assert_eq!(left.policy_digest, right.policy_digest);
-    assert_eq!(left.toolchain_digest, right.toolchain_digest);
+    assert_eq!(left.source_digest(), right.source_digest());
+    assert_ne!(left.cargo_lock_digest(), right.cargo_lock_digest());
+    assert_eq!(left.policy_digest(), right.policy_digest());
+    assert_eq!(left.toolchain_digest(), right.toolchain_digest());
     Ok(())
 }
 
@@ -65,10 +65,10 @@ fn receipt_builder_policy_digest_alters_quality_receipt() -> TestResult {
         lane_receipts(),
     )?;
 
-    assert_eq!(left.source_digest, right.source_digest);
-    assert_eq!(left.cargo_lock_digest, right.cargo_lock_digest);
-    assert_ne!(left.policy_digest, right.policy_digest);
-    assert_eq!(left.toolchain_digest, right.toolchain_digest);
+    assert_eq!(left.source_digest(), right.source_digest());
+    assert_eq!(left.cargo_lock_digest(), right.cargo_lock_digest());
+    assert_ne!(left.policy_digest(), right.policy_digest());
+    assert_eq!(left.toolchain_digest(), right.toolchain_digest());
     Ok(())
 }
 
@@ -85,10 +85,10 @@ fn receipt_builder_toolchain_digest_alters_quality_receipt() -> TestResult {
         lane_receipts(),
     )?;
 
-    assert_eq!(left.source_digest, right.source_digest);
-    assert_eq!(left.cargo_lock_digest, right.cargo_lock_digest);
-    assert_eq!(left.policy_digest, right.policy_digest);
-    assert_ne!(left.toolchain_digest, right.toolchain_digest);
+    assert_eq!(left.source_digest(), right.source_digest());
+    assert_eq!(left.cargo_lock_digest(), right.cargo_lock_digest());
+    assert_eq!(left.policy_digest(), right.policy_digest());
+    assert_ne!(left.toolchain_digest(), right.toolchain_digest());
     Ok(())
 }
 
@@ -106,7 +106,7 @@ fn receipt_builder_preserves_lane_receipts() -> TestResult {
         lanes.clone(),
     )?;
 
-    assert_eq!(receipt.lanes, lanes);
+    assert_eq!(receipt.lanes(), lanes.as_ref());
     Ok(())
 }
 

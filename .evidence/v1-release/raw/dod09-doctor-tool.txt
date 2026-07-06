@@ -1,7 +1,16 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.04s
-     Running tests/doctor.rs (target/debug/deps/doctor-e36e8f17028cf749)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running tests/doctor.rs (target/debug/deps/doctor-279c3b8e6108b4e3)
 
-running 0 tests
+running 9 tests
+test doctor_unknown_scope_remains_input_error ... ok
+test doctor_empty_path_reports_missing_required_tools_exit_3 ... ok
+test doctor_empty_path_prepush_release_require_cargo_deny ... ok
+test doctor_abi_probe_no_nm_dependency ... ok
+test doctor_abi_mismatch_yields_missing_required_library ... ok
+test doctor_human_output_contains_contract_columns_and_rows ... ok
+test doctor_json_edit_scope_contains_required_tool_matrix ... ok
+test doctor_json_ast_grep_is_embedded_without_path_or_version ... ok
+test doctor_json_cargo_deny_required_only_for_prepush_and_release ... ok
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
 

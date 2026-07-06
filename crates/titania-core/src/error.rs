@@ -221,6 +221,20 @@ pub enum FailureError {
     InvalidSignal(i32),
 }
 
+/// Errors produced when reconstructing a [`crate::LaneOutcome`] from an
+/// [`crate::ArtifactOutcome`] read back from disk.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ArtifactError {
+    /// The artifact discriminator named a payload field that was absent.
+    #[error("artifact outcome variant {variant} is missing field {field}")]
+    FieldMissing {
+        /// Discriminator value read from disk.
+        variant: &'static str,
+        /// Expected payload field name that was absent.
+        field: &'static str,
+    },
+}
+
 /// Errors produced by [`crate::CommandEvidence::new`] and [`crate::LaneEvidence::new`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum OutcomeError {
@@ -294,6 +308,9 @@ pub enum CoreError {
     /// Lane failure construction failed.
     #[error(transparent)]
     Failure(#[from] FailureError),
+    /// Lane outcome reconstruction from an on-disk artifact failed.
+    #[error(transparent)]
+    Artifact(#[from] ArtifactError),
     /// Lane outcome construction failed.
     #[error(transparent)]
     Outcome(#[from] OutcomeError),

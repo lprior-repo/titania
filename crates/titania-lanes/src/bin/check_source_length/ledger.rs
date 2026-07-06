@@ -1,9 +1,9 @@
 use std::{collections::HashSet, path::Path};
 
-use titania_lanes::{Finding, LaneReport, RuleId, RuleIdError, helpers::line_no_from_idx};
+use titania_lanes::{Finding, LaneReport, RuleId, helpers::line_no_from_idx};
 
 use crate::{
-    LEDGER_PATH,
+    CheckSourceLengthError, LEDGER_PATH,
     paths::{is_excluded_source_path, tracked_set},
 };
 
@@ -13,11 +13,10 @@ const SRC_LEN_LEDGER_RULE: &str = "SRC_LEN_LEDGER";
 ///
 /// # Errors
 ///
-/// Returns a rule-id construction error when the ledger rule id is invalid.
 pub(super) fn load_ledger(
     root: &Path,
     report: &mut LaneReport,
-) -> Result<Vec<String>, RuleIdError> {
+) -> Result<Vec<String>, CheckSourceLengthError> {
     let path = root.join(LEDGER_PATH);
     if !path.is_file() {
         let _emitted = crate::write_stderr_line(format_args!(
@@ -33,7 +32,7 @@ pub(super) fn load_ledger(
         .is_ok();
         return Ok(Vec::new());
     };
-    let tracked = tracked_set(root);
+    let tracked = tracked_set(root)?;
     let rule = RuleId::new(SRC_LEN_LEDGER_RULE)?;
     Ok(parse_ledger(&text, &tracked, &rule, report))
 }

@@ -1,47 +1,44 @@
-//! Shared typed output contracts for Titania doctor and explain commands.
+//! Shared typed output contracts for titania doctor and explain commands.
 //!
-//! This crate intentionally contains contracts only. Until the doctor and rule
-//! catalog beads land, public entry points report typed unavailability instead
-//! of pretending that a successful report exists.
+//! This crate owns the output data types used by the `titania-check` CLI's
+//! `--emit json` and `--emit human` modes. It also provides a minimal
+//! `OutputError` type for reporting unavailable output components.
 
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::expect_used)]
-#![deny(clippy::panic)]
-#![deny(clippy::todo)]
-#![deny(clippy::unimplemented)]
-#![forbid(unsafe_code)]
+use thiserror::Error;
 
-use core::fmt;
-
-/// Output component whose implementation is not linked yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Human-readable label for a single output component.
+///
+/// Used as the component identifier in doctor reports and error messages.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutputComponent {
-    /// Tool/version doctor report producer.
+    /// Doctor report output.
     Doctor,
-    /// Rule explanation catalog producer.
-    ExplainCatalog,
+    /// Explain output.
+    Explain,
 }
 
 impl OutputComponent {
-    /// Stable component name for diagnostics and external reports.
+    /// Return the human-readable label.
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Doctor => "doctor",
-            Self::ExplainCatalog => "explain_catalog",
+            Self::Explain => "explain",
         }
     }
 }
 
 /// Error returned when an output component cannot produce a report.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum OutputError {
     /// The component is a declared contract, but its implementation bead has not landed.
+    #[error("output is not implemented yet for {component:?}")]
     ComponentUnavailable {
         /// Component that is intentionally unavailable.
         component: OutputComponent,
     },
     /// A syntactically valid rule ID is absent from the static catalog.
+    #[error("unknown rule ID: {rule_id}")]
     UnknownRule {
         /// Requested rule identifier.
         rule_id: String,
@@ -61,18 +58,6 @@ impl OutputError {
         Self::UnknownRule { rule_id: rule_id.to_owned() }
     }
 }
-
-impl fmt::Display for OutputError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self {
-            Self::ComponentUnavailable { component } => component.as_str(),
-            Self::UnknownRule { rule_id } => return write!(f, "unknown rule ID: {rule_id}"),
-        };
-        write!(f, "{message} output is not implemented yet")
-    }
-}
-
-impl std::error::Error for OutputError {}
 
 /// Doctor tool/version diagnostic domain model.
 pub mod doctor;

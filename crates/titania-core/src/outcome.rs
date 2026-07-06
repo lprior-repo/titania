@@ -131,7 +131,10 @@ pub enum LaneOutcome {
         findings: Box<[Finding]>,
     },
     /// Lane failed before producing a clean or findings verdict.
-    Failed(LaneFailure),
+    Failed {
+        /// The lane failure classification.
+        failure: LaneFailure,
+    },
     /// Lane was intentionally skipped for a recorded reason.
     Skipped {
         /// Reason the lane was skipped.
@@ -149,7 +152,7 @@ impl LaneOutcome {
         match self {
             Self::Clean { .. } | Self::Skipped { .. } => true,
             Self::Findings { findings } => findings.iter().all(Finding::is_informational),
-            Self::Failed(_) => false,
+            Self::Failed { .. } => false,
         }
     }
 

@@ -37,7 +37,7 @@ pub(crate) fn write_failure_artifact(
     lane: CargoLane,
     error: &LaneError,
 ) -> Result<(), RunCargoError> {
-    write_artifact(target, lane, &LaneOutcome::Failed(failure_for_error(error)))
+    write_artifact(target, lane, &LaneOutcome::Failed { failure: failure_for_error(error) })
 }
 
 /// Persist one typed lane artifact for the selected Cargo lane.
@@ -71,7 +71,7 @@ fn lane_outcome(
         return clean_outcome(target, lane, extra_args, output);
     }
     if report.is_clean() {
-        return Ok(LaneOutcome::Failed(tool_failure(output)));
+        return Ok(LaneOutcome::Failed { failure: tool_failure(output) });
     }
     Ok(findings_outcome(lane, report))
 }
@@ -109,9 +109,9 @@ fn core_finding(lane: CargoLane, finding: &Finding) -> CoreFinding {
     CoreFinding::reject(
         core_lane(lane),
         finding.rule().clone(),
-        Location::Workspace,
+        Location::workspace(),
         finding.message().to_owned(),
-        RepairHint::RequiresHumanReview { note: finding.path().to_owned() },
+        RepairHint::requires_human_review(finding.path().to_owned()),
     )
 }
 

@@ -4,7 +4,7 @@
 //! written under `.titania/out/<scope>/`, delegates classification to
 //! `titania-aggregate`, and renders the typed report as JSON.
 
-use std::path::{Path, PathBuf};
+use std::{io, path::Path};
 
 use titania_aggregate::{
     ReaderError, ReportAssemblyError, assemble_report, build_quality_receipt,
@@ -12,7 +12,9 @@ use titania_aggregate::{
 };
 use titania_core::{
     Digest, GateScope, Lane, LaneOutcome, LaneReceipt, QualityReceipt, ReceiptDigests, Report,
+    ReportKind,
 };
+use titania_policy::{PolicyDefaults, PolicyDigest};
 
 /// Serialized aggregate report plus its CLI exit classification.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,11 +114,11 @@ pub(crate) enum ReportStatus {
 impl ReportStatus {
     #[must_use]
     const fn from_report(report: &Report) -> Self {
-        match report {
-            Report::Pass { .. } => Self::Pass,
-            Report::Reject { .. } => Self::Reject,
-            Report::PolicyError { .. } => Self::PolicyError,
-            Report::InputError { .. } => Self::InputError,
+        match report.kind() {
+            ReportKind::Pass => Self::Pass,
+            ReportKind::Reject => Self::Reject,
+            ReportKind::PolicyError => Self::PolicyError,
+            ReportKind::InputError => Self::InputError,
         }
     }
 }
@@ -138,7 +140,7 @@ pub(crate) fn report_json(
     let receipt = quality_receipt(target_root, scope, &lane_artifacts)?;
     let entries: Box<[_]> = lane_artifacts
         .into_iter()
-        .map(|(lane, outcome)| titania_core::PerLaneEntry { lane, outcome })
+        .map(|(lane, outcome)| titania_core::PerLaneEntry::new(lane, outcome))
         .collect();
     let report = assemble_report(scope, entries, receipt, Box::new([]), Box::new([]))?;
     let status = ReportStatus::from_report(&report);
@@ -158,6 +160,10 @@ pub(crate) enum AggregateError {
     Report(ReportAssemblyError),
     /// Report serialization failed.
     Serialize(serde_json::Error),
+    /// Digest computation failed (IO error on non-missing file).
+    Digest(std::io::Error),
+    /// Toolchain digest probe failed (rustc/cargo version probe IO failure).
+    ToolchainProbe(std::io::Error),
 }
 
 impl AggregateError {
@@ -169,12 +175,18 @@ impl AggregateError {
             Self::Receipt(error) => format!("InputError: aggregate receipt failed: {error}"),
             Self::Report(error) => format!("InputError: aggregate report failed: {error}"),
             Self::Serialize(error) => serialize_diagnostic(error),
+            Self::Digest(error) => format!("InputError: aggregate digest failed: {error}"),
+            Self::ToolchainProbe(error) => toolchain_probe_diagnostic(error),
         }
     }
 }
 
 fn serialize_diagnostic(error: &serde_json::Error) -> String {
     format!("InputError: aggregate serialization failed: {error}")
+}
+
+fn toolchain_probe_diagnostic(error: &std::io::Error) -> String {
+    format!("InternalError: toolchain digest probe failed: {error}")
 }
 
 impl From<titania_aggregate::ReceiptBuilderError> for AggregateError {
@@ -200,7 +212,7 @@ fn quality_receipt(
     scope: GateScope,
     lane_artifacts: &[(Lane, LaneOutcome)],
 ) -> Result<QualityReceipt, AggregateError> {
-    let digests = receipt_digests(target_root);
+    let digests = receipt_digests(target_root)?;
     let lanes =
         lane_artifacts.iter().map(lane_receipt).collect::<Result<Vec<_>, _>>()?.into_boxed_slice();
     build_quality_receipt(scope, digests, lanes).map_err(Into::into)
@@ -225,7 +237,7 @@ fn lane_receipt((lane, outcome): &(Lane, LaneOutcome)) -> Result<LaneReceipt, Ag
 fn lane_outcome_digest(outcome: &LaneOutcome) -> Result<Digest, AggregateError> {
     match outcome {
         LaneOutcome::Clean { evidence } => compute_evidence_digest(evidence).map_err(Into::into),
-        LaneOutcome::Findings { .. } | LaneOutcome::Failed(_) | LaneOutcome::Skipped { .. } => {
+        LaneOutcome::Findings { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {
             serde_json::to_vec(outcome)
                 .map(|payload| Digest::from_bytes(&payload))
                 .map_err(AggregateError::Serialize)
@@ -233,19 +245,132 @@ fn lane_outcome_digest(outcome: &LaneOutcome) -> Result<Digest, AggregateError> 
     }
 }
 
-fn receipt_digests(target_root: &Path) -> ReceiptDigests {
-    ReceiptDigests::new(
-        digest_optional_file(target_root.join("Cargo.toml"), b"missing-cargo-toml"),
-        digest_optional_file(target_root.join("Cargo.lock"), b"missing-cargo-lock"),
-        digest_optional_file(
-            target_root.join(".titania").join("profiles").join("strict-ai").join("policy.toml"),
-            b"missing-strict-ai-policy",
-        ),
-        Digest::from_bytes(env!("CARGO_PKG_VERSION").as_bytes()),
-    )
+/// Compute the digests for the quality receipt.
+///
+/// # Errors
+/// - [`AggregateError::Digest`] when a non-missing policy/config file cannot be read.
+/// - [`AggregateError::ToolchainProbe`] when the rustc/cargo version probe fails.
+fn receipt_digests(target_root: &Path) -> Result<ReceiptDigests, AggregateError> {
+    let source = digest_optional_file(&target_root.join("Cargo.toml"), b"missing-cargo-toml")?;
+    let lock = digest_optional_file(&target_root.join("Cargo.lock"), b"missing-cargo-lock")?;
+    let policy = policy_digest(target_root)?;
+    let toolchain = toolchain_digest(target_root)?;
+    Ok(ReceiptDigests::new(source, lock, policy, toolchain))
 }
 
-fn digest_optional_file(path: PathBuf, missing_marker: &[u8]) -> Digest {
-    std::fs::read(path)
-        .map_or_else(|_| Digest::from_bytes(missing_marker), |bytes| Digest::from_bytes(&bytes))
+/// Compute the canonical v1 policy digest per spec §9.9.
+///
+/// Hashes `binary_defaults`, `policy.toml`, `exceptions.toml`, `deny.toml`, and
+/// `clippy.toml` through [`PolicyDigest::compute`]'s length-prefixed canonical
+/// serialization. Missing files contribute `None` (the canonical "absent" form)
+/// rather than being silently substituted, so an unreadable file cannot produce
+/// a fraudulent receipt (see M6).
+///
+/// # Errors
+/// - [`AggregateError::Digest`] when a policy/config file exists but cannot be read.
+fn policy_digest(target_root: &Path) -> Result<Digest, AggregateError> {
+    let profile_dir = target_root.join(".titania").join("profiles").join("strict-ai");
+    let policy_toml = read_optional_text(&profile_dir.join("policy.toml"))?;
+    let exceptions_toml = read_optional_text(&profile_dir.join("exceptions.toml"))?;
+    let deny_toml = read_optional_text(&target_root.join("deny.toml"))?;
+    let clippy_toml = read_optional_text(&target_root.join("clippy.toml"))?;
+    let digest = PolicyDigest::compute(
+        &PolicyDefaults::embedded(),
+        policy_toml.as_deref(),
+        exceptions_toml.as_deref(),
+        deny_toml.as_deref(),
+        clippy_toml.as_deref(),
+    );
+    Ok(digest.digest().clone())
+}
+
+/// Compute the v1 toolchain digest per spec §10.
+///
+/// Hashes `rustc --version`, `cargo --version`, and the contents of
+/// `rust-toolchain.toml` (or `rust-toolchain`) through blake3 with
+/// length-prefixed canonical serialization so the digest captures the actual
+/// toolchain, not the titania-check binary's compile-time `CARGO_PKG_VERSION`.
+///
+/// # Errors
+/// - [`AggregateError::ToolchainProbe`] when the rustc or cargo probe fails to spawn.
+fn toolchain_digest(target_root: &Path) -> Result<Digest, AggregateError> {
+    let rustc_version = probe_version(target_root, "rustc", &["--version"])?;
+    let cargo_version = probe_version(target_root, "cargo", &["--version"])?;
+    let toolchain_toml = read_optional_text(&target_root.join("rust-toolchain.toml"))?;
+    let toolchain_legacy = read_optional_text(&target_root.join("rust-toolchain"))?;
+    let toolchain_text = toolchain_toml.or(toolchain_legacy);
+
+    let mut payload = String::new();
+    push_segment(&mut payload, "rustc_version", &rustc_version);
+    push_segment(&mut payload, "cargo_version", &cargo_version);
+    push_optional_segment(&mut payload, "rust_toolchain_toml", toolchain_text.as_deref());
+    Ok(Digest::from_bytes(payload.as_bytes()))
+}
+
+/// Spawn `program --version` rooted at `target_root` and return its stdout as a string.
+///
+/// # Errors
+/// - [`AggregateError::ToolchainProbe`] when spawn/wait fails or stdout is non-UTF-8.
+fn probe_version(
+    target_root: &Path,
+    program: &str,
+    args: &[&str],
+) -> Result<String, AggregateError> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .current_dir(target_root)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .map_err(AggregateError::ToolchainProbe)?;
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    Ok(text)
+}
+
+/// Append a length-prefixed canonical segment to `payload`.
+fn push_segment(payload: &mut String, label: &str, text: &str) {
+    payload.push_str(label);
+    push_len(payload, text.len());
+    payload.push_str(text);
+}
+
+/// Append a length-prefixed optional segment, using the literal `<absent>` marker
+/// when the input is `None` so present-and-empty cannot collide with missing.
+fn push_optional_segment(payload: &mut String, label: &str, text: Option<&str>) {
+    const ABSENT_MARKER: &str = "<absent>";
+    push_segment(payload, label, text.map_or(ABSENT_MARKER, std::convert::identity));
+}
+
+/// Append `:len:` to `payload` for canonical length-prefix framing.
+fn push_len(payload: &mut String, len: usize) {
+    payload.push(':');
+    payload.push_str(&len.to_string());
+    payload.push(':');
+}
+
+/// Read a file as UTF-8 text, returning `None` when it does not exist.
+///
+/// # Errors
+/// - [`AggregateError::Digest`] when the file exists but cannot be read.
+fn read_optional_text(path: &Path) -> Result<Option<String>, AggregateError> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(AggregateError::Digest(err)),
+    }
+}
+
+/// Compute the digest for an optional file, returning the missing marker if the file is absent.
+///
+/// # Errors
+/// - [`AggregateError::Digest`] when the file cannot be read for reasons other than `NotFound`.
+fn digest_optional_file(path: &Path, missing_marker: &[u8]) -> Result<Digest, AggregateError> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Digest::from_bytes(&bytes)),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            Ok(Digest::from_bytes(missing_marker))
+        }
+        Err(err) => Err(AggregateError::Digest(err)),
+    }
 }

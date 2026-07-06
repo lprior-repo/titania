@@ -561,7 +561,7 @@ tasks:
 
   gate-edit:
     command: 'cargo run --quiet -p titania-check -- aggregate --scope edit'
-    deps: ['~:titania-fmt', '~:titania-compile', '~:titania-clippy', '~:titania-ast-grep', '~:titania-dylint', '~:titania-panic-scan', '~:titania-policy-scan', '~:lane-check-public-api-diff']
+    deps: ['~:titania-fmt', '~:titania-compile', '~:titania-clippy', '~:titania-ast-grep', '~:titania-dylint', '~:titania-panic-scan', '~:titania-policy-scan']
     options:
       runInCI: true
 

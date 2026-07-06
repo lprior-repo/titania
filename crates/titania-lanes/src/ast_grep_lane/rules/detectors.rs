@@ -1,172 +1,20 @@
-//! String-backed detectors for the embedded v1 ast-grep rule table.
+//! String-backed detectors for rules ast-grep cannot express.
+//!
+//! Real ast-grep powers the structural FUNC_* rules (see [`super::super::engine`]).
+//! Two rule families stay string-backed here:
+//!
+//! * `BYPASS_INLINE_SUPPRESSION` — comments are not AST nodes, so ast-grep
+//!   cannot see `// ast-grep-ignore` / `// sg-ignore`.
+//! * `ARCHITECTURE_IMPORT_CORE_*` — the rule couples a path-scope filter
+//!   (file under `core/` / `domain/`) with import-text detection that
+//!   covers grouped imports, multiline `use` blocks, and boundary-name
+//!   exclusions (`fs_extra` is not `fs`). Expressing all of that as one
+//!   ast-grep pattern requires a path-aware selector the engine does not
+//!   own; the hand-rolled detector stays until a path-aware port lands.
+
 mod code_scan;
 
-use code_scan::{code_only_source, detect_code_line, first_code_line};
-
-pub(super) fn first_matching_line(source: &str, detects: fn(&str) -> bool) -> Option<usize> {
-    first_code_line(source, detects).or_else(|| fallback_first_code_line(source, detects))
-}
-
-fn fallback_first_code_line(source: &str, detects: fn(&str) -> bool) -> Option<usize> {
-    if !detects(source) {
-        return None;
-    }
-    first_code_line(source, has_code).or(Some(0))
-}
-
-fn has_code(line: &str) -> bool {
-    !line.trim().is_empty()
-}
-
-pub(super) fn detect_for_loop(source: &str) -> bool {
-    detect_code_line(source, has_for_loop_tokens)
-}
-
-pub(super) fn detect_while_loop(source: &str) -> bool {
-    detect_code_line(source, |line| line.contains("while "))
-}
-
-pub(super) fn detect_loop_block(source: &str) -> bool {
-    detect_code_line(source, |line| line.contains("loop {"))
-}
-
-fn has_for_loop_tokens(line: &str) -> bool {
-    line.contains("for ") && line.contains(" in ")
-}
-
-pub(super) fn detect_print_stdout(source: &str) -> bool {
-    detect_code_line(source, |line| {
-        has_print_macro_boundary(line, "print!(") || has_print_macro_boundary(line, "println!(")
-    })
-}
-
-/// Check that `needle` appears in `line` with a non-alphanumeric/non-`_` boundary.
-/// Also rejects `eprint!`/`eprintln!` when checking for `print!`/`println!`.
-fn has_print_macro_boundary(line: &str, needle: &str) -> bool {
-    line.match_indices(needle).any(|(start, _)| {
-        let before_start = start.saturating_sub(1);
-        line.as_bytes()
-            .get(before_start)
-            .is_none_or(|&b| !b.is_ascii_alphanumeric() && b != b'_' && b != b'e')
-    })
-}
-
-pub(super) fn detect_print_stderr(source: &str) -> bool {
-    detect_code_line(source, |line| {
-        has_print_macro_boundary(line, "eprint!(") || has_print_macro_boundary(line, "eprintln!(")
-    })
-}
-
-pub(super) fn detect_wildcard_import(source: &str) -> bool {
-    detect_code_line(source, |line| line.contains("::*;"))
-}
-
-pub(super) fn detect_unwrap_or(source: &str) -> bool {
-    detect_code_line(source, |line| {
-        line.contains(".unwrap_or(")
-            || line.contains(".unwrap_or_else(")
-            || line.contains(".unwrap_or_default()")
-    })
-}
-
-pub(super) fn detect_result_string(source: &str) -> bool {
-    let code = code_only_source(source);
-    code.match_indices("Result")
-        .filter_map(|(start, _)| result_generic_tail(&code, start))
-        .any(result_tail_error_is_string)
-}
-
-fn result_generic_tail(source: &str, start: usize) -> Option<&str> {
-    let (before, from_result) = source.split_at_checked(start)?;
-    result_name_boundary(before).then_some(())?;
-    from_result.strip_prefix("Result")?.trim_start().strip_prefix('<')
-}
-
-fn result_name_boundary(before_result: &str) -> bool {
-    before_result.chars().next_back().is_none_or(|ch| !ch.is_ascii_alphanumeric() && ch != '_')
-}
-
-fn result_tail_error_is_string(tail: &str) -> bool {
-    match tail.chars().try_fold(ResultTypeScan::new(), ResultTypeScan::accept) {
-        std::ops::ControlFlow::Break(error) => {
-            error.trim().trim_end_matches(',').trim() == "String"
-        }
-        std::ops::ControlFlow::Continue(_) => false,
-    }
-}
-
-struct ResultTypeScan {
-    depth: u8,
-    after_top_level_comma: bool,
-    error_argument: String,
-}
-
-impl ResultTypeScan {
-    const fn new() -> Self {
-        Self { depth: 0, after_top_level_comma: false, error_argument: String::new() }
-    }
-
-    fn accept(self, ch: char) -> std::ops::ControlFlow<String, Self> {
-        match ch {
-            '<' => self.nested_open(ch),
-            '>' => self.nested_close(ch),
-            ',' if self.depth == 0 && !self.after_top_level_comma => self.top_level_comma(),
-            _ => self.push_error_char(ch),
-        }
-    }
-
-    fn nested_open(mut self, ch: char) -> std::ops::ControlFlow<String, Self> {
-        self.depth = self.depth.saturating_add(1);
-        self.push_error_char(ch)
-    }
-
-    fn nested_close(self, ch: char) -> std::ops::ControlFlow<String, Self> {
-        match self.depth.checked_sub(1) {
-            Some(depth) => self.with_depth(depth).push_error_char(ch),
-            None => std::ops::ControlFlow::Break(self.error_argument),
-        }
-    }
-
-    const fn with_depth(mut self, depth: u8) -> Self {
-        self.depth = depth;
-        self
-    }
-
-    fn top_level_comma(mut self) -> std::ops::ControlFlow<String, Self> {
-        self.after_top_level_comma = true;
-        self.error_argument.clear();
-        std::ops::ControlFlow::Continue(self)
-    }
-
-    fn push_error_char(mut self, ch: char) -> std::ops::ControlFlow<String, Self> {
-        self.push_optional_error_char(self.after_top_level_comma.then_some(ch));
-        std::ops::ControlFlow::Continue(self)
-    }
-
-    fn push_optional_error_char(&mut self, ch: Option<char>) {
-        self.error_argument.extend(ch);
-    }
-}
-
-pub(super) fn detect_allow_attr(source: &str) -> bool {
-    detect_code_line(source, |line| line.contains("#[allow("))
-}
-
-pub(super) fn detect_expect_attr(source: &str) -> bool {
-    detect_code_line(source, |line| line.contains("#[expect("))
-}
-
-pub(super) fn detect_cfg_attr_allow(source: &str) -> bool {
-    detect_code_line(source, |line| line.contains("#[cfg_attr(") && line.contains("allow("))
-}
-
-pub(super) fn detect_crate_allow(source: &str) -> bool {
-    detect_code_line(source, |line| line.contains("#![allow("))
-}
-
-pub(super) fn detect_crate_expect(source: &str) -> bool {
-    detect_code_line(source, |line| line.contains("#![expect("))
-}
+use code_scan::{code_only_source, detect_code_line};
 
 pub(super) fn detect_inline_suppression(source: &str) -> bool {
     source.lines().any(line_comment_contains_inline_suppression)
@@ -211,9 +59,9 @@ pub(super) fn detect_core_random_import(source: &str) -> bool {
 }
 
 fn direct_import_contains(source: &str, path_prefix: &str, names: &[&str]) -> bool {
-    source
-        .match_indices("use ")
-        .filter_map(|(start, _)| direct_import_member(source, start, path_prefix))
+    let code = code_only_source(source);
+    code.match_indices("use ")
+        .filter_map(|(start, _)| direct_import_member(&code, start, path_prefix))
         .any(|member| names.iter().any(|name| grouped_member_matches(member, name)))
 }
 
@@ -251,9 +99,9 @@ fn grouped_rand_import_contains(source: &str, names: &[&str]) -> bool {
 }
 
 fn grouped_import_contains(source: &str, prefix: &str, names: &[&str]) -> bool {
-    source
-        .match_indices(prefix)
-        .filter_map(|(start, _)| grouped_import_body(source, start, prefix))
+    let code = code_only_source(source);
+    code.match_indices(prefix)
+        .filter_map(|(start, _)| grouped_import_body(&code, start, prefix))
         .any(|body| names.iter().any(|name| grouped_body_contains_name(body, name)))
 }
 

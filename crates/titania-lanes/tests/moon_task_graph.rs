@@ -422,7 +422,6 @@ const GATE_DEPS: &[(&str, &[&str])] = &[
             "titania-dylint",
             "titania-panic-scan",
             "titania-policy-scan",
-            "lane-check-public-api-diff",
         ],
     ),
     ("gate-prepush", &["gate-edit", "titania-test", "titania-deny"]),

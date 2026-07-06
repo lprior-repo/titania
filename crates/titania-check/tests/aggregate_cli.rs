@@ -15,9 +15,15 @@ fn binary() -> std::path::PathBuf {
 }
 
 fn run_in(root: &Path, args: &[&str]) -> std::process::Output {
+    // Stub Moon via TITANIA_MOON_BIN so `Command::Check` does not invoke the
+    // real moon binary (which would error on tempdirs without `.moon/`).
+    // `/bin/true` exits 0 with any args, leaving the aggregate to classify the
+    // pre-baked lane artifacts. Tests that exercise real Moon dispatch set
+    // their own stub or clear this variable.
     Command::new(binary())
         .args(args)
         .current_dir(root)
+        .env("TITANIA_MOON_BIN", "/bin/true")
         .output()
         .expect("failed to spawn titania-check")
 }

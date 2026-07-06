@@ -22,11 +22,13 @@ const FUNCTIONAL_YAML: &str = include_str!("../rules/functional.yml");
 // Required rule IDs and their expected metadata.
 // ---------------------------------------------------------------------------
 
-/// The eight rule IDs that MUST appear in the catalog.
+/// The ten structural rule IDs that MUST appear in the catalog.
 const REQUIRED_RULE_IDS: &[&str] = &[
     "FUNC_LOOPS_FOR",
     "FUNC_LOOPS_WHILE",
     "FUNC_LOOPS_LOOP",
+    "FUNC_NESTING_DEPTH",
+    "FUNC_RECURSION_DIRECT",
     "FUNC_PRINT_STDOUT",
     "FUNC_PRINT_STDERR",
     "FUNC_WILDCARD_IMPORT",

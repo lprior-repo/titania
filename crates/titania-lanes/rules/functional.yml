@@ -151,3 +151,44 @@ rule:
 metadata:
   effect: Reject
   repair_hint: RequiresHumanReview
+---
+id: FUNC_NESTING_DEPTH
+language: Rust
+severity: error
+message: "FUNC_NESTING_DEPTH: flatten deeply nested control flow (max nesting depth > 2)"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/fixtures/**"
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  # ast-grep cannot express AST depth directly; the runtime walks function bodies
+  # and computes max nesting of nested block/if/loop/match/for/while statements.
+  pattern: "fn $FN($$$ARGS) $$$BODY"
+metadata:
+  effect: Reject
+  repair_hint: FlattenNesting
+---
+id: FUNC_RECURSION_DIRECT
+language: Rust
+severity: error
+message: "FUNC_RECURSION_DIRECT: function calls itself by name; rewrite to iteration or bound recursion"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/fixtures/**"
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  # ast-grep pattern: a function whose body contains a call_expression whose
+  # callee identifier is the function's own name. The runtime walks function
+  # items and matches this property directly.
+  pattern: "fn $FN($$$ARGS) $$$BODY"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview

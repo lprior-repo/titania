@@ -35,7 +35,7 @@ const LANE_OUTCOME_CLEAN_JSON: &str = r#"{"variant":"clean","evidence":{"command
 
 const LANE_OUTCOME_FINDINGS_JSON: &str = r#"{"variant":"findings","findings":[{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"variant":"span","file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30},"message":"Imperative for loop in production source","repair":{"variant":"use_iterator_pipeline","suggestion":"items.iter().map(|item| ...)"},"effect":"reject"}]}"#;
 
-const LANE_OUTCOME_FAILED_JSON: &str = r#"{"variant":"failed","tool_failure":{"tool":"cargo-test","termination":{"exited":{"code":1}}}}"#;
+const LANE_OUTCOME_FAILED_JSON: &str = r#"{"variant":"failed","failure":{"tool_failure":{"tool":"cargo-test","termination":{"exited":{"code":1}}}}}"#;
 
 const LANE_OUTCOME_SKIPPED_JSON: &str = r#"{"variant":"skipped","reason":"not_applicable"}"#;
 
@@ -389,9 +389,9 @@ fn report_pass_constructs_and_round_trips() -> std::result::Result<(), Box<dyn s
         Box::new([titania_core::LaneReceipt::new(Lane::Fmt, digest(b"evidence"), true)]),
     )?;
 
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
-        lane: Lane::Fmt,
-        outcome: LaneOutcome::Clean {
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
+        Lane::Fmt,
+        LaneOutcome::Clean {
             evidence: titania_core::LaneEvidence::new(
                 titania_core::CommandEvidence::new(
                     "cargo".to_owned(),
@@ -402,7 +402,7 @@ fn report_pass_constructs_and_round_trips() -> std::result::Result<(), Box<dyn s
                 digest(b"result"),
             )?,
         },
-    }]);
+    )]);
 
     let report = Report::pass(receipt, per_lane)?;
     let json = serde_json::to_string(&report)?;
@@ -417,8 +417,7 @@ fn report_reject_constructs_and_round_trips() -> std::result::Result<(), Box<dyn
     let rule = RuleId::new("FUNC_LOOPS_FOR").unwrap();
     let file = WorkspacePath::new("src/parser.rs").unwrap();
     let location = Location::span(file, 42, 5, 42, 30).unwrap();
-    let repair =
-        RepairHint::UseIteratorPipeline { suggestion: "items.iter().map(|item| ...)".to_owned() };
+    let repair = RepairHint::use_iterator_pipeline("items.iter().map(|item| ...)".to_owned());
     let finding = Finding::reject(
         Lane::AstGrep,
         rule,
@@ -541,22 +540,22 @@ fn location_all_variants() {
     assert!(span.is_span());
     assert!(span.span_file().is_some());
 
-    let dep = Location::Dependency { crate_name: "serde".to_owned(), version: "1.0".to_owned() };
+    let dep = Location::dependency("serde".to_owned(), "1.0".to_owned());
     let json = serde_json::to_string(&dep).unwrap();
     let parsed: Location = serde_json::from_str(&json).unwrap();
     assert_eq!(dep, parsed);
 
-    let manifest = Location::Manifest { file: WorkspacePath::new("Cargo.toml").unwrap() };
+    let manifest = Location::manifest(WorkspacePath::new("Cargo.toml").unwrap());
     let json = serde_json::to_string(&manifest).unwrap();
     let parsed: Location = serde_json::from_str(&json).unwrap();
     assert_eq!(manifest, parsed);
 
-    let ws = Location::Workspace;
+    let ws = Location::workspace();
     let json = serde_json::to_string(&ws).unwrap();
     let parsed: Location = serde_json::from_str(&json).unwrap();
     assert_eq!(ws, parsed);
 
-    let tool = Location::Tool { name: "rustc".to_owned(), version: "1.84.0".to_owned() };
+    let tool = Location::tool("rustc".to_owned(), "1.84.0".to_owned());
     let json = serde_json::to_string(&tool).unwrap();
     let parsed: Location = serde_json::from_str(&json).unwrap();
     assert_eq!(tool, parsed);
@@ -575,33 +574,32 @@ fn repair_hint_all_variants() {
     assert_eq!(patch, parsed);
     assert!(patch.is_auto_applicable());
 
-    let iter = RepairHint::UseIteratorPipeline { suggestion: "iter().map(...)".to_owned() };
+    let iter = RepairHint::use_iterator_pipeline("iter().map(...)".to_owned());
     let json = serde_json::to_string(&iter).unwrap();
     let parsed: RepairHint = serde_json::from_str(&json).unwrap();
     assert_eq!(iter, parsed);
 
-    let flatten = RepairHint::FlattenNesting { suggestion: "reduce nesting depth".to_owned() };
+    let flatten = RepairHint::flatten_nesting("reduce nesting depth".to_owned());
     let json = serde_json::to_string(&flatten).unwrap();
     let parsed: RepairHint = serde_json::from_str(&json).unwrap();
     assert_eq!(flatten, parsed);
 
-    let checked = RepairHint::UseCheckedArithmetic { op: "wrapping_add".to_owned() };
+    let checked = RepairHint::use_checked_arithmetic("wrapping_add".to_owned());
     let json = serde_json::to_string(&checked).unwrap();
     let parsed: RepairHint = serde_json::from_str(&json).unwrap();
     assert_eq!(checked, parsed);
 
-    let remove = RepairHint::RemoveAllowAttribute { attr: "clippy::unwrap_used".to_owned() };
+    let remove = RepairHint::remove_allow_attribute("clippy::unwrap_used".to_owned());
     let json = serde_json::to_string(&remove).unwrap();
     let parsed: RepairHint = serde_json::from_str(&json).unwrap();
     assert_eq!(remove, parsed);
 
-    let replace =
-        RepairHint::ReplaceDependency { from: "serde".to_owned(), to: "serde_derive".to_owned() };
+    let replace = RepairHint::replace_dependency("serde".to_owned(), "serde_derive".to_owned());
     let json = serde_json::to_string(&replace).unwrap();
     let parsed: RepairHint = serde_json::from_str(&json).unwrap();
     assert_eq!(replace, parsed);
 
-    let human = RepairHint::RequiresHumanReview { note: "manual safety check needed".to_owned() };
+    let human = RepairHint::requires_human_review("manual safety check needed".to_owned());
     let json = serde_json::to_string(&human).unwrap();
     let parsed: RepairHint = serde_json::from_str(&json).unwrap();
     assert_eq!(human, parsed);

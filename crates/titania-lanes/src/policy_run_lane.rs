@@ -4,7 +4,6 @@ use std::{
     ffi::OsStr,
     io,
     path::{Path, PathBuf, StripPrefixError},
-    process::Command,
     string::FromUtf8Error,
 };
 
@@ -28,7 +27,7 @@ const SKIP_DIRS: &[&str] = &[".beads", ".git", ".moon", ".titania", ".worktrees"
 /// Returns [`PolicyRunError`] when date, manifest walk, or policy scanning fails.
 pub(super) fn run(target: &TargetProject) -> Result<LaneReport, PolicyRunError> {
     let root = target.as_std_path();
-    let today = policy_date()?;
+    let today = policy_date(target)?;
     let manifests = collect_manifest_paths(root)?;
     let mut report = LaneReport::new();
     let exceptions = load_exceptions(root, &today, &mut report)?;
@@ -44,13 +43,16 @@ pub(super) fn run(target: &TargetProject) -> Result<LaneReport, PolicyRunError> 
 /// Read the current UTC date from the platform `date` command.
 ///
 /// # Errors
-/// Returns [`PolicyRunError`] when the command fails or emits invalid UTF-8.
-pub(super) fn policy_date() -> Result<String, PolicyRunError> {
-    let output = Command::new(DATE_TOOL).arg(DATE_FORMAT).output().map_err(PolicyRunError::Date)?;
-    if !output.status.success() {
-        return Err(PolicyRunError::DateStatus(output.status.to_string()));
+///
+/// Returns [`PolicyRunError`] when the command fails or emits non-UTF-8 output.
+pub(super) fn policy_date(target: &TargetProject) -> Result<String, PolicyRunError> {
+    let output = crate::command::CommandIn::new(target, DATE_TOOL)
+        .and_then(|mut cmd| cmd.arg(DATE_FORMAT).run_capture_raw())
+        .map_err(PolicyRunError::DateCommand)?;
+    if !output.success() {
+        return Err(PolicyRunError::DateStatus(output.status().to_string()));
     }
-    String::from_utf8(output.stdout)
+    String::from_utf8(output.into_stdout())
         .map_err(PolicyRunError::DateUtf8)
         .map(|stdout| stdout.trim().to_owned())
 }
@@ -126,12 +128,12 @@ fn push_manifest_path(
 
 #[derive(Debug, Error)]
 pub(super) enum PolicyRunError {
-    #[error("policy date command failed: {0}")]
-    Date(#[source] io::Error),
     #[error("policy date command exited with {0}")]
     DateStatus(String),
     #[error("policy date command emitted non-UTF-8: {0}")]
     DateUtf8(#[source] FromUtf8Error),
+    #[error("failed to execute date command: {0}")]
+    DateCommand(crate::command::LaneError),
     #[error("failed to walk manifests at {path}: {source}")]
     ManifestWalk {
         path: PathBuf,

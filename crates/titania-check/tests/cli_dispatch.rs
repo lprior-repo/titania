@@ -33,6 +33,12 @@ fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     let _ = cmd.stdout(Stdio::piped());
     let _ = cmd.stderr(Stdio::piped());
 
+    // Stub Moon via TITANIA_MOON_BIN so `Command::Check` does not invoke the
+    // real moon binary (which would error on tempdirs without `.moon/`).
+    // `/bin/true` exits 0 with any args. Tests that exercise real Moon dispatch
+    // (missing-moon handling, moon-invocation proof) override or clear this.
+    let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
+
     // Pass CARGO_TARGET_DIR through as-is so that library_is_available
     // can resolve it relative to the workspace root when walking up
     // from CARGO_MANIFEST_DIR.
@@ -58,6 +64,9 @@ fn run_in_without_policy_env(cwd: &Path, args: &[&str]) -> (i32, String, String)
     let _ = cmd.env_remove("RUSTC_WRAPPER");
     let _ = cmd.env_remove("RUSTC_WORKSPACE_WRAPPER");
     let _ = cmd.env_remove("RUSTC_BOOTSTRAP");
+
+    // Stub Moon (see run_in for rationale).
+    let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
 
     if let Ok(ctd) = env::var("CARGO_TARGET_DIR") {
         let _ = cmd.env("CARGO_TARGET_DIR", ctd);
@@ -362,7 +371,7 @@ fn exit_codes_doctor_emits_json() {
         parsed["status"] == "OK" || parsed["status"] == "MissingRequiredTools",
         "status must be OK or MissingRequiredTools"
     );
-    assert!(code == 0 || code == 3, "doctor exit code must be 0 or 3, got: {code}");
+    assert!(code == 0 || code == 4, "doctor exit code must be 0 or 4, got: {code}");
 }
 #[test]
 fn exit_codes_run_lane_invalid_lane() {
@@ -619,4 +628,221 @@ fn h1_check_and_aggregate_exit_codes_match() {
         check_code, agg_code,
         "check and aggregate must produce the same exit code; check={check_code}, aggregate={agg_code}; check_stderr: {check_stderr}; agg_stderr: {agg_stderr}",
     );
+}
+
+// ===== H1: lane infrastructure Failure must map to InternalError(4) =====
+
+/// H1: a lane `Failure` disposition must surface as exit code 4 (InternalError),
+/// not the raw `LaneExit::Failure` value of 3 (which is `InputError` in the
+/// v1-spec §12 exit-code taxonomy). This proves `map_lane_exit` re-maps
+/// Failure → 4 at the CLI boundary.
+///
+/// We trigger a real `LaneExit::Failure` by running `run-lane fmt` in a Cargo
+/// project whose `.titania/out/edit/` directory is read-only: cargo fmt itself
+/// succeeds (Clean outcome), but `write_lane_artifact` fails when it tries to
+/// write the temp artifact file. `execute_lane_checked` then returns Err, and
+/// `execute_lane` synthesizes `LaneExit::Failure`. `map_lane_exit` must route
+/// that to exit 4.
+#[test]
+fn h1_lane_failure_maps_to_internal_error() {
+    let temp = package(
+        "h1_lane_failure",
+        "pub fn value() -> u8 {\n    1\n}\n",
+        "fn main() {}\n",
+    )
+    .expect("temp package must be created");
+
+    // Pre-create the artifact directory and make it read-only so the lane's
+    // atomic-write step fails. create_dir_all is a no-op on existing dirs, so
+    // the failure surfaces at the temp-file write step inside write_lane_artifact.
+    let artifact_dir = temp.path().join(".titania").join("out").join("edit");
+    std::fs::create_dir_all(&artifact_dir).expect("artifact dir must be pre-created");
+    make_read_only(&artifact_dir);
+
+    let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "fmt"]);
+    assert_eq!(
+        code, 4,
+        "LaneExit::Failure must map to InternalError(4), got {code}; stderr: {stderr}",
+    );
+    assert!(
+        stdout.is_empty(),
+        "Failure path must not write stdout (it goes to stderr as a diagnostic), got: {stdout}",
+    );
+    assert!(
+        !stderr.is_empty(),
+        "Failure path must write a diagnostic to stderr, got empty stderr",
+    );
+}
+
+/// Mark a directory read-only (mode 0555) on Unix so writes inside it fail.
+#[cfg(unix)]
+fn make_read_only(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(path)
+        .expect("readonly dir metadata must be readable")
+        .permissions();
+    perms.set_mode(0o555);
+    std::fs::set_permissions(path, perms).expect("dir must be made read-only");
+}
+
+/// No-op marker on non-Unix hosts (the test is Unix-gated in practice).
+#[cfg(not(unix))]
+fn make_read_only(_path: &Path) {}
+
+// ===== --help / -h / help routing =====
+
+/// `--help` prints usage to stdout and exits 0.
+#[test]
+fn help_long_flag_prints_usage_and_exits_zero() {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+    let (code, stdout, stderr) = run_in(workspace.path(), &["--help"]);
+    assert_eq!(code, 0, "--help must exit 0, got {code}; stderr: {stderr}");
+    assert!(stderr.is_empty(), "--help must not write stderr, got: {stderr}");
+    assert!(stdout.contains("titania-check"), "usage must mention binary name: {stdout}");
+    assert!(stdout.contains("check"), "usage must list check subcommand: {stdout}");
+    assert!(stdout.contains("run-lane"), "usage must list run-lane subcommand: {stdout}");
+    assert!(stdout.contains("aggregate"), "usage must list aggregate subcommand: {stdout}");
+    assert!(stdout.contains("doctor"), "usage must list doctor subcommand: {stdout}");
+    assert!(stdout.contains("explain"), "usage must list explain subcommand: {stdout}");
+    assert!(stdout.contains("--scope"), "usage must mention --scope flag: {stdout}");
+    assert!(stdout.contains("--emit"), "usage must mention --emit flag: {stdout}");
+    assert!(stdout.contains("--out"), "usage must mention --out flag: {stdout}");
+}
+
+/// `-h` is an alias for `--help`.
+#[test]
+fn help_short_flag_prints_usage_and_exits_zero() {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+    let (code, stdout, stderr) = run_in(workspace.path(), &["-h"]);
+    assert_eq!(code, 0, "-h must exit 0, got {code}; stderr: {stderr}");
+    assert!(stderr.is_empty(), "-h must not write stderr, got: {stderr}");
+    assert!(stdout.contains("titania-check"), "-h usage must mention binary name: {stdout}");
+}
+
+/// `help` (bare subcommand) prints usage and exits 0.
+#[test]
+fn help_bare_subcommand_prints_usage_and_exits_zero() {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+    let (code, stdout, stderr) = run_in(workspace.path(), &["help"]);
+    assert_eq!(code, 0, "help must exit 0, got {code}; stderr: {stderr}");
+    assert!(stderr.is_empty(), "help must not write stderr, got: {stderr}");
+    assert!(stdout.contains("titania-check"), "help usage must mention binary name: {stdout}");
+}
+
+/// `<subcommand> --help` prints usage and exits 0 for each subcommand.
+#[test]
+fn help_after_check_subcommand_prints_usage_and_exits_zero() {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+    let (code, stdout, stderr) = run_in(workspace.path(), &["check", "--help"]);
+    assert_eq!(code, 0, "check --help must exit 0, got {code}; stderr: {stderr}");
+    assert!(stderr.is_empty(), "check --help must not write stderr, got: {stderr}");
+    assert!(stdout.contains("titania-check"), "check --help must print usage: {stdout}");
+}
+
+/// `aggregate --help` prints usage and exits 0 (and does NOT require --scope).
+#[test]
+fn help_after_aggregate_subcommand_short_circuits_scope_requirement() {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+    let (code, stdout, stderr) = run_in(workspace.path(), &["aggregate", "--help"]);
+    assert_eq!(code, 0, "aggregate --help must exit 0, got {code}; stderr: {stderr}");
+    assert!(
+        stderr.is_empty(),
+        "aggregate --help must not write stderr (no AggregateScopeRequired), got: {stderr}",
+    );
+    assert!(stdout.contains("titania-check"), "aggregate --help must print usage: {stdout}");
+}
+
+// ===== Check → Moon dispatch (spec §12, §13) =====
+
+/// `Command::Check` with no moon binary on PATH (TITANIA_MOON_BIN points at a
+/// missing path) must surface InputError(3) with the install hint.
+#[test]
+fn check_with_missing_moon_binary_yields_input_error() {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+    let mut cmd = Command::new(binary());
+    let _ = cmd.current_dir(workspace.path());
+    let _ = cmd.args(&["--scope", "edit"]);
+    let _ = cmd.stdout(Stdio::piped());
+    let _ = cmd.stderr(Stdio::piped());
+    // Point at a path that does not exist → spawn fails with NotFound →
+    // MoonSpawnError::NotFound → InputError(3).
+    let _ = cmd.env("TITANIA_MOON_BIN", "/nonexistent/titania-moon-stub-missing");
+    let output = cmd.output().expect("failed to spawn titania-check");
+    let code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    assert_eq!(
+        code, 3,
+        "missing moon binary must surface as InputError(3), got {code}; stderr: {stderr}",
+    );
+    assert!(stdout.is_empty(), "InputError must not write stdout, got: {stdout}");
+    assert!(
+        stderr.contains("Moon CI/CD is required"),
+        "stderr must contain install hint, got: {stderr}",
+    );
+}
+
+/// `Command::Check` must invoke the moon binary (not skip directly to
+/// aggregate). Proven by setting TITANIA_MOON_BIN to a recording stub that
+/// writes a marker file when invoked: the marker must exist after `check`
+/// returns. `aggregate` must NOT invoke moon (marker stays absent).
+#[test]
+fn check_invokes_moon_aggregate_does_not() {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+    let marker = workspace.path().join("moon_invoked marker.txt");
+    let stub = write_recording_stub(workspace.path(), &marker);
+
+    // Check path: moon must be invoked.
+    let mut check_cmd = Command::new(binary());
+    let _ = check_cmd.current_dir(workspace.path());
+    let _ = check_cmd.args(&["check", "--scope", "edit"]);
+    let _ = check_cmd.stdout(Stdio::piped());
+    let _ = check_cmd.stderr(Stdio::piped());
+    let _ = check_cmd.env("TITANIA_MOON_BIN", &stub);
+    drop(check_cmd.output().expect("failed to spawn titania-check"));
+    assert!(
+        marker.exists(),
+        "check must invoke moon (marker file should exist at {})",
+        marker.display(),
+    );
+
+    // Remove the marker, then run aggregate: moon must NOT be invoked.
+    drop(std::fs::remove_file(&marker));
+    let mut agg_cmd = Command::new(binary());
+    let _ = agg_cmd.current_dir(workspace.path());
+    let _ = agg_cmd.args(&["aggregate", "--scope", "edit"]);
+    let _ = agg_cmd.stdout(Stdio::piped());
+    let _ = agg_cmd.stderr(Stdio::piped());
+    let _ = agg_cmd.env("TITANIA_MOON_BIN", &stub);
+    drop(agg_cmd.output().expect("failed to spawn titania-check"));
+    assert!(
+        !marker.exists(),
+        "aggregate must NOT invoke moon (marker file should be absent at {})",
+        marker.display(),
+    );
+}
+
+/// Write a tiny POSIX shell stub that touches `marker` on invocation, then
+/// exits 0. Used to prove the check→moon spawn path is taken.
+fn write_recording_stub(dir: &Path, marker: &Path) -> String {
+    let stub_path = dir.join("moon-recording-stub.sh");
+    let script = format!(
+        "#!/bin/sh\ntouch '{}'\nexit 0\n",
+        marker.display()
+    );
+    std::fs::write(&stub_path, script).expect("recording stub script must be written");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&stub_path)
+            .expect("stub metadata must be readable")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&stub_path, perms)
+            .expect("stub must be made executable");
+    }
+    stub_path
+        .to_str()
+        .expect("stub path must be valid UTF-8")
+        .to_owned()
 }

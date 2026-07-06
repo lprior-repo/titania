@@ -39,7 +39,8 @@ use std::path::Path;
 pub use titania_lanes::SourceLineState;
 
 use titania_lanes::{
-    Finding, LaneExit, LaneReport, RuleId, RuleIdError, SourceLine, current_target_project, exit,
+    CommandIn, Finding, LaneExit, LaneReport, RuleId, RuleIdError, SourceLine,
+    current_target_project, exit,
 };
 
 /// Legacy summary rule retained in stderr compatibility text for old consumers.
@@ -108,7 +109,7 @@ fn main() -> std::process::ExitCode {
     if output::write_scan_header().is_err() {
         return exit(LaneExit::Failure);
     }
-    if !rg_available() {
+    if !rg_available(&target) {
         return output::exit_after_stderr_line(
             "InfraFailure: tool rg unavailable for panic-scan",
             LaneExit::Failure,
@@ -132,11 +133,13 @@ fn panic_surface_rules() -> Result<(), RuleIdError> {
     PANIC_MACROS.iter().try_for_each(|rule| RuleId::new(rule.rule_id()).map(|_| ()))
 }
 
-fn rg_available() -> bool {
-    std::process::Command::new(RG_TOOL)
-        .arg("--version")
-        .output()
-        .is_ok_and(|output| output.status.success())
+fn rg_available(target: &titania_core::TargetProject) -> bool {
+    CommandIn::new(target, RG_TOOL)
+        .and_then(|mut cmd| {
+            let _ = cmd.arg("--version").inherit_env();
+            cmd.run_capture_raw()
+        })
+        .is_ok_and(|output| output.success())
 }
 
 fn scan_target(root: &Path) -> LaneReport {

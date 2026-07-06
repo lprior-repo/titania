@@ -12,6 +12,7 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
+thiserror = "2"
 titania-core = { version = "0.1.0", path = "../titania-core" }
 
 [lints]

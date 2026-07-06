@@ -1,4 +1,8 @@
 //! One-pass code scanner for text-backed detectors.
+//!
+//! Used only by architecture import detectors that need to skip matches
+//! inside comments and string literals. Real ast-grep powers the FUNC_*
+//! rules and does not consult this module.
 
 mod block;
 mod raw;
@@ -11,15 +15,6 @@ pub(super) fn detect_code_line(source: &str, predicate: fn(&str) -> bool) -> boo
         .lines()
         .try_fold(CodeScan::default(), |state, line| state.accept(line, predicate))
         .is_break()
-}
-
-pub(super) fn first_code_line(source: &str, predicate: fn(&str) -> bool) -> Option<usize> {
-    match source.lines().enumerate().try_fold(CodeScan::default(), |state, (index, line)| {
-        state.accept_indexed(index, line, predicate)
-    }) {
-        std::ops::ControlFlow::Break(index) => Some(index),
-        std::ops::ControlFlow::Continue(_) => None,
-    }
 }
 
 pub(super) fn code_only_source(source: &str) -> String {
@@ -57,18 +52,6 @@ impl CodeScan {
         let stripped = LineScan::from(self).scan(line).finish();
         predicate(&stripped.code)
             .then_some(std::ops::ControlFlow::Break(()))
-            .map_or(std::ops::ControlFlow::Continue(stripped.next), |flow| flow)
-    }
-
-    fn accept_indexed(
-        self,
-        index: usize,
-        line: &str,
-        predicate: fn(&str) -> bool,
-    ) -> std::ops::ControlFlow<usize, Self> {
-        let stripped = LineScan::from(self).scan(line).finish();
-        predicate(&stripped.code)
-            .then_some(std::ops::ControlFlow::Break(index))
             .map_or(std::ops::ControlFlow::Continue(stripped.next), |flow| flow)
     }
 }

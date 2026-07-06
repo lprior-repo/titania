@@ -150,15 +150,9 @@ fn make_valid_finding() -> Finding {
     Finding::reject(
         Lane::Clippy,
         RuleId::new("CLIPPY_UNWRAP_USED").unwrap(),
-        Location::Span {
-            file: WorkspacePath::new("src/lib.rs").unwrap(),
-            line_start: 10,
-            col_start: 5,
-            line_end: 10,
-            col_end: 20,
-        },
+        Location::span(WorkspacePath::new("src/lib.rs").unwrap(), 10, 5, 10, 20).unwrap(),
         "unwrap() used".to_string(),
-        RepairHint::UseIteratorPipeline { suggestion: "use .into_iter()".to_string() },
+        RepairHint::use_iterator_pipeline("use .into_iter()".to_string()),
     )
 }
 
@@ -187,34 +181,23 @@ fn location_span_rejects_line_start_zero() {
 
 #[test]
 fn location_span() {
-    let span = Location::Span {
-        file: WorkspacePath::new("src/main.rs").unwrap(),
-        line_start: 1,
-        col_start: 0,
-        line_end: 5,
-        col_end: 10,
-    };
-    assert!(matches!(&span, Location::Span { file, .. } if file.as_str() == "src/main.rs"));
-    let dep = Location::Dependency { crate_name: "serde".to_string(), version: "1.0".to_string() };
+    let span = Location::span(WorkspacePath::new("src/main.rs").unwrap(), 1, 0, 5, 10).unwrap();
+    assert!(span.is_span());
+    assert_eq!(span.span_file().map(WorkspacePath::as_str), Some("src/main.rs"));
+    let dep = Location::dependency("serde".to_string(), "1.0".to_string());
     assert!(dep.span_file().is_none());
-    let ws = Location::Workspace;
+    let ws = Location::workspace();
     assert!(ws.span_file().is_none());
 }
 
 #[test]
 fn location_serde_round_trip() {
     let locations: [Location; 5] = [
-        Location::Span {
-            file: WorkspacePath::new("src/a.rs").unwrap(),
-            line_start: 1,
-            col_start: 0,
-            line_end: 2,
-            col_end: 5,
-        },
-        Location::Dependency { crate_name: "tokio".to_string(), version: "1.0".to_string() },
-        Location::Manifest { file: WorkspacePath::new("Cargo.toml").unwrap() },
-        Location::Workspace,
-        Location::Tool { name: "clippy".to_string(), version: "1.84".to_string() },
+        Location::span(WorkspacePath::new("src/a.rs").unwrap(), 1, 0, 2, 5).unwrap(),
+        Location::dependency("tokio".to_string(), "1.0".to_string()),
+        Location::manifest(WorkspacePath::new("Cargo.toml").unwrap()),
+        Location::workspace(),
+        Location::tool("clippy".to_string(), "1.84".to_string()),
     ];
     for loc in &locations {
         let json = serde_json::to_string(loc).unwrap();
@@ -227,16 +210,15 @@ fn location_serde_round_trip() {
 fn repair_hint_patch() {
     let range = TextRange::new(0, 10).unwrap();
     let patch = RepairHint::patch("file.rs".to_string(), range, "replacement".to_string()).unwrap();
-    assert!(matches!(patch, RepairHint::Patch { .. }));
     assert!(patch.is_auto_applicable());
 }
 
 #[test]
 fn repair_hint_other_variants() {
-    let ui = RepairHint::UseIteratorPipeline { suggestion: "use .iter()".to_string() };
+    let ui = RepairHint::use_iterator_pipeline("use .iter()".to_string());
     assert!(!ui.is_auto_applicable());
 
-    let human = RepairHint::RequiresHumanReview { note: "manual fix".to_string() };
+    let human = RepairHint::requires_human_review("manual fix".to_string());
     assert!(!human.is_auto_applicable());
 }
 
@@ -251,13 +233,13 @@ fn repair_hint_patch_rejects_zero_width() {
 fn repair_hint_serde_round_trip() {
     let range = TextRange::new(0, 10).unwrap();
     let hints = [
-        RepairHint::Patch { file: "a.rs".to_string(), range, replacement: "r".to_string() },
-        RepairHint::UseIteratorPipeline { suggestion: "s".to_string() },
-        RepairHint::FlattenNesting { suggestion: "s".to_string() },
-        RepairHint::UseCheckedArithmetic { op: "add".to_string() },
-        RepairHint::RemoveAllowAttribute { attr: "allow(unused)".to_string() },
-        RepairHint::ReplaceDependency { from: "a".to_string(), to: "b".to_string() },
-        RepairHint::RequiresHumanReview { note: "n".to_string() },
+        RepairHint::patch("a.rs".to_string(), range, "r".to_string()).unwrap(),
+        RepairHint::use_iterator_pipeline("s".to_string()),
+        RepairHint::flatten_nesting("s".to_string()),
+        RepairHint::use_checked_arithmetic("add".to_string()),
+        RepairHint::remove_allow_attribute("allow(unused)".to_string()),
+        RepairHint::replace_dependency("a".to_string(), "b".to_string()),
+        RepairHint::requires_human_review("n".to_string()),
     ];
     for hint in &hints {
         let json = serde_json::to_string(hint).unwrap();
@@ -282,18 +264,21 @@ fn make_quality_receipt() -> Result<QualityReceipt, ReceiptError> {
 #[test]
 fn report_pass_direct_construction() {
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([]);
-    let report = Report::Pass { receipt, per_lane };
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
+        Lane::Fmt,
+        LaneOutcome::Skipped { reason: titania_core::SkipReason::PriorCompilationFailure },
+    )]);
+    let report = Report::pass(receipt, per_lane).unwrap();
     assert!(report.is_pass());
     assert!(!report.is_reject());
 }
 #[test]
 fn report_pass_constructor_accepts_lane_outcomes() {
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
-        lane: Lane::Fmt,
-        outcome: LaneOutcome::Skipped { reason: SkipReason::NotApplicable },
-    }]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
+        Lane::Fmt,
+        LaneOutcome::Skipped { reason: SkipReason::NotApplicable },
+    )]);
     let report = Report::pass(receipt, per_lane).unwrap();
     assert!(report.is_pass());
 }
@@ -341,15 +326,21 @@ fn report_reject_rejects_empty_collections() {
 #[test]
 fn report_reject_kind_none_on_non_reject() {
     let receipt = make_quality_receipt().unwrap();
-    let p = Report::Pass { receipt, per_lane: Box::new([]) };
+    let p = Report::pass(
+        receipt,
+        Box::new([titania_core::PerLaneEntry::new(
+            Lane::Fmt,
+            LaneOutcome::Skipped { reason: titania_core::SkipReason::PriorCompilationFailure },
+        )]),
+    )
+    .unwrap();
     assert_eq!(p.reject_kind(), None);
-
     let diag = Box::new([PolicyDiagnostic {
         message: "bad policy".to_string(),
         file: None,
         severity: DiagnosticSeverity::Error,
     }]);
-    let e = Report::PolicyError { diagnostics: diag };
+    let e = Report::policy_error(diag);
     assert_eq!(e.reject_kind(), None);
 }
 
@@ -377,10 +368,10 @@ fn report_pass_accepts_informational_only_findings() {
     .unwrap();
     let finding = Finding::informational(Lane::Fmt, rule_id, loc, "style note".into(), repair);
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
-        lane: Lane::Fmt,
-        outcome: LaneOutcome::Findings { findings: Box::new([finding]) },
-    }]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
+        Lane::Fmt,
+        LaneOutcome::Findings { findings: Box::new([finding]) },
+    )]);
     let result = Report::pass(receipt, per_lane);
     assert!(
         result.is_ok(),
@@ -401,10 +392,10 @@ fn report_pass_rejects_findings_with_reject() {
     .unwrap();
     let finding = Finding::reject(Lane::Fmt, rule_id, loc, "lint violation".into(), repair);
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
-        lane: Lane::Fmt,
-        outcome: LaneOutcome::Findings { findings: Box::new([finding]) },
-    }]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
+        Lane::Fmt,
+        LaneOutcome::Findings { findings: Box::new([finding]) },
+    )]);
     let result = Report::pass(receipt, per_lane);
     assert!(result.is_err(), "Report::pass must reject Findings with reject findings");
 }
@@ -414,10 +405,10 @@ fn report_pass_rejects_failed_outcome() {
     let failure =
         LaneFailure::Infra { tool: "cargo-test".to_string(), reason: "not found".to_string() };
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
-        lane: Lane::Fmt,
-        outcome: LaneOutcome::Failed(failure),
-    }]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
+        Lane::Fmt,
+        LaneOutcome::Failed { failure },
+    )]);
     let result = Report::pass(receipt, per_lane);
     assert!(result.is_err());
 }
@@ -471,7 +462,7 @@ fn lane_outcome_findings() {
 fn lane_outcome_failed() {
     let failure =
         LaneFailure::Infra { tool: "dylint".to_string(), reason: "not found".to_string() };
-    let outcome = LaneOutcome::Failed(failure);
+    let outcome = LaneOutcome::Failed { failure };
     assert!(matches!(outcome, LaneOutcome::Failed { .. }));
 }
 
@@ -544,7 +535,7 @@ fn lane_outcome_is_not_pass_findings_mixed() {
 fn lane_outcome_is_not_pass_failed() {
     let failure =
         LaneFailure::Infra { tool: "cargo-test".to_string(), reason: "not found".to_string() };
-    let outcome = LaneOutcome::Failed(failure);
+    let outcome = LaneOutcome::Failed { failure };
     assert!(!outcome.is_pass());
 }
 
@@ -695,16 +686,16 @@ fn quality_receipt_constructs() {
         Box::new([LaneReceipt::new(Lane::Fmt, digest, true)]),
     )
     .unwrap();
-    assert_eq!(receipt.schema_version, 1);
-    assert_eq!(receipt.scope, GateScope::Edit);
+    assert_eq!(receipt.schema_version(), 1);
+    assert_eq!(*receipt.scope(), GateScope::Edit);
 }
 
 #[test]
 fn lane_receipt_constructs() {
     let digest = Digest::from_bytes(b"evidence");
     let lr = LaneReceipt::new(Lane::Fmt, digest, true);
-    assert_eq!(lr.lane, Lane::Fmt);
-    assert!(lr.clean);
+    assert_eq!(*lr.lane(), Lane::Fmt);
+    assert!(lr.clean());
 }
 
 #[test]

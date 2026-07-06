@@ -5,7 +5,14 @@
 //! 1. `cargo-dylint` availability → InfraFailure when missing.
 //! 2. `libtitania_dylint` availability → InfraFailure when missing / ABI-mismatched.
 
-use titania_lanes::dylint_lane::{DylintProbe, probe_dylint_toolchain};
+use titania_lanes::{
+    current_target_project,
+    dylint_lane::{DylintProbe, probe_dylint_toolchain},
+};
+
+fn test_target() -> titania_core::TargetProject {
+    current_target_project().expect("current dir must resolve to a TargetProject")
+}
 
 // ---------------------------------------------------------------------------
 // 1. Missing cargo-dylint → InfraFailure with tool = "cargo-dylint"
@@ -20,7 +27,7 @@ fn dylint_loader_probe_missing_cargo_dylint_returns_infra_failure() {
 
     // Since cargo-dylint may or may not be on PATH, we test the structure
     // of the failure regardless of which tool fails first.
-    let probe = probe_dylint_toolchain();
+    let probe = probe_dylint_toolchain(&test_target());
 
     match probe {
         DylintProbe::Ready => {
@@ -49,7 +56,7 @@ fn dylint_loader_probe_missing_cargo_dylint_returns_infra_failure() {
 
 #[test]
 fn dylint_loader_probe_failure_contains_correct_tool_name() {
-    let probe = probe_dylint_toolchain();
+    let probe = probe_dylint_toolchain(&test_target());
 
     if let DylintProbe::Infra(failure, _) = probe {
         // The first missing tool is reported. It could be cargo-dylint or
@@ -70,7 +77,7 @@ fn dylint_loader_probe_failure_contains_correct_tool_name() {
 
 #[test]
 fn dylint_loader_probe_infra_failure_is_infra() {
-    let probe = probe_dylint_toolchain();
+    let probe = probe_dylint_toolchain(&test_target());
 
     if let DylintProbe::Infra(failure, _) = probe {
         assert!(
@@ -87,7 +94,7 @@ fn dylint_loader_probe_infra_failure_is_infra() {
 
 #[test]
 fn dylint_loader_probe_ready_has_no_failure() {
-    let probe = probe_dylint_toolchain();
+    let probe = probe_dylint_toolchain(&test_target());
 
     if probe.is_ready() {
         assert!(probe.failure().is_none());
@@ -100,7 +107,7 @@ fn dylint_loader_probe_ready_has_no_failure() {
 
 #[test]
 fn dylint_loader_probe_infra_report_contains_infra_finding() {
-    let probe = probe_dylint_toolchain();
+    let probe = probe_dylint_toolchain(&test_target());
 
     if let DylintProbe::Infra(_, report) = probe {
         assert!(report.finding_count() > 0, "infra report must contain at least one finding");
@@ -120,7 +127,7 @@ fn dylint_loader_probe_infra_report_contains_infra_finding() {
 
 #[test]
 fn dylint_loader_probe_render_mentions_tool() {
-    let probe = probe_dylint_toolchain();
+    let probe = probe_dylint_toolchain(&test_target());
 
     if let DylintProbe::Infra(failure, _) = probe {
         let rendered = format!("{failure:?}");

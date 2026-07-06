@@ -1,17 +1,24 @@
 //! Repair hint domain type and serde wire adapters.
 //!
-//! `RepairHint` derives `Serialize` for production wire output. Deserialization
-//! uses a private `RepairHintReadWire` intermediate and smart-constructors so
-//! that validation (patch range) runs on every deserialize path.
+//! `RepairHint` is a public newtype wrapper over a private `RepairHintInner` enum.
+//! All construction goes through validated constructors (`RepairHint::patch`, etc.).
+//! Direct variant construction is impossible because `RepairHintInner` is private.
+//!
+//! Serde deserialization uses a private `RepairHintReadWire` intermediate so that
+//! validation runs on every deserialize path.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Error};
 
 use crate::{error::RepairHintError, text_range::TextRange};
 
-/// Machine-actionable repair suggestion for a [`super::Finding`].
+// ── Private inner enum ──────────────────────────────────────────────────────
+
+/// Private inner type for [`RepairHint`].
+///
+/// Sealed so external crates cannot construct variants directly.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "variant", rename_all = "snake_case")]
-pub enum RepairHint {
+enum RepairHintInner {
     /// A byte-range patch to apply to a file.
     Patch {
         /// Workspace-relative file to patch.
@@ -55,6 +62,26 @@ pub enum RepairHint {
     },
 }
 
+impl RepairHintInner {
+    const fn is_patch(&self) -> bool {
+        matches!(self, Self::Patch { .. })
+    }
+}
+
+// ── Public newtype ──────────────────────────────────────────────────────────
+
+/// Machine-actionable repair suggestion for a [`super::Finding`].
+///
+/// This is a newtype wrapper over a private inner enum. All construction
+/// goes through smart constructors that enforce invariants.
+///
+/// # Serialization
+///
+/// `RepairHint` derives `Serialize` for production wire output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct RepairHint(RepairHintInner);
+
 impl RepairHint {
     /// Construct a [`RepairHint::Patch`].
     ///
@@ -66,27 +93,57 @@ impl RepairHint {
         replacement: String,
     ) -> Result<Self, RepairHintError> {
         validate_patch_range(range)?;
-        Ok(Self::Patch { file, range, replacement })
+        Ok(Self(RepairHintInner::Patch { file, range, replacement }))
+    }
+
+    /// Construct a [`RepairHint::UseIteratorPipeline`].
+    #[must_use]
+    pub const fn use_iterator_pipeline(suggestion: String) -> Self {
+        Self(RepairHintInner::UseIteratorPipeline { suggestion })
+    }
+
+    /// Construct a [`RepairHint::FlattenNesting`].
+    #[must_use]
+    pub const fn flatten_nesting(suggestion: String) -> Self {
+        Self(RepairHintInner::FlattenNesting { suggestion })
+    }
+
+    /// Construct a [`RepairHint::UseCheckedArithmetic`].
+    #[must_use]
+    pub const fn use_checked_arithmetic(op: String) -> Self {
+        Self(RepairHintInner::UseCheckedArithmetic { op })
+    }
+
+    /// Construct a [`RepairHint::RemoveAllowAttribute`].
+    #[must_use]
+    pub const fn remove_allow_attribute(attr: String) -> Self {
+        Self(RepairHintInner::RemoveAllowAttribute { attr })
+    }
+
+    /// Construct a [`RepairHint::ReplaceDependency`].
+    #[must_use]
+    pub const fn replace_dependency(from: String, to: String) -> Self {
+        Self(RepairHintInner::ReplaceDependency { from, to })
+    }
+
+    /// Construct a [`RepairHint::RequiresHumanReview`].
+    #[must_use]
+    pub const fn requires_human_review(note: String) -> Self {
+        Self(RepairHintInner::RequiresHumanReview { note })
     }
 
     /// Whether this hint can be applied automatically.
     #[must_use]
     pub const fn is_auto_applicable(&self) -> bool {
-        matches!(self, Self::Patch { .. })
+        self.0.is_patch()
     }
 }
 
-/// Validate that a patch range is non-empty.
+// ── Wire deserialization ────────────────────────────────────────────────────
+
+/// Intermediate wire representation for [`RepairHint`] deserialization.
 ///
-/// # Errors
-/// - [`RepairHintError::EmptyRange`] when `range.width() == 0`.
-const fn validate_patch_range(range: TextRange) -> Result<(), RepairHintError> {
-    if range.width() == 0 {
-        return Err(RepairHintError::EmptyRange);
-    }
-    Ok(())
-}
-
+/// Private — external crates cannot construct or inspect variants directly.
 #[derive(Deserialize)]
 #[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum RepairHintReadWire {
@@ -99,47 +156,94 @@ enum RepairHintReadWire {
     RequiresHumanReview { note: String },
 }
 
+/// Construct a [`RepairHint::Patch`].
+///
+/// # Errors
+/// - [`RepairHintError::EmptyRange`] if `range.width() == 0`.
+fn construct_patch(
+    file: String,
+    range: TextRange,
+    replacement: String,
+) -> Result<RepairHint, RepairHintError> {
+    validate_patch_range(range)?;
+    Ok(RepairHint(RepairHintInner::Patch { file, range, replacement }))
+}
+
+/// Construct [`RepairHint::UseIteratorPipeline`].
+const fn iterator_pipeline(suggestion: String) -> RepairHint {
+    RepairHint(RepairHintInner::UseIteratorPipeline { suggestion })
+}
+
+/// Construct [`RepairHint::FlattenNesting`].
+const fn flatten_nesting(suggestion: String) -> RepairHint {
+    RepairHint(RepairHintInner::FlattenNesting { suggestion })
+}
+
+/// Construct [`RepairHint::UseCheckedArithmetic`].
+const fn checked_arithmetic(op: String) -> RepairHint {
+    RepairHint(RepairHintInner::UseCheckedArithmetic { op })
+}
+
+/// Construct [`RepairHint::RemoveAllowAttribute`].
+const fn remove_allow(attr: String) -> RepairHint {
+    RepairHint(RepairHintInner::RemoveAllowAttribute { attr })
+}
+
+/// Construct [`RepairHint::ReplaceDependency`].
+const fn replace_dependency(from: String, to: String) -> RepairHint {
+    RepairHint(RepairHintInner::ReplaceDependency { from, to })
+}
+
+/// Construct [`RepairHint::RequiresHumanReview`].
+const fn human_review(note: String) -> RepairHint {
+    RepairHint(RepairHintInner::RequiresHumanReview { note })
+}
+
 /// Convert deserialized repair-hint wire data into a validated domain hint.
 ///
 /// # Errors
-/// Returns [`RepairHintError`] when a patch range is invalid.
+/// - [`RepairHintError::EmptyRange`] when `range.width() == 0`.
 fn repair_hint_from_wire(wire: RepairHintReadWire) -> Result<RepairHint, RepairHintError> {
-    match wire {
+    let hint = match wire {
         RepairHintReadWire::Patch { file, range, replacement } => {
-            validate_patch_range(range).map(|()| RepairHint::Patch { file, range, replacement })
+            construct_patch(file, range, replacement)?
         }
-        RepairHintReadWire::UseIteratorPipeline { suggestion } => {
-            Ok(RepairHint::UseIteratorPipeline { suggestion })
-        }
-        RepairHintReadWire::FlattenNesting { suggestion } => {
-            Ok(RepairHint::FlattenNesting { suggestion })
-        }
-        RepairHintReadWire::UseCheckedArithmetic { op } => {
-            Ok(RepairHint::UseCheckedArithmetic { op })
-        }
-        RepairHintReadWire::RemoveAllowAttribute { attr } => {
-            Ok(RepairHint::RemoveAllowAttribute { attr })
-        }
-        RepairHintReadWire::ReplaceDependency { from, to } => {
-            Ok(RepairHint::ReplaceDependency { from, to })
-        }
-        RepairHintReadWire::RequiresHumanReview { note } => {
-            Ok(RepairHint::RequiresHumanReview { note })
-        }
-    }
+        RepairHintReadWire::UseIteratorPipeline { suggestion } => iterator_pipeline(suggestion),
+        RepairHintReadWire::FlattenNesting { suggestion } => flatten_nesting(suggestion),
+        RepairHintReadWire::UseCheckedArithmetic { op } => checked_arithmetic(op),
+        RepairHintReadWire::RemoveAllowAttribute { attr } => remove_allow(attr),
+        RepairHintReadWire::ReplaceDependency { from, to } => replace_dependency(from, to),
+        RepairHintReadWire::RequiresHumanReview { note } => human_review(note),
+    };
+    Ok(hint)
 }
 
-impl TryFrom<RepairHintReadWire> for RepairHint {
-    type Error = RepairHintError;
-
-    fn try_from(wire: RepairHintReadWire) -> Result<Self, Self::Error> {
-        repair_hint_from_wire(wire)
-    }
+/// Deserialize a [`RepairHint`] from wire format.
+///
+/// # Errors
+/// Propagates serde deserialization errors.
+fn deserialize_repair_hint<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<RepairHint, D::Error> {
+    let wire = RepairHintReadWire::deserialize(deserializer)?;
+    repair_hint_from_wire(wire).map_err(D::Error::custom)
 }
 
 impl<'de> Deserialize<'de> for RepairHint {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let wire = RepairHintReadWire::deserialize(deserializer)?;
-        repair_hint_from_wire(wire).map_err(serde::de::Error::custom)
+        deserialize_repair_hint(deserializer)
     }
+}
+
+// ── Patch validation ────────────────────────────────────────────────────────
+
+/// Validate that a patch range is non-empty.
+///
+/// # Errors
+/// - [`RepairHintError::EmptyRange`] when `range.width() == 0`.
+const fn validate_patch_range(range: TextRange) -> Result<(), RepairHintError> {
+    if range.width() == 0 {
+        return Err(RepairHintError::EmptyRange);
+    }
+    Ok(())
 }

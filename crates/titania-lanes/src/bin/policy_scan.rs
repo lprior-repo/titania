@@ -11,18 +11,21 @@
 
 use std::{
     ffi::OsStr,
-    fmt, io,
+    io,
     io::Write as _,
     path::{Path, PathBuf, StripPrefixError},
-    process::{Command, ExitCode},
+    process::ExitCode,
     string::FromUtf8Error,
 };
 
+use titania_core::TargetProject;
+
 use titania_lanes::{
-    LaneExit, LaneReport, RuleIdError, current_target_project, exit,
+    LaneExit, LaneReport, RuleIdError,
+    command::CommandIn,
+    current_target_project, exit,
     policy_scan::{exceptions::load_exceptions, scan_policy_inputs_with_exceptions},
 };
-
 const DATE_TOOL: &str = "date";
 const DATE_FORMAT: &str = "+%F";
 const MANIFEST_NAME: &str = "Cargo.toml";
@@ -48,7 +51,7 @@ fn run_checked() -> Result<LaneReport, PolicyScanError> {
     let target =
         current_target_project().map_err(|error| PolicyScanError::Target(error.to_string()))?;
     let root = target.as_std_path();
-    let today = policy_date()?;
+    let today = policy_date(&target)?;
     let manifests = collect_manifest_paths(root)?;
     let mut report = LaneReport::new();
     let exceptions = load_exceptions(root, &today, &mut report)?;
@@ -80,14 +83,14 @@ fn report_status(report: &LaneReport) -> LaneExit {
 ///
 /// # Errors
 /// Returns [`PolicyScanError`] if the platform date tool cannot run, exits
-/// unsuccessfully, or emits non-UTF-8 output.
-fn policy_date() -> Result<String, PolicyScanError> {
-    let output =
-        Command::new(DATE_TOOL).arg(DATE_FORMAT).output().map_err(PolicyScanError::DateCommand)?;
-    if !output.status.success() {
-        return Err(PolicyScanError::DateStatus(output.status.to_string()));
+fn policy_date(target: &TargetProject) -> Result<String, PolicyScanError> {
+    let output = CommandIn::new(target, DATE_TOOL)
+        .and_then(|mut cmd| cmd.arg(DATE_FORMAT).run_capture_raw())
+        .map_err(PolicyScanError::DateCommand)?;
+    if !output.success() {
+        return Err(PolicyScanError::DateStatus(output.status().to_string()));
     }
-    String::from_utf8(output.stdout)
+    String::from_utf8(output.into_stdout())
         .map_err(PolicyScanError::DateUtf8)
         .map(|stdout| stdout.trim().to_owned())
 }
@@ -189,53 +192,28 @@ fn exit_after_stderr_line(text: &str, code: LaneExit) -> LaneExit {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 enum PolicyScanError {
+    #[error("target discovery failed: {0}")]
     Target(String),
-    DateCommand(io::Error),
+    #[error("policy date command failed: {0}")]
+    DateCommand(#[source] titania_lanes::command::LaneError),
+    #[error("policy date command exited with {0}")]
     DateStatus(String),
-    DateUtf8(FromUtf8Error),
-    ManifestWalk { path: PathBuf, source: io::Error },
-    ManifestOutsideRoot { path: PathBuf, source: StripPrefixError },
-    RuleId(RuleIdError),
-}
-
-impl From<RuleIdError> for PolicyScanError {
-    fn from(error: RuleIdError) -> Self {
-        Self::RuleId(error)
-    }
-}
-
-impl fmt::Display for PolicyScanError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Target(error) => write!(f, "target discovery failed: {error}"),
-            Self::DateCommand(error) => write!(f, "policy date command failed: {error}"),
-            Self::DateStatus(status) => write!(f, "policy date command exited with {status}"),
-            Self::DateUtf8(error) => write!(f, "policy date command emitted non-UTF-8: {error}"),
-            Self::ManifestWalk { path, source } => write_manifest_walk_error(f, path, source),
-            Self::ManifestOutsideRoot { path, source } => fmt_outside(f, path, source),
-            Self::RuleId(error) => write!(f, "rule id configuration error: {error}"),
-        }
-    }
-}
-
-/// Write the manifest-walk error display body.
-///
-/// # Errors
-/// Returns the formatter write error.
-fn write_manifest_walk_error(
-    f: &mut fmt::Formatter<'_>,
-    path: &Path,
-    source: &io::Error,
-) -> fmt::Result {
-    write!(f, "cannot read manifest tree at {}: {source}", path.display())
-}
-
-/// Write the outside-root manifest error display body.
-///
-/// # Errors
-/// Returns the formatter write error.
-fn fmt_outside(f: &mut fmt::Formatter<'_>, path: &Path, source: &StripPrefixError) -> fmt::Result {
-    write!(f, "collected manifest outside target root: {} ({source})", path.display())
+    #[error("policy date command emitted non-UTF-8: {0}")]
+    DateUtf8(#[source] FromUtf8Error),
+    #[error("failed to walk manifests at {path}: {source}")]
+    ManifestWalk {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+    #[error("manifest {path} is outside target root: {source}")]
+    ManifestOutsideRoot {
+        path: PathBuf,
+        #[source]
+        source: StripPrefixError,
+    },
+    #[error("rule id configuration error: {0}")]
+    RuleId(#[from] RuleIdError),
 }

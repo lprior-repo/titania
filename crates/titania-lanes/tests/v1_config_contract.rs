@@ -72,11 +72,12 @@ const REQUIRED_CLIPPY_TABLE_LINTS: &[(&str, &str, &str)] = &[
 ];
 
 const REQUIRED_CLIPPY_THRESHOLDS: &[(&str, &str)] = &[
-    ("too-many-lines-threshold", "60"),
+    ("too-many-lines-threshold", "40"),
     ("too-many-arguments-threshold", "5"),
     ("cognitive-complexity-threshold", "8"),
     ("excessive-nesting-threshold", "2"),
     ("type-complexity-threshold", "120"),
+    ("max-fn-params-bools", "1"),
 ];
 
 #[test]
@@ -103,11 +104,25 @@ fn workspace_lints_reject_weakened_fixture() {
 
 #[test]
 fn clippy_thresholds_reject_weakened_fixture() {
-    let weakened = CLIPPY.replace("too-many-lines-threshold = 60", "too-many-lines-threshold = 80");
+    // Weaken the checked-in baseline (40) to 80 in a copy of clippy.toml.
+    let weakened = CLIPPY.replace("too-many-lines-threshold = 40", "too-many-lines-threshold = 80");
     let clippy_thresholds = flat_entries(&weakened);
 
+    // The weakened fixture must actually carry the weakened value, proving the
+    // replace targeted the real baseline entry rather than silently no-op'ing.
     assert_eq!(clippy_thresholds.get("too-many-lines-threshold"), Some(&"80"));
-    assert_ne!(clippy_thresholds.get("too-many-lines-threshold"), Some(&"40"));
+
+    // The contract gate requires the baseline value from
+    // REQUIRED_CLIPPY_THRESHOLDS; the weakened fixture's value must differ from
+    // it, i.e. the same `assert_entries` check used in `workspace_lints` would
+    // reject this weakened fixture as a contract violation.
+    let required_threshold = REQUIRED_CLIPPY_THRESHOLDS
+        .iter()
+        .copied()
+        .find(|(key, _)| *key == "too-many-lines-threshold")
+        .map(|(_, value)| value);
+    assert_eq!(required_threshold, Some("40"));
+    assert_ne!(clippy_thresholds.get("too-many-lines-threshold").copied(), required_threshold);
 }
 
 fn assert_scalar_lints(entries: &BTreeMap<&str, &str>, required: &[(&str, &str)]) {

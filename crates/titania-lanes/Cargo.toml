@@ -138,6 +138,8 @@ wait-timeout = "0.2.1"
 thiserror = "2.0.18"
 toml_edit = { workspace = true, features = ["serde"] }
 titania-policy = { version = "0.1.0", path = "../titania-policy" }
+ast-grep-core = { version = "0.44", features = ["tree-sitter"] }
+ast-grep-language = { version = "0.44", default-features = false, features = ["tree-sitter-rust"] }
 
 [lints]
 workspace = true

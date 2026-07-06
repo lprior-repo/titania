@@ -50,10 +50,12 @@ pub(super) fn clean_outcome_unchecked(
 ) -> LaneOutcome {
     match clean_outcome(lane, tool_version, digest_seed) {
         Ok(outcome) => outcome,
-        Err(error) => LaneOutcome::Failed(LaneFailure::Suspicious {
-            tool: String::from("titania-check"),
-            evidence: error.to_string(),
-        }),
+        Err(error) => LaneOutcome::Failed {
+            failure: LaneFailure::Suspicious {
+                tool: String::from("titania-check"),
+                evidence: error.to_string(),
+            },
+        },
     }
 }
 
@@ -100,20 +102,23 @@ fn core_finding(lane: Lane, finding: &Finding) -> CoreFinding {
         finding.rule().clone(),
         legacy_location(finding),
         finding.message().to_owned(),
-        RepairHint::RequiresHumanReview { note: finding_note(finding) },
+        RepairHint::requires_human_review(finding_note(finding)),
     )
 }
 
 fn legacy_location(finding: &Finding) -> Location {
     if finding.line() == 0 {
-        return Location::Workspace;
+        return Location::workspace();
     }
     WorkspacePath::new(finding.path())
-        .map_or(Location::Workspace, |path| legacy_span(path, finding.line()))
+        .map_or_else(|_| Location::workspace(), |path| legacy_span(path, finding.line()))
 }
 
 fn legacy_span(path: WorkspacePath, line: u32) -> Location {
-    Location::span(path, line, 0, line, 1).map_or(Location::Workspace, core::convert::identity)
+    let Ok(location) = Location::span(path, line, 0, line, 1) else {
+        return Location::workspace();
+    };
+    location
 }
 
 fn finding_note(finding: &Finding) -> String {
