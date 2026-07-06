@@ -2,6 +2,7 @@
 //!
 //! The shell owns argument parsing, exit-code mapping, and typed dispatch.
 //! It does not fake doctor output or lane execution.
+#![forbid(unsafe_code)]
 
 pub mod aggregate;
 pub mod args;

@@ -3,6 +3,7 @@
 //! This crate owns the output data types used by the `titania-check` CLI's
 //! `--emit json` and `--emit human` modes. It also provides a minimal
 //! `OutputError` type for reporting unavailable output components.
+#![forbid(unsafe_code)]
 
 use thiserror::Error;
 
