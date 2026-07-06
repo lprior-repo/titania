@@ -198,10 +198,6 @@ criteria = "safe-to-deploy"
 version = "0.2.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.windows-sys]]
-version = "0.61.2"
-criteria = "safe-to-run"
-
 [[exemptions.winnow]]
 version = "1.0.3"
 criteria = "safe-to-deploy"

@@ -75,3 +75,99 @@ delta = "1.0.4 -> 1.1.1"
 who = "Lewis <priorlewis43@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.7.4 -> 1.1.2+spec-1.1.0"
+
+[[trusted.ast-grep-core]]
+criteria = "safe-to-deploy"
+user-id = 134269 # Herrington Darkholme (HerringtonDarkholme)
+start = "2022-07-07"
+end = "2027-07-06"
+
+[[trusted.ast-grep-language]]
+criteria = "safe-to-deploy"
+user-id = 134269 # Herrington Darkholme (HerringtonDarkholme)
+start = "2023-01-04"
+end = "2027-07-06"
+
+[[trusted.bstr]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-04-02"
+end = "2027-07-06"
+
+[[trusted.crossbeam-deque]]
+criteria = "safe-to-deploy"
+user-id = 33035 # Taiki Endo (taiki-e)
+start = "2020-10-12"
+end = "2027-07-06"
+
+[[trusted.crossbeam-epoch]]
+criteria = "safe-to-deploy"
+user-id = 33035 # Taiki Endo (taiki-e)
+start = "2020-10-12"
+end = "2027-07-06"
+
+[[trusted.crossbeam-utils]]
+criteria = "safe-to-deploy"
+user-id = 33035 # Taiki Endo (taiki-e)
+start = "2020-10-12"
+end = "2027-07-06"
+
+[[trusted.globset]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-04-15"
+end = "2027-07-06"
+
+[[trusted.ignore]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-04-15"
+end = "2027-07-06"
+
+[[trusted.same-file]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-07-16"
+end = "2027-07-06"
+
+[[trusted.streaming-iterator]]
+criteria = "safe-to-deploy"
+user-id = 539 # Josh Stone (cuviper)
+start = "2019-12-13"
+end = "2027-07-06"
+
+[[trusted.tree-sitter]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:tree-sitter/tree-sitter"
+start = "2025-12-09"
+end = "2027-07-06"
+
+[[trusted.tree-sitter-language]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:tree-sitter/tree-sitter"
+start = "2025-12-09"
+end = "2027-07-06"
+
+[[trusted.tree-sitter-rust]]
+criteria = "safe-to-deploy"
+user-id = 21921 # Max Brunsfeld (maxbrunsfeld)
+start = "2021-03-04"
+end = "2027-07-06"
+
+[[trusted.walkdir]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2019-06-09"
+end = "2027-07-06"
+
+[[trusted.winapi-util]]
+criteria = "safe-to-deploy"
+user-id = 189 # Andrew Gallant (BurntSushi)
+start = "2020-01-11"
+end = "2027-07-06"
+
+[[trusted.windows-sys]]
+criteria = "safe-to-deploy"
+user-id = 64539 # Kenny Kerr (kennykerr)
+start = "2021-11-15"
+end = "2027-07-06"

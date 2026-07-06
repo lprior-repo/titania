@@ -1,6 +1,93 @@
 
 # cargo-vet imports lock
 
+[[publisher.ast-grep-core]]
+version = "0.44.1"
+when = "2026-07-04"
+user-id = 134269
+user-login = "HerringtonDarkholme"
+user-name = "Herrington Darkholme"
+
+[[publisher.ast-grep-language]]
+version = "0.44.1"
+when = "2026-07-04"
+user-id = 134269
+user-login = "HerringtonDarkholme"
+user-name = "Herrington Darkholme"
+
+[[publisher.bstr]]
+version = "1.12.3"
+when = "2026-06-25"
+user-id = 189
+user-login = "BurntSushi"
+user-name = "Andrew Gallant"
+
+[[publisher.crossbeam-deque]]
+version = "0.8.6"
+when = "2024-12-15"
+user-id = 33035
+user-login = "taiki-e"
+user-name = "Taiki Endo"
+
+[[publisher.crossbeam-epoch]]
+version = "0.9.18"
+when = "2024-01-08"
+user-id = 33035
+user-login = "taiki-e"
+user-name = "Taiki Endo"
+
+[[publisher.crossbeam-utils]]
+version = "0.8.21"
+when = "2024-12-15"
+user-id = 33035
+user-login = "taiki-e"
+user-name = "Taiki Endo"
+
+[[publisher.globset]]
+version = "0.4.18"
+when = "2025-10-22"
+user-id = 189
+user-login = "BurntSushi"
+user-name = "Andrew Gallant"
+
+[[publisher.ignore]]
+version = "0.4.27"
+when = "2026-07-01"
+user-id = 189
+user-login = "BurntSushi"
+user-name = "Andrew Gallant"
+
+[[publisher.same-file]]
+version = "1.0.6"
+when = "2020-01-11"
+user-id = 189
+user-login = "BurntSushi"
+user-name = "Andrew Gallant"
+
+[[publisher.streaming-iterator]]
+version = "0.1.9"
+when = "2023-01-06"
+user-id = 539
+user-login = "cuviper"
+user-name = "Josh Stone"
+
+[[publisher.tree-sitter]]
+version = "0.26.10"
+when = "2026-06-28"
+trusted-publisher = "github:tree-sitter/tree-sitter"
+
+[[publisher.tree-sitter-language]]
+version = "0.1.7"
+when = "2026-02-01"
+trusted-publisher = "github:tree-sitter/tree-sitter"
+
+[[publisher.tree-sitter-rust]]
+version = "0.24.2"
+when = "2026-03-27"
+user-id = 21921
+user-login = "maxbrunsfeld"
+user-name = "Max Brunsfeld"
+
 [[publisher.unicode-normalization]]
 version = "0.1.25"
 when = "2025-10-30"
@@ -8,12 +95,33 @@ user-id = 1139
 user-login = "Manishearth"
 user-name = "Manish Goregaokar"
 
+[[publisher.walkdir]]
+version = "2.5.0"
+when = "2024-03-01"
+user-id = 189
+user-login = "BurntSushi"
+user-name = "Andrew Gallant"
+
 [[publisher.wasip2]]
 version = "1.0.1+wasi-0.2.4"
 when = "2025-09-15"
 user-id = 1
 user-login = "alexcrichton"
 user-name = "Alex Crichton"
+
+[[publisher.winapi-util]]
+version = "0.1.11"
+when = "2025-09-07"
+user-id = 189
+user-login = "BurntSushi"
+user-name = "Andrew Gallant"
+
+[[publisher.windows-sys]]
+version = "0.61.2"
+when = "2025-10-06"
+user-id = 64539
+user-login = "kennykerr"
+user-name = "Kenny Kerr"
 
 [[publisher.wit-bindgen]]
 version = "0.46.0"
@@ -506,6 +614,18 @@ criteria = "safe-to-deploy"
 delta = "0.6.0 -> 0.8.0"
 aggregated-from = "https://hg.mozilla.org/mozilla-central/raw-file/tip/supply-chain/audits.toml"
 
+[[audits.mozilla.audits.bit-set]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.8.0 -> 0.9.1"
+aggregated-from = "https://hg.mozilla.org/mozilla-central/raw-file/tip/supply-chain/audits.toml"
+
+[[audits.mozilla.audits.bit-set]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.9.1 -> 0.10.0"
+aggregated-from = "https://hg.mozilla.org/mozilla-central/raw-file/tip/supply-chain/audits.toml"
+
 [[audits.mozilla.audits.bit-vec]]
 who = "Aria Beingessner <a.beingessner@gmail.com>"
 criteria = "safe-to-deploy"
@@ -523,6 +643,12 @@ aggregated-from = "https://hg.mozilla.org/mozilla-central/raw-file/tip/supply-ch
 who = "Jim Blandy <jimb@red-bean.com>"
 criteria = "safe-to-deploy"
 delta = "0.7.0 -> 0.8.0"
+aggregated-from = "https://hg.mozilla.org/mozilla-central/raw-file/tip/supply-chain/audits.toml"
+
+[[audits.mozilla.audits.bit-vec]]
+who = "Erich Gubler <erichdongubler@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.8.0 -> 0.9.1"
 aggregated-from = "https://hg.mozilla.org/mozilla-central/raw-file/tip/supply-chain/audits.toml"
 
 [[audits.mozilla.audits.cargo-platform]]
