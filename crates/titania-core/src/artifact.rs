@@ -93,35 +93,47 @@ impl ArtifactOutcome {
 impl From<&LaneOutcome> for ArtifactOutcome {
     fn from(outcome: &LaneOutcome) -> Self {
         match outcome {
-            LaneOutcome::Clean { evidence } => Self {
-                variant: ArtifactVariant::Clean,
-                evidence: Some(evidence.clone()),
-                findings: None,
-                failure: None,
-                skipped: None,
-            },
-            LaneOutcome::Findings { findings } => Self {
-                variant: ArtifactVariant::Findings,
-                evidence: None,
-                findings: Some(findings.clone()),
-                failure: None,
-                skipped: None,
-            },
-            LaneOutcome::Failed { failure } => Self {
-                variant: ArtifactVariant::Failed,
-                evidence: None,
-                findings: None,
-                failure: Some(failure.clone()),
-                skipped: None,
-            },
-            LaneOutcome::Skipped { reason } => Self {
-                variant: ArtifactVariant::Skipped,
-                evidence: None,
-                findings: None,
-                failure: None,
-                skipped: Some(*reason),
-            },
+            LaneOutcome::Clean { evidence } => Self::clean(evidence.clone()),
+            LaneOutcome::Findings { findings } => Self::findings(findings.clone()),
+            LaneOutcome::Failed { failure } => Self::failed(failure.clone()),
+            LaneOutcome::Skipped { reason } => Self::skipped(*reason),
         }
+    }
+}
+
+impl ArtifactOutcome {
+    /// Project a clean `LaneEvidence` into the on-disk shape.
+    #[must_use]
+    pub(crate) const fn clean(evidence: LaneEvidence) -> Self {
+        Self::new(ArtifactVariant::Clean, Some(evidence), None, None, None)
+    }
+
+    /// Project a findings slice into the on-disk shape.
+    #[must_use]
+    pub(crate) const fn findings(findings: Box<[Finding]>) -> Self {
+        Self::new(ArtifactVariant::Findings, None, Some(findings), None, None)
+    }
+
+    /// Project a `LaneFailure` into the on-disk shape.
+    #[must_use]
+    pub(crate) const fn failed(failure: LaneFailure) -> Self {
+        Self::new(ArtifactVariant::Failed, None, None, Some(failure), None)
+    }
+
+    /// Project a skip reason into the on-disk shape.
+    #[must_use]
+    pub(crate) const fn skipped(reason: SkipReason) -> Self {
+        Self::new(ArtifactVariant::Skipped, None, None, None, Some(reason))
+    }
+
+    const fn new(
+        variant: ArtifactVariant,
+        evidence: Option<LaneEvidence>,
+        findings: Option<Box<[Finding]>>,
+        failure: Option<LaneFailure>,
+        skipped: Option<SkipReason>,
+    ) -> Self {
+        Self { variant, evidence, findings, failure, skipped }
     }
 }
 
