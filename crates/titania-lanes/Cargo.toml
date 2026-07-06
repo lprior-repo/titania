@@ -141,6 +141,10 @@ titania-policy = { version = "0.1.0", path = "../titania-policy" }
 ast-grep-core = { version = "0.44", features = ["tree-sitter"] }
 ast-grep-language = { version = "0.44", default-features = false, features = ["tree-sitter-rust"] }
 
+[package.metadata.cargo-machete]
+# `serde` is used via `#[derive(Serialize, Deserialize)]` attributes on
+# many types; cargo-machete cannot detect derive-macro usages.
+ignored = ["serde"]
 [lints]
 workspace = true
 
