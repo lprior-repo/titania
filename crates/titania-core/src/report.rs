@@ -10,10 +10,22 @@ use crate::{
     error::ReportError,
     failure::LaneFailure,
     finding::Finding,
+    lane::Lane,
     outcome::LaneOutcome,
     v1_receipt::QualityReceiptV1 as QualityReceipt,
 };
 
+/// A single per-lane entry: lane name plus its outcome.
+///
+/// Serialized as `{"lane": "Fmt", "outcome": {"variant": "clean", ...}}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PerLaneEntry {
+    /// Lane identifier (e.g. `Fmt`, `Clippy`, `Check`).
+    pub lane: Lane,
+    /// Outcome of the lane run (clean, failed, or errored).
+    pub outcome: LaneOutcome,
+}
 /// Classification of a [`Report::Reject`] by which collections are populated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -38,7 +50,7 @@ pub enum Report {
         /// Receipt summarizing the successful run.
         receipt: QualityReceipt,
         /// Per-lane outcomes that justify the pass.
-        per_lane: Box<[LaneOutcome]>,
+        per_lane: Box<[PerLaneEntry]>,
     },
     /// One or more lanes rejected or failed.
     ///
@@ -50,7 +62,7 @@ pub enum Report {
         /// Gate failures that prevented a clean verdict.
         gate_failures: Box<[LaneFailure]>,
         /// Per-lane outcomes observed during the rejected run.
-        per_lane: Box<[LaneOutcome]>,
+        per_lane: Box<[PerLaneEntry]>,
     },
     /// Policy configuration error.
     PolicyError {
@@ -69,7 +81,7 @@ pub enum Report {
 enum ReportWire {
     Pass {
         receipt: QualityReceipt,
-        per_lane: Box<[LaneOutcome]>,
+        per_lane: Box<[PerLaneEntry]>,
     },
     Reject {
         #[serde(rename = "code_findings")]
@@ -77,7 +89,7 @@ enum ReportWire {
         #[serde(rename = "gate_failures")]
         gate: Box<[LaneFailure]>,
         #[serde(rename = "per_lane")]
-        lane: Box<[LaneOutcome]>,
+        lane: Box<[PerLaneEntry]>,
     },
     PolicyError {
         diagnostics: Box<[PolicyDiagnostic]>,
@@ -116,7 +128,7 @@ impl<'de> Deserialize<'de> for Report {
 fn reject<E: serde::de::Error>(
     code_findings: Box<[Finding]>,
     gate_failures: Box<[LaneFailure]>,
-    per_lane: Box<[LaneOutcome]>,
+    per_lane: Box<[PerLaneEntry]>,
 ) -> Result<Report, E> {
     Report::reject(code_findings, gate_failures, per_lane).map_err(E::custom)
 }
@@ -138,8 +150,20 @@ fn check_reject_not_empty(
 ///
 /// # Errors
 /// Returns [`ReportError::EmptyPerLane`] when `per_lane` is empty.
-fn check_per_lane_not_empty(per_lane: &[LaneOutcome]) -> Result<(), ReportError> {
+fn check_per_lane_not_empty(per_lane: &[PerLaneEntry]) -> Result<(), ReportError> {
     (!per_lane.is_empty()).then_some(()).ok_or(ReportError::EmptyPerLane)
+}
+/// Check every lane outcome in `per_lane` is pass-shaped (Clean, Skipped,
+/// or Findings with only informational findings).
+///
+/// # Errors
+///
+/// Returns [`ReportError::NonPassLaneOutcome`] for the first lane outcome
+/// that is not pass-shaped.
+fn validate_per_lane_pass(per_lane: &[PerLaneEntry]) -> Result<(), ReportError> {
+    per_lane.iter().find(|e| !e.outcome.is_pass()).map_or(Ok(()), |first_bad| {
+        Err(ReportError::NonPassLaneOutcome(first_bad.lane, format!("{:?}", first_bad.outcome)))
+    })
 }
 
 #[must_use]
@@ -169,7 +193,7 @@ impl Report {
     pub fn reject(
         code_findings: Box<[Finding]>,
         gate_failures: Box<[LaneFailure]>,
-        per_lane: Box<[LaneOutcome]>,
+        per_lane: Box<[PerLaneEntry]>,
     ) -> Result<Self, ReportError> {
         check_reject_not_empty(&code_findings, &gate_failures)?;
         Ok(Self::Reject { code_findings, gate_failures, per_lane })
@@ -178,11 +202,15 @@ impl Report {
     ///
     /// # Errors
     /// - [`ReportError::EmptyPerLane`] if `per_lane` is empty.
+    /// - [`ReportError::NonPassLaneOutcome`] if any lane outcome is not
+    ///   pass-shaped (i.e., not `Clean`, `Skipped`, or informational-only
+    ///   `Findings`).
     pub fn pass(
         receipt: QualityReceipt,
-        per_lane: Box<[LaneOutcome]>,
+        per_lane: Box<[PerLaneEntry]>,
     ) -> Result<Self, ReportError> {
         check_per_lane_not_empty(&per_lane)?;
+        validate_per_lane_pass(&per_lane)?;
         Ok(Self::Pass { receipt, per_lane })
     }
 

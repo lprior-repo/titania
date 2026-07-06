@@ -22,7 +22,7 @@ fn digest(seed: &'static [u8]) -> Digest {
 // ===========================================================================
 
 // Report variants
-const REPORT_PASS_JSON: &str = r#"{"variant":"pass","receipt":{"schema_version":1,"scope":"Edit","source_digest":"7d1aa223722b2aaa89b92fc6b2ef0baa709c01eab9f8494b1de5c335f2750707","cargo_lock_digest":"e73acfadf2de935ef6e689d57aec63e8d98e8092061fa61c9fcd1a3ce46016e2","policy_digest":"ff096070fb25d5456f50000af78f1c92fda605bdb7bc3d1e7d1cc0091204e61c","toolchain_digest":"dd9765724d63cedb171573e96d87aad8c17ca281055f5b639c94761ea2da5c9e","lanes":[{"lane":"Fmt","evidence_digest":"b26fcc302645d25e8327ec86f8ec1f0e4f989bfdeca51e17a314a5b29ba8f146","clean":true}]},"per_lane":[{"variant":"clean","evidence":{"command":{"executable":"cargo","argv":["cargo","fmt","--check"]},"tool_version":"rustfmt 1.84.0","exit_status":{"exited":{"code":0}},"parsed_result_digest":"44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"}}]}"#;
+const REPORT_PASS_JSON: &str = r#"{"variant":"pass","receipt":{"schema_version":1,"scope":"Edit","source_digest":"7d1aa223722b2aaa89b92fc6b2ef0baa709c01eab9f8494b1de5c335f2750707","cargo_lock_digest":"e73acfadf2de935ef6e689d57aec63e8d98e8092061fa61c9fcd1a3ce46016e2","policy_digest":"ff096070fb25d5456f50000af78f1c92fda605bdb7bc3d1e7d1cc0091204e61c","toolchain_digest":"dd9765724d63cedb171573e96d87aad8c17ca281055f5b639c94761ea2da5c9e","lanes":[{"lane":"Fmt","evidence_digest":"b26fcc302645d25e8327ec86f8ec1f0e4f989bfdeca51e17a314a5b29ba8f146","clean":true}]},"per_lane":[{"lane":"Fmt","outcome":{"variant":"clean","evidence":{"command":{"executable":"cargo","argv":["cargo","fmt","--check"]},"tool_version":"rustfmt 1.84.0","exit_status":{"exited":{"code":0}},"parsed_result_digest":"44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"}}}]}"#;
 
 const REPORT_REJECT_JSON: &str = r#"{"variant":"reject","code_findings":[{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"variant":"span","file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30},"message":"Imperative for loop in production source","repair":{"variant":"use_iterator_pipeline","suggestion":"items.iter().map(|item| ...)"},"effect":"reject"}],"gate_failures":[],"per_lane":[]}"#;
 
@@ -389,16 +389,19 @@ fn report_pass_constructs_and_round_trips() -> std::result::Result<(), Box<dyn s
         Box::new([titania_core::LaneReceipt::new(Lane::Fmt, digest(b"evidence"), true)]),
     )?;
 
-    let per_lane: Box<[LaneOutcome]> = Box::new([LaneOutcome::Clean {
-        evidence: titania_core::LaneEvidence::new(
-            titania_core::CommandEvidence::new(
-                "cargo".to_owned(),
-                Box::new(["cargo".to_owned(), "fmt".to_owned(), "--check".to_owned()]),
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
+        lane: Lane::Fmt,
+        outcome: LaneOutcome::Clean {
+            evidence: titania_core::LaneEvidence::new(
+                titania_core::CommandEvidence::new(
+                    "cargo".to_owned(),
+                    Box::new(["cargo".to_owned(), "fmt".to_owned(), "--check".to_owned()]),
+                )?,
+                "rustfmt 1.84.0".to_owned(),
+                ProcessTermination::Exited { code: 0 },
+                digest(b"result"),
             )?,
-            "rustfmt 1.84.0".to_owned(),
-            ProcessTermination::Exited { code: 0 },
-            digest(b"result"),
-        )?,
+        },
     }]);
 
     let report = Report::pass(receipt, per_lane)?;
@@ -426,7 +429,7 @@ fn report_reject_constructs_and_round_trips() -> std::result::Result<(), Box<dyn
 
     let code_findings: Box<[Finding]> = Box::new([finding]);
     let gate_failures: Box<[titania_core::LaneFailure]> = Box::new([]);
-    let per_lane: Box<[LaneOutcome]> = Box::new([]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([]);
 
     let report = Report::reject(code_findings, gate_failures, per_lane)?;
     assert!(report.is_reject());

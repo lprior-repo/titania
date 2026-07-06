@@ -8,6 +8,7 @@
 # ----- Cargo / Rust -----------------------------------------------
 # Build artifacts.
 /target/
+**/fixtures/*/target/
 
 # rustfmt backup files (cargo fmt renames the original to .rs.bk
 # mid-rewrite, then overwrites).
@@ -33,6 +34,7 @@
 /.titania/cache/
 /.titania/out/
 /crates/titania-lanes/.titania/
+/crates/titania-check/.titania/
 
 # ----- Beads -----------------------------------------------------
 # Dolt data plane (issue tracker lives outside git history).

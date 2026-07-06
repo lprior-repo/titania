@@ -56,7 +56,7 @@ pub use receipt::{
     LaneDigest, LaneName, RECEIPT_SCHEMA_VERSION, ReceiptDigests, ReceiptEnvelope, ReceiptLaneExit,
     ReceiptPeriod, RecordedTargetRoot,
 };
-pub use report::{RejectKind, Report};
+pub use report::{PerLaneEntry, RejectKind, Report};
 pub use rule_id::RuleId;
 pub use target_project::TargetProject;
 pub use text_range::TextRange;

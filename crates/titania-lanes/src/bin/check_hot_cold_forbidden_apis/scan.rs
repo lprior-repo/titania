@@ -10,6 +10,7 @@ use crate::{
     syntax::{ApiSourceLine, compact, remove_spaces},
 };
 use thiserror::Error;
+use titania_lanes::SourceLineState;
 
 type ScanOutcome = (Vec<String>, Vec<FindingData>, Vec<FindingData>);
 
@@ -89,7 +90,7 @@ fn scan_hot_line(
     if skip_test_scope_line(&mut line_state.test_scope, line) {
         return;
     }
-    let source_line = ApiSourceLine::parse(line, &mut line_state.block_comment);
+    let source_line = ApiSourceLine::parse(line, &mut line_state.state);
     let findings = classify_line(rel_path, line_no, &source_line);
     let (justified, violations): (Vec<FindingData>, Vec<FindingData>) =
         findings.into_iter().partition(|finding| allowed_finding(&state.allowed, finding));
@@ -104,7 +105,7 @@ fn allowed_finding(allowed: &BTreeSet<(String, String)>, finding: &FindingData) 
 
 #[derive(Default)]
 struct HotLineState {
-    block_comment: bool,
+    state: SourceLineState,
     test_scope: TestScope,
 }
 

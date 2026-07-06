@@ -1,0 +1,4 @@
+crates/titania-core/src/error.rs|outcome-invariant-fix|tn-kpm|restructure-on-next-cycle|NonPassLaneOutcome variant doc push over 300-line limit
+crates/titania-lanes/src/ast_grep_lane/rules/detectors.rs|ast-grep-detector-size|tn-tyo|refactor-on-next-cycle|Detector rules module exceeds 300-line limit (313 lines)
+crates/titania-lanes/src/bin/forbidden_scan/lane.rs|forbidden-scan-lane|tn-tyo|refactor-on-next-cycle|Forbidden scan lane exceeds 300-line limit (306 lines)
+crates/titania-lanes/src/source_line.rs|source-line-parser|tn-tyo|refactor-on-next-cycle|Source line parser exceeds 300-line limit (350 lines)

@@ -27,6 +27,7 @@ fn non_production_sources_are_skipped() {
         "src/lib.rs",
         "src/build.rs",
         "tests/integration.rs",
+        "fixtures/bad.rs",
         "benches/load.rs",
         "examples/demo.rs",
     ];

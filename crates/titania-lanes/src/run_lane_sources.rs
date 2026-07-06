@@ -13,6 +13,7 @@ const SKIP_DIRS: &[&str] = &[
     ".worktrees",
     "benches",
     "examples",
+    "fixtures",
     "target",
     "tests",
 ];

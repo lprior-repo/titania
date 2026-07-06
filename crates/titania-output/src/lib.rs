@@ -74,24 +74,8 @@ impl fmt::Display for OutputError {
 
 impl std::error::Error for OutputError {}
 
-/// Doctor output contract.
-pub mod doctor {
-    use crate::{OutputComponent, OutputError};
-
-    /// Typed doctor report placeholder.
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct DoctorReport;
-
-    /// Return the current doctor report.
-    ///
-    /// # Errors
-    /// Always returns [`OutputError::ComponentUnavailable`] until the doctor
-    /// implementation bead wires concrete tool/version checks.
-    pub const fn report() -> Result<DoctorReport, OutputError> {
-        Err(OutputError::component_unavailable(OutputComponent::Doctor))
-    }
-}
-
+/// Doctor tool/version diagnostic domain model.
+pub mod doctor;
 // Rule explanation output contract — replaced by the file-based module
 // in `explain.rs` which owns catalog data and test scaffolding.
 pub mod explain;

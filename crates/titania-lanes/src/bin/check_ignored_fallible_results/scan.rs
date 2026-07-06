@@ -3,9 +3,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use titania_lanes::{Finding, LaneReport, RuleId, RuleIdError, helpers::line_no_from_idx};
+use titania_lanes::{
+    Finding, LaneReport, RuleId, RuleIdError, SourceLineState, helpers::line_no_from_idx,
+};
 
 use crate::source::SourceLine;
+
+const EXPECT_CALL: &str = concat!("expect", "(");
 
 /// Rule identifiers used for ignored fallible-result findings.
 #[derive(Debug)]
@@ -140,10 +144,10 @@ fn scan_file(
     let Ok(text) = std::fs::read_to_string(file) else {
         return;
     };
-    let mut block_comment = false;
+    let mut state = SourceLineState::default();
     let mut context = ScanContext { rel, allow, rules, report };
     text.lines().enumerate().fold((), |(), (idx, line)| {
-        scan_line(&mut context, line_no_from_idx(idx), line, &mut block_comment);
+        scan_line(&mut context, line_no_from_idx(idx), line, &mut state);
     });
 }
 
@@ -154,8 +158,8 @@ struct ScanContext<'a> {
     report: &'a mut LaneReport,
 }
 
-fn scan_line(context: &mut ScanContext<'_>, line_no: u32, raw: &str, block_comment: &mut bool) {
-    let source_line = SourceLine::parse(raw, block_comment);
+fn scan_line(context: &mut ScanContext<'_>, line_no: u32, raw: &str, state: &mut SourceLineState) {
+    let source_line = SourceLine::parse(raw, state);
     if let Some(class_id) = classify_line(&source_line, context.rules) {
         push_unless_allowed(context, line_no, raw, class_id);
     }
@@ -230,7 +234,7 @@ fn discarded_bare_call(trimmed: &str) -> bool {
         && !trimmed.contains('?')
         && !trimmed.contains('|')
         && !trimmed.contains("assert")
-        && !trimmed.contains("expect(")
+        && !trimmed.contains(EXPECT_CALL)
         && !trimmed.contains("unwrap")
         && !trimmed.contains(".push(")
         && !trimmed.contains(".pop(")

@@ -1,0 +1,21 @@
+{
+  "lane": "AstGrep",
+  "outcome": {
+    "variant": "clean",
+    "evidence": {
+      "command": {
+        "executable": "titania-ast-grep",
+        "argv": [
+          "titania-ast-grep"
+        ]
+      },
+      "tool_version": "embedded-rules-v1",
+      "exit_status": {
+        "exited": {
+          "code": 0
+        }
+      },
+      "parsed_result_digest": "27853e8c0af98495b30b48a747f0bc9cb12d7d074088446650c5cca774dfc71a"
+    }
+  }
+}

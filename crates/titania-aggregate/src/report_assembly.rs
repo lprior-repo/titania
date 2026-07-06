@@ -7,7 +7,7 @@
 
 use thiserror::Error;
 use titania_core::{
-    Finding, GateScope, InputDiagnostic, LaneFailure, LaneOutcome, PolicyDiagnostic,
+    Finding, GateScope, InputDiagnostic, LaneFailure, LaneOutcome, PerLaneEntry, PolicyDiagnostic,
     QualityReceiptV1 as QualityReceipt, Report, ReportError,
 };
 
@@ -69,7 +69,7 @@ pub enum ReportAssemblyError {
 ///   the assembled fields.
 pub fn assemble_report(
     scope: GateScope,
-    outcomes: Box<[LaneOutcome]>,
+    outcomes: Box<[PerLaneEntry]>,
     pass_receipt: QualityReceipt,
     policy_diagnostics: Box<[PolicyDiagnostic]>,
     input_diagnostics: Box<[InputDiagnostic]>,
@@ -97,10 +97,10 @@ pub fn assemble_report(
     Report::pass(pass_receipt, outcomes).map_err(Into::into)
 }
 
-fn rejecting_findings(outcomes: &[LaneOutcome]) -> Box<[Finding]> {
-    outcomes
+fn rejecting_findings(entries: &[PerLaneEntry]) -> Box<[Finding]> {
+    entries
         .iter()
-        .filter_map(findings)
+        .filter_map(|e| findings(&e.outcome))
         .flatten()
         .filter(|finding| finding.is_reject())
         .cloned()
@@ -115,8 +115,13 @@ fn findings(outcome: &LaneOutcome) -> Option<std::slice::Iter<'_, Finding>> {
     }
 }
 
-fn gate_failures(outcomes: &[LaneOutcome]) -> Box<[LaneFailure]> {
-    outcomes.iter().filter_map(failed).cloned().collect::<Vec<_>>().into_boxed_slice()
+fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {
+    entries
+        .iter()
+        .filter_map(|e| failed(&e.outcome))
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_boxed_slice()
 }
 
 const fn failed(outcome: &LaneOutcome) -> Option<&LaneFailure> {
@@ -146,8 +151,8 @@ fn validate_pass_candidate(
 ///
 /// # Errors
 /// Returns [`ReportAssemblyError::EmptyOutcomes`] when `outcomes` is empty.
-fn check_outcomes_not_empty(outcomes: &[LaneOutcome]) -> Result<(), ReportAssemblyError> {
-    (!outcomes.is_empty()).then_some(()).ok_or(ReportAssemblyError::EmptyOutcomes)
+fn check_outcomes_not_empty(entries: &[PerLaneEntry]) -> Result<(), ReportAssemblyError> {
+    (!entries.is_empty()).then_some(()).ok_or(ReportAssemblyError::EmptyOutcomes)
 }
 
 /// Check the caller supplied exactly one outcome per scoped lane.
@@ -157,10 +162,10 @@ fn check_outcomes_not_empty(outcomes: &[LaneOutcome]) -> Result<(), ReportAssemb
 /// does not match [`GateScope::lanes`].
 fn check_scope_outcome_count(
     scope: GateScope,
-    outcomes: &[LaneOutcome],
+    entries: &[PerLaneEntry],
 ) -> Result<(), ReportAssemblyError> {
     let expected = scope.lanes().len();
-    let actual = outcomes.len();
+    let actual = entries.len();
     (actual == expected).then_some(()).ok_or(ReportAssemblyError::LaneCountMismatch {
         scope,
         expected,

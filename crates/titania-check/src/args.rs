@@ -44,6 +44,19 @@ pub struct CheckOptions {
     emit: EmitFormat,
     out: Option<PathBuf>,
 }
+impl CheckOptions {
+    /// The render format selected by the caller.
+    #[must_use]
+    pub const fn emit(&self) -> EmitFormat {
+        self.emit
+    }
+
+    /// Optional output file path.
+    #[must_use]
+    pub const fn out(&self) -> Option<&PathBuf> {
+        self.out.as_ref()
+    }
+}
 
 /// Parsed `aggregate` options.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +65,19 @@ pub struct AggregateOptions {
     pub scope: GateScope,
     emit: EmitFormat,
     out: Option<PathBuf>,
+}
+impl AggregateOptions {
+    /// The render format selected by the caller.
+    #[must_use]
+    pub const fn emit(&self) -> EmitFormat {
+        self.emit
+    }
+
+    /// Optional output file path.
+    #[must_use]
+    pub const fn out(&self) -> Option<&PathBuf> {
+        self.out.as_ref()
+    }
 }
 
 /// Parsed `doctor` options.
@@ -62,9 +88,20 @@ pub struct DoctorOptions {
     emit: EmitFormat,
 }
 
+impl DoctorOptions {
+    /// The render format selected by the caller.
+    #[must_use]
+    pub const fn emit(self) -> EmitFormat {
+        self.emit
+    }
+}
+
+/// Render format for CLI output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EmitFormat {
+pub enum EmitFormat {
+    /// Human-readable table or text output.
     Human,
+    /// Machine-readable JSON output.
     Json,
 }
 
@@ -169,13 +206,12 @@ struct AggregateState {
 
 impl Default for AggregateState {
     fn default() -> Self {
-        Self { scope: None, emit: EmitFormat::Human, out: None }
+        Self { scope: None, emit: EmitFormat::Json, out: None }
     }
 }
-
 impl Default for CheckOptions {
     fn default() -> Self {
-        Self { scope: GateScope::Edit, emit: EmitFormat::Human, out: None }
+        Self { scope: GateScope::Edit, emit: EmitFormat::Json, out: None }
     }
 }
 

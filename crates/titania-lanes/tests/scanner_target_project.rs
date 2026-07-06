@@ -374,3 +374,424 @@ fn nightly_features_allow_internal_unstable_in_normal_crate_is_rejected() -> Tes
     assert!(stderr.contains("NIGHTLY_FEATURE_001"), "stderr was: {stderr}");
     Ok(())
 }
+#[test]
+fn forbidden_scan_skips_unwrap_inside_raw_string() -> TestResult {
+    // `r#"x.unwrap()"#` is a string literal — forbidden-scan must not
+    // flag the `unwrap()` that lives inside raw-string content.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"x.unwrap()"#;
+    let t = "also safe";
+}
+"##,
+    )?;
+    let output =
+        Command::new(env!("CARGO_BIN_EXE_forbidden-scan")).current_dir(fixture.path()).output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "raw string should not trigger forbidden scan; stderr was: {stderr}"
+    );
+    assert!(stderr.contains("NoViolationFound"), "expected clean pass; stderr was: {stderr}");
+    Ok(())
+}
+
+#[test]
+fn forbidden_scan_skips_unwrap_inside_byte_raw_string() -> TestResult {
+    // `br#"..."#` raw string must also suppress forbidden tokens.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r##"pub fn demo() {
+    let b = br#"Result::unwrap()"#;
+}
+"##,
+    )?;
+    let output =
+        Command::new(env!("CARGO_BIN_EXE_forbidden-scan")).current_dir(fixture.path()).output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "byte raw string should not trigger forbidden scan; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn panic_surface_skips_assert_inside_raw_string() -> TestResult {
+    // `assert!(false)` inside a raw string literal must not be flagged
+    // by the panic-surface lane.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"assert!(false)"#;
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-panic-surface"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "raw string assert! should not trigger panic surface; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn panic_surface_skips_assert_inside_byte_raw_string() -> TestResult {
+    // `assert!(true)` inside a `br#"..."#` must not be flagged.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r##"pub fn demo() {
+    let b = br#"assert_eq!(1, 2)"#;
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-panic-surface"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "byte raw string assert_eq! should not trigger panic surface; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn panic_surface_flags_assert_outside_raw_string() -> TestResult {
+    // Sanity: assert! OUTSIDE any raw string must still be flagged.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"safe string"#;
+    assert!(false);
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-panic-surface"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "real assert! should still be flagged; stderr was: {stderr}");
+    assert!(stderr.contains("lib.rs:3"), "expected finding at lib.rs:3; stderr was: {stderr}");
+    Ok(())
+}
+
+#[test]
+fn check_ignored_fallible_results_skips_drop_inside_raw_string() -> TestResult {
+    // `drop(x)` inside a raw string must not trigger the discard-001 rule.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"drop(some_result)"#;
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-ignored-fallible-results"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "raw string drop() should not trigger discard rule; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn check_hot_cold_forbidden_apis_skips_println_inside_raw_string() -> TestResult {
+    // `println!("hello")` inside a raw string must not trigger
+    // the hot-cold forbidden-apis lane.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/titania-core/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"println!("hello")"#;
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-hot-cold-forbidden-apis"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "raw string println! should not trigger hot-cold scan; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn check_hot_cold_forbidden_apis_skips_dbg_inside_raw_string() -> TestResult {
+    // `dbg!(x)` inside a raw string must not trigger.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/titania-core/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"dbg!(value)"#;
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-hot-cold-forbidden-apis"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "raw string dbg! should not trigger hot-cold scan; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn forbidden_scan_flags_real_unwrap_outside_raw_string() -> TestResult {
+    // Sanity: real .unwrap() calls outside raw strings must still be flagged.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"safe string"#;
+    let x = some_result.unwrap();
+}
+"##,
+    )?;
+    let output =
+        Command::new(env!("CARGO_BIN_EXE_forbidden-scan")).current_dir(fixture.path()).output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "real unwrap() should still be flagged; stderr was: {stderr}"
+    );
+    assert!(stderr.contains("`unwrap`"), "expected forbidden token; stderr was: {stderr}");
+    Ok(())
+}
+
+#[test]
+fn raw_string_with_multi_hash_delimiters_not_flagged() -> TestResult {
+    // `r##"..."##` with multiple `#` must also blank correctly.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r###"pub fn demo() {
+    let s = r##"unwrap(); panic!()"##;
+}
+"###,
+    )?;
+    let output =
+        Command::new(env!("CARGO_BIN_EXE_forbidden-scan")).current_dir(fixture.path()).output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "multi-hash raw string should not trigger forbidden scan; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn multi_line_raw_string_forbidden_scan_skips_content() -> TestResult {
+    // A raw string that opens on one line and closes on the next must blank
+    // content on BOTH lines. The shared SourceLine parser discards
+    // RawString state in `finish()`, leaking the body of multi-line raw
+    // strings as code. Before the fix, `unwrap()` on the second line
+    // appears as real code and gets flagged.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        "pub fn demo() {\n\
+         let s = r#\"\n\
+         some unwrap()\n\
+         \x22#;\n\
+         }\n",
+    )?;
+    let output =
+        Command::new(env!("CARGO_BIN_EXE_forbidden-scan")).current_dir(fixture.path()).output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "multi-line raw string should not trigger forbidden scan; stderr was: {stderr}"
+    );
+    assert!(
+        stderr.contains("NoViolationFound"),
+        "expected clean pass for multi-line raw string; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn multi_line_raw_string_panic_surface_skips_assert() -> TestResult {
+    // check-panic-surface uses the shared SourceLine parser.
+    // Multi-line raw string content must not trigger panic! findings.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        "pub fn demo() {\n\
+         let s = r#\"\n\
+         panic!(\x22inside raw\x22)\n\
+         \x22#;\n\
+         }\n",
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-panic-surface"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "multi-line raw string panic! should not trigger; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn multi_line_raw_string_ignored_fallible_results_skips_drop() -> TestResult {
+    // The shared SourceLine parser blanks raw-string content across lines.
+    // `drop(fallible_result)` inside `r#"...\n..."#` must not be flagged.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        "pub fn demo() {\n\
+         let s = r#\"\n\
+         drop(fallible_result)\n\
+         \x22#;\n\
+         }\n",
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-ignored-fallible-results"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "multi-line raw string drop() should not trigger discard rule; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn multi_line_raw_string_hot_cold_skips_println() -> TestResult {
+    // The shared SourceLine parser blanks raw-string content across lines.
+    // `println!(...)` inside `r#"...\n..."#` must not be flagged.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/titania-core/src/lib.rs"),
+        "pub fn demo() {\n\
+         let s = r#\"\n\
+         println!(\x22hot code\x22)\n\
+         \x22#;\n\
+         }\n",
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-hot-cold-forbidden-apis"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "multi-line raw string println! should not trigger hot-cold scan; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn raw_string_close_delimiter_not_flagged_in_code_after() -> TestResult {
+    // Code immediately after a raw-string close delimiter must be scanned.
+    // `r##"safe"##; real.unwrap();` — the unwrap() is outside the raw string
+    // and should be flagged. This verifies the close-delimiter matching works.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r####"pub fn demo() {
+    let s = r##"safe string"##;
+    let x = some_result.unwrap();
+}
+"####,
+    )?;
+    let output =
+        Command::new(env!("CARGO_BIN_EXE_forbidden-scan")).current_dir(fixture.path()).output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "unwrap() after multi-hash raw string close should be flagged; stderr was: {stderr}"
+    );
+    assert!(
+        stderr.contains("`unwrap`"),
+        "expected forbidden token unwrap in findings; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ignored_fallible_results_skips_drop_inside_single_line_raw() -> TestResult {
+    // Single-line raw strings containing forbidden-looking calls must not
+    // trigger ignored-fallible-results. This is a desired-behavior guard;
+    // multi-line and interior-quote tests below catch the current duplicate
+    // parser's raw-string state bugs.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"drop(fallible_result)"#;
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-ignored-fallible-results"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "duplicate parser correctly consumes raw string content on single line; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn hot_cold_forbidden_apis_skips_println_inside_single_line_raw() -> TestResult {
+    // Single-line raw strings containing forbidden-looking calls must not
+    // trigger hot-cold forbidden API detection. This is a desired-behavior
+    // guard; multi-line and interior-quote tests below catch the current
+    // duplicate parser's raw-string state bugs.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/titania-core/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"println!("hello")"#;
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-hot-cold-forbidden-apis"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Desired behavior: forbidden-looking text inside the raw string is ignored.
+    assert!(
+        output.status.success(),
+        "single-line raw string println! should not be flagged (content consumed); stderr was: {stderr}"
+    );
+    Ok(())
+}
+#[test]
+fn ignored_fallible_results_with_interior_quote_raw_string() -> TestResult {
+    // Raw string with interior quotes: `r#"quoted " drop(write_result)"#`.
+    // The interior `"` must not break raw-string detection.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/example/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"quoted " drop(write_result)"#;
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-ignored-fallible-results"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "raw string with interior quotes should not trigger discard rule; stderr was: {stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn hot_cold_forbidden_apis_with_interior_quote_raw_string() -> TestResult {
+    // Raw string with an interior quote before the forbidden call:
+    // `r#"quoted " println!("hello")"#`.
+    let fixture = workspace_fixture()?;
+    write_file(
+        fixture.path().join("crates/titania-core/src/lib.rs"),
+        r##"pub fn demo() {
+    let s = r#"quoted " println!("hello")"#;
+}
+"##,
+    )?;
+    let output = run_from_member(env!("CARGO_BIN_EXE_check-hot-cold-forbidden-apis"), &fixture)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "raw string with interior quotes should not trigger hot-cold scan; stderr was: {stderr}"
+    );
+    Ok(())
+}

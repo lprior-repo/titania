@@ -42,6 +42,7 @@ fn collect_utf8<I: IntoIterator<Item = OsString>>(args: I) -> Result<Vec<String>
 fn parse_command(args: &[String]) -> Result<Cli, CliError> {
     match args.split_first() {
         None => Ok(Cli { command: Command::Check(CheckOptions::default()) }),
+        Some((head, tail)) if head == "check" => parse_check(tail),
         Some((head, tail)) if head == "run-lane" => parse_run_lane(tail),
         Some((head, tail)) if head == "aggregate" => parse_aggregate(tail),
         Some((head, tail)) if head == "doctor" => parse_doctor(tail),

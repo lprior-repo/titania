@@ -1,7 +1,7 @@
 //! Outcome of a single lane execution.
 //!
 //! Each lane produces exactly one [`LaneOutcome`]: clean, findings, failure,
-//! or skipped.
+//! or skipped. Findings with only informational effect are treated as pass-shaped.
 
 use serde::{Deserialize, Serialize};
 
@@ -141,9 +141,16 @@ pub enum LaneOutcome {
 
 impl LaneOutcome {
     /// Whether this outcome is acceptable for a passing report.
+    ///
+    /// `Clean` and `Skipped` always pass. `Findings` passes only when every
+    /// finding is informational; any rejecting finding blocks the pass shape.
     #[must_use]
-    pub const fn is_pass(&self) -> bool {
-        matches!(self, Self::Clean { .. } | Self::Skipped { .. })
+    pub fn is_pass(&self) -> bool {
+        match self {
+            Self::Clean { .. } | Self::Skipped { .. } => true,
+            Self::Findings { findings } => findings.iter().all(Finding::is_informational),
+            Self::Failed(_) => false,
+        }
     }
 
     /// Whether this outcome contains code or policy findings.

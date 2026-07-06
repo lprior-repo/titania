@@ -187,9 +187,12 @@ fn contains_inline_suppression_marker(comment: &str) -> bool {
 }
 
 pub(super) fn detect_core_infra_import(source: &str) -> bool {
-    ["use tokio::", "use axum::", "use sqlx::", "use reqwest::"]
-        .iter()
-        .any(|needle| source.contains(needle))
+    detect_code_line(source, |line| {
+        line.contains("use tokio::")
+            || line.contains("use axum::")
+            || line.contains("use sqlx::")
+            || line.contains("use reqwest::")
+    })
 }
 
 pub(super) fn detect_core_fs_import(source: &str) -> bool {
@@ -268,4 +271,43 @@ fn grouped_member_matches(member: &str, name: &str) -> bool {
     member
         .strip_prefix(name)
         .is_some_and(|rest| rest.is_empty() || rest.starts_with("::") || rest.starts_with(" as "))
+}
+
+#[cfg(test)]
+mod detector_tests {
+    use super::detect_core_infra_import;
+
+    #[test]
+    fn detect_core_infra_import_catches_real_use() {
+        assert!(detect_core_infra_import("use tokio::task;"));
+        assert!(detect_core_infra_import("use axum::Router;"));
+        assert!(detect_core_infra_import("use sqlx::Migrator;"));
+        assert!(detect_core_infra_import("use reqwest::Client;"));
+    }
+
+    #[test]
+    fn detect_core_infra_import_skips_comment_mentions() {
+        assert!(!detect_core_infra_import("// use tokio::task"));
+        assert!(!detect_core_infra_import("/* use axum::Router */"));
+        assert!(!detect_core_infra_import("#[doc = \"use sqlx::Migrator\"]"));
+        assert!(!detect_core_infra_import("/// Requires `use reqwest::Client;`"));
+    }
+
+    #[test]
+    fn detect_core_infra_import_skips_string_literal_mentions() {
+        assert!(!detect_core_infra_import(r#""use tokio::task;""#));
+        assert!(!detect_core_infra_import(r#""use axum::Router""#));
+    }
+
+    #[test]
+    fn detect_core_infra_import_allows_clean_code() {
+        let clean = r#"
+use std::collections::HashMap;
+
+pub fn compute(x: i32) -> i32 {
+    x + 1
+}
+"#;
+        assert!(!detect_core_infra_import(clean));
+    }
 }

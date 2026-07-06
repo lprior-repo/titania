@@ -282,7 +282,7 @@ fn make_quality_receipt() -> Result<QualityReceipt, ReceiptError> {
 #[test]
 fn report_pass_direct_construction() {
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[LaneOutcome]> = Box::new([]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([]);
     let report = Report::Pass { receipt, per_lane };
     assert!(report.is_pass());
     assert!(!report.is_reject());
@@ -290,8 +290,10 @@ fn report_pass_direct_construction() {
 #[test]
 fn report_pass_constructor_accepts_lane_outcomes() {
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[LaneOutcome]> =
-        Box::new([LaneOutcome::Skipped { reason: SkipReason::NotApplicable }]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
+        lane: Lane::Fmt,
+        outcome: LaneOutcome::Skipped { reason: SkipReason::NotApplicable },
+    }]);
     let report = Report::pass(receipt, per_lane).unwrap();
     assert!(report.is_pass());
 }
@@ -299,7 +301,7 @@ fn report_pass_constructor_accepts_lane_outcomes() {
 #[test]
 fn report_pass_constructor_rejects_empty_lane_outcomes() {
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[LaneOutcome]> = Box::new([]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([]);
     let result = Report::pass(receipt, per_lane);
     assert!(matches!(result, Err(titania_core::ReportError::EmptyPerLane)));
 }
@@ -358,6 +360,66 @@ fn report_serde_round_trip() {
     let json = serde_json::to_string(&report).unwrap();
     let back: Report = serde_json::from_str(&json).unwrap();
     assert_eq!(report, back);
+}
+
+/// Informational-only findings SHOULD make Report::pass succeed.
+/// This guards the pass-shaped findings invariant used by aggregate reports.
+#[test]
+fn report_pass_accepts_informational_only_findings() {
+    let rule_id = RuleId::new("TEST_STYLE_NOTE").unwrap();
+    let file = WorkspacePath::new("src/main.rs").unwrap();
+    let loc = Location::span(file, 1, 0, 1, 10).unwrap();
+    let repair = RepairHint::patch(
+        "src/main.rs".to_string(),
+        TextRange::new(0, 10).unwrap(),
+        "// style fix".to_string(),
+    )
+    .unwrap();
+    let finding = Finding::informational(Lane::Fmt, rule_id, loc, "style note".into(), repair);
+    let receipt = make_quality_receipt().unwrap();
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
+        lane: Lane::Fmt,
+        outcome: LaneOutcome::Findings { findings: Box::new([finding]) },
+    }]);
+    let result = Report::pass(receipt, per_lane);
+    assert!(
+        result.is_ok(),
+        "Report::pass with informational-only findings should succeed: {result:?}"
+    );
+}
+
+#[test]
+fn report_pass_rejects_findings_with_reject() {
+    let rule_id = RuleId::new("TEST_LINT_VIOLATION").unwrap();
+    let file = WorkspacePath::new("src/main.rs").unwrap();
+    let loc = Location::span(file, 1, 0, 1, 10).unwrap();
+    let repair = RepairHint::patch(
+        "src/main.rs".to_string(),
+        TextRange::new(0, 10).unwrap(),
+        "// fix".to_string(),
+    )
+    .unwrap();
+    let finding = Finding::reject(Lane::Fmt, rule_id, loc, "lint violation".into(), repair);
+    let receipt = make_quality_receipt().unwrap();
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
+        lane: Lane::Fmt,
+        outcome: LaneOutcome::Findings { findings: Box::new([finding]) },
+    }]);
+    let result = Report::pass(receipt, per_lane);
+    assert!(result.is_err(), "Report::pass must reject Findings with reject findings");
+}
+
+#[test]
+fn report_pass_rejects_failed_outcome() {
+    let failure =
+        LaneFailure::Infra { tool: "cargo-test".to_string(), reason: "not found".to_string() };
+    let receipt = make_quality_receipt().unwrap();
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry {
+        lane: Lane::Fmt,
+        outcome: LaneOutcome::Failed(failure),
+    }]);
+    let result = Report::pass(receipt, per_lane);
+    assert!(result.is_err());
 }
 
 // ===========================================================================
@@ -429,6 +491,61 @@ fn lane_outcome_skipped_all_reasons() {
 
     let outcome = LaneOutcome::Skipped { reason: SkipReason::PolicyDisabled };
     assert!(matches!(outcome, LaneOutcome::Skipped { reason: SkipReason::PolicyDisabled }));
+}
+
+#[test]
+fn lane_outcome_is_pass_clean() {
+    let evidence = make_valid_evidence();
+    let outcome = LaneOutcome::Clean { evidence };
+    assert!(outcome.is_pass());
+}
+
+#[test]
+fn lane_outcome_is_pass_skipped() {
+    let outcome = LaneOutcome::Skipped { reason: SkipReason::NotSelectedByScope };
+    assert!(outcome.is_pass());
+}
+
+#[test]
+fn lane_outcome_is_not_pass_findings_with_reject() {
+    let rule_id = RuleId::new("TEST_LINT_VIOLATION").unwrap();
+    let file = WorkspacePath::new("src/main.rs").unwrap();
+    let loc = Location::span(file, 1, 0, 1, 10).unwrap();
+    let repair = RepairHint::patch(
+        "src/main.rs".to_string(),
+        TextRange::new(0, 10).unwrap(),
+        "// fix".to_string(),
+    )
+    .unwrap();
+    let finding = Finding::reject(Lane::Fmt, rule_id, loc, "lint violation".into(), repair);
+    let outcome = LaneOutcome::Findings { findings: Box::new([finding]) };
+    assert!(!outcome.is_pass());
+}
+
+#[test]
+fn lane_outcome_is_not_pass_findings_mixed() {
+    let rule_id_r = RuleId::new("TEST_LINT_VIOLATION").unwrap();
+    let rule_id_i = RuleId::new("TEST_STYLE_NOTE").unwrap();
+    let file = WorkspacePath::new("src/main.rs").unwrap();
+    let loc = Location::span(file, 1, 0, 1, 10).unwrap();
+    let repair = RepairHint::patch(
+        "src/main.rs".to_string(),
+        TextRange::new(0, 10).unwrap(),
+        "// fix".to_string(),
+    )
+    .unwrap();
+    let reject = Finding::reject(Lane::Fmt, rule_id_r, loc.clone(), "lint".into(), repair.clone());
+    let info = Finding::informational(Lane::Fmt, rule_id_i, loc, "style note".into(), repair);
+    let outcome = LaneOutcome::Findings { findings: Box::new([info, reject]) };
+    assert!(!outcome.is_pass());
+}
+
+#[test]
+fn lane_outcome_is_not_pass_failed() {
+    let failure =
+        LaneFailure::Infra { tool: "cargo-test".to_string(), reason: "not found".to_string() };
+    let outcome = LaneOutcome::Failed(failure);
+    assert!(!outcome.is_pass());
 }
 
 // ===========================================================================

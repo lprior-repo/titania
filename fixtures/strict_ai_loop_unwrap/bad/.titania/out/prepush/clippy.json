@@ -1,0 +1,26 @@
+{
+  "lane": "Clippy",
+  "outcome": {
+    "variant": "findings",
+    "findings": [
+      {
+        "lane": "Clippy",
+        "rule_id": "CLIPPY_UNWRAP_USED",
+        "location": {
+          "variant": "span",
+          "file": "src/lib.rs",
+          "line_start": 5,
+          "col_start": 19,
+          "line_end": 5,
+          "col_end": 27
+        },
+        "message": "using `unwrap` on `Option` or `Result` values",
+        "repair": {
+          "variant": "requires_human_review",
+          "note": "cargo clippy"
+        },
+        "effect": "reject"
+      }
+    ]
+  }
+}

@@ -26,6 +26,8 @@ fn is_ignored_production_path(path: &str) -> bool {
         || path.contains("/benches/")
         || path.starts_with("examples/")
         || path.contains("/examples/")
+        || path.starts_with("fixtures/")
+        || path.contains("/fixtures/")
         || path == "build.rs"
         || path.ends_with("/build.rs")
 }

@@ -36,6 +36,8 @@ pub mod scan;
 
 use std::path::Path;
 
+pub use titania_lanes::SourceLineState;
+
 use titania_lanes::{
     Finding, LaneExit, LaneReport, RuleId, RuleIdError, SourceLine, current_target_project, exit,
 };

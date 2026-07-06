@@ -5,6 +5,7 @@
 
 pub mod aggregate;
 pub mod args;
+pub mod doctor;
 pub mod explain;
 
 use std::{env, io, io::Write, process::ExitCode};
@@ -34,34 +35,76 @@ where
 
 fn dispatch(cli: Cli) -> CliDisposition {
     match cli.command {
-        Command::Check(options) => aggregate_scope(options.scope),
-        Command::Aggregate(options) => aggregate_scope(options.scope),
+        Command::Check(options) => {
+            aggregate_with_opts(options.scope, options.emit(), options.out())
+        }
+        Command::Aggregate(options) => {
+            aggregate_with_opts(options.scope, options.emit(), options.out())
+        }
         Command::RunLane { lane } => run_lane(lane),
-        Command::Doctor(options) => missing_doctor(options.scope),
+        Command::Doctor(options) => doctor_scope(options.scope, options.emit()),
         Command::Explain { rule_id } => explain_rule(&rule_id),
     }
 }
 
-fn aggregate_scope(scope: GateScope) -> CliDisposition {
+fn aggregate_with_opts(
+    scope: GateScope,
+    emit: args::EmitFormat,
+    out: Option<&std::path::PathBuf>,
+) -> CliDisposition {
     env::current_dir().map_or_else(
         |error| current_dir_error(&error),
-        |target_root| aggregate_from_root(&target_root, scope),
+        |target_root| aggregate_from_root(&target_root, scope, emit, out),
     )
 }
 
 fn current_dir_error(error: &io::Error) -> CliDisposition {
     CliDisposition::internal_error(format!("InternalError: current directory unavailable: {error}"))
 }
-
-fn aggregate_from_root(target_root: &std::path::Path, scope: GateScope) -> CliDisposition {
+fn aggregate_from_root(
+    target_root: &std::path::Path,
+    scope: GateScope,
+    emit: args::EmitFormat,
+    out: Option<&std::path::PathBuf>,
+) -> CliDisposition {
     match aggregate::report_json(target_root, scope) {
-        Ok(report) => report_disposition(&report),
+        Ok(report) => report_with_opts(&report, emit, out),
         Err(error) => CliDisposition::input_error(error.diagnostic()),
     }
 }
+/// Render the report with emit-format selection and optional file output.
+fn report_with_opts(
+    report: &aggregate::ReportJson,
+    emit: args::EmitFormat,
+    out: Option<&std::path::PathBuf>,
+) -> CliDisposition {
+    let stdout = match emit {
+        args::EmitFormat::Human => report.render_human(),
+        args::EmitFormat::Json => report.json().to_owned(),
+    };
 
-fn report_disposition(report: &aggregate::ReportJson) -> CliDisposition {
-    CliDisposition::report(report.json().to_owned(), report_code(report.status()))
+    if let Some(path) = out {
+        // Write report to file, suppress stdout.
+        write_report(path, &stdout, report.status())
+    } else {
+        CliDisposition::report(stdout, report_code(report.status()))
+    }
+}
+
+/// Write a report to file and return a silent disposition, or an internal
+/// error disposition when the file write fails.
+fn write_report(
+    path: &std::path::PathBuf,
+    content: &str,
+    status: aggregate::ReportStatus,
+) -> CliDisposition {
+    if let Err(e) = std::fs::write(path, content) {
+        return CliDisposition::internal_error(format!(
+            "InternalError: cannot write report to {}: {e}",
+            path.display()
+        ));
+    }
+    CliDisposition::silent(report_code(status))
 }
 
 const fn report_code(status: aggregate::ReportStatus) -> u8 {
@@ -78,11 +121,11 @@ fn run_lane(lane: Lane) -> CliDisposition {
     CliDisposition::lane_execution(execution.exit().as_u8(), execution.stderr())
 }
 
-fn missing_doctor(scope: GateScope) -> CliDisposition {
-    CliDisposition::input_error(format!(
-        "InputError: MissingImplementation command=doctor scope '{}' bead=tn-4rq.2; doctor output is not yet implemented",
-        scope_name(scope)
-    ))
+fn doctor_scope(scope: GateScope, emit: args::EmitFormat) -> CliDisposition {
+    match doctor::render(scope, emit) {
+        Ok(disposition) => disposition,
+        Err(error) => CliDisposition::internal_error(format!("InternalError: {error}")),
+    }
 }
 
 fn explain_rule(rule_id: &RuleId) -> CliDisposition {
@@ -90,15 +133,6 @@ fn explain_rule(rule_id: &RuleId) -> CliDisposition {
         |error| CliDisposition::input_error(format!("InputError: {error}")),
         |output| CliDisposition::report(output, EXIT_PASS),
     )
-}
-
-const fn scope_name(scope: GateScope) -> &'static str {
-    match scope {
-        GateScope::Edit => "edit",
-        GateScope::Prepush => "prepush",
-        GateScope::Release => "release",
-        _ => "unknown",
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,6 +153,9 @@ impl CliDisposition {
 
     const fn report(stdout: String, code: u8) -> Self {
         Self { code, stdout: Some(stdout), diagnostic: None }
+    }
+    const fn silent(code: u8) -> Self {
+        Self { code, stdout: None, diagnostic: None }
     }
 
     fn lane_execution(code: u8, stderr: &str) -> Self {
