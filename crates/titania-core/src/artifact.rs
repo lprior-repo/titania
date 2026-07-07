@@ -8,10 +8,8 @@
 //! reader share one source of truth for the on-disk format, so every
 //! [`LaneOutcome`] round-trips through the aggregator without parse errors.
 //!
-//! The [`crate::LaneOutcome::Failed`] variant is a struct variant with a
-//! `failure` field, which produces an on-disk shape of
-//! `{"variant": "failed", "failure": { ... }}` that the shared
-//! [`ArtifactOutcome`] projection can both write and read.
+//! The v1 wire format uses externally tagged lane outcomes such as
+//! `{"Clean": { "evidence": { ... } }}` and `{"Failed": { ... }}`.
 
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +23,6 @@ use crate::{
 
 /// On-disk discriminator naming which outcome payload field is populated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum ArtifactVariant {
     /// Lane completed cleanly and carries command evidence.
     Clean,
@@ -43,22 +40,32 @@ pub enum ArtifactVariant {
 /// [`ArtifactVariant`]. Both the lane artifact writer and the aggregator
 /// reader construct and parse this type, so the on-disk shape cannot drift
 /// between them and a lane outcome always round-trips.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactOutcome {
     /// Discriminator naming which optional payload field is populated.
     variant: ArtifactVariant,
     /// Present when [`ArtifactVariant::Clean`].
-    #[serde(skip_serializing_if = "Option::is_none")]
     evidence: Option<LaneEvidence>,
     /// Present when [`ArtifactVariant::Findings`].
-    #[serde(skip_serializing_if = "Option::is_none")]
     findings: Option<Box<[Finding]>>,
     /// Present when [`ArtifactVariant::Failed`].
-    #[serde(skip_serializing_if = "Option::is_none")]
     failure: Option<LaneFailure>,
     /// Present when [`ArtifactVariant::Skipped`].
-    #[serde(skip_serializing_if = "Option::is_none")]
     skipped: Option<SkipReason>,
+}
+
+impl Serialize for ArtifactOutcome {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let outcome = self.clone().into_lane_outcome().map_err(serde::ser::Error::custom)?;
+        outcome.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ArtifactOutcome {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let outcome = LaneOutcome::deserialize(deserializer)?;
+        Ok(Self::from(&outcome))
+    }
 }
 
 impl ArtifactOutcome {
@@ -73,19 +80,19 @@ impl ArtifactOutcome {
             ArtifactVariant::Clean => self
                 .evidence
                 .map(|evidence| LaneOutcome::Clean { evidence })
-                .ok_or(ArtifactError::FieldMissing { variant: "clean", field: "evidence" }),
+                .ok_or(ArtifactError::FieldMissing { variant: "Clean", field: "evidence" }),
             ArtifactVariant::Findings => self
                 .findings
                 .map(|findings| LaneOutcome::Findings { findings })
-                .ok_or(ArtifactError::FieldMissing { variant: "findings", field: "findings" }),
+                .ok_or(ArtifactError::FieldMissing { variant: "Findings", field: "findings" }),
             ArtifactVariant::Failed => self
                 .failure
                 .map(|failure| LaneOutcome::Failed { failure })
-                .ok_or(ArtifactError::FieldMissing { variant: "failed", field: "failure" }),
+                .ok_or(ArtifactError::FieldMissing { variant: "Failed", field: "failure" }),
             ArtifactVariant::Skipped => self
                 .skipped
                 .map(|reason| LaneOutcome::Skipped { reason })
-                .ok_or(ArtifactError::FieldMissing { variant: "skipped", field: "skipped" }),
+                .ok_or(ArtifactError::FieldMissing { variant: "Skipped", field: "skipped" }),
         }
     }
 }

@@ -184,6 +184,12 @@ fn template_metadata() -> Result<()> {
         .get("template")
         .and_then(|i| i.as_table())
         .context("[template] section missing in cargo-generate.toml")?;
+    let vcs =
+        template_section.get("vcs").and_then(Item::as_str).context("[template].vcs must be set")?;
+    assert_eq!(
+        vcs, "None",
+        "template generation must not create an unborn Git HEAD before first prepush"
+    );
     let include_array = template_section
         .get("include")
         .and_then(Item::as_array)
@@ -197,6 +203,29 @@ fn template_metadata() -> Result<()> {
         );
     }
 
+    for rel in &["Cargo.lock", "src/lib.rs"] {
+        let fpath = tmpl.join(rel);
+        drop(read_file(&fpath, &format!("starter package file {rel}"))?);
+        assert!(
+            included.contains(rel),
+            "starter package file {rel} is missing from [template].include in cargo-generate.toml"
+        );
+    }
+
+    let workspace_text = read_file(&tmpl.join(".moon/workspace.yml"), "template workspace.yml")?;
+    assert!(
+        workspace_text.contains("sync: false"),
+        "template workspace.yml must not run VCS sync before generated workspaces have HEAD"
+    );
+    assert!(
+        workspace_text.contains("syncWorkspace: false"),
+        "template workspace.yml must not sync workspace before generated workspaces have HEAD"
+    );
+    assert!(
+        workspace_text.contains("walkStrategy: 'glob'"),
+        "template workspace.yml must not require a committed Git HEAD before first prepush"
+    );
+
     Ok(())
 }
 
@@ -208,7 +237,7 @@ fn template_policy_rust_configs() -> Result<()> {
 
     // ── 2a. Exact-copy configs ──────────────────────────────────────────────
     // These files should be byte-for-byte identical between the template and the root workspace.
-    let copy_pairs: [(&str, &str); 6] = [
+    let copy_pairs: [(&str, &str); 5] = [
         (".titania/profiles/strict-ai/policy.toml", ".titania/profiles/strict-ai/policy.toml"),
         (
             ".titania/profiles/strict-ai/exceptions.toml",
@@ -216,7 +245,6 @@ fn template_policy_rust_configs() -> Result<()> {
         ),
         ("clippy.toml", "clippy.toml"),
         ("rustfmt.toml", "rustfmt.toml"),
-        ("deny.toml", "deny.toml"),
         ("rust-toolchain.toml", "rust-toolchain.toml"),
     ];
 
@@ -238,6 +266,23 @@ fn template_policy_rust_configs() -> Result<()> {
     assert!(
         cargo_config_text.contains("non_exhaustive_omitted_patterns"),
         "template .cargo/config.toml must document why the unstable §9.1 Rust lint is toolchain-blocked"
+    );
+
+    let deny_text = read_file(&tmpl.join("deny.toml"), "template deny.toml")?;
+    let deny_doc = parse_toml(&deny_text, "template deny.toml")?;
+    let advisory_ignore = deny_doc
+        .get("advisories")
+        .and_then(Item::as_table)
+        .and_then(|table| table.get("ignore"))
+        .and_then(Item::as_array)
+        .context("template deny.toml must set advisories.ignore")?;
+    assert!(
+        advisory_ignore.is_empty(),
+        "template deny.toml must not carry repo-specific advisory ignores"
+    );
+    assert!(
+        deny_text.contains("allow = [\"MIT\", \"Apache-2.0\"]"),
+        "template deny.toml must allow only the starter package licenses"
     );
 
     // ── 2b. Template Cargo.toml must carry strict-ai workspace lint keys ────

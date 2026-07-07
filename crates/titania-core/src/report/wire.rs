@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[derive(Deserialize)]
-#[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "variant", deny_unknown_fields)]
 enum ReportWire {
     Pass {
         receipt: QualityReceipt,

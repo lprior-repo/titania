@@ -9,7 +9,6 @@ use crate::error::FailureError;
 
 /// Why a process terminated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum ProcessTermination {
     /// Process exited with a specific exit code.
     Exited {
@@ -63,10 +62,9 @@ impl ProcessTermination {
 
 /// Classification of a lane failure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum LaneFailure {
     /// Infrastructure problem — tool binary missing, ABI mismatch, etc.
-    #[serde(rename = "infra_failure")]
+    #[serde(rename = "InfraFailure")]
     Infra {
         /// Tool that could not be invoked or trusted.
         tool: String,
@@ -74,7 +72,7 @@ pub enum LaneFailure {
         reason: String,
     },
     /// Tool ran but terminated abnormally.
-    #[serde(rename = "tool_failure")]
+    #[serde(rename = "ToolFailure")]
     Tool {
         /// Tool that ran and returned an abnormal termination.
         tool: String,
@@ -82,7 +80,7 @@ pub enum LaneFailure {
         termination: ProcessTermination,
     },
     /// Resource constraint hit — memory limit, file descriptor limit, etc.
-    #[serde(rename = "resource_failure")]
+    #[serde(rename = "ResourceFailure")]
     Resource {
         /// Tool that exceeded a resource limit.
         tool: String,
@@ -91,7 +89,7 @@ pub enum LaneFailure {
     },
     /// Tool failed but the cause is suspicious (e.g. intermittent,
     /// non-reproducible). The `evidence` field contains additional context.
-    #[serde(rename = "suspicious_failure")]
+    #[serde(rename = "SuspiciousFailure")]
     Suspicious {
         /// Tool that produced suspicious failure evidence.
         tool: String,

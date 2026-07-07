@@ -9,7 +9,6 @@ use crate::workspace_path::WorkspacePath;
 
 /// Severity of a diagnostic message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum DiagnosticSeverity {
     /// The diagnostic blocks execution.
     Error,

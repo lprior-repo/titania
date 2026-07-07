@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
 const DEFAULT_MAX_STDOUT: usize = 1024 * 1024;
 const DEFAULT_MAX_STDERR: usize = 1024 * 1024;
 

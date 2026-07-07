@@ -103,11 +103,12 @@ fn record_command_result(
     rule: &crate::RuleId,
     report: &mut LaneReport,
 ) {
-    if output.success() && report.is_clean() {
-        report.record_pass();
-    }
     if !output.success() {
         report.push(crate::Finding::new(rule.clone(), lane.path(), 0, output_message(output)));
+        return;
+    }
+    if report.is_clean() {
+        report.record_pass();
     }
 }
 

@@ -5,8 +5,8 @@
 //! inside it.  Assertions check that:
 //!
 //! 1. The generated workspace actually exists with the expected files.
-//! 2. `titania-check --scope prepush --emit json` produces valid JSON.
-//! 3. The JSON contains a `"variant"` field and at least one `"per_lane"` entry.
+//! 2. `titania-check --scope prepush --emit json` succeeds.
+//! 3. The JSON report is a v1 `Pass` with lane evidence.
 //!
 //! Selective acceptance filter:
 //! `cargo test -p titania-check template_prepush`
@@ -71,6 +71,99 @@ fn find_titania_check() -> PathBuf {
     p
 }
 
+/// Build and locate the local `titania-check` binary used to emulate an install.
+fn ensure_titania_check_binary() -> PathBuf {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.ancestors().nth(2).unwrap();
+    let result = run_cmd("cargo", ["build", "-p", "titania-check"], Some(workspace_root));
+    assert!(
+        result.succeeded(),
+        "cargo build -p titania-check failed:\nstderr: {}\nstdout: {}",
+        result.stderr,
+        result.stdout
+    );
+
+    let check_bin = find_titania_check();
+    assert!(
+        check_bin.exists(),
+        "titania-check binary not found at {check_bin:?} after cargo build -p titania-check"
+    );
+    check_bin
+}
+
+/// Build a PATH value that makes the just-built `titania-check` binary visible
+/// to generated Moon lane tasks.
+fn path_with_titania_check(check_bin: &std::path::Path) -> std::ffi::OsString {
+    let check_dir = check_bin.parent().expect("titania-check binary must have a parent dir");
+    let current_path = std::env::var_os("PATH").unwrap_or_default();
+    std::env::join_paths(
+        std::iter::once(check_dir.to_path_buf()).chain(std::env::split_paths(&current_path)),
+    )
+    .expect("PATH with titania-check binary dir must be valid")
+}
+
+/// Ensure the local Dylint cdylib exists and return its path.
+fn ensure_dylint_library(check_bin: &std::path::Path) -> PathBuf {
+    let debug_dir = check_bin.parent().expect("titania-check binary must have a parent dir");
+    let dylint_lib = debug_dir.join(format!(
+        "{}titania_dylint{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
+    ));
+    if dylint_lib.exists() {
+        return dylint_lib;
+    }
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.ancestors().nth(2).unwrap();
+    let result = run_cmd("cargo", ["build", "-p", "titania-dylint"], Some(workspace_root));
+    assert!(
+        result.succeeded(),
+        "cargo build -p titania-dylint failed:\nstderr: {}\nstdout: {}",
+        result.stderr,
+        result.stdout
+    );
+    assert!(dylint_lib.exists(), "Dylint library missing at {dylint_lib:?} after build");
+    dylint_lib
+}
+
+/// Preserve one host variable when building an otherwise clean child env.
+fn preserve_env(command: &mut Command, key: &str) {
+    if let Some(value) = std::env::var_os(key) {
+        let _ = command.env(key, value);
+    }
+}
+
+/// Build a minimal environment for nested generated-workspace Moon execution.
+fn configure_clean_child_env(
+    command: &mut Command,
+    check_bin: &std::path::Path,
+    dylint_lib: &std::path::Path,
+) {
+    let _ = command.env_clear();
+    let _ = command.env("PATH", path_with_titania_check(check_bin));
+    let _ = command.env("TITANIA_DYLINT_LIB", dylint_lib);
+    let _ = command.env("TITANIA_MOON_BIN", "moon");
+    [
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        "SCCACHE_DIR",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "XDG_CACHE_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+    ]
+    .iter()
+    .for_each(|key| preserve_env(command, key));
+}
+
 /// Generate a fresh workspace from the Titania template into an isolated temp
 /// directory and return its path.  Panics on failure.
 fn generate_workspace(name: &str) -> PathBuf {
@@ -115,15 +208,14 @@ fn generate_workspace(name: &str) -> PathBuf {
 /// Run `titania-check --scope prepush --emit json` in the given directory
 /// and return the stdout (the JSON report).
 fn run_prepush_check(workspace_dir: &std::path::Path) -> String {
-    let check_bin = find_titania_check();
-    assert!(
-        check_bin.exists(),
-        "titania-check binary not found at {check_bin:?}; build it first with `cargo build -p titania-check`"
-    );
+    let check_bin = ensure_titania_check_binary();
+    let dylint_lib = ensure_dylint_library(&check_bin);
 
-    let output = Command::new(&check_bin)
-        .args(["--scope", "prepush", "--emit", "json"])
-        .current_dir(workspace_dir)
+    let mut command = Command::new(&check_bin);
+    let _ = command.args(["--scope", "prepush", "--emit", "json"]).current_dir(workspace_dir);
+    configure_clean_child_env(&mut command, &check_bin, &dylint_lib);
+
+    let output = command
         .output()
         .map(|out| CmdResult {
             exit_code: out.status.code(),
@@ -137,11 +229,9 @@ fn run_prepush_check(workspace_dir: &std::path::Path) -> String {
         });
     let result = output;
 
-    // prepush on a fresh template has no lane artifacts, so it returns exit 1
-    // (reject) — that is expected and we assert on the JSON content instead.
     assert!(
-        !result.stderr.is_empty() || result.succeeded() || result.exit_code == Some(1),
-        "titania-check exited unexpectedly (not 0 or 1):\nstderr: {}\nstdout: {}",
+        result.succeeded(),
+        "titania-check prepush on generated template must pass:\nstderr: {}\nstdout: {}",
         result.stderr,
         result.stdout,
     );
@@ -171,21 +261,24 @@ fn template_prepush_generated_workspace_smoke() {
     let workspace = generate_workspace("tn-rld-4-smoke");
     let json_report = run_prepush_check(&workspace);
 
-    // The report should be a reject (no lane artifacts exist yet).
+    // The report should pass out of the box per v1 DoD #10.
     let parsed: serde_json::Value =
         serde_json::from_str(&json_report).expect("report is valid JSON");
 
     assert_eq!(
-        parsed["variant"], "reject",
-        "prepush on a fresh workspace should be a reject (no artifacts yet); full report: {json_report}"
+        parsed["variant"], "Pass",
+        "prepush on a fresh workspace should pass; full report: {json_report}"
     );
 
-    let gate_failures =
-        parsed.get("gate_failures").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+    let lanes = parsed
+        .get("receipt")
+        .and_then(|receipt| receipt.get("lanes"))
+        .and_then(|lanes| lanes.as_array())
+        .expect("passing template report must include receipt.lanes");
 
     assert!(
-        gate_failures > 0,
-        "expected at least one gate failure for a fresh workspace; report: {json_report}"
+        lanes.iter().all(|lane| lane.get("clean").and_then(|clean| clean.as_bool()) == Some(true)),
+        "all generated template prepush lanes must be clean; report: {json_report}"
     );
 
     // Clean up the generated workspace.

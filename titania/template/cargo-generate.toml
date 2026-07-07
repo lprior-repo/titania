@@ -9,8 +9,11 @@ name = "{{project-name}}"
 
 [template]
 cargo_generate_version = ">=0.23.0"
+vcs = "None"
 include = [
   "Cargo.toml",
+  "Cargo.lock",
+  "src/lib.rs",
   "README.md",
   ".gitignore",
   "clippy.toml",

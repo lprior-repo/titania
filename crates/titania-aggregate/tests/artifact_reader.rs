@@ -12,17 +12,14 @@ use titania_core::{GateScope, Lane, LaneFailure, LaneOutcome};
 /// Helper: build a minimal clean artifact JSON string for a given lane.
 fn clean_artifact_json(lane: Lane) -> String {
     format!(
-        r#"{{"lane":"{}","outcome":{{"variant":"clean","evidence":{{"command":{{"executable":"cargo","argv":["cargo","check"]}},"tool_version":"1.0","exit_status":{{"exited":{{"code":0}}}},"parsed_result_digest":"0000000000000000000000000000000000000000000000000000000000000000"}}}}}}"#,
+        r#"{{"lane":"{}","outcome":{{"Clean":{{"evidence":{{"command":{{"executable":"cargo","argv":["cargo","check"]}},"tool_version":"1.0","exit_status":{{"Exited":{{"code":0}}}},"parsed_result_digest":"0000000000000000000000000000000000000000000000000000000000000000"}}}}}}}}"#,
         lane.name()
     )
 }
 
 /// Helper: build a skipped-artifact JSON string.
 fn skipped_artifact_json(lane: Lane) -> String {
-    format!(
-        r#"{{"lane":"{}","outcome":{{"variant":"skipped","skipped":"not_selected_by_scope"}}}}"#,
-        lane.name()
-    )
+    format!(r#"{{"lane":"{}","outcome":{{"Skipped":"NotSelectedByScope"}}}}"#, lane.name())
 }
 
 /// Helper: create the artifact directory structure for a scope.

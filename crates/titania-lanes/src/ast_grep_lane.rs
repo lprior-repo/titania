@@ -257,11 +257,7 @@ fn clean_outcome() -> Result<LaneOutcome, AstGrepLaneError> {
     // `titania-ast-grep` binary.
     let command = CommandEvidence::embedded(
         "titania-check".to_owned(),
-        Box::from([
-            "titania-check".to_owned(),
-            "run-lane".to_owned(),
-            "ast-grep".to_owned(),
-        ]),
+        Box::from(["titania-check".to_owned(), "run-lane".to_owned(), "ast-grep".to_owned()]),
     )?;
     let evidence = LaneEvidence::new(
         command,

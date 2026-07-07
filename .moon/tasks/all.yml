@@ -19,6 +19,7 @@
 fileGroups:
   sources:
     - 'crates/**/*.rs'
+    - 'titania/template/**'
     - 'Cargo.toml'
     - 'Cargo.lock'
     - 'rustfmt.toml'
@@ -47,6 +48,7 @@ tasks:
       runInCI: true
     inputs:
       - 'crates/**/*.rs'
+      - 'titania/template/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'clippy.toml'
@@ -76,7 +78,7 @@ tasks:
 
   test:
     # Lenient: tests verify behavior. No strict clippy enforcement.
-    command: 'cargo test --workspace --all-features'
+    command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.moon/bin:/usr/local/bin:/usr/bin:/bin:$PATH" cargo test --workspace --all-features'
     toolchains: [rust]
     options:
       runInCI: true
@@ -95,7 +97,7 @@ tasks:
       - 'Cargo.toml'
       - 'Cargo.lock'
     outputs:
-      - 'target/release/run-cargo'
+      - 'target/release/titania-check'
 
   audit:
     command: 'cargo audit'
@@ -227,6 +229,7 @@ tasks:
     options:
       runInCI: true
     inputs:
+      - '@globs(sources)'
       - 'Cargo.toml'
       - '**/Cargo.toml'
       - '.cargo/**'
@@ -258,6 +261,7 @@ tasks:
     options:
       runInCI: true
     inputs:
+      - '@globs(sources)'
       - 'Cargo.lock'
       - 'deny.toml'
 

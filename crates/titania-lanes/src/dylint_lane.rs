@@ -8,12 +8,16 @@
 //!
 //! No lint logic lives here — only the load / wiring contract.
 
+use std::path::{Path, PathBuf};
+
 use titania_core::{LaneFailure, TargetProject};
+use toml_edit::Item;
 
 use crate::{LaneReport, RuleId};
 
 const LIB_TITANIA_DYLINT: &str = "libtitania_dylint";
 const RULE_DYLINT_INFRA: &str = "DYLINT_INFRA_FAILURE";
+const TITANIA_DYLINT_LIB_ENV: &str = "TITANIA_DYLINT_LIB";
 /// Probe `cargo dylint --help` availability.
 ///
 /// Uses `cargo dylint --help` (the subcommand form avoids
@@ -62,11 +66,13 @@ pub fn probe_dylint_toolchain(target: &TargetProject) -> DylintProbe {
     }
 
     // Check 2: is libtitania_dylint available and ABI-compatible?
-    match probe_libtitania_dylint(LIB_TITANIA_DYLINT) {
+    match probe_libtitania_dylint(target) {
         LibraryProbe::Compatible => DylintProbe::Ready,
         LibraryProbe::Absent => unavailable_probe(
             LIB_TITANIA_DYLINT,
-            format!("{LIB_TITANIA_DYLINT} unavailable: no plugin library found in target dir"),
+            format!(
+                "{LIB_TITANIA_DYLINT} unavailable: no plugin library found by env/metadata/sibling lookup"
+            ),
         ),
         LibraryProbe::Incompatible { path, reason } => unavailable_probe(
             LIB_TITANIA_DYLINT,
@@ -95,29 +101,62 @@ enum LibraryProbe {
 ///
 /// Bead tn-gkpv: a missing OR incompatible library must surface a typed
 /// [`LaneFailure::Infra`] with a distinct reason — never silently pass.
-fn probe_libtitania_dylint(lib_name: &str) -> LibraryProbe {
-    let target_dir = cargo_target_dir();
-    let candidates = [
-        format!("debug/{lib_name}.so"),
-        format!("debug/{lib_name}.dylib"),
-        format!("debug/{lib_name}.dll"),
-        format!("release/{lib_name}.so"),
-        format!("release/{lib_name}.dylib"),
-        format!("release/{lib_name}.dll"),
-    ];
-
-    let Some(path) = candidates
-        .iter()
-        .map(|p| target_dir.join(p))
-        .find(|p| p.is_file())
-    else {
-        return LibraryProbe::Absent;
-    };
-
-    match abi_check(&path) {
-        Ok(()) => LibraryProbe::Compatible,
-        Err(reason) => LibraryProbe::Incompatible { path, reason },
+fn probe_libtitania_dylint(target: &TargetProject) -> LibraryProbe {
+    if let Some(path) = env_library_path() {
+        return probe_library_path(path);
     }
+    if workspace_metadata_dylint_configured(target.as_std_path()) {
+        return LibraryProbe::Compatible;
+    }
+    sibling_library_path().map_or(LibraryProbe::Absent, probe_library_path)
+}
+
+fn env_library_path() -> Option<PathBuf> {
+    std::env::var_os(TITANIA_DYLINT_LIB_ENV).map(PathBuf::from)
+}
+
+fn probe_library_path(path: PathBuf) -> LibraryProbe {
+    if !path.is_file() {
+        return LibraryProbe::Incompatible {
+            path,
+            reason: String::from("configured library path is not a file"),
+        };
+    }
+    abi_check(&path)
+        .map_or(LibraryProbe::Compatible, |reason| LibraryProbe::Incompatible { path, reason })
+}
+
+fn workspace_metadata_dylint_configured(root: &Path) -> bool {
+    std::fs::read_to_string(root.join("Cargo.toml"))
+        .ok()
+        .and_then(|content| content.parse::<toml_edit::DocumentMut>().ok())
+        .is_some_and(|document| metadata_libraries(&document))
+}
+
+fn metadata_libraries(document: &toml_edit::DocumentMut) -> bool {
+    document
+        .get("workspace")
+        .and_then(Item::as_table)
+        .and_then(|workspace| workspace.get("metadata"))
+        .and_then(Item::as_table)
+        .and_then(|metadata| metadata.get("dylint"))
+        .and_then(Item::as_table)
+        .and_then(|dylint| dylint.get("libraries"))
+        .is_some()
+}
+
+fn sibling_library_path() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    dylint_library_names().into_iter().map(|name| dir.join(name)).find(|path| path.is_file())
+}
+
+fn dylint_library_names() -> [String; 3] {
+    [
+        format!("{LIB_TITANIA_DYLINT}.so"),
+        format!("{LIB_TITANIA_DYLINT}.dylib"),
+        String::from("titania_dylint.dll"),
+    ]
 }
 
 /// Minimal ABI sanity check on the resolved library path.
@@ -125,31 +164,28 @@ fn probe_libtitania_dylint(lib_name: &str) -> LibraryProbe {
 /// Today we verify the file is a loadable dynamic library by checking the
 /// platform magic (ELF on Linux, Mach-O on macOS, PE on Windows). When the
 /// dylint loader evolves to require an exported `dylint_version` symbol, this
-/// is the place to extend it. Returns `Ok(())` on success or `Err` carrying
+/// is the place to extend it. Returns `None` on success, or `Some(reason)` with
 /// a short human-readable reason suitable for [`LaneFailure::Infra.reason`].
-///
-/// # Errors
-/// Returns `Err` when the file cannot be read, when the file is too short to
-/// hold a recognised dynamic library magic, or when the leading bytes do not
-/// match ELF / Mach-O / PE magic.
-fn abi_check(path: &std::path::Path) -> Result<(), String> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| format!("cannot read library at {}: {e}", path.display()))?;
-    let head = bytes.first_chunk::<4>().copied().ok_or_else(|| {
-        format!(
+fn abi_check(path: &Path) -> Option<String> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) => return Some(format!("cannot read library at {}: {e}", path.display())),
+    };
+    let Some(head) = bytes.first_chunk::<4>().copied() else {
+        return Some(format!(
             "library at {} is too short ({} bytes) to be a dynamic library",
             path.display(),
             bytes.len()
-        )
-    })?;
+        ));
+    };
     if !is_dynamic_library_magic(head) {
-        return Err(format!(
+        return Some(format!(
             "library at {} is not a dynamic library (missing ELF/Mach-O/PE magic; got bytes {:02x?})",
             path.display(),
             head
         ));
     }
-    Ok(())
+    None
 }
 
 /// Return `true` when the 4-byte head of a candidate library file matches the
@@ -160,7 +196,8 @@ const fn is_dynamic_library_magic(head: [u8; 4]) -> bool {
         return true;
     }
     // Mach-O variants
-    if head[0] == 0xfe && head[1] == 0xed && head[2] == 0xfa && (head[3] == 0xce || head[3] == 0xcf) {
+    if head[0] == 0xfe && head[1] == 0xed && head[2] == 0xfa && (head[3] == 0xce || head[3] == 0xcf)
+    {
         return true;
     }
     if head[0] == 0xce && head[1] == 0xfa && head[2] == 0xed && head[3] == 0xfe {
@@ -174,13 +211,6 @@ const fn is_dynamic_library_magic(head: [u8; 4]) -> bool {
         return true;
     }
     false
-}
-
-fn cargo_target_dir() -> std::path::PathBuf {
-    std::env::var_os("CARGO_TARGET_DIR").map_or_else(
-        || std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"),
-        std::path::PathBuf::from,
-    )
 }
 
 fn unavailable_probe(tool: &str, reason: String) -> DylintProbe {

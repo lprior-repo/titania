@@ -2,12 +2,10 @@
 db-path = "~/.cargo/advisory-dbs"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "deny"
-# Dylint 6.0.1 pulls `paste` through `dylint_linting`; this crate is isolated
-# to the rustc-private Dylint plugin lane and does not ship in production paths.
-ignore = ["RUSTSEC-2024-0436"]
+ignore = []
 
 [licenses]
-allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "Unicode-3.0"]
+allow = ["MIT", "Apache-2.0"]
 confidence-threshold = 0.8
 
 [bans]

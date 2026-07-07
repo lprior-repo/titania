@@ -17,7 +17,6 @@ use crate::{error::LocationError, workspace_path::WorkspacePath};
 ///
 /// Sealed so external crates cannot construct variants directly.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "variant", rename_all = "snake_case")]
 enum LocationInner {
     /// A byte-offset span within a single source file.
     Span {
@@ -146,7 +145,6 @@ impl Location {
 ///
 /// Private — external crates cannot construct or inspect variants directly.
 #[derive(Deserialize)]
-#[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum LocationReadWire {
     Span { file: WorkspacePath, line_start: u32, col_start: u32, line_end: u32, col_end: u32 },
     Dependency { crate_name: String, version: String },

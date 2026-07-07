@@ -45,9 +45,7 @@ where
     match Cli::parse_from_os(args) {
         Ok(cli) => dispatch(cli),
         Err(error) if error.is_help() => CliDisposition::report(error.diagnostic(), EXIT_PASS),
-        Err(error) if error.is_version() => {
-            CliDisposition::report(error.diagnostic(), EXIT_PASS)
-        }
+        Err(error) if error.is_version() => CliDisposition::report(error.diagnostic(), EXIT_PASS),
         Err(error) => CliDisposition::input_error(error.diagnostic()),
     }
 }
@@ -76,19 +74,74 @@ fn check_with_moon(options: &args::CheckOptions) -> CliDisposition {
     let scope = options.scope;
     let emit = options.emit();
     let out = options.out();
+    let target_root = match env::current_dir() {
+        Ok(root) => root,
+        Err(error) => return current_dir_error(&error),
+    };
+    if let Err(error) = clear_scope_outputs(&target_root, scope) {
+        return CliDisposition::internal_error(format!(
+            "InternalError: cannot clear stale lane artifacts: {error}"
+        ));
+    }
     let moon_bin = moon::binary_path();
     let tasks = moon::tasks_for_scope(scope);
-    match moon::spawn(&moon_bin, &tasks) {
-        Ok(()) => aggregate_with_opts(scope, emit, out),
+    match moon::spawn_all(&moon_bin, &tasks) {
+        Ok(()) => aggregate_from_root(&target_root, scope, emit, out),
         Err(moon::MoonSpawnError::NotFound) => {
             CliDisposition::input_error(format!("InputError: {}", moon::MISSING_INSTALL_HINT))
         }
-        Err(moon::MoonSpawnError::TimedOut { seconds }) => CliDisposition::internal_error(
-            format!("InternalError: moon spawn exceeded wallclock timeout ({seconds}s)"),
-        ),
+        Err(moon::MoonSpawnError::TimedOut { seconds }) => CliDisposition::internal_error(format!(
+            "InternalError: moon spawn exceeded wallclock timeout ({seconds}s)"
+        )),
         Err(moon::MoonSpawnError::Failed(error)) => {
             CliDisposition::internal_error(format!("InternalError: moon spawn failed: {error}"))
         }
+    }
+}
+
+/// Remove stale artifacts for the selected scope before a fresh Moon run.
+///
+/// # Errors
+/// Returns the filesystem error when an existing artifact cannot be removed.
+fn clear_scope_outputs(target_root: &std::path::Path, scope: GateScope) -> Result<(), io::Error> {
+    let out_dir = target_root.join(".titania").join("out").join(scope_dir(scope));
+    scope.lanes().iter().try_for_each(|lane| remove_lane_artifact(&out_dir, *lane))
+}
+
+/// Remove one lane artifact, treating a missing file as already clean.
+///
+/// # Errors
+/// Returns the filesystem error when removal fails for a reason other than
+/// `NotFound`.
+fn remove_lane_artifact(out_dir: &std::path::Path, lane: Lane) -> Result<(), io::Error> {
+    match std::fs::remove_file(out_dir.join(lane_stem(lane)).with_extension("json")) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+const fn scope_dir(scope: GateScope) -> &'static str {
+    match scope {
+        GateScope::Edit => "edit",
+        GateScope::Prepush => "prepush",
+        GateScope::Release => "release",
+        _ => "unknown",
+    }
+}
+
+const fn lane_stem(lane: Lane) -> &'static str {
+    match lane {
+        Lane::Fmt => "fmt",
+        Lane::Compile => "compile",
+        Lane::Clippy => "clippy",
+        Lane::AstGrep => "ast-grep",
+        Lane::Dylint => "dylint",
+        Lane::PanicScan => "panic-scan",
+        Lane::PolicyScan => "policy-scan",
+        Lane::Test => "test",
+        Lane::Deny => "deny",
+        Lane::Build => "build",
     }
 }
 

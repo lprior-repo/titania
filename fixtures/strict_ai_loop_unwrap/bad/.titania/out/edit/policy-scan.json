@@ -1,23 +1,24 @@
 {
   "lane": "PolicyScan",
   "outcome": {
-    "variant": "clean",
-    "evidence": {
-      "command": {
-        "executable": "titania-check",
-        "argv": [
-          "titania-check",
-          "run-lane",
-          "policy-scan"
-        ]
-      },
-      "tool_version": "policy-scan-v1",
-      "exit_status": {
-        "exited": {
-          "code": 0
-        }
-      },
-      "parsed_result_digest": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+    "Clean": {
+      "evidence": {
+        "command": {
+          "executable": "titania-check",
+          "argv": [
+            "titania-check",
+            "run-lane",
+            "policy-scan"
+          ]
+        },
+        "tool_version": "policy-scan-v1",
+        "exit_status": {
+          "Exited": {
+            "code": 0
+          }
+        },
+        "parsed_result_digest": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+      }
     }
   }
 }

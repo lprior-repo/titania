@@ -461,6 +461,7 @@ const LANE_INPUTS: &[(&str, &[&str])] = &[
     (
         "titania-policy-scan",
         &[
+            "@globs(sources)",
             "Cargo.toml",
             "**/Cargo.toml",
             ".cargo/**",
@@ -470,7 +471,7 @@ const LANE_INPUTS: &[(&str, &[&str])] = &[
         ],
     ),
     ("titania-test", &["@globs(sources)", "@globs(tests)"]),
-    ("titania-deny", &["Cargo.lock", "deny.toml"]),
+    ("titania-deny", &["@globs(sources)", "Cargo.lock", "deny.toml"]),
     ("titania-build", &["@globs(sources)"]),
 ];
 

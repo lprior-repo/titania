@@ -294,7 +294,7 @@ fn write_fails_when_output_root_does_not_exist() -> TestResult {
 }
 
 // ---------------------------------------------------------------------------
-// 9. Findings artifact includes outcome variant in JSON
+// 9. Findings artifact includes externally tagged outcome in JSON
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -311,17 +311,13 @@ fn findings_artifact_includes_outcome_variant_in_json() -> TestResult {
     let json: serde_json::Value = serde_json::from_str(&payload)?;
 
     assert!(json.get("outcome").is_some(), "artifact JSON must contain an \"outcome\" field");
-    assert_eq!(
-        json["outcome"]["variant"].as_str(),
-        Some("findings"),
-        "outcome variant must be \"findings\" for LaneOutcome::Findings"
-    );
+    assert!(json["outcome"].get("Findings").is_some(), "outcome must contain Findings tag");
 
     Ok(())
 }
 
 // ---------------------------------------------------------------------------
-// 10. Clean artifact includes outcome variant in JSON
+// 10. Clean artifact includes externally tagged outcome in JSON
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -337,11 +333,7 @@ fn clean_artifact_includes_outcome_variant_in_json() -> TestResult {
     let payload = std::fs::read_to_string(&written)?;
     let json: serde_json::Value = serde_json::from_str(&payload)?;
 
-    assert_eq!(
-        json["outcome"]["variant"].as_str(),
-        Some("clean"),
-        "outcome variant must be \"clean\" for LaneOutcome::Clean"
-    );
+    assert!(json["outcome"].get("Clean").is_some(), "outcome must contain Clean tag");
 
     Ok(())
 }

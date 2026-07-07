@@ -1,6 +1,16 @@
 [workspace]
-members = []
+members = ["."]
 resolver = "3"
+
+[package]
+name = "{{project-name}}"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Generated Rust workspace configured for Titania Check."
+publish = false
 
 [workspace.package]
 edition = "2024"
@@ -119,6 +129,9 @@ redundant_feature_names = "deny"
 [workspace.metadata.titania]
 strict_ai = true
 schema_version = 1
+
+[lints]
+workspace = true
 
 [profile.dev]
 opt-level = 0

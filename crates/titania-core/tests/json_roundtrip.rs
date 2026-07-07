@@ -22,87 +22,89 @@ fn digest(seed: &'static [u8]) -> Digest {
 // ===========================================================================
 
 // Report variants
-const REPORT_PASS_JSON: &str = r#"{"variant":"pass","receipt":{"schema_version":1,"scope":"Edit","source_digest":"7d1aa223722b2aaa89b92fc6b2ef0baa709c01eab9f8494b1de5c335f2750707","cargo_lock_digest":"e73acfadf2de935ef6e689d57aec63e8d98e8092061fa61c9fcd1a3ce46016e2","policy_digest":"ff096070fb25d5456f50000af78f1c92fda605bdb7bc3d1e7d1cc0091204e61c","toolchain_digest":"dd9765724d63cedb171573e96d87aad8c17ca281055f5b639c94761ea2da5c9e","lanes":[{"lane":"Fmt","evidence_digest":"b26fcc302645d25e8327ec86f8ec1f0e4f989bfdeca51e17a314a5b29ba8f146","clean":true}]},"per_lane":[{"lane":"Fmt","outcome":{"variant":"clean","evidence":{"command":{"executable":"cargo","argv":["cargo","fmt","--check"]},"tool_version":"rustfmt 1.84.0","exit_status":{"exited":{"code":0}},"parsed_result_digest":"44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"}}}]}"#;
+const REPORT_PASS_JSON: &str = r#"{"variant":"Pass","receipt":{"schema_version":1,"scope":"Edit","source_digest":"7d1aa223722b2aaa89b92fc6b2ef0baa709c01eab9f8494b1de5c335f2750707","cargo_lock_digest":"e73acfadf2de935ef6e689d57aec63e8d98e8092061fa61c9fcd1a3ce46016e2","policy_digest":"ff096070fb25d5456f50000af78f1c92fda605bdb7bc3d1e7d1cc0091204e61c","toolchain_digest":"dd9765724d63cedb171573e96d87aad8c17ca281055f5b639c94761ea2da5c9e","lanes":[{"lane":"Fmt","evidence_digest":"b26fcc302645d25e8327ec86f8ec1f0e4f989bfdeca51e17a314a5b29ba8f146","clean":true}]},"per_lane":[{"lane":"Fmt","outcome":{"Clean":{"evidence":{"command":{"executable":"cargo","argv":["cargo","fmt","--check"]},"tool_version":"rustfmt 1.84.0","exit_status":{"Exited":{"code":0}},"parsed_result_digest":"44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"}}}}]}"#;
 
-const REPORT_REJECT_JSON: &str = r#"{"variant":"reject","code_findings":[{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"variant":"span","file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30},"message":"Imperative for loop in production source","repair":{"variant":"use_iterator_pipeline","suggestion":"items.iter().map(|item| ...)"},"effect":"reject"}],"gate_failures":[],"per_lane":[]}"#;
+const REPORT_REJECT_JSON: &str = r#"{"variant":"Reject","code_findings":[{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"Span":{"file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30}},"message":"Imperative for loop in production source","repair":{"UseIteratorPipeline":{"suggestion":"items.iter().map(|item| ...)"}},"effect":"Reject"}],"gate_failures":[],"per_lane":[]}"#;
 
-const REPORT_POLICY_ERROR_JSON: &str = r#"{"variant":"policy_error","diagnostics":[{"message":"policy file missing","file":null,"severity":"error"}]}"#;
+const REPORT_POLICY_ERROR_JSON: &str = r#"{"variant":"PolicyError","diagnostics":[{"message":"policy file missing","file":null,"severity":"Error"}]}"#;
 
-const REPORT_INPUT_ERROR_JSON: &str = r#"{"variant":"input_error","diagnostics":[{"message":"unrecognized scope","tool":null,"severity":"error"}]}"#;
+const REPORT_INPUT_ERROR_JSON: &str = r#"{"variant":"InputError","diagnostics":[{"message":"unrecognized scope","tool":null,"severity":"Error"}]}"#;
 
 // LaneOutcome variants
-const LANE_OUTCOME_CLEAN_JSON: &str = r#"{"variant":"clean","evidence":{"command":{"executable":"cargo","argv":["cargo","fmt","--check"]},"tool_version":"rustfmt 1.84.0","exit_status":{"exited":{"code":0}},"parsed_result_digest":"44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"}}"#;
+const LANE_OUTCOME_CLEAN_JSON: &str = r#"{"Clean":{"evidence":{"command":{"executable":"cargo","argv":["cargo","fmt","--check"]},"tool_version":"rustfmt 1.84.0","exit_status":{"Exited":{"code":0}},"parsed_result_digest":"44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"}}}"#;
 
-const LANE_OUTCOME_FINDINGS_JSON: &str = r#"{"variant":"findings","findings":[{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"variant":"span","file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30},"message":"Imperative for loop in production source","repair":{"variant":"use_iterator_pipeline","suggestion":"items.iter().map(|item| ...)"},"effect":"reject"}]}"#;
+const LANE_OUTCOME_FINDINGS_JSON: &str = r#"{"Findings":[{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"Span":{"file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30}},"message":"Imperative for loop in production source","repair":{"UseIteratorPipeline":{"suggestion":"items.iter().map(|item| ...)"}},"effect":"Reject"}]}"#;
 
-const LANE_OUTCOME_FAILED_JSON: &str = r#"{"variant":"failed","failure":{"tool_failure":{"tool":"cargo-test","termination":{"exited":{"code":1}}}}}"#;
+const LANE_OUTCOME_FAILED_JSON: &str =
+    r#"{"Failed":{"ToolFailure":{"tool":"cargo-test","termination":{"Exited":{"code":1}}}}}"#;
 
-const LANE_OUTCOME_SKIPPED_JSON: &str = r#"{"variant":"skipped","reason":"not_applicable"}"#;
+const LANE_OUTCOME_SKIPPED_JSON: &str = r#"{"Skipped":"NotApplicable"}"#;
 
 // SkipReason — constants use stale labels but current production variants.
-const SKIP_REASON_NOT_REQUIRED_JSON: &str = r#""not_selected_by_scope""#;
-const SKIP_REASON_TOOL_MISSING_JSON: &str = r#""not_applicable""#;
+const SKIP_REASON_NOT_REQUIRED_JSON: &str = r#""NotSelectedByScope""#;
+const SKIP_REASON_TOOL_MISSING_JSON: &str = r#""NotApplicable""#;
 
-const SKIP_REASON_PRIOR_COMPILATION_FAILURE_JSON: &str = r#""prior_compilation_failure""#;
+const SKIP_REASON_PRIOR_COMPILATION_FAILURE_JSON: &str = r#""PriorCompilationFailure""#;
 
-const SKIP_REASON_POLICY_DISABLED_JSON: &str = r#""policy_disabled""#;
+const SKIP_REASON_POLICY_DISABLED_JSON: &str = r#""PolicyDisabled""#;
 
 // LaneFailure variants
 const LANE_FAILURE_INFRA_JSON: &str =
-    r#"{"infra_failure":{"tool":"dylint","reason":"binary not found"}}"#;
+    r#"{"InfraFailure":{"tool":"dylint","reason":"binary not found"}}"#;
 
 const LANE_FAILURE_TOOL_JSON: &str =
-    r#"{"tool_failure":{"tool":"cargo-clippy","termination":{"exited":{"code":1}}}}"#;
+    r#"{"ToolFailure":{"tool":"cargo-clippy","termination":{"Exited":{"code":1}}}}"#;
 
 const LANE_FAILURE_SUSPICIOUS_JSON: &str =
-    r#"{"suspicious_failure":{"tool":"cargo-test","evidence":"intermittent timeout"}}"#;
+    r#"{"SuspiciousFailure":{"tool":"cargo-test","evidence":"intermittent timeout"}}"#;
 
 const LANE_FAILURE_RESOURCE_JSON: &str =
-    r#"{"resource_failure":{"tool":"cargo-test","limit":"memory"}}"#;
+    r#"{"ResourceFailure":{"tool":"cargo-test","limit":"memory"}}"#;
 
 // ProcessTermination variants
-const PROCESS_TERMINATION_EXIT_JSON: &str = r#"{"exited":{"code":0}}"#;
+const PROCESS_TERMINATION_EXIT_JSON: &str = r#"{"Exited":{"code":0}}"#;
 
-const PROCESS_TERMINATION_SIGNAL_JSON: &str = r#"{"signaled":{"signal":11}}"#;
+const PROCESS_TERMINATION_SIGNAL_JSON: &str = r#"{"Signaled":{"signal":11}}"#;
 
-const PROCESS_TERMINATION_TIMED_OUT_JSON: &str = r#""timed_out""#;
+const PROCESS_TERMINATION_TIMED_OUT_JSON: &str = r#""TimedOut""#;
 
-const PROCESS_TERMINATION_MEMORY_LIMIT_EXCEEDED_JSON: &str = r#""memory_limit_exceeded""#;
+const PROCESS_TERMINATION_MEMORY_LIMIT_EXCEEDED_JSON: &str = r#""MemoryLimitExceeded""#;
 
-const PROCESS_TERMINATION_SPAWN_FAILED_JSON: &str = r#""spawn_failed""#;
+const PROCESS_TERMINATION_SPAWN_FAILED_JSON: &str = r#""SpawnFailed""#;
 
 // Location variants
-const LOCATION_WORKSPACE_JSON: &str = r#"{"variant":"workspace"}"#;
+const LOCATION_WORKSPACE_JSON: &str = r#""Workspace""#;
 
-const LOCATION_SPAN_JSON: &str = r#"{"variant":"span","file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30}"#;
+const LOCATION_SPAN_JSON: &str =
+    r#"{"Span":{"file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30}}"#;
 
 const LOCATION_DEPENDENCY_JSON: &str =
-    r#"{"variant":"dependency","crate_name":"tokio","version":"1.36.0"}"#;
+    r#"{"Dependency":{"crate_name":"tokio","version":"1.36.0"}}"#;
 
-const LOCATION_MANIFEST_JSON: &str = r#"{"variant":"manifest","file":"Cargo.toml"}"#;
+const LOCATION_MANIFEST_JSON: &str = r#"{"Manifest":{"file":"Cargo.toml"}}"#;
 
-const LOCATION_TOOL_JSON: &str = r#"{"variant":"tool","name":"rustfmt","version":"1.84.0"}"#;
+const LOCATION_TOOL_JSON: &str = r#"{"Tool":{"name":"rustfmt","version":"1.84.0"}}"#;
 
 // RepairHint variants
 const REPAIR_HINT_USE_ITERATOR_JSON: &str =
-    r#"{"variant":"use_iterator_pipeline","suggestion":"items.iter().map(|item| ...)"}"#;
+    r#"{"UseIteratorPipeline":{"suggestion":"items.iter().map(|item| ...)"}}"#;
 
 const REPAIR_HINT_REMOVE_ALLOW_JSON: &str =
-    r#"{"variant":"remove_allow_attribute","attr":"clippy::unwrap_used"}"#;
+    r#"{"RemoveAllowAttribute":{"attr":"clippy::unwrap_used"}}"#;
 
 const REPAIR_HINT_HUMAN_REVIEW_JSON: &str =
-    r#"{"variant":"requires_human_review","note":"manual safety check needed"}"#;
+    r#"{"RequiresHumanReview":{"note":"manual safety check needed"}}"#;
 
 const REPAIR_HINT_FLATTEN_NESTING_JSON: &str =
-    r#"{"variant":"flatten_nesting","suggestion":"extract inner block into helper function"}"#;
+    r#"{"FlattenNesting":{"suggestion":"extract inner block into helper function"}}"#;
 
 const REPAIR_HINT_USE_CHECKED_ARITHMETIC_JSON: &str =
-    r#"{"variant":"use_checked_arithmetic","op":"checked_add"}"#;
+    r#"{"UseCheckedArithmetic":{"op":"checked_add"}}"#;
 
 const REPAIR_HINT_REPLACE_DEPENDENCY_JSON: &str =
-    r#"{"variant":"replace_dependency","from":"serde_json","to":"serde_json"}"#;
+    r#"{"ReplaceDependency":{"from":"serde_json","to":"serde_json"}}"#;
 
-const REPAIR_HINT_PATCH_JSON: &str = r#"{"variant":"patch","file":"src/parser.rs","range":{"start_byte":42,"end_byte":84},"replacement":"items.iter().map(|i| i * 2).collect()"}"#;
+const REPAIR_HINT_PATCH_JSON: &str = r#"{"Patch":{"file":"src/parser.rs","range":{"start_byte":42,"end_byte":84},"replacement":"items.iter().map(|i| i * 2).collect()"}}"#;
 
 // ===========================================================================
 // Golden test: construct domain values, serialize → parse → assert identity
@@ -443,10 +445,10 @@ fn report_reject_constructs_and_round_trips() -> std::result::Result<(), Box<dyn
 #[test]
 fn lane_outcome_skipped_all_reasons() -> std::result::Result<(), Box<dyn std::error::Error>> {
     for (reason, expected) in [
-        (SkipReason::PriorCompilationFailure, "prior_compilation_failure"),
-        (SkipReason::NotSelectedByScope, "not_selected_by_scope"),
-        (SkipReason::NotApplicable, "not_applicable"),
-        (SkipReason::PolicyDisabled, "policy_disabled"),
+        (SkipReason::PriorCompilationFailure, "PriorCompilationFailure"),
+        (SkipReason::NotSelectedByScope, "NotSelectedByScope"),
+        (SkipReason::NotApplicable, "NotApplicable"),
+        (SkipReason::PolicyDisabled, "PolicyDisabled"),
     ] {
         let outcome = LaneOutcome::Skipped { reason };
         let json = serde_json::to_string(&outcome)?;
@@ -468,7 +470,7 @@ fn lane_failure_all_variants() -> std::result::Result<(), Box<dyn std::error::Er
         reason: "binary not found".to_owned(),
     };
     let json = serde_json::to_string(&infra)?;
-    assert!(json.contains("infra_failure"));
+    assert!(json.contains("InfraFailure"));
     let parsed: titania_core::LaneFailure = serde_json::from_str(&json)?;
     assert!(matches!(parsed, titania_core::LaneFailure::Infra { .. }));
     assert!(infra.is_infra());
@@ -720,20 +722,20 @@ fn structured_value_serializes_deterministically() {
 // Invalid JSON fixtures — hardcoded constants for rejection tests.
 // ===========================================================================
 
-const UNKNOWN_REPORT_VARIANT_JSON: &str = r#"{"variant":"nonexistent","receipt":{"schema_version":1,"scope":"Edit","source_digest":"7d1aa223722b2aaa89b92fc6b2ef0baa709c01eab9f8494b1de5c335f2750707","cargo_lock_digest":"e73acfadf2de935ef6e689d57aec63e8d98e8092061fa61c9fcd1a3ce46016e2","policy_digest":"ff096070fb25d5456f50000af78f1c92fda605bdb7bc3d1e7d1cc0091204e61c","toolchain_digest":"dd9765724d63cedb171573e96d87aad8c17ca281055f5b639c94761ea2da5c9e","lanes":[{"lane":"Fmt","evidence_digest":"b26fcc302645d25e8327ec86f8ec1f0e4f989bfdeca51e17a314a5b29ba8f146","clean":true}]},"per_lane":[]}"#;
+const UNKNOWN_REPORT_VARIANT_JSON: &str = r#"{"variant":"nonexistent","per_lane":[]}"#;
 
-const UNKNOWN_LANE_OUTCOME_VARIANT_JSON: &str = r#"{"variant":"nonexistent","evidence":{"command":{"executable":"cargo","argv":["cargo","fmt","--check"]},"tool_version":"rustfmt 1.84.0","exit_status":{"exited":{"code":0}},"parsed_result_digest":"44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"}}"#;
+const UNKNOWN_LANE_OUTCOME_VARIANT_JSON: &str = r#"{"nonexistent":{}}"#;
 
-const MALFORMED_TAG_JSON: &str = r#"{"variant":"pass","receipt":"not_an_object","per_lane":[]}"#;
+const MALFORMED_TAG_JSON: &str = r#"{"variant":"Pass","receipt":"not_an_object","per_lane":[]}"#;
 
-const MISSING_REQUIRED_FIELD_JSON: &str = r#"{"variant":"reject","per_lane":[]}"#;
+const MISSING_REQUIRED_FIELD_JSON: &str = r#"{"variant":"Reject","per_lane":[]}"#;
 
-const WRONG_LANE_FILENAME_PAIR_JSON: &str = r#"{"variant":"clean","findings":[]}"#;
+const WRONG_LANE_FILENAME_PAIR_JSON: &str = r#"{"Clean":{"findings":[]}}"#;
 
 const EMPTY_REJECT_COLLECTIONS_JSON: &str =
-    r#"{"variant":"reject","code_findings":[],"gate_failures":[],"per_lane":[]}"#;
+    r#"{"variant":"Reject","code_findings":[],"gate_failures":[],"per_lane":[]}"#;
 
-const INVALID_LOCATION_SPAN_JSON: &str = r#"{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"variant":"span","file":"src/parser.rs","line_start":42,"col_start":30,"line_end":10,"col_end":5},"message":"bad span","repair":{"variant":"use_iterator_pipeline","suggestion":"x"},"effect":"reject"}"#;
+const INVALID_LOCATION_SPAN_JSON: &str = r#"{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"Span":{"file":"src/parser.rs","line_start":42,"col_start":30,"line_end":10,"col_end":5}},"message":"bad span","repair":{"UseIteratorPipeline":{"suggestion":"x"}},"effect":"Reject"}"#;
 
 // ===========================================================================
 // Invalid v1 JSON wire-shape rejection tests.

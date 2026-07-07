@@ -4,7 +4,10 @@
 //! written under `.titania/out/<scope>/`, delegates classification to
 //! `titania-aggregate`, and renders the typed report as JSON.
 
-use std::{io, path::Path};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use titania_aggregate::{
     ReaderError, ReportAssemblyError, assemble_report, build_quality_receipt,
@@ -92,7 +95,7 @@ fn gate_failure_lines(parsed: &serde_json::Value) -> Vec<String> {
 
 /// Extract a single gate failure reason line from a gate JSON object.
 fn gate_failure_reason((i, gate): (usize, &serde_json::Value)) -> Option<String> {
-    gate.get("infra_failure")
+    gate.get("InfraFailure")
         .and_then(|f| f.get("reason"))
         .and_then(|r| r.as_str())
         .map(|reason_str| format!("  gate failure {i}: {}", reason_str.trim()))
@@ -251,11 +254,101 @@ fn lane_outcome_digest(outcome: &LaneOutcome) -> Result<Digest, AggregateError> 
 /// - [`AggregateError::Digest`] when a non-missing policy/config file cannot be read.
 /// - [`AggregateError::ToolchainProbe`] when the rustc/cargo version probe fails.
 fn receipt_digests(target_root: &Path) -> Result<ReceiptDigests, AggregateError> {
-    let source = digest_optional_file(&target_root.join("Cargo.toml"), b"missing-cargo-toml")?;
+    let source = source_tree_digest(target_root)?;
     let lock = digest_optional_file(&target_root.join("Cargo.lock"), b"missing-cargo-lock")?;
     let policy = policy_digest(target_root)?;
     let toolchain = toolchain_digest(target_root)?;
     Ok(ReceiptDigests::new(source, lock, policy, toolchain))
+}
+
+/// Compute a deterministic digest over first-party source/config inputs.
+///
+/// # Errors
+/// Returns [`AggregateError::Digest`] when a source directory or included file
+/// cannot be read.
+fn source_tree_digest(target_root: &Path) -> Result<Digest, AggregateError> {
+    let files = source_digest_files(target_root)?;
+    let mut payload = String::new();
+    files.iter().try_for_each(|path| append_source_file(target_root, path, &mut payload))?;
+    Ok(Digest::from_bytes(payload.as_bytes()))
+}
+
+/// Collect all paths that contribute to the source-tree digest.
+///
+/// # Errors
+/// Returns [`AggregateError::Digest`] when source traversal fails.
+fn source_digest_files(target_root: &Path) -> Result<Vec<PathBuf>, AggregateError> {
+    let mut files = Vec::new();
+    collect_source_digest_files(target_root, target_root, &mut files)?;
+    files.sort();
+    Ok(files)
+}
+
+/// Recursively collect digest-relevant source/config files under `dir`.
+///
+/// # Errors
+/// Returns [`AggregateError::Digest`] when directory traversal fails.
+fn collect_source_digest_files(
+    target_root: &Path,
+    dir: &Path,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), AggregateError> {
+    std::fs::read_dir(dir)
+        .map_err(AggregateError::Digest)?
+        .try_for_each(|entry| collect_source_digest_entry(target_root, entry, files))
+}
+
+/// Classify one filesystem entry for source-digest inclusion.
+///
+/// # Errors
+/// Returns [`AggregateError::Digest`] when the directory entry cannot be read or
+/// a nested directory traversal fails.
+fn collect_source_digest_entry(
+    target_root: &Path,
+    entry: io::Result<std::fs::DirEntry>,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), AggregateError> {
+    let entry = entry.map_err(AggregateError::Digest)?;
+    let path = entry.path();
+    if path.is_dir() && !skip_source_digest_dir(&path) {
+        return collect_source_digest_files(target_root, &path, files);
+    }
+    if path.is_file() && include_source_digest_file(&path) {
+        files.push(path);
+    }
+    Ok(())
+}
+
+fn skip_source_digest_dir(path: &Path) -> bool {
+    path.file_name().and_then(|name| name.to_str()).is_some_and(|name| {
+        matches!(name, ".beads" | ".git" | ".moon" | ".titania" | ".worktrees" | "target")
+    })
+}
+
+fn include_source_digest_file(path: &Path) -> bool {
+    path.extension().is_some_and(|ext| ext == "rs")
+        || path.file_name().and_then(|name| name.to_str()).is_some_and(|name| {
+            matches!(name, "Cargo.toml" | "rustfmt.toml" | "clippy.toml" | "deny.toml")
+        })
+}
+
+/// Append one source file path and contents to the digest payload.
+///
+/// # Errors
+/// Returns [`AggregateError::Digest`] when the path escapes the target root or
+/// the file cannot be read.
+fn append_source_file(
+    target_root: &Path,
+    path: &Path,
+    payload: &mut String,
+) -> Result<(), AggregateError> {
+    let relative = path.strip_prefix(target_root).map_err(|err| {
+        AggregateError::Digest(io::Error::other(format!("source path escaped root: {err}")))
+    })?;
+    let bytes = std::fs::read(path).map_err(AggregateError::Digest)?;
+    push_segment(payload, "source_path", &relative.to_string_lossy());
+    push_segment(payload, "source_bytes", &String::from_utf8_lossy(&bytes));
+    Ok(())
 }
 
 /// Compute the canonical v1 policy digest per spec §9.9.

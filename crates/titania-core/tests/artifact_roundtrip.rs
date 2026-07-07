@@ -69,8 +69,8 @@ fn skipped_outcome_round_trips() {
 #[test]
 fn dylint_infra_failure_outcome_round_trips() {
     // Regression for the aggregator parse error: a dylint lane that fails
-    // because cargo-dylint is missing must serialize to the canonical artifact
-    // shape and parse back into LaneOutcome::Failed { failure: LaneFailure::Infra { .. } }.
+    // because cargo-dylint is missing must serialize to the canonical v1
+    // artifact shape and parse back into LaneOutcome::Failed { failure: ... }.
     let original = LaneOutcome::Failed {
         failure: LaneFailure::Infra {
             tool: String::from("cargo-dylint"),
@@ -82,10 +82,9 @@ fn dylint_infra_failure_outcome_round_trips() {
 
 #[test]
 fn dylint_infra_failure_on_disk_shape_is_aggregator_parseable() {
-    // The on-disk shape must carry the failure under the "failure" wrapper key
-    // so the outer discriminator ("variant": "failed") and the inner
-    // LaneFailure variant tag ("infra_failure") never collide. This is the
-    // exact shape `.titania/out/edit/dylint.json` must hold.
+    // The on-disk shape must use the v1 external lane tag and the inner
+    // LaneFailure tag. This is the exact shape `.titania/out/edit/dylint.json`
+    // must hold.
     let outcome = LaneOutcome::Failed {
         failure: LaneFailure::Infra {
             tool: String::from("cargo-dylint"),
@@ -96,11 +95,8 @@ fn dylint_infra_failure_on_disk_shape_is_aggregator_parseable() {
     let json: Value = serde_json::to_value(&artifact).expect("serialize to value");
 
     assert_eq!(json["lane"], "Dylint");
-    assert_eq!(json["outcome"]["variant"], "failed");
-    assert_eq!(json["outcome"]["failure"]["infra_failure"]["tool"], "cargo-dylint");
-    assert_eq!(json["outcome"]["failure"]["infra_failure"]["reason"], "subcommand unavailable");
+    assert_eq!(json["outcome"]["Failed"]["InfraFailure"]["tool"], "cargo-dylint");
+    assert_eq!(json["outcome"]["Failed"]["InfraFailure"]["reason"], "subcommand unavailable");
 
-    // The discriminator and the inner variant tag must be distinct keys, never
-    // the flattened "failure" key being read as a LaneFailure variant.
-    assert_ne!(json["outcome"]["failure"]["infra_failure"], Value::Null);
+    assert_ne!(json["outcome"]["Failed"]["InfraFailure"], Value::Null);
 }

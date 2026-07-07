@@ -222,7 +222,7 @@ fn external_target_policy_artifact_lands_in_target() -> TestResult {
 }
 
 /// **Contract:** The JSON artifact contains the correct `lane` field ("Fmt")
-/// and `outcome.variant` field ("clean").
+/// and externally tagged `outcome.Clean` field.
 #[test]
 fn external_target_policy_artifact_json_has_correct_fields() -> TestResult {
     // Given: a temp Cargo project.
@@ -237,17 +237,10 @@ fn external_target_policy_artifact_json_has_correct_fields() -> TestResult {
     // Then: the JSON artifact has the expected fields.
     let artifact_path = tmp.path().join(".titania").join("out").join("edit").join("fmt.json");
     let content = fs::read_to_string(&artifact_path)?;
+    let json: serde_json::Value = serde_json::from_str(&content)?;
 
-    assert!(
-        content.contains("\"lane\": \"Fmt\""),
-        "artifact JSON must contain lane Fmt; got: {}",
-        content
-    );
-    assert!(
-        content.contains("\"variant\": \"clean\""),
-        "artifact JSON must contain variant clean; got: {}",
-        content
-    );
+    assert_eq!(json["lane"].as_str(), Some("Fmt"), "artifact JSON must contain lane Fmt");
+    assert!(json["outcome"].get("Clean").is_some(), "artifact JSON must contain Clean tag");
 
     Ok(())
 }

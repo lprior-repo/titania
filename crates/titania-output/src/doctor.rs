@@ -139,6 +139,7 @@ impl ToolConfig {
 fn tool_configs_for_scope(scope: GateScope) -> Vec<ToolConfig> {
     let deny_required = matches!(scope, GateScope::Prepush | GateScope::Release);
     vec![
+        ToolConfig::binary("moon", true),
         ToolConfig::binary("cargo", true),
         ToolConfig::binary("rustfmt", true),
         ToolConfig::binary("clippy-driver", true),
@@ -243,12 +244,7 @@ fn probe_dylint(required: bool) -> Vec<ToolRow> {
 }
 
 const fn missing_cargo_dylint_row(required: bool) -> ToolRow {
-    ToolRow::external(
-        "cargo-dylint",
-        ToolPresence { required, installed: false },
-        None,
-        None,
-    )
+    ToolRow::external("cargo-dylint", ToolPresence { required, installed: false }, None, None)
 }
 
 fn installed_cargo_dylint_row(required: bool, path: &Path) -> ToolRow {
@@ -270,11 +266,8 @@ fn installed_cargo_dylint_row(required: bool, path: &Path) -> ToolRow {
 /// Returns `None` when `cargo` cannot be spawned, exits non-zero, or when the
 /// captured stdout does not contain a parseable version token.
 fn probe_cargo_subcommand_version(subcommand: &str) -> Option<String> {
-    let output = std::process::Command::new("cargo")
-        .arg(subcommand)
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output =
+        std::process::Command::new("cargo").arg(subcommand).arg("--version").output().ok()?;
     if !output.status.success() {
         return None;
     }

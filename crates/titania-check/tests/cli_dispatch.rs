@@ -109,7 +109,7 @@ fn assert_empty_workspace_reject(args: &[&str], expected_gate_failures: usize) {
     assert_eq!(code, 1, "reject reports must exit 1, stderr: {stderr}");
     assert!(stderr.is_empty(), "aggregate success path must not write stderr: {stderr}");
     let report: serde_json::Value = serde_json::from_str(&stdout).expect("stdout must be JSON");
-    assert_eq!(report["variant"], "reject");
+    assert_eq!(report["variant"], "Reject");
     assert_eq!(
         report["gate_failures"].as_array().map(|items| items.len()),
         Some(expected_gate_failures),
@@ -144,9 +144,27 @@ fn clippy_artifact_path(root: &Path) -> std::path::PathBuf {
     root.join(".titania/out/edit/clippy.json")
 }
 
+/// Resolve the artifact path for the test lane in the prepush scope.
+fn prepush_test_artifact_path(root: &Path) -> std::path::PathBuf {
+    root.join(".titania/out/prepush/test.json")
+}
+
 /// Resolve the artifact path for the policy-scan lane in the release scope.
 fn release_policy_artifact_path(root: &Path) -> std::path::PathBuf {
     root.join(".titania/out/release/policy-scan.json")
+}
+
+fn generate_lockfile(root: &Path) {
+    let output = Command::new("cargo")
+        .current_dir(root)
+        .arg("generate-lockfile")
+        .output()
+        .expect("cargo generate-lockfile must run");
+    assert!(
+        output.status.success(),
+        "cargo generate-lockfile must succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -173,17 +191,15 @@ fn cli_args_emit_json_flag() {
 fn cli_args_out_path() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
     let out_path = workspace.path().join("report.json");
-    let (code, stdout, _stderr) = run_in(
-        workspace.path(),
-        &["--emit", "json", "--out", out_path.to_str().unwrap()],
-    );
+    let (code, stdout, _stderr) =
+        run_in(workspace.path(), &["--emit", "json", "--out", out_path.to_str().unwrap()]);
     assert_eq!(code, 1, "reject must exit 1");
     assert!(stdout.is_empty(), "--out must suppress stdout");
     let report_text =
         fs::read_to_string(&out_path).expect("--out path must contain the report file");
     let report: serde_json::Value =
         serde_json::from_str(&report_text).expect("written report must be valid JSON");
-    assert_eq!(report["variant"], "reject");
+    assert_eq!(report["variant"], "Reject");
     assert_eq!(report["gate_failures"].as_array().map(|items| items.len()), Some(7),);
 }
 
@@ -214,9 +230,9 @@ fn dispatch_run_lane_fmt_writes_typed_clean_artifact() {
     let payload = fs::read_to_string(&artifact).expect("must read fmt artifact");
     let json: Value = serde_json::from_str(&payload).expect("artifact must be valid JSON");
     assert_eq!(json["lane"].as_str(), Some("Fmt"), "lane must be Fmt");
-    assert_eq!(json["outcome"]["variant"].as_str(), Some("clean"), "outcome must be clean");
+    assert!(json["outcome"].get("Clean").is_some(), "outcome must be Clean");
     // Command evidence: executable, argv, tool_version, exit_status.
-    let evidence = &json["outcome"]["evidence"];
+    let evidence = &json["outcome"]["Clean"]["evidence"];
     let cmd = &evidence["command"];
     assert_eq!(cmd["executable"].as_str(), Some("cargo"), "command executable must be cargo");
     let argv: Vec<&str> = cmd["argv"]
@@ -236,9 +252,9 @@ fn dispatch_run_lane_fmt_writes_typed_clean_artifact() {
         evidence["tool_version"]
     );
     assert_eq!(
-        evidence["exit_status"]["exited"]["code"].as_i64(),
+        evidence["exit_status"]["Exited"]["code"].as_i64(),
         Some(0),
-        "exit_status.exited.code must be 0, got: {:#}",
+        "exit_status.Exited.code must be 0, got: {:#}",
         evidence["exit_status"]
     );
 }
@@ -249,13 +265,7 @@ fn dispatch_run_lane_clippy_executes_on_clean_project() {
         package("dispatch_clippy_clean", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
             .expect("temp package must be created");
     // Generate a lock file (clippy lane uses --frozen which requires one).
-    drop(
-        std::process::Command::new("cargo")
-            .current_dir(temp.path())
-            .arg("generate-lockfile")
-            .output()
-            .expect("cargo generate-lockfile must succeed"),
-    );
+    generate_lockfile(temp.path());
     let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "clippy"]);
     assert_eq!(code, 0, "run-lane clippy on clean project must exit 0, stderr: {stderr}");
     assert!(stdout.is_empty(), "run-lane clippy must not write stdout, got: {stdout}");
@@ -265,7 +275,88 @@ fn dispatch_run_lane_clippy_executes_on_clean_project() {
     let payload = fs::read_to_string(&artifact).expect("must read clippy artifact");
     let json: Value = serde_json::from_str(&payload).expect("artifact must be valid JSON");
     assert_eq!(json["lane"].as_str(), Some("Clippy"), "lane must be Clippy");
-    assert_eq!(json["outcome"]["variant"].as_str(), Some("clean"), "outcome must be clean");
+    assert!(json["outcome"].get("Clean").is_some(), "outcome must be Clean");
+}
+
+#[test]
+fn dispatch_run_lane_test_successful_cargo_output_writes_clean_artifact() {
+    let lib_rs = r#"
+pub fn value() -> u8 {
+    1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::value;
+
+    #[test]
+    fn value_is_one() {
+        assert_eq!(value(), 1);
+    }
+}
+"#;
+    let temp = package("dispatch_test_clean_output", lib_rs, "fn main() {}\n")
+        .expect("temp package must be created");
+    generate_lockfile(temp.path());
+
+    let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "test"]);
+
+    assert_eq!(code, 0, "run-lane test on clean project must exit 0, stderr: {stderr}");
+    assert!(stdout.is_empty(), "run-lane test must not write stdout, got: {stdout}");
+    assert!(stderr.is_empty(), "clean run-lane test must not write stderr, got: {stderr}");
+
+    let artifact = prepush_test_artifact_path(temp.path());
+    assert!(artifact.exists(), "test artifact must exist at .titania/out/prepush/test.json");
+    let payload = fs::read_to_string(&artifact).expect("must read test artifact");
+    let json: Value = serde_json::from_str(&payload).expect("artifact must be valid JSON");
+
+    assert_eq!(json["lane"].as_str(), Some("Test"), "lane must be Test");
+    assert!(json["outcome"].get("Clean").is_some(), "successful cargo test output must be Clean");
+    assert!(
+        json["outcome"].get("Findings").is_none(),
+        "successful cargo test output must not produce Findings: {:#}",
+        json["outcome"]
+    );
+}
+
+#[test]
+fn dispatch_run_lane_test_nonzero_cargo_output_writes_findings_artifact() {
+    let lib_rs = r#"
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn value_is_not_two() {
+        assert_eq!(1, 2);
+    }
+}
+"#;
+    let temp = package("dispatch_test_nonzero_output", lib_rs, "fn main() {}\n")
+        .expect("temp package must be created");
+    generate_lockfile(temp.path());
+
+    let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "test"]);
+
+    assert_eq!(code, 1, "run-lane test with failing cargo test must reject, stderr: {stderr}");
+    assert!(stdout.is_empty(), "run-lane test must not write stdout, got: {stdout}");
+    assert_stderr_contains(&stderr, "1 finding(s)");
+
+    let artifact = prepush_test_artifact_path(temp.path());
+    assert!(artifact.exists(), "test artifact must exist at .titania/out/prepush/test.json");
+    let payload = fs::read_to_string(&artifact).expect("must read test artifact");
+    let json: Value = serde_json::from_str(&payload).expect("artifact must be valid JSON");
+
+    assert_eq!(json["lane"].as_str(), Some("Test"), "lane must be Test");
+    assert!(json["outcome"].get("Clean").is_none(), "nonzero cargo test must not be Clean");
+    let findings = json["outcome"]["Findings"].as_array().expect("findings must be an array");
+    assert_eq!(findings.len(), 1, "failing cargo test must emit exactly one finding");
+    assert_eq!(findings[0]["rule_id"].as_str(), Some("CARGO_TEST_001"));
+    assert_eq!(findings[0]["lane"].as_str(), Some("Test"));
+    assert_eq!(findings[0]["effect"].as_str(), Some("Reject"));
+    assert!(
+        findings[0]["message"].as_str().is_some_and(|message| !message.trim().is_empty()),
+        "finding message must retain cargo output evidence: {:#}",
+        findings[0]
+    );
 }
 
 #[test]
@@ -301,12 +392,11 @@ review = "tn-dylint-abi-expect"
     let payload = fs::read_to_string(&artifact).expect("must read policy-scan release artifact");
     let json: Value = serde_json::from_str(&payload).expect("artifact must be valid JSON");
     assert_eq!(json["lane"].as_str(), Some("PolicyScan"), "lane must be PolicyScan");
-    assert_eq!(json["outcome"]["variant"].as_str(), Some("findings"), "outcome must be findings");
-    let findings = json["outcome"]["findings"].as_array().expect("findings must be an array");
+    let findings = json["outcome"]["Findings"].as_array().expect("findings must be an array");
     assert_eq!(findings.len(), 1, "expired exception must emit exactly one finding");
     assert_eq!(findings[0]["rule_id"].as_str(), Some("POLICY_EXCEPTION_EXPIRED"));
     assert_eq!(findings[0]["lane"].as_str(), Some("PolicyScan"));
-    assert_eq!(findings[0]["effect"].as_str(), Some("reject"));
+    assert_eq!(findings[0]["effect"].as_str(), Some("Reject"));
     assert!(
         findings[0]["message"]
             .as_str()
@@ -395,7 +485,7 @@ fn exit_codes_scope_emit_out_combination() {
     assert!(stdout.is_empty(), "--out must suppress stdout");
     let report: serde_json::Value = serde_json::from_str(&fs::read_to_string(&out_path).unwrap())
         .expect("file must contain valid JSON");
-    assert_eq!(report["variant"], "reject");
+    assert_eq!(report["variant"], "Reject");
     assert_eq!(report["gate_failures"].as_array().map(|items| items.len()), Some(9),);
 }
 
@@ -416,7 +506,7 @@ fn exit_codes_scope_release_emit_json_out() {
     assert!(stdout.is_empty(), "--out must suppress stdout");
     let report: serde_json::Value = serde_json::from_str(&fs::read_to_string(&out_path).unwrap())
         .expect("file must contain valid JSON");
-    assert_eq!(report["variant"], "reject");
+    assert_eq!(report["variant"], "Reject");
     assert_eq!(report["gate_failures"].as_array().map(|items| items.len()), Some(10),);
 }
 
@@ -452,7 +542,7 @@ fn m7_check_subcommand_dispatches_to_aggregate() {
     assert_eq!(code, 1, "check on empty workspace must exit 1 (reject), stderr: {stderr}");
     let report: serde_json::Value =
         serde_json::from_str(&stdout).expect("check must emit JSON report to stdout");
-    assert_eq!(report["variant"], "reject", "check report variant must be reject");
+    assert_eq!(report["variant"], "Reject", "check report variant must be Reject");
 }
 
 /// M7: `titania-check check` (no explicit scope, default edit) must dispatch
@@ -465,7 +555,7 @@ fn m7_check_subcommand_default_scope() {
     assert!(stderr.is_empty(), "check aggregate path must not write stderr: {stderr}",);
     let report: serde_json::Value =
         serde_json::from_str(&stdout).expect("check must emit JSON report");
-    assert_eq!(report["variant"], "reject");
+    assert_eq!(report["variant"], "Reject");
 }
 
 // ===== M8: --emit must affect output format for check/aggregate commands =====
@@ -479,7 +569,7 @@ fn m8_emit_json_produces_valid_json() {
     // Must parse as JSON
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).expect("--emit json stdout must be valid JSON");
-    assert_eq!(parsed["variant"], "reject", "JSON report must have variant field");
+    assert_eq!(parsed["variant"], "Reject", "JSON report must have variant field");
 }
 
 /// M8: `--emit human` must produce human-readable output, NOT JSON.
@@ -544,7 +634,7 @@ fn m8_out_path_writes_report_to_file() {
         fs::read_to_string(&out_path).expect("--out path must contain the report file");
     let parsed: serde_json::Value =
         serde_json::from_str(&report_text).expect("--out file must contain valid JSON");
-    assert_eq!(parsed["variant"], "reject", "written report must have variant field");
+    assert_eq!(parsed["variant"], "Reject", "written report must have variant field");
 }
 
 /// M8: `--out` with `--emit json` writes JSON to file.
@@ -560,7 +650,7 @@ fn m8_out_with_emit_json_writes_json_file() {
     assert!(stdout.is_empty(), "--out must suppress stdout; got: {stdout}");
     let content = fs::read_to_string(&out_path).expect("file must be written at --out path");
     let parsed: serde_json::Value = serde_json::from_str(&content).expect("file must contain JSON");
-    assert_eq!(parsed["variant"], "reject");
+    assert_eq!(parsed["variant"], "Reject");
 }
 
 // ===== H1: run-lane exit codes must distinguish infrastructure vs input vs reject =====
@@ -608,17 +698,15 @@ fn h1_run_lane_clean_clippy_exits_0() {
 #[test]
 fn h1_aggregate_empty_workspace_exits_1_not_0() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (code, stdout, stderr) = run_in(
-        workspace.path(),
-        &["aggregate", "--emit", "json", "--scope", "edit"],
-    );
+    let (code, stdout, stderr) =
+        run_in(workspace.path(), &["aggregate", "--emit", "json", "--scope", "edit"]);
     assert_eq!(
         code, 1,
         "empty workspace aggregate must exit 1 (reject), not 0 (pass); stderr: {stderr}",
     );
     let report: serde_json::Value =
         serde_json::from_str(&stdout).expect("aggregate must emit JSON report");
-    assert_eq!(report["variant"], "reject");
+    assert_eq!(report["variant"], "Reject");
     // Verify gate_failures > 0 to confirm it is reject, not pass
     assert!(
         report["gate_failures"].as_array().is_some_and(|arr| !arr.is_empty()),

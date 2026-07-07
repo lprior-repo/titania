@@ -5,18 +5,27 @@ use super::EXCLUDED_SEGMENTS;
 /// Collect production Rust source files under every workspace crate.
 #[must_use]
 pub(super) fn collect_source_files(root: &Path) -> Vec<PathBuf> {
-    let crates_dir = root.join("crates");
-    let Ok(entries) = std::fs::read_dir(crates_dir) else {
-        return Vec::new();
-    };
-
-    entries
-        .filter_map(Result::ok)
-        .map(|e| e.path().join("src"))
-        .filter(|p| p.is_dir())
+    let mut files = source_roots(root)
+        .into_iter()
         .flat_map(walk_rust_files)
         .filter(|p| !is_excluded_path(p))
+        .collect::<Vec<_>>();
+    files.sort();
+    files
+}
+
+fn source_roots(root: &Path) -> Vec<PathBuf> {
+    std::iter::once(root.join("src"))
+        .chain(crate_source_roots(root))
+        .filter(|p| p.is_dir())
         .collect()
+}
+
+fn crate_source_roots(root: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(root.join("crates")).map_or_else(
+        |_| Vec::new(),
+        |entries| entries.filter_map(Result::ok).map(|e| e.path().join("src")).collect(),
+    )
 }
 
 fn walk_rust_files(dir: PathBuf) -> Vec<PathBuf> {

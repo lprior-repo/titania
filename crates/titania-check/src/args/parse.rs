@@ -359,11 +359,7 @@ fn parse_explain(args: &[String]) -> Result<Cli, CliError> {
     if !rest.is_empty() {
         return extra_arg("explain", rest);
     }
-    Ok(Cli {
-        command: Command::Explain {
-            rule_id: first.to_owned(),
-        },
-    })
+    Ok(Cli { command: Command::Explain { rule_id: first.to_owned() } })
 }
 
 /// Parse one CLI argument stage.
@@ -406,9 +402,7 @@ fn parse_scope(value: &str) -> Result<GateScope, CliError> {
     // `CliError::UnknownScope` envelope; the diagnostic format in args.rs
     // produces `InputError: unknown scope '<value>'` and we want a single
     // prefix.
-    value
-        .parse::<GateScope>()
-        .map_err(|_err| CliError::UnknownScope(value.to_owned()))
+    value.parse::<GateScope>().map_err(|_err| CliError::UnknownScope(value.to_owned()))
 }
 
 /// Parse one CLI argument stage.

@@ -16,7 +16,6 @@ use crate::{lane::Lane, rule_id::RuleId};
 
 /// Whether a [`Finding`] causes the lane to reject or merely notes an issue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum FindingEffect {
     /// This finding must be resolved for the lane to pass.
     Reject,

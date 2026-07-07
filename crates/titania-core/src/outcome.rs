@@ -14,7 +14,6 @@ use crate::{
 
 /// Why a lane was skipped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum SkipReason {
     /// A prior compilation failure caused dependent lanes to be skipped.
     PriorCompilationFailure,
@@ -80,7 +79,6 @@ impl LaneEvidence {
 
 /// How a command's findings were produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum CommandMode {
     /// Lane spawned a separate process whose output it captured.
     ChildProcess,
@@ -164,8 +162,7 @@ fn argv0_mismatch(expected: String, found: &str) -> OutcomeError {
 }
 
 /// Outcome of a single lane execution.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "variant", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaneOutcome {
     /// Lane completed cleanly and carries command evidence.
     Clean {
@@ -187,6 +184,46 @@ pub enum LaneOutcome {
         /// Reason the lane was skipped.
         reason: SkipReason,
     },
+}
+
+#[derive(Serialize)]
+enum LaneOutcomeWriteWire<'a> {
+    Clean { evidence: &'a LaneEvidence },
+    Findings(&'a [Finding]),
+    Failed(&'a LaneFailure),
+    Skipped(SkipReason),
+}
+
+#[derive(Deserialize)]
+enum LaneOutcomeReadWire {
+    Clean { evidence: LaneEvidence },
+    Findings(Box<[Finding]>),
+    Failed(LaneFailure),
+    Skipped(SkipReason),
+}
+
+impl Serialize for LaneOutcome {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Clean { evidence } => LaneOutcomeWriteWire::Clean { evidence },
+            Self::Findings { findings } => LaneOutcomeWriteWire::Findings(findings),
+            Self::Failed { failure } => LaneOutcomeWriteWire::Failed(failure),
+            Self::Skipped { reason } => LaneOutcomeWriteWire::Skipped(*reason),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for LaneOutcome {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = LaneOutcomeReadWire::deserialize(deserializer)?;
+        Ok(match wire {
+            LaneOutcomeReadWire::Clean { evidence } => Self::Clean { evidence },
+            LaneOutcomeReadWire::Findings(findings) => Self::Findings { findings },
+            LaneOutcomeReadWire::Failed(failure) => Self::Failed { failure },
+            LaneOutcomeReadWire::Skipped(reason) => Self::Skipped { reason },
+        })
+    }
 }
 
 impl LaneOutcome {

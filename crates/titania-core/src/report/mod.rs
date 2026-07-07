@@ -29,7 +29,7 @@ mod wire;
 
 /// A single per-lane entry: lane name plus its outcome.
 ///
-/// Serialized as `{"lane": "Fmt", "outcome": {"variant": "clean", ...}}`.
+/// Serialized as `{"lane": "Fmt", "outcome": {"Clean": { ... }}}`.
 ///
 /// Constructed via [`PerLaneEntry::new`] — direct field access is forbidden
 /// to prevent illegal state construction.
@@ -94,7 +94,7 @@ pub enum RejectKind {
 pub struct Report(ReportInner);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "variant", rename_all = "snake_case")]
+#[serde(tag = "variant")]
 enum ReportInner {
     /// All lanes passed.
     Pass {

@@ -1,25 +1,26 @@
 {
   "lane": "AstGrep",
   "outcome": {
-    "variant": "findings",
-    "findings": [
+    "Findings": [
       {
         "lane": "AstGrep",
         "rule_id": "FUNC_LOOPS_FOR",
         "location": {
-          "variant": "span",
-          "file": "src/lib.rs",
-          "line_start": 4,
-          "col_start": 0,
-          "line_end": 4,
-          "col_end": 1
+          "Span": {
+            "file": "src/lib.rs",
+            "line_start": 4,
+            "col_start": 0,
+            "line_end": 4,
+            "col_end": 1
+          }
         },
         "message": "FUNC_LOOPS_FOR: replace imperative for loops with iterator pipelines",
         "repair": {
-          "variant": "use_iterator_pipeline",
-          "suggestion": "replace imperative control flow with an iterator pipeline"
+          "UseIteratorPipeline": {
+            "suggestion": "replace imperative control flow with an iterator pipeline"
+          }
         },
-        "effect": "reject"
+        "effect": "Reject"
       }
     ]
   }

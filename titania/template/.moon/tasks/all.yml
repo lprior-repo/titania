@@ -52,7 +52,7 @@ tasks:
   titania-policy-scan:
     command: 'titania-check run-lane policy-scan'
     options: { runInCI: true }
-    inputs: ['Cargo.toml', '**/Cargo.toml', '.cargo/**', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
+    inputs: ['@globs(sources)', 'Cargo.toml', '**/Cargo.toml', '.cargo/**', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
 
   titania-test:
     command: 'titania-check run-lane test'
@@ -66,7 +66,7 @@ tasks:
   titania-deny:
     command: 'titania-check run-lane deny'
     options: { runInCI: true }
-    inputs: ['Cargo.lock', 'deny.toml']
+    inputs: ['@globs(sources)', 'Cargo.lock', 'deny.toml']
 
   titania-build:
     command: 'titania-check run-lane build'

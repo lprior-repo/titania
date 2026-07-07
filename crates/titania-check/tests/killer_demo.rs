@@ -21,7 +21,8 @@ fn binary() -> std::path::PathBuf {
 fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     let mut cmd = Command::new(binary());
     let _ = cmd.current_dir(cwd);
-    let _ = cmd.args(args);
+    let normalized_args = aggregate_args(args);
+    let _ = cmd.args(&normalized_args);
     let _ = cmd.stdout(Stdio::piped());
     let _ = cmd.stderr(Stdio::piped());
 
@@ -47,6 +48,17 @@ fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     (code, stdout, stderr)
 }
 
+fn aggregate_args<'a>(args: &'a [&'a str]) -> Vec<&'a str> {
+    if args.first().is_some_and(|arg| *arg == "--scope") {
+        return std::iter::once("aggregate").chain(args.iter().copied()).collect();
+    }
+    args.to_vec()
+}
+
+fn external_tag(value: &Value) -> Option<&str> {
+    value.as_object().and_then(|object| object.keys().next().map(String::as_str))
+}
+
 // ---------------------------------------------------------------------------
 // E2E: Bad Fixture — Report::Reject with code findings
 // ---------------------------------------------------------------------------
@@ -60,13 +72,13 @@ fn bad_fixture_rejects_with_code_findings() {
     // When: titania-check --scope edit --emit json runs against it
     let (code, stdout, stderr) = run_in(bad.path(), &["--scope", "edit", "--emit", "json"]);
 
-    // Then: exit code 1, JSON report with variant reject
+    // Then: exit code 1, JSON report with variant Reject
     assert_eq!(code, 1, "reject must exit 1, stderr: {stderr}");
     assert!(stderr.is_empty(), "no stderr on reject, got: {stderr}");
     let report: Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|_| panic!("stdout must be valid JSON: {stdout}"));
 
-    assert_eq!(report["variant"], "reject", "report variant must be reject");
+    assert_eq!(report["variant"], "Reject", "report variant must be Reject");
 
     // Exactly 2 code findings
     let findings = report["code_findings"].as_array().expect("code_findings is array");
@@ -124,13 +136,13 @@ fn bad_fixture_has_func_loops_for_finding() {
     );
     assert_eq!(
         for_finding["effect"].as_str(),
-        Some("reject"),
-        "FUNC_LOOPS_FOR finding must have effect reject"
+        Some("Reject"),
+        "FUNC_LOOPS_FOR finding must have effect Reject"
     );
     assert_eq!(
-        for_finding["repair"]["variant"].as_str(),
-        Some("use_iterator_pipeline"),
-        "FUNC_LOOPS_FOR repair hint must be use_iterator_pipeline"
+        external_tag(&for_finding["repair"]),
+        Some("UseIteratorPipeline"),
+        "FUNC_LOOPS_FOR repair hint must be UseIteratorPipeline"
     );
 }
 
@@ -159,13 +171,13 @@ fn bad_fixture_has_clippy_unwrap_used_finding() {
     );
     assert_eq!(
         unwrap_finding["effect"].as_str(),
-        Some("reject"),
-        "CLIPPY_UNWRAP_USED finding must have effect reject"
+        Some("Reject"),
+        "CLIPPY_UNWRAP_USED finding must have effect Reject"
     );
     assert_eq!(
-        unwrap_finding["repair"]["variant"].as_str(),
-        Some("requires_human_review"),
-        "CLIPPY_UNWRAP_USED repair hint must be requires_human_review"
+        external_tag(&unwrap_finding["repair"]),
+        Some("RequiresHumanReview"),
+        "CLIPPY_UNWRAP_USED repair hint must be RequiresHumanReview"
     );
 }
 
@@ -188,13 +200,13 @@ fn bad_fixture_findings_have_correct_repair_hints() {
 
     for f in findings {
         let rule = f["rule_id"].as_str().unwrap_or("");
-        let hint = f["repair"]["variant"].as_str().unwrap_or("");
+        let hint = external_tag(&f["repair"]).unwrap_or("");
         match rule {
             "FUNC_LOOPS_FOR" => {
-                found_for_hint = hint == "use_iterator_pipeline";
+                found_for_hint = hint == "UseIteratorPipeline";
             }
             "CLIPPY_UNWRAP_USED" => {
-                found_unwrap_hint = hint == "requires_human_review";
+                found_unwrap_hint = hint == "RequiresHumanReview";
             }
             _ => {}
         }
@@ -219,11 +231,11 @@ fn bad_fixture_gate_failures_empty() {
     let gates = report["gate_failures"].as_array().expect("gate_failures");
     assert_eq!(gates.len(), 0, "gate_failures must be empty for bad fixture, got: {gates:?}");
 
-    // All per_lane outcomes must be "clean", "findings", or "skipped" — none "failed"
+    // All per_lane outcomes must be Clean, Findings, or Skipped — none Failed.
     let per_lane = report["per_lane"].as_array().expect("per_lane");
     for (i, outcome) in per_lane.iter().enumerate() {
-        let variant = outcome["outcome"]["variant"].as_str().unwrap_or("missing");
-        assert_ne!(variant, "failed", "lane {i} ({variant}) must not be failed for bad fixture");
+        let variant = external_tag(&outcome["outcome"]).unwrap_or("missing");
+        assert_ne!(variant, "Failed", "lane {i} ({variant}) must not be Failed for bad fixture");
     }
 }
 
@@ -264,13 +276,13 @@ fn repaired_fixture_passes_with_receipt() {
     // When: titania-check --scope edit --emit json runs against it
     let (code, stdout, stderr) = run_in(repaired.path(), &["--scope", "edit", "--emit", "json"]);
 
-    // Then: exit code 0, report variant is pass
+    // Then: exit code 0, report variant is Pass
     assert_eq!(code, 0, "pass must exit 0, stderr: {stderr}");
     assert!(stderr.is_empty(), "no stderr on pass, got: {stderr}");
     let report: Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|_| panic!("stdout must be valid JSON: {stdout}"));
 
-    assert_eq!(report["variant"], "pass", "report variant must be pass for repaired fixture");
+    assert_eq!(report["variant"], "Pass", "report variant must be Pass for repaired fixture");
 }
 
 /// AC-3 (detail): The pass receipt has schema_version == 1 and scope == Edit.
@@ -332,7 +344,7 @@ fn repaired_fixture_receipt_contains_all_digests() {
     }
 }
 
-/// AC-7 (detail): per_lane has exactly 7 entries, all "clean" or "skipped".
+/// AC-7 (detail): per_lane has exactly 7 entries, all Clean or Skipped.
 #[test]
 fn repaired_fixture_per_lane_has_seven_entries() {
     // Given: the repaired fixture workspace
@@ -352,12 +364,12 @@ fn repaired_fixture_per_lane_has_seven_entries() {
         per_lane.len()
     );
 
-    // Each outcome variant must be "clean" or "skipped" (no "failed" or "findings")
+    // Each outcome variant must be Clean or Skipped (no Failed or Findings).
     for (i, outcome) in per_lane.iter().enumerate() {
-        let variant = outcome["outcome"]["variant"].as_str().unwrap_or("missing");
+        let variant = external_tag(&outcome["outcome"]).unwrap_or("missing");
         assert!(
-            variant == "clean" || variant == "skipped",
-            "lane {i} variant must be clean or skipped, got: {variant}"
+            variant == "Clean" || variant == "Skipped",
+            "lane {i} variant must be Clean or Skipped, got: {variant}"
         );
     }
 }
@@ -410,7 +422,7 @@ fn missing_cargo_toml_produces_reject_report() {
     );
     assert!(stderr.is_empty(), "reject must not write stderr, got: {stderr}");
     let report: serde_json::Value = serde_json::from_str(&stdout).expect("stdout must be JSON");
-    assert_eq!(report["variant"], "reject");
+    assert_eq!(report["variant"], "Reject");
 }
 
 // ---------------------------------------------------------------------------
@@ -422,28 +434,28 @@ fn missing_cargo_toml_produces_reject_report() {
 fn mixed_report_separates_code_findings_from_gate_failures() {
     // Given: JSON for a Reject with 2 code findings + 1 gate failure
     let json = r#"{
-        "variant": "reject",
+        "variant": "Reject",
         "code_findings": [
             {
                 "lane": "AstGrep",
                 "rule_id": "FUNC_LOOPS_FOR",
-                "location": {"variant": "workspace"},
+                "location": "Workspace",
                 "message": "for loop detected",
-                "repair": {"variant": "use_iterator_pipeline", "suggestion": "use iterator"},
-                "effect": "reject"
+                "repair": {"UseIteratorPipeline": {"suggestion": "use iterator"}},
+                "effect": "Reject"
             },
             {
                 "lane": "Clippy",
                 "rule_id": "CLIPPY_UNWRAP_USED",
-                "location": {"variant": "workspace"},
+                "location": "Workspace",
                 "message": "unwrap used",
-                "repair": {"variant": "requires_human_review", "note": "manual fix needed"},
-                "effect": "reject"
+                "repair": {"RequiresHumanReview": {"note": "manual fix needed"}},
+                "effect": "Reject"
             }
         ],
         "gate_failures": [
             {
-                "infra_failure": {
+                "InfraFailure": {
                     "tool": "Dylint",
                     "reason": "binary not found"
                 }
@@ -486,11 +498,11 @@ fn mixed_report_separates_code_findings_from_gate_failures() {
 fn report_reject_gate_only() {
     // Given: JSON for a Reject with 0 code findings + 1 gate failure
     let json = r#"{
-        "variant": "reject",
+        "variant": "Reject",
         "code_findings": [],
         "gate_failures": [
             {
-                "infra_failure": {
+                "InfraFailure": {
                     "tool": "Dylint",
                     "reason": "output file missing"
                 }
@@ -519,20 +531,20 @@ fn report_reject_gate_only() {
 fn report_reject_mixed() {
     // Given: JSON for a Reject with 1 code finding + 1 gate failure
     let json = r#"{
-        "variant": "reject",
+        "variant": "Reject",
         "code_findings": [
             {
                 "lane": "AstGrep",
                 "rule_id": "FUNC_LOOPS_FOR",
-                "location": {"variant": "workspace"},
+                "location": "Workspace",
                 "message": "for loop detected",
-                "repair": {"variant": "use_iterator_pipeline", "suggestion": "use iterator"},
-                "effect": "reject"
+                "repair": {"UseIteratorPipeline": {"suggestion": "use iterator"}},
+                "effect": "Reject"
             }
         ],
         "gate_failures": [
             {
-                "infra_failure": {
+                "InfraFailure": {
                     "tool": "Compile",
                     "reason": "compilation failed"
                 }
@@ -689,7 +701,7 @@ fn check_drives_moon_stub_and_aggregates_after() {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let report: Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|_| panic!("check must emit JSON report after moon; got: {stdout}"));
-    assert_eq!(report["variant"], "reject", "empty workspace aggregate must be reject");
+    assert_eq!(report["variant"], "Reject", "empty workspace aggregate must be Reject");
 }
 
 /// Write a tiny POSIX shell stub that captures its argv to `marker` on
@@ -698,7 +710,7 @@ fn write_recording_stub(dir: &Path, marker: &Path) -> String {
     let stub_path = dir.join("moon-recording-stub.sh");
     // `"$@"` preserves argv quoting; `printf %s\\n "$@"` writes each arg on
     // its own line so the test can assert presence of individual task IDs.
-    let script = format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nexit 0\n", marker.display(),);
+    let script = format!("#!/bin/sh\nprintf '%s\\n' \"$@\" >> '{}'\nexit 0\n", marker.display(),);
     std::fs::write(&stub_path, script).expect("recording stub script must be written");
     #[cfg(unix)]
     {

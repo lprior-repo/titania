@@ -1,59 +1,60 @@
 {
   "lane": "Clippy",
   "outcome": {
-    "variant": "clean",
-    "evidence": {
-      "command": {
-        "executable": "cargo",
-        "argv": [
-          "cargo",
-          "clippy",
-          "--workspace",
-          "--lib",
-          "--bins",
-          "--examples",
-          "--frozen",
-          "--message-format=json",
-          "--",
-          "-F",
-          "clippy::unwrap_used",
-          "-F",
-          "clippy::expect_used",
-          "-F",
-          "clippy::panic",
-          "-F",
-          "clippy::panic_in_result_fn",
-          "-F",
-          "clippy::todo",
-          "-F",
-          "clippy::unimplemented",
-          "-F",
-          "clippy::indexing_slicing",
-          "-F",
-          "clippy::string_slice",
-          "-F",
-          "clippy::get_unwrap",
-          "-F",
-          "clippy::arithmetic_side_effects",
-          "-F",
-          "clippy::dbg_macro",
-          "-F",
-          "clippy::as_conversions",
-          "-F",
-          "clippy::let_underscore_must_use",
-          "-F",
-          "clippy::await_holding_lock",
-          "-D",
-          "warnings"
-        ]
-      },
-      "tool_version": "cargo 1.97.0-nightly (eb9b60f1f 2026-04-24)",
-      "exit_status": {
-        "exited": {
-          "code": 0
-        }
-      },
-      "parsed_result_digest": "a1922426bde62d97036130d641e10316d2ae577877a64a4e11ecac0604adbd61"
+    "Clean": {
+      "evidence": {
+        "command": {
+          "executable": "cargo",
+          "argv": [
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--lib",
+            "--bins",
+            "--examples",
+            "--frozen",
+            "--message-format=json",
+            "--",
+            "-F",
+            "clippy::unwrap_used",
+            "-F",
+            "clippy::expect_used",
+            "-F",
+            "clippy::panic",
+            "-F",
+            "clippy::panic_in_result_fn",
+            "-F",
+            "clippy::todo",
+            "-F",
+            "clippy::unimplemented",
+            "-F",
+            "clippy::indexing_slicing",
+            "-F",
+            "clippy::string_slice",
+            "-F",
+            "clippy::get_unwrap",
+            "-F",
+            "clippy::arithmetic_side_effects",
+            "-F",
+            "clippy::dbg_macro",
+            "-F",
+            "clippy::as_conversions",
+            "-F",
+            "clippy::let_underscore_must_use",
+            "-F",
+            "clippy::await_holding_lock",
+            "-D",
+            "warnings"
+          ]
+        },
+        "tool_version": "cargo 1.97.0-nightly (eb9b60f1f 2026-04-24)",
+        "exit_status": {
+          "Exited": {
+            "code": 0
+          }
+        },
+        "parsed_result_digest": "a1922426bde62d97036130d641e10316d2ae577877a64a4e11ecac0604adbd61"
+      }
     }
   }
 }

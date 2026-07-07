@@ -17,7 +17,6 @@ use crate::{error::RepairHintError, text_range::TextRange};
 ///
 /// Sealed so external crates cannot construct variants directly.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "variant", rename_all = "snake_case")]
 enum RepairHintInner {
     /// A byte-range patch to apply to a file.
     Patch {
@@ -145,7 +144,6 @@ impl RepairHint {
 ///
 /// Private — external crates cannot construct or inspect variants directly.
 #[derive(Deserialize)]
-#[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum RepairHintReadWire {
     Patch { file: String, range: TextRange, replacement: String },
     UseIteratorPipeline { suggestion: String },

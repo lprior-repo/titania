@@ -10,7 +10,9 @@ vcs:
   client: git
   provider: github
   defaultBranch: main
-  sync: true
+  # cargo-generate initializes Git before any commit exists; avoid Moon VCS hook
+  # sync until the generated workspace has a real HEAD.
+  sync: false
 
 versionConstraint: '>=2.0.0'
 
@@ -22,14 +24,14 @@ projects:
 # Hash strategy. 'accuracy' for CI (lockfile-aware), 'performance' for dev.
 hasher:
   optimization: 'accuracy'
-  walkStrategy: 'vcs'
+  # Generated workspaces start with an unborn Git HEAD; glob walking keeps the
+  # first `titania-check --scope prepush` usable before the initial commit.
+  walkStrategy: 'glob'
 
 # Auto-install dependencies and sync workspace state on every `moon ci`.
 pipeline:
   installDependencies: true
-  syncWorkspace: true
+  syncWorkspace: false
   cacheLifetime: '7 days'
 
 telemetry: false
-
-

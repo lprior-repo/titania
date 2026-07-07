@@ -148,6 +148,16 @@ pub(crate) fn spawn(binary: &str, tasks: &[&str]) -> Result<(), MoonSpawnError> 
     }
 }
 
+/// Spawn each Moon task independently so one rejecting lane cannot prevent the
+/// remaining independent lanes from writing their artifacts.
+///
+/// # Errors
+/// Returns [`MoonSpawnError`] when any Moon subprocess cannot be spawned or
+/// exceeds the configured timeout.
+pub(crate) fn spawn_all(binary: &str, tasks: &[&str]) -> Result<(), MoonSpawnError> {
+    tasks.iter().try_for_each(|task| spawn(binary, &[*task]))
+}
+
 /// Map a moon spawn IO error to its typed Moon spawn variant.
 fn map_spawn_error(error: io::Error) -> MoonSpawnError {
     if error.kind() == io::ErrorKind::NotFound {

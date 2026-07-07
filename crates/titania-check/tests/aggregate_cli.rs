@@ -72,7 +72,7 @@ impl GateArtifact {
 
     fn json(&self) -> String {
         format!(
-            r#"{{"lane":"{}","outcome":{{"variant":"clean","evidence":{{"command":{{"executable":"titania-check","argv":["titania-check","run-lane","{}"]}},"tool_version":"embedded-test","exit_status":{{"exited":{{"code":0}}}},"parsed_result_digest":"0000000000000000000000000000000000000000000000000000000000000000"}}}}}}"#,
+            r#"{{"lane":"{}","outcome":{{"Clean":{{"evidence":{{"command":{{"executable":"titania-check","argv":["titania-check","run-lane","{}"]}},"tool_version":"embedded-test","exit_status":{{"Exited":{{"code":0}}}},"parsed_result_digest":"0000000000000000000000000000000000000000000000000000000000000000"}}}}}}}}"#,
             self.lane, self.file
         )
     }
@@ -90,7 +90,7 @@ fn parse_stdout(output: &std::process::Output, expected_code: i32) -> Value {
 }
 
 fn assert_pass_report(report: &Value) {
-    assert_eq!(report["variant"], "pass");
+    assert_eq!(report["variant"], "Pass");
     assert_eq!(report["receipt"]["schema_version"], 1);
     assert_eq!(report["receipt"]["scope"], "Edit");
     assert_eq!(report["receipt"]["lanes"].as_array().expect("lanes array").len(), 7);
@@ -98,11 +98,11 @@ fn assert_pass_report(report: &Value) {
 }
 
 fn assert_missing_lane_report(report: &Value) {
-    assert_eq!(report["variant"], "reject");
+    assert_eq!(report["variant"], "Reject");
     assert_eq!(report["code_findings"].as_array().expect("code findings").len(), 0);
     assert_eq!(report["gate_failures"].as_array().expect("gate failures").len(), 1);
-    assert_eq!(report["gate_failures"][0]["infra_failure"]["tool"], "Dylint");
-    assert_eq!(report["gate_failures"][0]["infra_failure"]["reason"], "output file missing");
+    assert_eq!(report["gate_failures"][0]["InfraFailure"]["tool"], "Dylint");
+    assert_eq!(report["gate_failures"][0]["InfraFailure"]["reason"], "output file missing");
     assert_eq!(report["per_lane"].as_array().expect("per_lane array").len(), 7);
 }
 
@@ -115,11 +115,13 @@ fn aggregate_cli_reads_edit_lane_outputs_and_emits_report_json() {
 }
 
 #[test]
-fn aggregate_cli_check_delegates_to_aggregate_for_existing_edit_lane_outputs() {
+fn check_clears_stale_outputs_before_aggregating_moon_results() {
     let workspace = clean_edit_workspace();
     let output = run_in(workspace.path(), &["--scope", "edit", "--emit", "json"]);
-    let report = parse_stdout(&output, 0);
-    assert_pass_report(&report);
+    let report = parse_stdout(&output, 1);
+    assert_eq!(report["variant"], "Reject");
+    assert_eq!(report["code_findings"].as_array().expect("code findings").len(), 0);
+    assert_eq!(report["gate_failures"].as_array().expect("gate failures").len(), 7);
 }
 
 #[test]
