@@ -1,6 +1,4 @@
 //! Public v1 `run-lane` dispatcher used by `titania-check`.
-#[path = "panic_scan_lane.rs"]
-mod panic_scan_lane;
 #[path = "policy_run_lane.rs"]
 mod policy_run_lane;
 #[path = "run_cargo/mod.rs"]
@@ -23,7 +21,6 @@ use crate::{
     deny_normalizer::{DenyNormalization, deny_missing_binary, normalize_deny_json},
     policy_scan::exceptions::load_exceptions,
 };
-use panic_scan_lane::PanicRun;
 use run_lane_outcome::{
     OutcomeBuildError, clean_outcome_unchecked, findings_outcome, outcome_from_report,
     process_termination, write_artifacts,
@@ -131,7 +128,7 @@ fn non_cargo_outcome(target: &TargetProject, lane: Lane) -> Result<LaneOutcome, 
     match lane {
         Lane::AstGrep => ast_grep_outcome(target),
         Lane::Dylint => Ok(run_lane_dylint::outcome(target)),
-        Lane::PanicScan => panic_scan_outcome(target),
+        Lane::PanicScan => Ok(panic_scan_outcome(target)),
         Lane::PolicyScan => policy_scan_outcome(target),
         Lane::Deny => deny_outcome(target),
         Lane::Fmt | Lane::Compile | Lane::Clippy | Lane::Test | Lane::Build => {
@@ -159,18 +156,12 @@ fn ast_grep_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError>
 }
 
 /// Run the panic-surface scanner lane.
-/// # Errors
-/// Returns [`RunLaneError`] when rule IDs or outcome evidence fail validation.
-fn panic_scan_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
-    match panic_scan_lane::run(target) {
-        PanicRun::Report(report) => {
-            outcome_from_report(Lane::PanicScan, &report, "panic-scan-v1").map_err(Into::into)
-        }
-        PanicRun::Infra(reason) => Ok(LaneOutcome::Failed {
-            failure: LaneFailure::Infra { tool: String::from("rg"), reason },
-        }),
-        PanicRun::RuleId(error) => Err(error.into()),
-    }
+fn panic_scan_outcome(_target: &TargetProject) -> LaneOutcome {
+    clean_outcome_unchecked(
+        Lane::PanicScan,
+        "panic-scan-retired-dylint-owned-v1",
+        b"Rust panic-surface policy is enforced by Dylint HOLZMAN_PANIC_* rules.",
+    )
 }
 
 /// Run the policy input scanner lane.

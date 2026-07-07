@@ -7,6 +7,9 @@ use titania_output::{OutputError, explain::explain_rule};
 const CATALOG: &str = include_str!("../rules/explain.tsv");
 const REQUIRED: &[&str] = &[
     "FUNC_LOOPS_FOR",
+    "FUNC_UNWRAP_USED",
+    "FUNC_EXPECT_USED",
+    "FUNC_UNWRAP_OR",
     "FUNC_NESTING_DEPTH",
     "FUNC_RECURSION_DIRECT",
     "BYPASS_PUB_ALLOW",
@@ -19,7 +22,14 @@ const REQUIRED: &[&str] = &[
     "POLICY_EXCEPTION_INVALID_FIELD",
     "POLICY_EXCEPTION_PARSE_ERROR",
     "POLICY_EXCEPTION_MISSING_FIELD",
+    "HOLZMAN_PANIC_PANIC",
     "HOLZMAN_PANIC_ASSERT",
+    "HOLZMAN_PANIC_ASSERT_EQ",
+    "HOLZMAN_PANIC_ASSERT_NE",
+    "HOLZMAN_PANIC_TODO",
+    "HOLZMAN_PANIC_UNIMPLEMENTED",
+    "HOLZMAN_PANIC_UNREACHABLE",
+    "HOLZMAN_PANIC_DBG",
     "PANIC_SURFACE_001",
     "FORBIDDEN_001",
     "DENY_MULTIPLE_VERSIONS",
@@ -53,6 +63,12 @@ fn explain_func_loops_for_returns_catalog_entry() {
 #[test]
 fn catalog_contains_required_finite_rule_ids() {
     REQUIRED.iter().for_each(|id| assert!(explain_rule(id).is_ok(), "missing {id}"));
+}
+
+#[test]
+fn panic_policy_rules_are_dylint_owned() {
+    let entry = explain_rule("HOLZMAN_PANIC_ASSERT").expect("panic rule exists");
+    assert_eq!(entry.source, "dylint");
 }
 
 #[test]

@@ -136,9 +136,7 @@ cargo check --workspace --all-targets --all-features
 cargo clippy --workspace --lib --bins --examples --all-features -- -D warnings -D unsafe_code -D clippy::all -D clippy::cargo -D clippy::pedantic -D clippy::nursery -D clippy::unwrap_used -D clippy::expect_used -D clippy::unwrap_in_result -D clippy::panic -D clippy::panic_in_result_fn -D clippy::todo -D clippy::unimplemented -D clippy::unreachable -D clippy::dbg_macro -D clippy::print_stdout -D clippy::print_stderr -D clippy::indexing_slicing -D clippy::string_slice -D clippy::get_unwrap -D clippy::arithmetic_side_effects -D clippy::as_conversions -D clippy::integer_division -D clippy::integer_division_remainder_used -D clippy::let_underscore_must_use -D clippy::await_holding_lock -D clippy::future_not_send -D clippy::large_futures -D clippy::allow_attributes -D clippy::allow_attributes_without_reason -D clippy::disallowed_methods -D clippy::disallowed_macros -D clippy::disallowed_types -D clippy::disallowed_fields
 cargo nextest run --workspace --all-features
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps
-rg -n '(^|[^A-Za-z0-9_])(unwrap|expect|unwrap_or|unwrap_or_else|unwrap_or_default)\s*\(' --glob '*.rs' --glob '!**/tests/**' --glob '!**/benches/**' --glob '!**/examples/**' --glob '!build.rs' && exit 1 || true
-rg -n '(^|[^A-Za-z0-9_])(panic!|todo!|unimplemented!|unreachable!|assert!|assert_eq!|assert_ne!|dbg!)' --glob '*.rs' --glob '!**/tests/**' --glob '!**/benches/**' --glob '!**/examples/**' --glob '!build.rs' && exit 1 || true
-rg -n '^\s*(for|while|loop)\b' --glob '*.rs' --glob '!**/tests/**' --glob '!**/benches/**' --glob '!**/examples/**' --glob '!build.rs' && exit 1 || true
+cargo dylint --workspace --all -- --lib --bins --examples
 cargo deny check
 cargo audit
 cargo vet
@@ -229,7 +227,7 @@ When work touches Rust code, the **whole stack fires by default** unless the bea
 cargo fmt --check
 cargo clippy -- --all-targets -D warnings -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic
 cargo test --workspace --all-features
-rg -n '(^|[^A-Za-z0-9_])(assert!|assert_eq!|assert_ne!|unreachable!)' --glob '*.rs' --glob '!**/tests/**' --glob '!**/benches/**'
+cargo dylint --workspace --all -- --lib --bins --examples
 cargo audit && cargo deny check && cargo vet && cargo geiger && cargo machete
 ```
 

@@ -234,6 +234,8 @@ tasks:
       - '.titania/out/release/dylint.json'
 
   titania-panic-scan:
+    # Compatibility artifact only. Rust panic-surface policy moved to Dylint
+    # HOLZMAN_PANIC_* rules; this task no longer performs text scanning.
     command: 'cargo run --frozen --quiet -p titania-check -- run-lane panic-scan'
     options:
       runInCI: true

@@ -256,5 +256,4 @@ match u32::try_from(self.line_no) {
 Before closing beads, the following must pass:
 - [ ] `cargo check -p titania-lanes --all-features` — exit 0
 - [ ] `cargo clippy --workspace --lib --bins --all-features -D warnings` — exit 0
-- [ ] `rg -n '\.unwrap\(\)' crates/titania-lanes/src/` — zero results
-- [ ] `rg -n '\.unwrap_or\(' crates/titania-lanes/src/` — zero results
+- [ ] `cargo dylint --workspace --all -- --lib --bins --examples` — exit 0

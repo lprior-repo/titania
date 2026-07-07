@@ -15,6 +15,9 @@ extern crate rustc_lint;
 extern crate rustc_session;
 extern crate rustc_span;
 
+pub mod functional_surface;
+pub mod panic_surface;
+
 use rustc_ast::{AttrStyle, Crate, MetaItem, MetaItemInner};
 use rustc_errors::DiagDecorator;
 use rustc_hir::{ImplItem, Item, TraitItem};
@@ -155,6 +158,8 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         BYPASS_INTERNAL_UNSTABLE,
         BYPASS_INTERNAL_UNSAFE,
     ]);
+    functional_surface::register(lint_store);
+    panic_surface::register(lint_store);
     lint_store.register_early_pass(|| Box::new(RequiredLintWeakening));
     lint_store.register_early_pass(|| Box::new(InternalEscape));
     lint_store.register_late_pass(|_| Box::new(PubAllow));

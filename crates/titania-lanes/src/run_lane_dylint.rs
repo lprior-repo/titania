@@ -9,8 +9,23 @@ use crate::{
 
 const CARGO_DYLINT_TOOL: &str = "cargo-dylint";
 const DYLINT_LOCATION_LOOKAHEAD: usize = 6;
-const DYLINT_BASE_ARGS: &[&str] = &["dylint", "--workspace", "--all"];
+const DYLINT_BASE_ARGS: &[&str] =
+    &["dylint", "--workspace", "--all", "--", "--lib", "--bins", "--examples"];
 const DYLINT_RULE_IDS: &[&str] = &[
+    "FUNC_UNWRAP_USED",
+    "FUNC_EXPECT_USED",
+    "FUNC_UNWRAP_OR",
+    "FUNC_LOOPS_FOR",
+    "FUNC_LOOPS_WHILE",
+    "FUNC_LOOPS_LOOP",
+    "HOLZMAN_PANIC_PANIC",
+    "HOLZMAN_PANIC_ASSERT",
+    "HOLZMAN_PANIC_ASSERT_EQ",
+    "HOLZMAN_PANIC_ASSERT_NE",
+    "HOLZMAN_PANIC_TODO",
+    "HOLZMAN_PANIC_UNIMPLEMENTED",
+    "HOLZMAN_PANIC_UNREACHABLE",
+    "HOLZMAN_PANIC_DBG",
     "BYPASS_PUB_ALLOW",
     "BYPASS_ATTR_CONTEXT",
     "BYPASS_REQUIRED_LINT_WEAKENING",
@@ -68,7 +83,9 @@ fn base_dylint_args() -> Vec<String> {
 /// Returns [`LaneFailure::Infra`] when `path` is not valid UTF-8 for the command builder.
 fn args_with_library_path(mut args: Vec<String>, path: &Path) -> Result<Vec<String>, LaneFailure> {
     let path_text = library_path_text(path)?;
-    args.extend([String::from("--lib-path"), path_text.to_owned()]);
+    let separator_index = args.iter().position(|arg| arg == "--").map_or(args.len(), |index| index);
+    args.insert(separator_index, path_text.to_owned());
+    args.insert(separator_index, String::from("--lib-path"));
     Ok(args)
 }
 
@@ -326,6 +343,10 @@ mod tests {
                 String::from("--all"),
                 String::from("--lib-path"),
                 path.to_string_lossy().into_owned(),
+                String::from("--"),
+                String::from("--lib"),
+                String::from("--bins"),
+                String::from("--examples"),
             ]
         );
     }
@@ -337,7 +358,15 @@ mod tests {
 
         assert_eq!(
             args,
-            vec![String::from("dylint"), String::from("--workspace"), String::from("--all")]
+            vec![
+                String::from("dylint"),
+                String::from("--workspace"),
+                String::from("--all"),
+                String::from("--"),
+                String::from("--lib"),
+                String::from("--bins"),
+                String::from("--examples"),
+            ]
         );
     }
 

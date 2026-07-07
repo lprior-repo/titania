@@ -1,9 +1,8 @@
 //! Unit tests for `titania-core` primitives.
 //!
-//! These live in `tests/` (rather than `#[cfg(test)] mod tests` in
-//! `src/`) so that the Holzman rg gate — which excludes `tests/` — does
-//! not flag `assert!`/`assert_eq!` calls. The tests exercise the
-//! `pub` API surface end-to-end.
+//! These live in `tests/` so source-target lint and Dylint gates can stay
+//! strict while test assertions remain clear. The tests exercise the `pub` API
+//! surface end-to-end.
 
 #![allow(clippy::as_conversions)] // ASCII byte round-trip is exact in tests.
 

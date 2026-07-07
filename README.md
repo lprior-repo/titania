@@ -36,8 +36,8 @@ your team can review, gate on, and accumulate over time.
 
 ## What Titania Is Not
 
-- **Not a linter.** It's an aggregator over `clippy`, `ast-grep`, `dylint`,
-  and `ripgrep`, with typed findings and policy enforcement. The lints
+- **Not a linter.** It's an aggregator over `clippy`, embedded `ast-grep`,
+  Dylint, and native policy lanes, with typed findings and policy enforcement. The lints
   live upstream; Titania owns the opinion layer and the evidence shape.
 - **Not configurable.** `strict-ai` is the policy. Opt out per-line with
   owner + reason + expiry, not by negotiating config.
@@ -83,7 +83,8 @@ The boring, high-leverage things LLMs get wrong in Rust:
 
 | LLM tell-tale | How Titania catches it |
 |---|---|
-| `unwrap()` / `expect()` in production paths | `panic-scan` lane: ripgrep with parser prefilter, blocks production `assert!` / `unreachable!` / `panic!` / `todo!` / `unimplemented!` |
+| `unwrap()` / `expect()` / `unwrap_or*()` in production paths | `dylint` lane: `FUNC_*` Rust lints over typed syntax, backed by strict Clippy |
+| production `assert!` / `panic!` / `todo!` / `dbg!` macros | `dylint` lane: `HOLZMAN_PANIC_*` Rust lints; `panic-scan` remains only as a clean compatibility artifact |
 | Unchecked indexing (`x[i]`, `&s[0..n]`) | `clippy::indexing_slicing` + `clippy::string_slice` denied at source level |
 | `Result<T, String>` (stringly-typed errors) | Domain policy rejects; only `thiserror`-typed errors allowed |
 | Lossy `as` casts and arithmetic side effects | `clippy::as_conversions` + `clippy::arithmetic_side_effects` denied |
@@ -154,10 +155,10 @@ Titania replaces each:
 | `cargo clippy` | `clippy` (with strict policy) | `ClippyFinding[]` per file:line |
 | `cargo test` | `test` | `TestReport` per binary |
 | `cargo audit` | `cargo-deny` | `AdvisoryFinding[]` |
-| (manual review) | `panic-scan` | `PanicFinding[]` per file:line |
+| retired panic-scan lane | `panic-scan` | Clean compatibility artifact; Rust panic findings are emitted by `dylint` |
 | (none) | `policy-scan` | `PolicyViolation[]` per file:line |
 | (none) | `ast-grep` | `StructuralFinding[]` per file:line |
-| (none) | `dylint` | `TypeAwareFinding[]` (type-resolved) |
+| (none) | `dylint` | `TypeAwareFinding[]` for bypass, functional, and panic-surface Rust policy |
 | (none) | `aggregate` | `Report` + `QualityReceipt` (4 digests) |
 
 The lanes are **Moon tasks**, declared in `.moon/tasks/all.yml`. They run

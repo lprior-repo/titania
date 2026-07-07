@@ -107,7 +107,7 @@ Agents can iterate mechanically against compiler errors. The compiler gives the
 model a hard boundary. It either type-checks or it does not.
 
 Titania extends that same idea beyond compilation. clippy, rustfmt, cargo-deny,
-cargo-nextest, ast-grep, dylint, panic-scan, policy-scan, tests, and release
+cargo-nextest, ast-grep, dylint, policy-scan, tests, and release
 builds all become reviewers. Their job is not to make AI feel smarter. Their
 job is to make bad AI output obvious.
 
@@ -122,7 +122,7 @@ Rust exposes more of those assumptions as concrete failures:
 - lifetime assumptions become compiler errors,
 - state-machine gaps become non-exhaustive matches,
 - missing domain distinctions become newtype obligations,
-- happy-path panic lies become clippy and panic-scan findings,
+- happy-path panic lies become clippy and Dylint findings,
 - unchecked indexes become lint failures,
 - stringly-typed errors become policy failures,
 - hidden I/O in pure code becomes an architecture finding,

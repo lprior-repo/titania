@@ -99,7 +99,7 @@ See §14 for the full deferred roadmap. Summary:
 
 titania-check binary:
   ├── CLI dispatcher (check, run-lane, aggregate, doctor, explain)
-  ├── Lane runners (shell out to cargo/clippy/rg/cargo-deny/ast-grep/dylint)
+  ├── Lane runners (cargo/clippy/cargo-deny/dylint plus embedded/native analyzers)
   ├── ast-grep rules (embedded via include_str!)
   ├── Policy loader (strict-ai defaults + file overrides)
   ├── Digest computation (source, lock, policy, toolchain)
@@ -112,7 +112,9 @@ titania-dylint library (separate .so/.dylib/.dll, co-located):
   ├── BYPASS_REQUIRED_LINT_WEAKENING lint
   ├── BYPASS_ATTR_CONTEXT lint
   ├── BYPASS_INTERNAL_UNSTABLE lint
-  └── BYPASS_INTERNAL_UNSAFE lint
+  ├── BYPASS_INTERNAL_UNSAFE lint
+  ├── FUNC_* functional Rust policy lints
+  └── HOLZMAN_PANIC_* panic-surface Rust policy lints
 
 Crate DAG (dependency graph):
   titania-check (bin)
@@ -158,8 +160,8 @@ pub enum Lane {
 | `Compile` | `cargo check --workspace --frozen` | edit | — | compile errors, denied rustc lints |
 | `Clippy` | `cargo clippy --workspace --lib --bins --frozen` with `-F` | edit | Yes | denied clippy lints |
 | `AstGrep` | embedded ast-grep-core | edit | No | structural rule violations, bypass attribute presence, architecture import violations |
-| `Dylint` | `cargo dylint titania` (loads libtitania_dylint) | edit | No | type-aware bypass violations |
-| `PanicScan` | `rg` with parser prefilter | edit | No | production `assert!`/`assert_eq!`/`assert_ne!`/`unreachable!` |
+| `Dylint` | `cargo dylint titania` (loads libtitania_dylint) | edit | No | type-aware bypass, `FUNC_*`, and `HOLZMAN_PANIC_*` violations |
+| `PanicScan` | compatibility artifact | edit | No | none; Dylint owns Rust panic policy |
 | `PolicyScan` | titania-check native (TOML + env scanner) | edit | No | Cargo.toml `[lints]` weakening, `.cargo/config.toml` overrides, env var violations |
 | `Test` | `cargo test --workspace --frozen -- --test-threads=1` | prepush | Yes | failing tests |
 | `Deny` | `cargo deny check` | prepush | No | advisories, licenses, bans, sources, dupes |
@@ -245,7 +247,7 @@ normalizes their output into typed `Finding` values:
 | cargo-deny | `DENY_*` | `DENY_ADVISORY`, `DENY_LICENSE`, `DENY_BANNED_CRATE` | Parse cargo-deny JSON output, map check type to rule ID |
 | ast-grep | (as defined in §6) | `FUNC_LOOPS_FOR`, `BYPASS_ALLOW_ATTR` | Parse ast-grep JSON output directly |
 | dylint | (as defined in §7) | `BYPASS_PUB_ALLOW`, `FUNC_UNWRAP_USED`, `HOLZMAN_PANIC_ASSERT` | Parse Dylint/rustc diagnostics and construct typed findings |
-| panic-scan | compatibility artifact | — | Emit clean evidence; no Rust `rg` policy scan |
+| panic-scan | compatibility artifact | — | Emit clean evidence; no Rust text policy scan |
 | policy-scan | `BYPASS_*` | `BYPASS_CARGO_LINTS_WEAKENING` | Native scan, construct Finding per violation |
 
 ---
@@ -882,15 +884,8 @@ RUSTDOCFLAGS="-D warnings" cargo doc \
   --no-deps
 
 # Extra Rust source syntax guardrails Clippy alone should not own are enforced
-# by Titania's Dylint `FUNC_*` and `HOLZMAN_PANIC_*` rules, not raw rg.
+# by Titania's Dylint `FUNC_*` and `HOLZMAN_PANIC_*` rules.
 cargo dylint --workspace --all -- --lib --bins --examples
-
-rg -n '^\s*(for|while|loop)\b' \
-  --glob '*.rs' \
-  --glob '!**/tests/**' \
-  --glob '!**/benches/**' \
-  --glob '!**/examples/**' \
-  --glob '!build.rs' && exit 1 || true
 
 cargo deny check
 cargo audit
@@ -900,18 +895,17 @@ cargo machete
 cargo hack check --workspace --feature-powerset
 ```
 
-**Source/test split discipline.** The three `rg` guards at the end are the
-mechanism by which source-only strictness coexists with panic-free test
-design. Tests may use `unwrap`, `expect`, `panic!`, `assert!`, and even
-`for`/`while`/`loop` for clarity and behavior coverage; production source
-may not. The `panic-scan` lane (§5 layer 5, §6) is the in-spec mirror of
-the third `rg` guard; the other two are belt-and-braces against the
-`assert_eq!`/`assert_ne!` macro expansion that clippy historically misses.
+**Source/test split discipline.** Source-only strictness is enforced by source
+Clippy targets plus Titania's Dylint and native lanes. Tests may use `unwrap`,
+`expect`, `panic!`, `assert!`, and even `for`/`while`/`loop` for clarity and
+behavior coverage; production source may not. Dylint owns the macro-aware
+`HOLZMAN_PANIC_*` and functional `FUNC_*` checks that raw text scans used to
+approximate.
 
 **Required tools for step 1.** `cargo-fmt`, `cargo-clippy`, `cargo-nextest`,
-`rg` (ripgrep), `cargo-deny`, `cargo-audit`, `cargo-vet`, `cargo-geiger`,
-`cargo-machete`, `cargo-hack`. `titania-check doctor --scope prepush`
-(§12) verifies presence and reports missing tools.
+`cargo-dylint`, `cargo-deny`, `cargo-audit`, `cargo-vet`, `cargo-geiger`,
+`cargo-machete`, `cargo-hack`. `titania-check doctor --scope prepush` (§12)
+verifies presence and reports missing tools.
 
 ### 9.11 Literal max-pain Clippy audit (occasional, not default CI)
 
@@ -1425,7 +1419,6 @@ Tool           Required   Installed   Version        Path
 cargo          yes        yes         1.84.0         /home/user/.cargo/bin/cargo
 rustfmt        yes        yes         1.84.0         /home/user/.cargo/bin/rustfmt
 clippy         yes        yes         0.1.84         /home/user/.cargo/bin/clippy-driver
-rg             yes        yes         14.1.0         /usr/bin/rg
 ast-grep       embedded   —           —              —
 dylint         yes        yes         0.1.0          /home/user/.cargo/bin/cargo-dylint
 cargo-deny     no (edit)  yes         0.18.0         /home/user/.cargo/bin/cargo-deny

@@ -143,7 +143,6 @@ fn tool_configs_for_scope(scope: GateScope) -> Vec<ToolConfig> {
         ToolConfig::binary("cargo", true),
         ToolConfig::binary("rustfmt", true),
         ToolConfig::binary("clippy-driver", true),
-        ToolConfig::binary("rg", true),
         ToolConfig::embedded("ast-grep"),
         ToolConfig::dylint(true),
         ToolConfig::binary("cargo-deny", deny_required),

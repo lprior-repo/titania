@@ -61,7 +61,6 @@ fn doctor_human_output_contains_contract_columns_and_rows() {
     assert!(stdout.contains("cargo"), "missing cargo row: {stdout}");
     assert!(stdout.contains("rustfmt"), "missing rustfmt row: {stdout}");
     assert!(stdout.contains("clippy-driver"), "missing clippy row: {stdout}");
-    assert!(stdout.contains("rg"), "missing rg row: {stdout}");
     assert!(stdout.contains("ast-grep"), "missing ast-grep row: {stdout}");
     assert!(stdout.contains("cargo-dylint"), "missing cargo-dylint row: {stdout}");
     assert!(stdout.contains("libtitania_dylint"), "missing dylint library row: {stdout}");
@@ -82,7 +81,6 @@ fn doctor_json_edit_scope_contains_required_tool_matrix() {
     assert_eq!(tool(&report, "cargo")["required"], true);
     assert_eq!(tool(&report, "rustfmt")["required"], true);
     assert_eq!(tool(&report, "clippy-driver")["required"], true);
-    assert_eq!(tool(&report, "rg")["required"], true);
     assert_eq!(tool(&report, "cargo-dylint")["required"], true);
     assert_eq!(tool(&report, "libtitania_dylint")["required"], true);
     assert_eq!(tool(&report, "cargo-deny")["required"], false);
@@ -121,7 +119,7 @@ fn doctor_empty_path_reports_missing_required_tools_exit_3() {
 
     let missing = report["missing_required"].as_array().expect("missing_required array");
     // edit scope requires PATH tools; libtitania_dylint is only required when cargo-dylint exists.
-    for required in ["moon", "cargo", "rustfmt", "clippy-driver", "rg", "cargo-dylint"] {
+    for required in ["moon", "cargo", "rustfmt", "clippy-driver", "cargo-dylint"] {
         assert!(missing.iter().any(|n| n == required), "{required} must be missing: {report:#}");
     }
     // edit scope does NOT require cargo-deny

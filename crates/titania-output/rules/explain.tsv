@@ -1,12 +1,14 @@
-FUNC_LOOPS_FOR	ast-grep	Reject	UseIteratorPipeline	for $LOOP in $ITER { ... }	Rejects imperative `for` loops in production source.
-FUNC_LOOPS_WHILE	ast-grep	Reject	UseIteratorPipeline	while $COND { ... }	Rejects imperative while loops in production source.
-FUNC_LOOPS_LOOP	ast-grep	Reject	UseIteratorPipeline	loop { ... }	Rejects open-ended loop blocks in production source.
+FUNC_LOOPS_FOR	ast-grep+dylint	Reject	UseIteratorPipeline	for $LOOP in $ITER { ... }	Rejects imperative `for` loops in production source.
+FUNC_LOOPS_WHILE	ast-grep+dylint	Reject	UseIteratorPipeline	while $COND { ... }	Rejects imperative while loops in production source.
+FUNC_LOOPS_LOOP	ast-grep+dylint	Reject	UseIteratorPipeline	loop { ... }	Rejects open-ended loop blocks in production source.
 FUNC_NESTING_DEPTH	ast-grep	Reject	FlattenNesting	nesting depth > 2	Rejects deeply nested production control flow.
 FUNC_RECURSION_DIRECT	ast-grep	Reject	RequiresHumanReview	function calls itself	Rejects direct recursion in production source.
 FUNC_PRINT_STDOUT	ast-grep	Reject	RequiresHumanReview	print! or println!	Rejects stdout printing in production source.
 FUNC_PRINT_STDERR	ast-grep	Reject	RequiresHumanReview	eprint! or eprintln!	Rejects stderr printing in production source.
 FUNC_WILDCARD_IMPORT	ast-grep	Informational	RequiresHumanReview	use $PATH::*	Reports wildcard imports for human review.
-FUNC_UNWRAP_OR	ast-grep	Reject	RequiresHumanReview	unwrap_or / unwrap_or_else / unwrap_or_default	Rejects hidden default recovery through unwrap_or variants.
+FUNC_UNWRAP_USED	dylint	Reject	RequiresHumanReview	unwrap()	Rejects panic-prone unwrap calls in production source.
+FUNC_EXPECT_USED	dylint	Reject	RequiresHumanReview	expect(...)	Rejects panic-prone expect calls in production source.
+FUNC_UNWRAP_OR	ast-grep+dylint	Reject	RequiresHumanReview	unwrap_or / unwrap_or_else / unwrap_or_default	Rejects hidden default recovery through unwrap_or variants.
 FUNC_RESULT_STRING	ast-grep	Reject	RequiresHumanReview	Result<T, String>	Rejects stringly typed core errors.
 BYPASS_ALLOW_ATTR	ast-grep	Reject	RemoveAllowAttribute	#[allow(...)]	Rejects item-level allow suppressions.
 BYPASS_EXPECT_ATTR	ast-grep	Reject	RemoveAllowAttribute	#[expect(...)]	Rejects item-level expect suppressions.
@@ -38,11 +40,15 @@ POLICY_EXCEPTION_EXPIRED	policy-scan	Reject	RequiresHumanReview	expired exceptio
 POLICY_EXCEPTION_INVALID_FIELD	policy-scan	Reject	RequiresHumanReview	invalid exception field	Rejects malformed policy exception fields.
 POLICY_EXCEPTION_PARSE_ERROR	policy-scan	Reject	RequiresHumanReview	exception parse error	Rejects invalid policy exception syntax.
 POLICY_EXCEPTION_MISSING_FIELD	policy-scan	Reject	RequiresHumanReview	missing exception field	Rejects incomplete policy exceptions.
-HOLZMAN_PANIC_ASSERT	panic-scan	Reject	RequiresHumanReview	assert!	Rejects production assert! panic paths.
-HOLZMAN_PANIC_ASSERT_EQ	panic-scan	Reject	RequiresHumanReview	assert_eq!	Rejects production assert_eq! panic paths.
-HOLZMAN_PANIC_ASSERT_NE	panic-scan	Reject	RequiresHumanReview	assert_ne!	Rejects production assert_ne! panic paths.
-HOLZMAN_PANIC_UNREACHABLE	panic-scan	Reject	RequiresHumanReview	unreachable!	Rejects production unreachable! panic paths.
-PANIC_SURFACE_001	panic-scan	Reject	RequiresHumanReview	legacy panic surface	Legacy panic-scan compatibility rule.
+HOLZMAN_PANIC_PANIC	dylint	Reject	RequiresHumanReview	panic!	Rejects production panic! paths.
+HOLZMAN_PANIC_ASSERT	dylint	Reject	RequiresHumanReview	assert!	Rejects production assert! panic paths.
+HOLZMAN_PANIC_ASSERT_EQ	dylint	Reject	RequiresHumanReview	assert_eq!	Rejects production assert_eq! panic paths.
+HOLZMAN_PANIC_ASSERT_NE	dylint	Reject	RequiresHumanReview	assert_ne!	Rejects production assert_ne! panic paths.
+HOLZMAN_PANIC_TODO	dylint	Reject	RequiresHumanReview	todo!	Rejects unfinished production todo! placeholders.
+HOLZMAN_PANIC_UNIMPLEMENTED	dylint	Reject	RequiresHumanReview	unimplemented!	Rejects unfinished production unimplemented! placeholders.
+HOLZMAN_PANIC_UNREACHABLE	dylint	Reject	RequiresHumanReview	unreachable!	Rejects production unreachable! panic paths.
+HOLZMAN_PANIC_DBG	dylint	Reject	RequiresHumanReview	dbg!	Rejects production dbg! debug surface.
+PANIC_SURFACE_001	panic-scan	Reject	RequiresHumanReview	legacy panic surface	Retired panic-scan compatibility rule; Dylint emits HOLZMAN_PANIC_* findings.
 DENY_ADVISORY	deny	Reject	RequiresHumanReview	RustSec advisory	Rejects dependency security advisories.
 DENY_LICENSE	deny	Reject	RequiresHumanReview	license rejected or unlicensed	Rejects dependency license violations.
 DENY_BANNED_CRATE	deny	Reject	RequiresHumanReview	banned crate	Rejects banned dependency crates.

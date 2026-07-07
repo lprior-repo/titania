@@ -29,7 +29,7 @@ pub enum Lane {
     AstGrep,
     /// Type-aware dylint lane (`cargo dylint titania`).
     Dylint,
-    /// Panic-macro scan lane (`rg` prefilter).
+    /// Retired panic-macro compatibility lane; Dylint owns Rust panic policy.
     PanicScan,
     /// Policy-violation scan lane (native TOML + env scanner).
     PolicyScan,
