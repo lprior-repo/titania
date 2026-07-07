@@ -52,7 +52,7 @@ functional correctness (v2.5). These are the verification batches — see
 - ast-grep embedded as Rust dependency for structural rules
 - Built-in cargo lanes: `fmt`, `compile`, `clippy`, `test`
 - `cargo-deny` for supply chain (advisories, licenses, bans, sources, dupes)
-- `panic-scan` lane (rg-based, parser-prefiltered)
+- `panic-scan` lane (clean compatibility artifact; Rust panic policy is Dylint-owned)
 - `policy-scan` lane (TOML/env bypass detection)
 - `strict-ai` policy as the only profile
 - 3 scope tiers: `edit`, `prepush`, `release`
@@ -227,8 +227,8 @@ previous cannot:
 | 1 | `cargo check` + rustc lints | compile errors, `unsafe_code=forbid` | — |
 | 2 | `cargo clippy` with `-F` critical lints | unwrap/expect/panic/todo/indexing/arithmetic | third-party panics, macro-expanded panics |
 | 3 | `ast-grep` embedded rules | structural patterns, bypass attributes, architecture imports | type-aware context |
-| 4 | `dylint` library | type-aware bypass detection (scope, required-lint weakening) | — |
-| 5 | `panic-scan` (rg) | production `assert!`/`unreachable!` macros | block comments, string literals (heuristic) |
+| 4 | `dylint` library | type-aware bypass detection plus Rust `FUNC_*` and `HOLZMAN_PANIC_*` policy | — |
+| 5 | `panic-scan` compatibility artifact | clean evidence for legacy reports; Rust panic policy is Dylint-owned | — |
 | 6 | `policy-scan` (native) | Cargo.toml `[lints]` weakening, `.cargo/config.toml` overrides, env violations | — |
 | 7 | `cargo test` | behavior failures | missing tests |
 | 8 | `cargo deny check` | supply chain violations | unknown vulnerabilities |
@@ -244,8 +244,8 @@ normalizes their output into typed `Finding` values:
 | clippy | `CLIPPY_*` | `CLIPPY_UNWRAP_USED`, `CLIPPY_INDEXING_SLICING` | Parse `--message-format=json`, map lint name to uppercase rule ID |
 | cargo-deny | `DENY_*` | `DENY_ADVISORY`, `DENY_LICENSE`, `DENY_BANNED_CRATE` | Parse cargo-deny JSON output, map check type to rule ID |
 | ast-grep | (as defined in §6) | `FUNC_LOOPS_FOR`, `BYPASS_ALLOW_ATTR` | Parse ast-grep JSON output directly |
-| dylint | (as defined in §7) | `BYPASS_PUB_ALLOW` | Parse dylint output via clippy JSON format |
-| panic-scan | `HOLZMAN_PANIC_*` | `HOLZMAN_PANIC_ASSERT` | Parse rg output, construct Finding per match |
+| dylint | (as defined in §7) | `BYPASS_PUB_ALLOW`, `FUNC_UNWRAP_USED`, `HOLZMAN_PANIC_ASSERT` | Parse Dylint/rustc diagnostics and construct typed findings |
+| panic-scan | compatibility artifact | — | Emit clean evidence; no Rust `rg` policy scan |
 | policy-scan | `BYPASS_*` | `BYPASS_CARGO_LINTS_WEAKENING` | Native scan, construct Finding per violation |
 
 ---
@@ -371,54 +371,325 @@ checked-in policy files.
 
 ### 9.1 Cargo.toml `[workspace.lints]`
 
+The strict-ai profile mandates the **complete** workspace-lint table below.
+Member crates inherit it with `[lints] workspace = true;`. This table is the
+single source of truth for what "strict Rust" means in a strict-ai consumer
+workspace; overrides require an entry in `.titania/profiles/strict-ai/policy.toml`
+per §9.7 and surface in `policy_digest` per §9.9.
+
+**Rationale:** `pedantic`/`nursery`/`cargo`/`multiple_crate_versions` are
+denied (not allowed) because the spec's whole product thesis is that AI
+hallucinations on style and dependency hygiene are exactly the signals we want
+to surface as typed findings; softening these makes the gate weaker than the
+product warrants. `unreachable_pub = "deny"` forces explicit visibility on every
+public item. `float_arithmetic = "deny"` is qualified by §9.13 for the
+SIMD/numeric carve-out.
+
 ```toml
 [workspace.lints.rust]
-unsafe_code = "forbid"
-unused_must_use = "deny"
-unreachable_pub = "allow"
+warnings = { level = "deny", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
 rust_2018_idioms = { level = "deny", priority = -1 }
-non_exhaustive_omitted_patterns = "deny"
+
+unsafe_code = "forbid"
+unsafe_op_in_unsafe_fn = "deny"
+
+unused_must_use = "deny"
+unused_results = "deny"
+let_underscore_drop = "deny"
+
+elided_lifetimes_in_paths = "deny"
+explicit_outlives_requirements = "deny"
+missing_debug_implementations = "deny"
+missing_docs = "deny"
+unreachable_pub = "deny"
+
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+variant_size_differences = "deny"
+unused_extern_crates = "deny"
+unused_import_braces = "deny"
+keyword_idents_2024 = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+bare_urls = "deny"
+private_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+missing_crate_level_docs = "deny"
 
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
-pedantic = { level = "allow", priority = 1 }
-nursery = { level = "allow", priority = 1 }
-cargo = { level = "allow", priority = 1 }
-multiple_crate_versions = { level = "allow", priority = 1 }
+cargo = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 
-unwrap_or_default = "deny"
-exit = "deny"
-default_numeric_fallback = "deny"
+# Escape-hatch discipline.
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+
+# Panic-free / placeholder-free production.
+unwrap_used = "deny"
+expect_used = "deny"
+unwrap_in_result = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+# Indexing, slicing, casts, and arithmetic.
+indexing_slicing = "deny"
+string_slice = "deny"
+get_unwrap = "deny"
+arithmetic_side_effects = "deny"
+as_conversions = "deny"
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_sign_loss = "deny"
+cast_precision_loss = "deny"
+integer_division = "deny"
+integer_division_remainder_used = "deny"
+modulo_arithmetic = "deny"
+
+# See §9.13 for the SIMD/numeric carve-out.
+float_arithmetic = "deny"
+
+# Error and API discipline.
+result_large_err = "deny"
+result_unit_err = "deny"
+map_err_ignore = "deny"
 missing_errors_doc = "deny"
+missing_panics_doc = "deny"
+missing_safety_doc = "deny"
+large_enum_variant = "deny"
+
+# Complexity and reviewability.
+cognitive_complexity = "deny"
+too_many_arguments = "deny"
+too_many_lines = "deny"
+type_complexity = "deny"
+excessive_nesting = "deny"
+
+# Async and concurrency.
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+future_not_send = "deny"
+large_futures = "deny"
+
+# Policy-driven config from clippy.toml (§9.3).
+disallowed_methods = "deny"
+disallowed_macros = "deny"
+disallowed_types = "deny"
+disallowed_fields = "deny"
+
+# Manifest/dependency hygiene (subset of clippy::cargo, repeated for clarity).
+multiple_crate_versions = "deny"
+wildcard_dependencies = "deny"
+negative_feature_names = "deny"
+redundant_feature_names = "deny"
 ```
 
-### 9.2 Clippy critical lints via `-F`
-
-```bash
-cargo clippy --workspace --lib --bins --frozen -- \
-  -F clippy::unwrap_used \
-  -F clippy::expect_used \
-  -F clippy::panic \
-  -F clippy::panic_in_result_fn \
-  -F clippy::todo \
-  -F clippy::unimplemented \
-  -F clippy::indexing_slicing \
-  -F clippy::string_slice \
-  -F clippy::get_unwrap \
-  -F clippy::arithmetic_side_effects \
-  -F clippy::dbg_macro \
-  -F clippy::as_conversions \
-  -F clippy::let_underscore_must_use \
-  -F clippy::await_holding_lock \
-  -D warnings
-```
-
-### 9.3 clippy.toml thresholds
+In every workspace member crate, the inheritance directive is mandatory:
 
 ```toml
-too-many-lines-threshold = 40
+[lints]
+workspace = true
+```
+
+Lint *levels* can live in code attributes, command flags, or Cargo's lint tables;
+`clippy.toml` (see §9.3) is reserved for configurable lint *options* such as
+thresholds and disallowed methods/types/macros. Clippy documents `.clippy.toml`
+support as `unstable`, so a pinned `rust-toolchain.toml` is part of the
+strict-ai hermeticity posture (§9.5).
+
+### 9.2 Clippy critical lints via `-F` / `-D` flags
+
+The flag set below is the canonical command-line invocation of the strict-ai
+policy. It is what every CI gate (§9.10), every pre-push hook, and every
+local `--scope prepush` run emits. The `-F` (forbid) and `-D` (deny) flags
+mirror the workspace-lint table in §9.1 — when a lint is denied in the table,
+the corresponding `-D clippy::<name>` flag below is also set, so a future
+editor that forgets the `[lints] workspace = true` inheritance still fails
+the gate.
+
+**Cargo invocation shape (matches §9.10 step 2 verbatim):**
+
+```bash
+cargo clippy --workspace --lib --bins --examples --frozen -- \
+  -D warnings \
+  -D unsafe_code \
+  -D clippy::all \
+  -D clippy::cargo \
+  -D clippy::pedantic \
+  -D clippy::nursery \
+  -D clippy::unwrap_used \
+  -D clippy::expect_used \
+  -D clippy::unwrap_in_result \
+  -D clippy::panic \
+  -D clippy::panic_in_result_fn \
+  -D clippy::todo \
+  -D clippy::unimplemented \
+  -D clippy::unreachable \
+  -D clippy::dbg_macro \
+  -D clippy::print_stdout \
+  -D clippy::print_stderr \
+  -D clippy::indexing_slicing \
+  -D clippy::string_slice \
+  -D clippy::get_unwrap \
+  -D clippy::arithmetic_side_effects \
+  -D clippy::as_conversions \
+  -D clippy::integer_division \
+  -D clippy::integer_division_remainder_used \
+  -D clippy::let_underscore_must_use \
+  -D clippy::await_holding_lock \
+  -D clippy::future_not_send \
+  -D clippy::large_futures \
+  -D clippy::allow_attributes \
+  -D clippy::allow_attributes_without_reason \
+  -D clippy::disallowed_methods \
+  -D clippy::disallowed_macros \
+  -D clippy::disallowed_types \
+  -D clippy::disallowed_fields
+```
+
+`--examples` is included because examples are first-class user-visible Rust
+and ship with the workspace; `--tests` and `--benches` are deliberately
+excluded by the source-only gate (§9.10 step 2) so test implementation style
+does not block the gate. All other cargo invocations in the project use
+`--frozen` (not `--locked`); see §9.5.
+
+### 9.3 clippy.toml
+
+The `clippy.toml` file lives at the workspace root and is the single source
+of truth for *configurable* lint options: thresholds, disallowed methods,
+disallowed macros, disallowed types, and `await-holding-invalid-types`. The
+file content below is the strict-ai default. Clippy documents `.clippy.toml`
+support as `unstable`, so a pinned `rust-toolchain.toml` is part of the
+hermeticity posture (§9.5).
+
+**Rationale notes:**
+
+- `check-private-items = true` extends the gate to non-public API. Every
+  internal helper is held to the same standard.
+- `allow-dbg-in-tests = false` etc. keep tests honest — the gate is
+  source/test-blind by default in §9.10, so these flags exist for projects
+  that *do* run strict Clippy over `--all-targets`.
+- `disallowed-types` bans `LinkedList`, `Rc`, `RefCell`, `Mutex`, `RwLock`
+  globally. These structures usually signal non-auditable ownership or
+  bad hot-path layout; they are not blanket wrong, but they require
+  explicit domain justification. If a consumer workspace needs them,
+  the `[architecture]` section of `policy.toml` (§9.7) can narrow the ban.
+
+```toml
+# Keep Clippy strict even for private APIs.
+check-private-items = true
+avoid-breaking-exported-api = false
+
+# Reviewability thresholds.
+cognitive-complexity-threshold = 8
+excessive-nesting-threshold = 2
 too-many-arguments-threshold = 5
+too-many-lines-threshold = 60
+type-complexity-threshold = 120
+single-char-binding-names-threshold = 2
 max-fn-params-bools = 1
+
+# Layout / allocation / async thresholds.
+enum-variant-size-threshold = 128
+large-error-threshold = 64
+future-size-threshold = 4096
+stack-size-threshold = 262144
+array-size-threshold = 4096
+too-large-for-stack = 128
+pass-by-value-size-limit = 128
+trivial-copy-size-limit = 16
+vec-box-size-threshold = 1024
+unnecessary-box-size = 64
+
+# Literal/name/doc hygiene.
+upper-case-acronyms-aggressive = true
+unreadable-literal-lint-fractions = true
+doc-valid-idents = ["API", "CPU", "DTO", "FFI", "ID", "IR", "I/O", "JPL", "NASA", "SIMD", "WAL", ".."]
+
+# Strictest mode: tests are linted too.
+# Source/test split per §9.10 step 2 keeps the default gate source-only.
+# These flags apply when a consumer runs `cargo clippy --all-targets`.
+allow-dbg-in-tests = false
+allow-expect-in-tests = false
+allow-indexing-slicing-in-tests = false
+allow-panic-in-tests = false
+allow-print-in-tests = false
+allow-unwrap-in-tests = false
+allow-useless-vec-in-tests = false
+allow-large-stack-frames-in-tests = false
+
+# Do not allow compile-time unwrap either.
+allow-unwrap-in-consts = false
+allow-unwrap-types = []
+
+# Catch lock-like types held across await.
+await-holding-invalid-types = [
+  { path = "std::sync::MutexGuard", reason = "Do not hold a blocking MutexGuard across await." },
+  { path = "std::sync::RwLockReadGuard", reason = "Do not hold a blocking RwLockReadGuard across await." },
+  { path = "std::sync::RwLockWriteGuard", reason = "Do not hold a blocking RwLockWriteGuard across await." },
+  { path = "parking_lot::MutexGuard", reason = "Do not hold a blocking parking_lot MutexGuard across await.", allow-invalid = true },
+  { path = "parking_lot::RwLockReadGuard", reason = "Do not hold a blocking parking_lot RwLockReadGuard across await.", allow-invalid = true },
+  { path = "parking_lot::RwLockWriteGuard", reason = "Do not hold a blocking parking_lot RwLockWriteGuard across await.", allow-invalid = true },
+]
+
+# Ban happy-path lies, silent fallbacks, and process escape hatches.
+disallowed-methods = [
+  { path = "std::option::Option::unwrap", reason = "Use match, ok_or_else, or typed boundary parsing." },
+  { path = "std::option::Option::expect", reason = "Use typed error conversion or explicit match." },
+  { path = "std::option::Option::unwrap_or", reason = "Do not hide absence with a default. Use map_or_else or a domain default type." },
+  { path = "std::option::Option::unwrap_or_else", reason = "Do not hide absence with a default. Use map_or_else or typed recovery." },
+  { path = "std::option::Option::unwrap_or_default", reason = "Do not hide absence with Default. Use explicit domain recovery." },
+  { path = "std::option::Option::unwrap_unchecked", reason = "Unsafe happy-path lie. Requires explicit unsafe waiver." },
+
+  { path = "std::result::Result::unwrap", reason = "Preserve recoverable errors as typed errors." },
+  { path = "std::result::Result::expect", reason = "Preserve recoverable errors as typed errors with context." },
+  { path = "std::result::Result::unwrap_err", reason = "Pattern-match expected errors explicitly." },
+  { path = "std::result::Result::unwrap_or", reason = "Do not hide errors with a default. Use map_or_else or typed recovery." },
+  { path = "std::result::Result::unwrap_or_else", reason = "Do not hide errors with a default. Preserve the cause." },
+  { path = "std::result::Result::unwrap_or_default", reason = "Do not hide errors with Default. Preserve the cause." },
+  { path = "std::result::Result::unwrap_unchecked", reason = "Unsafe happy-path lie. Requires explicit unsafe waiver." },
+
+  { path = "std::mem::forget", reason = "Leaking destructors is a resource-safety decision requiring explicit design." },
+  { path = "std::mem::transmute", reason = "Unsafe layout reinterpretation requires explicit unsafe waiver." },
+  { path = "std::mem::zeroed", reason = "Invalid bit-pattern risk requires explicit unsafe waiver." },
+  { path = "std::process::exit", reason = "Bypasses destructors and normal error reporting. Return typed errors to main." },
+]
+
+# Ban panicking/debug macros and source-level assertions by policy.
+# For tests, prefer domain-specific assertion helpers when panic-free tests are required.
+disallowed-macros = [
+  { path = "std::dbg", reason = "Debug macro must not ship." },
+  { path = "std::print", reason = "Use tracing/metrics through the shell." },
+  { path = "std::println", reason = "Use tracing/metrics through the shell." },
+  { path = "std::eprint", reason = "Use tracing/metrics through the shell." },
+  { path = "std::eprintln", reason = "Use tracing/metrics through the shell." },
+  { path = "std::panic", reason = "Return typed errors." },
+  { path = "std::todo", reason = "No placeholders in committed Rust." },
+  { path = "std::unimplemented", reason = "No placeholders in committed Rust." },
+  { path = "std::unreachable", reason = "Use exhaustive typestates or typed impossible-state errors." },
+  { path = "std::assert", reason = "Production assertions are panic paths. Use typed validation/errors." },
+  { path = "std::assert_eq", reason = "Production assertions are panic paths. Use typed validation/errors." },
+  { path = "std::assert_ne", reason = "Production assertions are panic paths. Use typed validation/errors." },
+]
+
+# Ban structures that usually signal non-auditable ownership or bad hot-path layout.
+# Apply globally only in projects that really accept this level of constraint.
+disallowed-types = [
+  { path = "std::collections::LinkedList", reason = "Pointer-heavy layout. Use Vec, VecDeque, indexes, or arena-backed dense storage." },
+  { path = "std::rc::Rc", reason = "Prefer explicit ownership, Arc in shell, or indexes into dense storage." },
+  { path = "std::cell::RefCell", reason = "Prefer compile-time borrowing, typestates, or explicit state transitions." },
+  { path = "std::sync::Mutex", reason = "Use typed concurrency boundary, sharding, message passing, or async-aware lock when appropriate." },
+  { path = "std::sync::RwLock", reason = "Use typed concurrency boundary, sharding, message passing, or async-aware lock when appropriate." },
+]
 ```
 
 ### 9.4 deny.toml
@@ -521,6 +792,279 @@ policy_digest = blake3(
 
 Canonical serialization: TOML files normalized (sorted keys, no comments),
 concatenated with length prefixes. blake3 hash, hex-encoded, 64 chars.
+
+---
+
+### 9.10 Source-only CI gate (the canonical strict-ai gate)
+
+This section is the single command shape every strict-ai consumer runs in
+place of a hand-written `cargo fmt / clippy / test` shell script. The shape
+mirrors what the titania-check `.moon/tasks/all.yml` invokes on every
+`gate-prepush` execution.
+
+**Step 0 — Workspace inheritance.** Every member crate must contain:
+
+```toml
+[lints]
+workspace = true
+```
+
+A member crate that fails this check is rejected before step 1. The
+`PolicyScan` lane (§8) detects missing inheritance.
+
+**Step 1 — Source-only gate.** This is the canonical invocation. Note the
+`--lib --bins --examples` shape: it deliberately omits `--tests` and
+`--benches` so test implementation style does not block the gate. Tests
+must still compile and run (step 4) but are not rejected for source-shape
+lints unless the consumer opts into `--all-targets` (see §9.11).
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+cargo fmt --all -- --check
+
+cargo check \
+  --workspace \
+  --all-targets \
+  --all-features
+
+cargo clippy \
+  --workspace \
+  --lib \
+  --bins \
+  --examples \
+  --all-features \
+  -- \
+  $(cat <<'EOF'
+-D warnings
+-D unsafe_code
+-D clippy::all
+-D clippy::cargo
+-D clippy::pedantic
+-D clippy::nursery
+-D clippy::unwrap_used
+-D clippy::expect_used
+-D clippy::unwrap_in_result
+-D clippy::panic
+-D clippy::panic_in_result_fn
+-D clippy::todo
+-D clippy::unimplemented
+-D clippy::unreachable
+-D clippy::dbg_macro
+-D clippy::print_stdout
+-D clippy::print_stderr
+-D clippy::indexing_slicing
+-D clippy::string_slice
+-D clippy::get_unwrap
+-D clippy::arithmetic_side_effects
+-D clippy::as_conversions
+-D clippy::integer_division
+-D clippy::integer_division_remainder_used
+-D clippy::let_underscore_must_use
+-D clippy::await_holding_lock
+-D clippy::future_not_send
+-D clippy::large_futures
+-D clippy::allow_attributes
+-D clippy::allow_attributes_without_reason
+-D clippy::disallowed_methods
+-D clippy::disallowed_macros
+-D clippy::disallowed_types
+-D clippy::disallowed_fields
+EOF
+)
+
+cargo nextest run --workspace --all-features
+
+RUSTDOCFLAGS="-D warnings" cargo doc \
+  --workspace \
+  --all-features \
+  --no-deps
+
+# Extra Rust source syntax guardrails Clippy alone should not own are enforced
+# by Titania's Dylint `FUNC_*` and `HOLZMAN_PANIC_*` rules, not raw rg.
+cargo dylint --workspace --all -- --lib --bins --examples
+
+rg -n '^\s*(for|while|loop)\b' \
+  --glob '*.rs' \
+  --glob '!**/tests/**' \
+  --glob '!**/benches/**' \
+  --glob '!**/examples/**' \
+  --glob '!build.rs' && exit 1 || true
+
+cargo deny check
+cargo audit
+cargo vet
+cargo geiger
+cargo machete
+cargo hack check --workspace --feature-powerset
+```
+
+**Source/test split discipline.** The three `rg` guards at the end are the
+mechanism by which source-only strictness coexists with panic-free test
+design. Tests may use `unwrap`, `expect`, `panic!`, `assert!`, and even
+`for`/`while`/`loop` for clarity and behavior coverage; production source
+may not. The `panic-scan` lane (§5 layer 5, §6) is the in-spec mirror of
+the third `rg` guard; the other two are belt-and-braces against the
+`assert_eq!`/`assert_ne!` macro expansion that clippy historically misses.
+
+**Required tools for step 1.** `cargo-fmt`, `cargo-clippy`, `cargo-nextest`,
+`rg` (ripgrep), `cargo-deny`, `cargo-audit`, `cargo-vet`, `cargo-geiger`,
+`cargo-machete`, `cargo-hack`. `titania-check doctor --scope prepush`
+(§12) verifies presence and reports missing tools.
+
+### 9.11 Literal max-pain Clippy audit (occasional, not default CI)
+
+The `clippy::restriction` group is intentionally excluded from the default
+gate (§9.10) because Clippy's own documentation warns against wholesale
+restriction. However, projects that want to turn every alarm into a siren
+can run the literal max-pain audit as an occasional check (e.g., quarterly,
+or before a major version bump). It is **not** a CI gate.
+
+```bash
+cargo clippy \
+  --workspace \
+  --all-targets \
+  --all-features \
+  -- \
+  -D warnings \
+  -D clippy::all \
+  -D clippy::cargo \
+  -D clippy::pedantic \
+  -D clippy::nursery \
+  -D clippy::restriction
+```
+
+**Caveats.** This audit will produce contradictory or unproductive findings
+because the `restriction` group includes lints that conflict with idiomatic
+patterns in numeric, graphics, DSP, ML, and SIMD-heavy code. Any new
+finding here must be triaged against §9.13 (float-arithmetic policy) and
+the project's domain profile. Do not gate `moon ci` on this run.
+
+### 9.12 Nightly zero-slippage variant
+
+When the workspace pins `rust-toolchain.toml` to nightly and explicitly
+allows only intended nightly features, run the strict-ai gate under
+nightly with the allow-list. This is the only sanctioned use of unstable
+Rust in the strict-ai profile.
+
+```bash
+cargo +nightly fmt --all -- --check
+
+cargo +nightly -Zallow-features=portable_simd,try_blocks check \
+  --workspace \
+  --all-targets \
+  --all-features
+
+cargo +nightly -Zallow-features=portable_simd,try_blocks clippy \
+  --workspace \
+  --lib \
+  --bins \
+  --examples \
+  --all-features \
+  -- \
+  -D warnings \
+  -D unsafe_code \
+  $(cat <<'EOF'
+-D clippy::all
+-D clippy::cargo
+-D clippy::pedantic
+-D clippy::nursery
+-D clippy::unwrap_used
+-D clippy::expect_used
+-D clippy::unwrap_in_result
+-D clippy::panic
+-D clippy::panic_in_result_fn
+-D clippy::todo
+-D clippy::unimplemented
+-D clippy::unreachable
+-D clippy::dbg_macro
+-D clippy::print_stdout
+-D clippy::print_stderr
+-D clippy::indexing_slicing
+-D clippy::string_slice
+-D clippy::get_unwrap
+-D clippy::arithmetic_side_effects
+-D clippy::as_conversions
+-D clippy::integer_division
+-D clippy::integer_division_remainder_used
+-D clippy::let_underscore_must_use
+-D clippy::await_holding_lock
+-D clippy::future_not_send
+-D clippy::large_futures
+-D clippy::allow_attributes
+-D clippy::allow_attributes_without_reason
+-D clippy::disallowed_methods
+-D clippy::disallowed_macros
+-D clippy::disallowed_types
+-D clippy::disallowed_fields
+EOF
+)
+
+cargo +nightly nextest run --workspace --all-features
+cargo +nightly doc --workspace --all-features --no-deps
+
+cargo deny check
+cargo audit
+cargo vet
+cargo geiger
+cargo machete
+cargo hack check --workspace --feature-powerset
+cargo mutants
+```
+
+The only sanctioned nightly features are `portable_simd` and `try_blocks`;
+any other nightly feature requires explicit unsafe-waiver approval (§6.4
+of the project's runtime architecture policy) and a row in
+`.titania/profiles/strict-ai/exceptions.toml` (§9.8).
+
+### 9.13 Float-arithmetic policy (SIMD/numeric carve-out)
+
+The strict-ai default denies `clippy::float_arithmetic` (§9.1) because
+unchecked float arithmetic in safety-critical, embedded, consensus, finance,
+or deterministic-replay domains is a real risk. However, blanket prohibition
+on floating point is wrong for numeric, graphics, DSP, ML, and SIMD-heavy
+crates. The carve-out below is the only sanctioned exception.
+
+**Allowed exception shape.** A project that legitimately needs float
+arithmetic must do **all four** of the following:
+
+1. A **scalar oracle** exists for the same operation. The SIMD/vector path
+   must produce bit-identical results to the scalar reference on the
+   targeted shape, or the deviation must be quantified and accepted.
+2. **Target gating or runtime detection** is in place. SIMD intrinsics
+   must not be enabled by accident on a target that lacks the feature.
+3. **Fallback to scalar** is wired. A `cfg(not(target_feature = "..."))`
+   arm must exist and be exercised by the test matrix.
+4. **Edge tests, property tests, and benchmarks** are present. Boundary
+   inputs (NaN, ±0, ±inf, denormals, subnormals), proptest-driven fuzzing,
+   and a benchmark with workload, baseline command, baseline number,
+   variance, profiler evidence, change description, new number, delta, and
+   regression threshold (§10 of the project's performance doctrine) are
+   mandatory before any SIMD/vector commit.
+
+The exception is **scoped**, not global. The default lane for the lint
+remains `deny`. Allow the lint locally with an explicit reason:
+
+```rust
+#[expect(
+    clippy::float_arithmetic,
+    reason = "Scalar oracle + portable_simd target gating + property-test edge coverage per v1-spec §9.13"
+)]
+fn simd_sum(values: &[f32]) -> f32 { /* ... */ }
+```
+
+The `#[expect(...)]` (not `#[allow(...)]`) form is required by §9.1's
+`allow_attributes = "deny"` and `allow_attributes_without_reason = "deny"`
+rules: `expect` produces a warning if the lint does not actually fire,
+which is the discipline `allow` cannot provide. The bead `BYPASS_EXPECT_ATTR`
+(§6.b) inspects every `#[expect(...)]` site, so the reason text is part of
+the typed finding contract, not free-form prose.
+
+For crates that opt into the SIMD carve-out wholesale (e.g., a graphics
+shading crate), the `policy.toml` `[architecture]` section (§9.7) may
+declare a crate-level allow with `reason = "v1-spec §9.13 numeric carve-out"`
+and `expires_on` per §9.8.
 
 ---
 
@@ -982,6 +1526,7 @@ titania-dylint:
   inputs: ['@globs(sources)']
 
 titania-panic-scan:
+  # Compatibility artifact only; Rust panic rules are Dylint-owned.
   command: 'titania-check run-lane panic-scan'
   options: { runInCI: true }
   inputs: ['@globs(sources)']
@@ -1090,7 +1635,6 @@ The template provides:
 
 - Moon v2+ (orchestration)
 - Rust toolchain (Moon-managed)
-- `rg` (for panic-scan)
 - `cargo-dylint` (for dylint lane)
 - sccache (strongly recommended)
 - bazel-remote (optional — team cache)
