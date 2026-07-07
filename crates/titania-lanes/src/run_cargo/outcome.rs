@@ -8,7 +8,7 @@ use std::os::unix::process::ExitStatusExt;
 
 use titania_core::{
     CommandEvidence, Digest, Finding as CoreFinding, LaneEvidence, Location, ProcessTermination,
-    RepairHint, TargetProject,
+    RepairHint, TargetProject, WorkspacePath,
 };
 
 use super::{
@@ -69,7 +69,7 @@ fn tool_version(target: &TargetProject, lane: CargoLane) -> Result<String, RunCa
     let mut command = CommandIn::new(target, "cargo").map_err(RunCargoError::Command)?;
     let _ = command.inherit_env();
     let _ = command.args(version_args(lane));
-    let output = command.run_capture_raw().map_err(RunCargoError::Command)?;
+    let output = command.run_capture().map_err(RunCargoError::Command)?;
     let stdout = output.stdout_str().map_err(RunCargoError::Command)?;
     stdout.lines().find(|line| !line.trim().is_empty()).map_or_else(
         || Err(RunCargoError::ToolVersion(String::from("version command produced no output"))),
@@ -109,8 +109,20 @@ fn core_finding(lane: CargoLane, finding: &Finding) -> CoreFinding {
     CoreFinding::reject(
         core_lane(lane),
         finding.rule().clone(),
-        Location::workspace(),
+        finding_location(finding),
         finding.message().to_owned(),
         RepairHint::requires_human_review(finding.path().to_owned()),
     )
+}
+
+fn finding_location(finding: &Finding) -> Location {
+    match WorkspacePath::new(finding.path()) {
+        Ok(path) if finding.line() > 0 => span_location(path, finding.line()),
+        Ok(path) => Location::manifest(path),
+        Err(_) => Location::workspace(),
+    }
+}
+
+fn span_location(path: WorkspacePath, line: u32) -> Location {
+    Location::span(path, line, 0, line, 0).map_or(Location::workspace(), std::convert::identity)
 }

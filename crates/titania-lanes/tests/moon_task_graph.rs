@@ -38,6 +38,8 @@ struct ParsedTask {
     deps: Vec<String>,
     /// `env:` block key-value pairs.
     env: HashMap<String, String>,
+    /// `script:` scalar or folded block value.
+    script: Option<String>,
     /// `inputs:` block-list entries.
     inputs: Vec<String>,
     /// `outputs:` block-list entries.
@@ -98,6 +100,7 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
         let mut toolchains_key: bool = false;
         let mut deps: Vec<String> = Vec::new();
         let mut env = HashMap::new();
+        let mut script: Option<String> = None;
         let mut inputs: Vec<String> = Vec::new();
         let mut outputs: Vec<String> = Vec::new();
         let mut run_in_ci: Option<bool> = None;
@@ -181,36 +184,47 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
             }
             // `deps: ['~:foo', ...]` (flow array)
             else if let Some(val) = trimmed.strip_prefix("deps:") {
-                deps = parse_flow_deps(val.trim());
-            }
-            // `deps:` block list (indented `- '...'` lines)
-            else if trimmed == "deps:" {
-                let _block_indent = field_indent + 2;
-                i += 1;
-                while i < sub.len() {
-                    let (_, next_line) = sub[i];
-                    let next_indent = next_line.chars().take_while(|c| *c == ' ').count();
-                    let next_trimmed = next_line.trim();
-                    if next_trimmed.is_empty() {
-                        i += 1;
-                        continue;
-                    }
-                    if next_indent <= field_indent {
-                        break;
-                    }
-                    if next_trimmed.starts_with("- ") {
-                        let dep = next_trimmed
-                            .strip_prefix("- ")
-                            .unwrap_or(next_trimmed)
-                            .trim()
-                            .trim_matches('\'')
-                            .trim_matches('"')
-                            .to_string();
-                        deps.push(dep);
-                    }
+                let value = val.trim();
+                if !value.is_empty() {
+                    deps = parse_flow_deps(value);
+                } else {
                     i += 1;
+                    while i < sub.len() {
+                        let (_, next_line) = sub[i];
+                        let next_indent = next_line.chars().take_while(|c| *c == ' ').count();
+                        let next_trimmed = next_line.trim();
+                        if next_trimmed.is_empty() {
+                            i += 1;
+                            continue;
+                        }
+                        if next_indent <= field_indent {
+                            break;
+                        }
+                        if next_trimmed.starts_with("- ") {
+                            let dep = next_trimmed
+                                .strip_prefix("- ")
+                                .unwrap_or(next_trimmed)
+                                .trim()
+                                .trim_matches('\'')
+                                .trim_matches('"')
+                                .to_string();
+                            deps.push(dep);
+                        }
+                        i += 1;
+                    }
+                    continue;
                 }
-                continue;
+            }
+            // `script: >-` folded block or scalar script.
+            else if let Some(val) = trimmed.strip_prefix("script:") {
+                let raw_value = val.trim();
+                if matches!(raw_value, ">-" | ">" | "|-" | "|") {
+                    let (block_script, next_index) = parse_block_scalar(sub, i + 1, field_indent);
+                    script = Some(block_script);
+                    i = next_index;
+                    continue;
+                }
+                script = Some(raw_value.trim_matches('\'').trim_matches('"').to_string());
             }
             // `env:` block (key: value lines)
             else if trimmed == "env:" {
@@ -303,6 +317,7 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
             toolchains_key,
             deps,
             env,
+            script,
             inputs,
             outputs,
             run_in_ci,
@@ -310,6 +325,26 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
     }
 
     tasks
+}
+
+fn parse_block_scalar(sub: &[(usize, &str)], start: usize, field_indent: usize) -> (String, usize) {
+    let mut lines = Vec::new();
+    let mut index = start;
+    while index < sub.len() {
+        let (_, line) = sub[index];
+        let indent = line.chars().take_while(|c| *c == ' ').count();
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            index += 1;
+            continue;
+        }
+        if indent <= field_indent {
+            break;
+        }
+        lines.push(trimmed.to_string());
+        index += 1;
+    }
+    (lines.join("\n"), index)
 }
 
 /// Parse `toolchains: [rust]` or `toolchains: [rust, ...]` flow array.
@@ -359,30 +394,30 @@ const REQUIRED_TASKS: &[&str] = &[
 ];
 
 const LANE_COMMANDS: &[(&str, &str)] = &[
-    ("titania-fmt", "cargo run --quiet -p titania-check -- run-lane fmt"),
+    ("titania-fmt", "cargo run --frozen --quiet -p titania-check -- run-lane fmt"),
     (
         "titania-compile",
-        "CARGO_TARGET_DIR=\".titania/cache/compile\" cargo run --quiet -p titania-check -- run-lane compile",
+        "CARGO_TARGET_DIR=\".titania/cache/compile\" cargo run --frozen --quiet -p titania-check -- run-lane compile",
     ),
     (
         "titania-clippy",
-        "CARGO_TARGET_DIR=\".titania/cache/clippy\" cargo run --quiet -p titania-check -- run-lane clippy",
+        "CARGO_TARGET_DIR=\".titania/cache/clippy\" cargo run --frozen --quiet -p titania-check -- run-lane clippy",
     ),
-    ("titania-ast-grep", "cargo run --quiet -p titania-check -- run-lane ast-grep"),
+    ("titania-ast-grep", "cargo run --frozen --quiet -p titania-check -- run-lane ast-grep"),
     (
         "titania-dylint",
-        "PATH=\"$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH\" cargo run --quiet -p titania-check -- run-lane dylint",
+        "PATH=\"$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH\" cargo run --frozen --quiet -p titania-check -- run-lane dylint",
     ),
-    ("titania-panic-scan", "cargo run --quiet -p titania-check -- run-lane panic-scan"),
-    ("titania-policy-scan", "cargo run --quiet -p titania-check -- run-lane policy-scan"),
+    ("titania-panic-scan", "cargo run --frozen --quiet -p titania-check -- run-lane panic-scan"),
+    ("titania-policy-scan", "cargo run --frozen --quiet -p titania-check -- run-lane policy-scan"),
     (
         "titania-test",
-        "PATH=\"$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH\" CARGO_TARGET_DIR=\".titania/cache/test\" cargo run --quiet -p titania-check -- run-lane test",
+        "PATH=\"$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH\" CARGO_TARGET_DIR=\".titania/cache/test\" cargo run --frozen --quiet -p titania-check -- run-lane test",
     ),
-    ("titania-deny", "cargo run --quiet -p titania-check -- run-lane deny"),
+    ("titania-deny", "cargo run --frozen --quiet -p titania-check -- run-lane deny"),
     (
         "titania-build",
-        "CARGO_TARGET_DIR=\".titania/cache/release\" cargo run --quiet -p titania-check -- run-lane build",
+        "CARGO_TARGET_DIR=\".titania/cache/release\" cargo run --frozen --quiet -p titania-check -- run-lane build",
     ),
 ];
 
@@ -476,13 +511,83 @@ const LANE_INPUTS: &[(&str, &[&str])] = &[
 ];
 
 /// Expected outputs per v1 lane task (§13).
-const LANE_OUTPUTS: &[(&str, &[&str])] =
-    &[("titania-build", &["target/release/titania-check", ".titania/out/release/build.json"])];
+const LANE_OUTPUTS: &[(&str, &[&str])] = &[
+    (
+        "titania-fmt",
+        &[
+            ".titania/out/edit/fmt.json",
+            ".titania/out/prepush/fmt.json",
+            ".titania/out/release/fmt.json",
+        ],
+    ),
+    (
+        "titania-compile",
+        &[
+            ".titania/out/edit/compile.json",
+            ".titania/out/prepush/compile.json",
+            ".titania/out/release/compile.json",
+        ],
+    ),
+    (
+        "titania-clippy",
+        &[
+            ".titania/out/edit/clippy.json",
+            ".titania/out/prepush/clippy.json",
+            ".titania/out/release/clippy.json",
+        ],
+    ),
+    (
+        "titania-ast-grep",
+        &[
+            ".titania/out/edit/ast-grep.json",
+            ".titania/out/prepush/ast-grep.json",
+            ".titania/out/release/ast-grep.json",
+        ],
+    ),
+    (
+        "titania-dylint",
+        &[
+            ".titania/out/edit/dylint.json",
+            ".titania/out/prepush/dylint.json",
+            ".titania/out/release/dylint.json",
+        ],
+    ),
+    (
+        "titania-panic-scan",
+        &[
+            ".titania/out/edit/panic-scan.json",
+            ".titania/out/prepush/panic-scan.json",
+            ".titania/out/release/panic-scan.json",
+        ],
+    ),
+    (
+        "titania-policy-scan",
+        &[
+            ".titania/out/edit/policy-scan.json",
+            ".titania/out/prepush/policy-scan.json",
+            ".titania/out/release/policy-scan.json",
+        ],
+    ),
+    ("titania-test", &[".titania/out/prepush/test.json", ".titania/out/release/test.json"]),
+    ("titania-deny", &[".titania/out/prepush/deny.json", ".titania/out/release/deny.json"]),
+    ("titania-build", &[".titania/out/release/build.json"]),
+];
 
 /// Lane tasks keep cache/PATH exports inline so Moon shell expansion, not YAML
 /// env interpolation, controls target directories and rustup availability.
 const LANE_EMPTY_ENV: &[&str] =
     &["titania-compile", "titania-clippy", "titania-dylint", "titania-test", "titania-build"];
+
+const VET_INPUTS: &[&str] = &["Cargo.lock", "supply-chain/**"];
+
+const GEIGER_FIRST_PARTY_MANIFESTS: &[&str] = &[
+    "crates/titania-aggregate/Cargo.toml",
+    "crates/titania-check/Cargo.toml",
+    "crates/titania-core/Cargo.toml",
+    "crates/titania-lanes/Cargo.toml",
+    "crates/titania-output/Cargo.toml",
+    "crates/titania-policy/Cargo.toml",
+];
 
 #[test]
 fn v1_moon_tasks() -> Result<()> {
@@ -561,6 +666,54 @@ fn v1_moon_tasks() -> Result<()> {
     let task_map: std::collections::HashMap<&str, &ParsedTask> =
         tasks.iter().map(|t| (t.name.as_str(), t)).collect();
 
+    let vet_task = task_map.get("vet").context("root Moon task 'vet' must be present")?;
+    assert_eq!(
+        vet_task.command.as_deref(),
+        Some("cargo vet"),
+        "vet task must run cargo vet exactly (got: {:?})",
+        vet_task.command
+    );
+    assert!(vet_task.toolchains_key, "vet task must declare a Rust toolchain");
+    assert_eq!(
+        vet_task.toolchains.as_slice(),
+        &["rust"],
+        "vet task must use exactly toolchains: [rust]"
+    );
+    assert_eq!(vet_task.run_in_ci, Some(true), "vet task must have options.runInCI: true");
+    assert_eq!(
+        vet_task.inputs.as_slice(),
+        VET_INPUTS,
+        "vet task must hash exactly Cargo.lock and supply-chain audits"
+    );
+
+    let geiger_task = task_map.get("geiger").context("root Moon task 'geiger' must be present")?;
+    let geiger_script = geiger_task.script.as_deref().context("geiger task must use script")?;
+    for manifest in GEIGER_FIRST_PARTY_MANIFESTS {
+        let expected = format!("--manifest-path \"$MOON_WORKSPACE_ROOT/{manifest}\"");
+        assert!(
+            geiger_script.contains(&expected),
+            "geiger script must inspect first-party manifest {manifest}; script:\n{geiger_script}"
+        );
+    }
+    assert_eq!(
+        geiger_script.matches("--forbid-only").count(),
+        GEIGER_FIRST_PARTY_MANIFESTS.len(),
+        "each first-party cargo-geiger invocation must include --forbid-only; script:\n{geiger_script}"
+    );
+
+    for composite in ["ci", "pre-push"] {
+        let task = task_map
+            .get(composite)
+            .with_context(|| format!("root Moon composite task '{composite}' must be present"))?;
+        for dep in ["~:vet", "~:geiger"] {
+            assert!(
+                task.deps.contains(&dep.to_string()),
+                "root Moon composite task '{composite}' must depend on {dep} (got: {:?})",
+                task.deps
+            );
+        }
+    }
+
     for (task_name, expected_cmd) in LANE_COMMANDS {
         let task = task_map
             .get(*task_name)
@@ -579,7 +732,7 @@ fn v1_moon_tasks() -> Result<()> {
             .get(*gate_name)
             .with_context(|| format!("gate task '{gate_name}' not found in parsed tasks"))?;
         let expected_cmd =
-            format!("cargo run --quiet -p titania-check -- aggregate --scope {scope}");
+            format!("cargo run --frozen --quiet -p titania-check -- aggregate --scope {scope}");
         assert_eq!(
             task.command.as_deref(),
             Some(expected_cmd.as_str()),

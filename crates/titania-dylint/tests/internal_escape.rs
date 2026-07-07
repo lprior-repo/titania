@@ -8,6 +8,7 @@
 //! not sufficient.
 
 use std::{
+    ffi::OsStr,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -169,8 +170,46 @@ fn dylint_library_path() -> PathBuf {
         "cargo dylint list --all must build and load libtitania_dylint before fixture runs:\n{}",
         combined_output(&output)
     );
-    find_titania_dylint_library(&workspace_root().join("target").join("dylint").join("libraries"))
+    let workspace = workspace_root();
+    let target_env = std::env::var_os("CARGO_TARGET_DIR");
+    let target_dir = resolve_cargo_target_dir(&workspace, target_env.as_deref());
+    find_titania_dylint_library(&target_dir.join("dylint").join("libraries"))
         .expect("cargo dylint must build libtitania_dylint into target/dylint/libraries")
+}
+
+fn resolve_cargo_target_dir(workspace: &Path, cargo_target_dir: Option<&OsStr>) -> PathBuf {
+    let Some(value) = cargo_target_dir else {
+        return workspace.join("target");
+    };
+    let target_dir = PathBuf::from(value);
+    if target_dir.is_absolute() { target_dir } else { workspace.join(target_dir) }
+}
+
+#[test]
+fn resolve_cargo_target_dir_defaults_to_workspace_target_when_env_absent() {
+    let workspace = Path::new("/workspace/project");
+
+    let resolved = resolve_cargo_target_dir(workspace, None);
+
+    assert_eq!(resolved, PathBuf::from("/workspace/project/target"));
+}
+
+#[test]
+fn resolve_cargo_target_dir_joins_relative_env_to_workspace() {
+    let workspace = Path::new("/workspace/project");
+
+    let resolved = resolve_cargo_target_dir(workspace, Some(OsStr::new(".titania/cache/dylint")));
+
+    assert_eq!(resolved, PathBuf::from("/workspace/project/.titania/cache/dylint"));
+}
+
+#[test]
+fn resolve_cargo_target_dir_preserves_absolute_env() {
+    let workspace = Path::new("/workspace/project");
+
+    let resolved = resolve_cargo_target_dir(workspace, Some(OsStr::new("/tmp/shared-target")));
+
+    assert_eq!(resolved, PathBuf::from("/tmp/shared-target"));
 }
 
 fn find_titania_dylint_library(root: &Path) -> Option<PathBuf> {

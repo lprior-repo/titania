@@ -19,6 +19,7 @@
 fileGroups:
   sources:
     - 'crates/**/*.rs'
+    - 'crates/**/Cargo.toml'
     - 'titania/template/**'
     - 'Cargo.toml'
     - 'Cargo.lock'
@@ -42,7 +43,7 @@ tasks:
 
   lint-src:
     # ZERO TOLERANCE for source. Catches ALL clippy issues.
-    command: 'cargo clippy --lib --bins --examples -- -D warnings -W clippy::all'
+    command: 'cargo clippy --frozen --lib --bins --examples -- -D warnings -W clippy::all'
     toolchains: [rust]
     options:
       runInCI: true
@@ -56,7 +57,7 @@ tasks:
   clippy-all:
     # Strict source lint. Tests compile and prove behavior, but test style is
     # intentionally kept out of clippy gates.
-    command: 'cargo clippy --workspace --lib --bins --examples --all-features -- -D warnings -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic'
+    command: 'cargo clippy --frozen --workspace --lib --bins --examples --all-features -- -D warnings -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic'
     toolchains: [rust]
     options:
       runInCI: true
@@ -67,7 +68,7 @@ tasks:
       - 'clippy.toml'
 
   check:
-    command: 'cargo check --workspace --all-targets'
+    command: 'cargo check --frozen --workspace --all-targets'
     toolchains: [rust]
     options:
       runInCI: true
@@ -78,17 +79,19 @@ tasks:
 
   test:
     # Lenient: tests verify behavior. No strict clippy enforcement.
-    command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.moon/bin:/usr/local/bin:/usr/bin:/bin:$PATH" cargo test --workspace --all-features'
+    command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.moon/bin:/usr/local/bin:/usr/bin:/bin:$PATH" cargo test --frozen --workspace --all-features'
     toolchains: [rust]
     options:
       runInCI: true
     inputs:
       - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
+      - '@globs(tests)'
       - 'Cargo.toml'
       - 'Cargo.lock'
 
   build:
-    command: 'cargo build --workspace --release'
+    command: 'cargo build --frozen --workspace --release'
     toolchains: [rust]
     options:
       runInCI: true
@@ -116,13 +119,31 @@ tasks:
       - 'Cargo.lock'
       - 'deny.toml'
 
+  vet:
+    command: 'cargo vet'
+    toolchains: [rust]
+    options:
+      runInCI: true
+    inputs:
+      - 'Cargo.lock'
+      - 'supply-chain/**'
+
   geiger:
-    # Zero-unsafe first-party surface report. cargo-geiger cannot run from
-    # this virtual workspace manifest, so scope to concrete package manifests.
+    # Zero-unsafe first-party surface report for crates without an explicit ABI
+    # waiver. cargo-geiger cannot run from this virtual workspace manifest, so
+    # scope to concrete package manifests.
     script: >-
+      cargo geiger --manifest-path "$MOON_WORKSPACE_ROOT/crates/titania-aggregate/Cargo.toml" --all-features --forbid-only
+      &&
+      cargo geiger --manifest-path "$MOON_WORKSPACE_ROOT/crates/titania-check/Cargo.toml" --all-features --forbid-only
+      &&
       cargo geiger --manifest-path "$MOON_WORKSPACE_ROOT/crates/titania-core/Cargo.toml" --all-features --forbid-only
       &&
       cargo geiger --manifest-path "$MOON_WORKSPACE_ROOT/crates/titania-lanes/Cargo.toml" --all-features --forbid-only
+      &&
+      cargo geiger --manifest-path "$MOON_WORKSPACE_ROOT/crates/titania-output/Cargo.toml" --all-features --forbid-only
+      &&
+      cargo geiger --manifest-path "$MOON_WORKSPACE_ROOT/crates/titania-policy/Cargo.toml" --all-features --forbid-only
     toolchains: [rust]
     options:
       runInCI: true
@@ -135,7 +156,7 @@ tasks:
   # ---------- titania-lanes: 28 cargo bin targets ----------
 
   titania-fmt:
-    command: 'cargo run --quiet -p titania-check -- run-lane fmt'
+    command: 'cargo run --frozen --quiet -p titania-check -- run-lane fmt'
     toolchains: [rust]
     options:
       runInCI: true
@@ -152,7 +173,7 @@ tasks:
       - '.titania/out/release/fmt.json'
 
   titania-compile:
-    command: 'CARGO_TARGET_DIR=".titania/cache/compile" cargo run --quiet -p titania-check -- run-lane compile'
+    command: 'CARGO_TARGET_DIR=".titania/cache/compile" cargo run --frozen --quiet -p titania-check -- run-lane compile'
     toolchains: [rust]
     options:
       runInCI: true
@@ -169,7 +190,7 @@ tasks:
       - '.titania/out/release/compile.json'
 
   titania-clippy:
-    command: 'CARGO_TARGET_DIR=".titania/cache/clippy" cargo run --quiet -p titania-check -- run-lane clippy'
+    command: 'CARGO_TARGET_DIR=".titania/cache/clippy" cargo run --frozen --quiet -p titania-check -- run-lane clippy'
     deps: ['~:titania-compile']
     toolchains: [rust]
     options:
@@ -188,7 +209,7 @@ tasks:
       - '.titania/out/release/clippy.json'
 
   titania-ast-grep:
-    command: 'cargo run --quiet -p titania-check -- run-lane ast-grep'
+    command: 'cargo run --frozen --quiet -p titania-check -- run-lane ast-grep'
     options:
       runInCI: true
     inputs:
@@ -200,7 +221,7 @@ tasks:
       - '.titania/out/release/ast-grep.json'
 
   titania-dylint:
-    command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH" cargo run --quiet -p titania-check -- run-lane dylint'
+    command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH" cargo run --frozen --quiet -p titania-check -- run-lane dylint'
     toolchains: [rust]
     options:
       runInCI: true
@@ -213,7 +234,7 @@ tasks:
       - '.titania/out/release/dylint.json'
 
   titania-panic-scan:
-    command: 'cargo run --quiet -p titania-check -- run-lane panic-scan'
+    command: 'cargo run --frozen --quiet -p titania-check -- run-lane panic-scan'
     options:
       runInCI: true
     inputs:
@@ -225,7 +246,7 @@ tasks:
       - '.titania/out/release/panic-scan.json'
 
   titania-policy-scan:
-    command: 'cargo run --quiet -p titania-check -- run-lane policy-scan'
+    command: 'cargo run --frozen --quiet -p titania-check -- run-lane policy-scan'
     options:
       runInCI: true
     inputs:
@@ -243,7 +264,7 @@ tasks:
       - '.titania/out/release/policy-scan.json'
 
   titania-test:
-    command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH" CARGO_TARGET_DIR=".titania/cache/test" cargo run --quiet -p titania-check -- run-lane test'
+    command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH" CARGO_TARGET_DIR=".titania/cache/test" cargo run --frozen --quiet -p titania-check -- run-lane test'
     deps: ['~:titania-compile']
     toolchains: [rust]
     options:
@@ -257,7 +278,7 @@ tasks:
       - '.titania/out/release/test.json'
 
   titania-deny:
-    command: 'cargo run --quiet -p titania-check -- run-lane deny'
+    command: 'cargo run --frozen --quiet -p titania-check -- run-lane deny'
     options:
       runInCI: true
     inputs:
@@ -270,7 +291,7 @@ tasks:
       - '.titania/out/release/deny.json'
 
   titania-build:
-    command: 'CARGO_TARGET_DIR=".titania/cache/release" cargo run --quiet -p titania-check -- run-lane build'
+    command: 'CARGO_TARGET_DIR=".titania/cache/release" cargo run --frozen --quiet -p titania-check -- run-lane build'
     deps: ['~:titania-compile']
     toolchains: [rust]
     options:
@@ -278,23 +299,22 @@ tasks:
     inputs:
       - '@globs(sources)'
     outputs:
-      - 'target/release/titania-check'
       - '.titania/out/release/build.json'
 
   gate-edit:
-    command: 'cargo run --quiet -p titania-check -- aggregate --scope edit'
+    command: 'cargo run --frozen --quiet -p titania-check -- aggregate --scope edit'
     deps: ['~:titania-fmt', '~:titania-compile', '~:titania-clippy', '~:titania-ast-grep', '~:titania-dylint', '~:titania-panic-scan', '~:titania-policy-scan']
     options:
       runInCI: true
 
   gate-prepush:
-    command: 'cargo run --quiet -p titania-check -- aggregate --scope prepush'
+    command: 'cargo run --frozen --quiet -p titania-check -- aggregate --scope prepush'
     deps: ['~:gate-edit', '~:titania-test', '~:titania-deny']
     options:
       runInCI: true
 
   gate-release:
-    command: 'cargo run --quiet -p titania-check -- aggregate --scope release'
+    command: 'cargo run --frozen --quiet -p titania-check -- aggregate --scope release'
     deps: ['~:gate-prepush', '~:titania-build']
     options:
       runInCI: true
@@ -312,6 +332,7 @@ tasks:
       - '~:test'
       - '~:audit'
       - '~:deny'
+      - '~:vet'
       - '~:geiger'
     options:
       runInCI: true
@@ -332,6 +353,7 @@ tasks:
       - '~:clippy-all'
       - '~:test'
       - '~:audit'
+      - '~:vet'
       - '~:geiger'
     options:
       runInCI: true

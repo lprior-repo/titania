@@ -330,7 +330,7 @@ fn repaired_fixture_receipt_contains_all_digests() {
             hex.len()
         );
         assert!(
-            hex.chars().all(|c| c.is_ascii_hexdigit()),
+            hex.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
             "{name} must be lowercase hex, got: {hex}"
         );
     }

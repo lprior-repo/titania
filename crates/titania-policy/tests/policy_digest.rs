@@ -167,5 +167,5 @@ fn policy_digest_is_deterministic_lowercase_blake3_hex() {
 
     assert_eq!(first.as_hex(), second.as_hex());
     assert_eq!(hex.len(), 64);
-    assert!(hex.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit()));
+    assert!(hex.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')));
 }

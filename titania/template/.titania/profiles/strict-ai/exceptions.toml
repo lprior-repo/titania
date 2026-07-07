@@ -1,10 +1,2 @@
 # Policy exceptions for the strict-ai profile.
 # No owner, no reason, no expiry, no exception.
-
-[[exceptions]]
-rule_id = "BYPASS_EXPECT_ATTR"
-path = "crates/titania-dylint/src/lib.rs"
-owner = "titania-maintainers"
-reason = "Dylint ABI exports require audited #[expect(unsafe_code)] on unsafe no_mangle exports, and register_lints also requires #[expect(clippy::no_mangle_with_rust_abi)] because Dylint documents a Rust-ABI no_mangle registration hook."
-expires_on = "2026-10-01"
-review = "tn-dylint-abi-expect"

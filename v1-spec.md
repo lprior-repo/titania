@@ -565,14 +565,14 @@ pub struct TextRange {
 pub enum Report {
     Pass {
         receipt: QualityReceipt,
-        per_lane: Box<[LaneOutcome]>,
+        per_lane: Box<[PerLaneEntry]>,
     },
     Reject {
         // INVARIANT: at least one of code_findings or gate_failures is non-empty.
         // A Reject with both empty is a bug — should be Pass.
         code_findings: Box<[Finding]>,
         gate_failures: Box<[LaneFailure]>,
-        per_lane: Box<[LaneOutcome]>,
+        per_lane: Box<[PerLaneEntry]>,
     },
     PolicyError {
         diagnostics: Box<[PolicyDiagnostic]>,
@@ -599,6 +599,11 @@ impl Report {
 }
 
 pub enum RejectKind { CodeOnly, GateOnly, Mixed }
+
+pub struct PerLaneEntry {
+    pub lane: Lane,
+    pub outcome: LaneOutcome,
+}
 ```
 
 ### LaneOutcome
@@ -765,8 +770,8 @@ Report Pass example:
     ]
   },
   "per_lane": [
-    { "Clean": { "evidence": { "command": { "executable": "cargo", "argv": ["cargo", "fmt", "--check"] }, "tool_version": "rustfmt 1.84.0", "exit_status": { "Exited": { "code": 0 } }, "parsed_result_digest": "y5z6a7b8..." } } },
-    { "Clean": { "evidence": { "command": { "executable": "cargo", "argv": ["cargo", "check", "--workspace", "--frozen"] }, "tool_version": "cargo 1.84.0", "exit_status": { "Exited": { "code": 0 } }, "parsed_result_digest": "c9d0e1f2..." } } }
+    { "lane": "Fmt", "outcome": { "Clean": { "evidence": { "command": { "executable": "cargo", "argv": ["cargo", "fmt", "--check"] }, "tool_version": "rustfmt 1.84.0", "exit_status": { "Exited": { "code": 0 } }, "parsed_result_digest": "y5z6a7b8..." } } } },
+    { "lane": "Compile", "outcome": { "Clean": { "evidence": { "command": { "executable": "cargo", "argv": ["cargo", "check", "--workspace", "--frozen"] }, "tool_version": "cargo 1.84.0", "exit_status": { "Exited": { "code": 0 } }, "parsed_result_digest": "c9d0e1f2..." } } } }
   ]
 }
 ```
@@ -796,8 +801,8 @@ Report Reject example:
   ],
   "gate_failures": [],
   "per_lane": [
-    { "Findings": [ "..." ] },
-    { "Failed": { "ToolFailure": { "tool": "cargo-test", "termination": { "Exited": { "code": 1 } } } } }
+    { "lane": "AstGrep", "outcome": { "Findings": [ "..." ] } },
+    { "lane": "Test", "outcome": { "Failed": { "ToolFailure": { "tool": "cargo-test", "termination": { "Exited": { "code": 1 } } } } } }
   ]
 }
 ```

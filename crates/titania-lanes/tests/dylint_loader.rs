@@ -30,7 +30,7 @@ fn dylint_loader_probe_missing_cargo_dylint_returns_infra_failure() {
     let probe = probe_dylint_toolchain(&test_target());
 
     match probe {
-        DylintProbe::Ready => {
+        DylintProbe::Ready(_) => {
             // Both tools present; the lane is ready.
             // We still verify the probe structure is correct.
             assert!(probe.is_ready());
@@ -98,6 +98,7 @@ fn dylint_loader_probe_ready_has_no_failure() {
 
     if probe.is_ready() {
         assert!(probe.failure().is_none());
+        assert!(probe.load().is_some());
     }
 }
 

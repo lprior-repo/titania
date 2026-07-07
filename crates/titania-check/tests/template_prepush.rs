@@ -11,7 +11,14 @@
 //! Selective acceptance filter:
 //! `cargo test -p titania-check template_prepush`
 
-use std::{path::PathBuf, process::Command};
+use std::{
+    collections::BTreeSet,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    time::Duration,
+};
+
+use wait_timeout::ChildExt;
 
 /// Run a single external command, capturing stdout / stderr / exit code.
 fn run_cmd<C, A, I>(cmd: C, args: I, cwd: Option<&std::path::Path>) -> CmdResult
@@ -30,8 +37,60 @@ where
             exit_code: output.status.code(),
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            timed_out: false,
         },
-        Err(e) => CmdResult { exit_code: None, stdout: String::new(), stderr: e.to_string() },
+        Err(e) => CmdResult {
+            exit_code: None,
+            stdout: String::new(),
+            stderr: e.to_string(),
+            timed_out: false,
+        },
+    }
+}
+
+fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> CmdResult {
+    let _ = command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            return CmdResult {
+                exit_code: None,
+                stdout: String::new(),
+                stderr: error.to_string(),
+                timed_out: false,
+            };
+        }
+    };
+
+    match child.wait_timeout(timeout) {
+        Ok(Some(_status)) => output_from_child(child, false),
+        Ok(None) => {
+            drop(child.kill());
+            output_from_child(child, true)
+        }
+        Err(error) => CmdResult {
+            exit_code: None,
+            stdout: String::new(),
+            stderr: error.to_string(),
+            timed_out: false,
+        },
+    }
+}
+
+fn output_from_child(child: std::process::Child, timed_out: bool) -> CmdResult {
+    match child.wait_with_output() {
+        Ok(output) => CmdResult {
+            exit_code: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            timed_out,
+        },
+        Err(error) => CmdResult {
+            exit_code: None,
+            stdout: String::new(),
+            stderr: error.to_string(),
+            timed_out,
+        },
     }
 }
 
@@ -40,11 +99,12 @@ struct CmdResult {
     exit_code: Option<i32>,
     stdout: String,
     stderr: String,
+    timed_out: bool,
 }
 
 impl CmdResult {
     fn succeeded(&self) -> bool {
-        self.exit_code == Some(0)
+        self.exit_code == Some(0) && !self.timed_out
     }
 }
 
@@ -102,29 +162,58 @@ fn path_with_titania_check(check_bin: &std::path::Path) -> std::ffi::OsString {
     .expect("PATH with titania-check binary dir must be valid")
 }
 
-/// Ensure the local Dylint cdylib exists and return its path.
-fn ensure_dylint_library(check_bin: &std::path::Path) -> PathBuf {
-    let debug_dir = check_bin.parent().expect("titania-check binary must have a parent dir");
-    let dylint_lib = debug_dir.join(format!(
-        "{}titania_dylint{}",
-        std::env::consts::DLL_PREFIX,
-        std::env::consts::DLL_SUFFIX
-    ));
-    if dylint_lib.exists() {
-        return dylint_lib;
-    }
-
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir.ancestors().nth(2).unwrap();
-    let result = run_cmd("cargo", ["build", "-p", "titania-dylint"], Some(workspace_root));
+/// Ensure the local Dylint cdylib exists in cargo-dylint's `--lib-path`
+/// filename format and return its path.
+fn ensure_dylint_library(_check_bin: &std::path::Path) -> PathBuf {
+    let workspace = test_workspace_root();
+    let result = run_cmd("cargo", ["dylint", "list", "--all"], Some(&workspace));
     assert!(
         result.succeeded(),
-        "cargo build -p titania-dylint failed:\nstderr: {}\nstdout: {}",
+        "cargo dylint list --all failed while preparing template smoke Dylint library:\nstderr: {}\nstdout: {}",
         result.stderr,
         result.stdout
     );
-    assert!(dylint_lib.exists(), "Dylint library missing at {dylint_lib:?} after build");
-    dylint_lib
+    let target_env = std::env::var_os("CARGO_TARGET_DIR");
+    let target_dir = resolve_cargo_target_dir(&workspace, target_env.as_deref());
+    let library_root = target_dir.join("dylint").join("libraries");
+    find_titania_dylint_library(&library_root).unwrap_or_else(|| {
+        panic!("cargo dylint list --all did not create libtitania_dylint under {library_root:?}")
+    })
+}
+
+fn test_workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("titania-check crate must live under <workspace>/crates/titania-check")
+        .to_path_buf()
+}
+
+fn resolve_cargo_target_dir(
+    workspace: &Path,
+    cargo_target_dir: Option<&std::ffi::OsStr>,
+) -> PathBuf {
+    let Some(value) = cargo_target_dir else {
+        return workspace.join("target");
+    };
+    let target_dir = PathBuf::from(value);
+    if target_dir.is_absolute() { target_dir } else { workspace.join(target_dir) }
+}
+
+fn find_titania_dylint_library(root: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(root).ok()?.filter_map(Result::ok).find_map(|entry| {
+        let path = entry.path();
+        if path.is_dir() {
+            return find_titania_dylint_library(&path);
+        }
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                name.starts_with(&format!("{}titania_dylint@", std::env::consts::DLL_PREFIX))
+                    && name.ends_with(std::env::consts::DLL_SUFFIX)
+            })
+            .then_some(path)
+    })
 }
 
 /// Preserve one host variable when building an otherwise clean child env.
@@ -221,11 +310,13 @@ fn run_prepush_check(workspace_dir: &std::path::Path) -> String {
             exit_code: out.status.code(),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            timed_out: false,
         })
         .unwrap_or_else(|e| CmdResult {
             exit_code: None,
             stdout: String::new(),
             stderr: e.to_string(),
+            timed_out: false,
         });
     let result = output;
 
@@ -256,6 +347,64 @@ fn run_prepush_check(workspace_dir: &std::path::Path) -> String {
     result.stdout
 }
 
+fn run_moon_prepush_gate(workspace_dir: &std::path::Path) -> CmdResult {
+    let check_bin = ensure_titania_check_binary();
+    let dylint_lib = ensure_dylint_library(&check_bin);
+
+    let mut command = Command::new("moon");
+    let _ = command.args(["run", "titania:gate-prepush"]).current_dir(workspace_dir);
+    configure_clean_child_env(&mut command, &check_bin, &dylint_lib);
+
+    run_command_with_timeout(&mut command, Duration::from_secs(300))
+}
+
+const EXPECTED_PREPUSH_ARTIFACTS: &[&str] = &[
+    "ast-grep.json",
+    "clippy.json",
+    "compile.json",
+    "deny.json",
+    "dylint.json",
+    "fmt.json",
+    "panic-scan.json",
+    "policy-scan.json",
+    "test.json",
+];
+
+fn assert_expected_prepush_artifacts(workspace_dir: &std::path::Path) {
+    let prepush_dir = workspace_dir.join(".titania").join("out").join("prepush");
+    assert!(prepush_dir.is_dir(), "prepush artifact directory missing at {prepush_dir:?}");
+
+    let actual_files = std::fs::read_dir(&prepush_dir)
+        .expect("prepush artifact directory must be readable")
+        .map(|entry| {
+            entry
+                .expect("prepush artifact entry must be readable")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<BTreeSet<_>>();
+    let expected_files =
+        EXPECTED_PREPUSH_ARTIFACTS.iter().map(|name| (*name).to_owned()).collect::<BTreeSet<_>>();
+    assert_eq!(
+        actual_files, expected_files,
+        "moon gate-prepush must produce exactly the expected prepush lane artifacts"
+    );
+
+    for artifact in EXPECTED_PREPUSH_ARTIFACTS {
+        let path = prepush_dir.join(artifact);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("prepush artifact {path:?} must be readable: {error}"));
+        let json: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|error| {
+            panic!("prepush artifact {path:?} must be valid JSON: {error}")
+        });
+        assert!(
+            json.is_object(),
+            "prepush artifact {path:?} must serialize a JSON object; got {json}"
+        );
+    }
+}
+
 #[test]
 fn template_prepush_generated_workspace_smoke() {
     let workspace = generate_workspace("tn-rld-4-smoke");
@@ -282,6 +431,25 @@ fn template_prepush_generated_workspace_smoke() {
     );
 
     // Clean up the generated workspace.
+    std::fs::remove_dir_all(&workspace)
+        .unwrap_or_else(|e| panic!("failed to clean up {workspace:?}: {e}"));
+}
+
+#[test]
+fn template_moon_gate_prepush_generated_workspace_smoke() {
+    let workspace = generate_workspace("tn-rld-4-moon-smoke");
+
+    let result = run_moon_prepush_gate(&workspace);
+
+    assert!(
+        result.succeeded(),
+        "moon run gate-prepush on generated template must exit 0 within timeout (timed_out={}):\nstderr: {}\nstdout: {}",
+        result.timed_out,
+        result.stderr,
+        result.stdout
+    );
+    assert_expected_prepush_artifacts(&workspace);
+
     std::fs::remove_dir_all(&workspace)
         .unwrap_or_else(|e| panic!("failed to clean up {workspace:?}: {e}"));
 }

@@ -1,8 +1,7 @@
 //! Build script for `titania-check`.
 //!
 //! Captures the short git SHA at build time and exposes it to runtime via a
-//! generated constant `BUILD_GIT_SHA` in `$OUT_DIR/version.rs`. Runtime code
-//! includes the file with `include!(concat!(env!("OUT_DIR"), "/version.rs"))`.
+//! `rustc-env` value consumed by `src/version.rs`.
 //!
 //! If `git` is unavailable or the working tree is not a git repository, the
 //! SHA falls back to the literal `"unknown"` so the build remains hermetic.
@@ -10,23 +9,20 @@
 #![deny(clippy::print_stderr)]
 
 use std::{
-    fs,
     io::Write,
-    path::Path,
     process::{Command, Stdio},
 };
 
-const OUT_FILE: &str = "version.rs";
 const UNKNOWN_SHA: &str = "unknown";
 const MAX_SHA_LEN: usize = 64;
+const BUILD_GIT_SHA_ENV: &str = "TITANIA_BUILD_GIT_SHA";
+const WORKSPACE_NAME_ENV: &str = "TITANIA_WORKSPACE_NAME";
 
 fn main() {
-    let Ok(sha) = resolve_git_sha() else {
-        write_version_file(UNKNOWN_SHA);
-        return;
-    };
-    let sanitized = sanitize_sha(&sha);
-    write_version_file(&sanitized);
+    let sha =
+        resolve_git_sha().map_or_else(|_| String::from(UNKNOWN_SHA), |raw| sanitize_sha(&raw));
+    emit_rustc_env(BUILD_GIT_SHA_ENV, &sha);
+    emit_rustc_env(WORKSPACE_NAME_ENV, workspace_name_fallback());
 }
 
 /// Reason `git rev-parse` could not supply a SHA. Unit-only variants keep the
@@ -75,23 +71,12 @@ fn sanitize_sha(raw: &str) -> String {
     if cleaned.is_empty() { String::from(UNKNOWN_SHA) } else { cleaned }
 }
 
-/// Emit `$OUT_DIR/version.rs` with the `BUILD_GIT_SHA` constant.
-fn write_version_file(sha: &str) {
-    let Some(out_dir) = std::env::var_os("OUT_DIR") else {
-        return;
-    };
-    let path = Path::new(&out_dir).join(OUT_FILE);
-    let Ok(mut file) = fs::File::create(&path) else {
-        return;
-    };
-    let body = format!(
-        "/// Short git SHA captured at build time, or `\"unknown\"` when unavailable.\n\
-         pub const BUILD_GIT_SHA: &str = \"{sha}\";\n\
-         /// Workspace name read from the workspace root via `cargo metadata`, or `\"titania\"` when unavailable.\n\
-         pub const WORKSPACE_NAME: &str = \"{workspace}\";\n",
-        workspace = workspace_name_fallback(),
-    );
-    drop(file.write_all(body.as_bytes()));
+/// Emit one `cargo:rustc-env` build-script instruction.
+fn emit_rustc_env(key: &str, value: &str) {
+    let mut stdout = std::io::stdout().lock();
+    match writeln!(stdout, "cargo:rustc-env={key}={value}") {
+        Ok(()) | Err(_) => (),
+    }
 }
 
 /// Workspace name fallback used by [`workspace_name_fallback`] when

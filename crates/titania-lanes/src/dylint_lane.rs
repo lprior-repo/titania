@@ -11,13 +11,50 @@
 use std::path::{Path, PathBuf};
 
 use titania_core::{LaneFailure, TargetProject};
-use toml_edit::Item;
+use toml_edit::{Item, Value};
 
 use crate::{LaneReport, RuleId};
 
 const LIB_TITANIA_DYLINT: &str = "libtitania_dylint";
 const RULE_DYLINT_INFRA: &str = "DYLINT_INFRA_FAILURE";
 const TITANIA_DYLINT_LIB_ENV: &str = "TITANIA_DYLINT_LIB";
+const TITANIA_DYLINT_PACKAGE: &str = "titania-dylint";
+const TITANIA_DYLINT_CRATE: &str = "titania_dylint";
+
+/// Source that supplied a concrete `libtitania_dylint` dynamic library path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DylintLibrarySource {
+    /// The `TITANIA_DYLINT_LIB` environment variable supplied the path.
+    Env,
+    /// A sibling library beside the running `titania-check` binary supplied the path.
+    Sibling,
+}
+
+/// How `cargo dylint` should load Titania's Dylint library.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DylintLoad {
+    /// Use cargo-dylint workspace metadata (`[workspace.metadata.dylint]`).
+    Metadata,
+    /// Pass a resolved dynamic library file with `--lib-path <path>`.
+    LibraryPath {
+        /// Lookup source that provided the path.
+        source: DylintLibrarySource,
+        /// Resolved path to `libtitania_dylint`.
+        path: PathBuf,
+    },
+}
+
+impl DylintLoad {
+    /// Return the concrete dynamic library path when this load uses `--lib-path`.
+    #[must_use]
+    pub fn lib_path(&self) -> Option<&Path> {
+        match self {
+            Self::Metadata => None,
+            Self::LibraryPath { path, .. } => Some(path.as_path()),
+        }
+    }
+}
+
 /// Probe `cargo dylint --help` availability.
 ///
 /// Uses `cargo dylint --help` (the subcommand form avoids
@@ -30,8 +67,8 @@ fn cargo_dylint_available(target: &TargetProject) -> bool {
 /// Result of the Dylint lane pre-flight checks.
 #[derive(Debug)]
 pub enum DylintProbe {
-    /// Both tools are available; the lane can proceed.
-    Ready,
+    /// Both tools are available; the lane can proceed with this load strategy.
+    Ready(DylintLoad),
     /// Infrastructure probe failed with typed details.
     Infra(LaneFailure, LaneReport),
 }
@@ -40,14 +77,23 @@ impl DylintProbe {
     /// Whether the probe indicates the lane can proceed.
     #[must_use]
     pub const fn is_ready(&self) -> bool {
-        matches!(self, Self::Ready)
+        matches!(self, Self::Ready(_))
+    }
+
+    /// Borrow the resolved Dylint load strategy when the probe succeeded.
+    #[must_use]
+    pub const fn load(&self) -> Option<&DylintLoad> {
+        match self {
+            Self::Ready(load) => Some(load),
+            Self::Infra(_, _) => None,
+        }
     }
 
     /// Borrow failure details when the probe did not succeed.
     #[must_use]
     pub const fn failure(&self) -> Option<&LaneFailure> {
         match self {
-            Self::Ready => None,
+            Self::Ready(_) => None,
             Self::Infra(failure, _) => Some(failure),
         }
     }
@@ -67,7 +113,7 @@ pub fn probe_dylint_toolchain(target: &TargetProject) -> DylintProbe {
 
     // Check 2: is libtitania_dylint available and ABI-compatible?
     match probe_libtitania_dylint(target) {
-        LibraryProbe::Compatible => DylintProbe::Ready,
+        LibraryProbe::Compatible(load) => DylintProbe::Ready(load),
         LibraryProbe::Absent => unavailable_probe(
             LIB_TITANIA_DYLINT,
             format!(
@@ -85,7 +131,7 @@ pub fn probe_dylint_toolchain(target: &TargetProject) -> DylintProbe {
 #[derive(Debug)]
 enum LibraryProbe {
     /// Library exists and looks loadable.
-    Compatible,
+    Compatible(DylintLoad),
     /// Library was not found in any target dir candidate.
     Absent,
     /// Library exists but failed ABI / format / magic checks.
@@ -102,35 +148,60 @@ enum LibraryProbe {
 /// Bead tn-gkpv: a missing OR incompatible library must surface a typed
 /// [`LaneFailure::Infra`] with a distinct reason — never silently pass.
 fn probe_libtitania_dylint(target: &TargetProject) -> LibraryProbe {
-    if let Some(path) = env_library_path() {
-        return probe_library_path(path);
+    resolve_libtitania_dylint(
+        env_library_path(),
+        workspace_metadata_dylint_configured(target.as_std_path()),
+        sibling_library_path(),
+    )
+}
+
+fn resolve_libtitania_dylint(
+    env_path: Option<PathBuf>,
+    metadata_names_titania: bool,
+    sibling_path: Option<PathBuf>,
+) -> LibraryProbe {
+    if let Some(path) = env_path {
+        return probe_library_path(DylintLibrarySource::Env, path);
     }
-    if workspace_metadata_dylint_configured(target.as_std_path()) {
-        return LibraryProbe::Compatible;
+    if metadata_names_titania {
+        return LibraryProbe::Compatible(DylintLoad::Metadata);
     }
-    sibling_library_path().map_or(LibraryProbe::Absent, probe_library_path)
+    sibling_path
+        .map_or(LibraryProbe::Absent, |path| probe_library_path(DylintLibrarySource::Sibling, path))
 }
 
 fn env_library_path() -> Option<PathBuf> {
     std::env::var_os(TITANIA_DYLINT_LIB_ENV).map(PathBuf::from)
 }
 
-fn probe_library_path(path: PathBuf) -> LibraryProbe {
+fn probe_library_path(source: DylintLibrarySource, path: PathBuf) -> LibraryProbe {
     if !path.is_file() {
         return LibraryProbe::Incompatible {
             path,
             reason: String::from("configured library path is not a file"),
         };
     }
-    abi_check(&path)
-        .map_or(LibraryProbe::Compatible, |reason| LibraryProbe::Incompatible { path, reason })
+    if path.to_str().is_none() {
+        return LibraryProbe::Incompatible {
+            path,
+            reason: String::from("configured library path is not valid UTF-8"),
+        };
+    }
+    if let Some(reason) = abi_check(&path) {
+        return LibraryProbe::Incompatible { path, reason };
+    }
+    LibraryProbe::Compatible(DylintLoad::LibraryPath { source, path })
 }
 
 fn workspace_metadata_dylint_configured(root: &Path) -> bool {
-    std::fs::read_to_string(root.join("Cargo.toml"))
-        .ok()
-        .and_then(|content| content.parse::<toml_edit::DocumentMut>().ok())
-        .is_some_and(|document| metadata_libraries(&document))
+    match std::fs::read_to_string(root.join("Cargo.toml")) {
+        Ok(content) => cargo_manifest_names_titania_dylint(&content),
+        Err(_error) => false,
+    }
+}
+
+fn cargo_manifest_names_titania_dylint(content: &str) -> bool {
+    content.parse::<toml_edit::DocumentMut>().is_ok_and(|document| metadata_libraries(&document))
 }
 
 fn metadata_libraries(document: &toml_edit::DocumentMut) -> bool {
@@ -142,7 +213,66 @@ fn metadata_libraries(document: &toml_edit::DocumentMut) -> bool {
         .and_then(|metadata| metadata.get("dylint"))
         .and_then(Item::as_table)
         .and_then(|dylint| dylint.get("libraries"))
-        .is_some()
+        .is_some_and(metadata_item_names_titania)
+}
+
+fn metadata_item_names_titania(item: &Item) -> bool {
+    if let Some(value) = item.as_value() {
+        return metadata_value_names_titania(value);
+    }
+    if let Some(table) = item.as_table() {
+        return metadata_table_names_titania(table);
+    }
+    item.as_array_of_tables().is_some_and(|tables| tables.iter().any(metadata_table_names_titania))
+}
+
+fn metadata_table_names_titania(table: &toml_edit::Table) -> bool {
+    table.iter().any(|(_key, item)| item.as_value().is_some_and(metadata_value_names_titania))
+}
+
+fn metadata_value_names_titania(value: &Value) -> bool {
+    if let Some(text) = value.as_str() {
+        return metadata_string_names_titania(text);
+    }
+    if let Some(array) = value.as_array() {
+        return array.iter().any(metadata_array_value_names_titania);
+    }
+    value.as_inline_table().is_some_and(metadata_inline_table_names_titania)
+}
+
+fn metadata_array_value_names_titania(value: &Value) -> bool {
+    if let Some(text) = value.as_str() {
+        return metadata_string_names_titania(text);
+    }
+    value.as_inline_table().is_some_and(metadata_inline_table_names_titania)
+}
+
+fn metadata_inline_table_names_titania(table: &toml_edit::InlineTable) -> bool {
+    table.iter().any(|(_key, value)| metadata_value_names_titania(value))
+}
+
+fn metadata_string_names_titania(value: &str) -> bool {
+    value.split(['/', '\\']).any(metadata_segment_names_titania)
+}
+
+fn metadata_segment_names_titania(segment: &str) -> bool {
+    let candidate = strip_dynamic_library_extension(segment);
+    candidate == TITANIA_DYLINT_PACKAGE
+        || candidate == TITANIA_DYLINT_CRATE
+        || candidate == LIB_TITANIA_DYLINT
+}
+
+fn strip_dynamic_library_extension(segment: &str) -> &str {
+    if let Some(stripped) = segment.strip_suffix(".so") {
+        return stripped;
+    }
+    if let Some(stripped) = segment.strip_suffix(".dylib") {
+        return stripped;
+    }
+    if let Some(stripped) = segment.strip_suffix(".dll") {
+        return stripped;
+    }
+    segment
 }
 
 fn sibling_library_path() -> Option<PathBuf> {
@@ -191,23 +321,23 @@ fn abi_check(path: &Path) -> Option<String> {
 /// Return `true` when the 4-byte head of a candidate library file matches the
 /// platform magic for an ELF, Mach-O, or PE (DOS MZ) dynamic library.
 const fn is_dynamic_library_magic(head: [u8; 4]) -> bool {
+    let [b0, b1, b2, b3] = head;
     // ELF: 0x7F 'E' 'L' 'F'
-    if head[0] == 0x7f && head[1] == b'E' && head[2] == b'L' && head[3] == b'F' {
+    if b0 == 0x7f && b1 == b'E' && b2 == b'L' && b3 == b'F' {
         return true;
     }
     // Mach-O variants
-    if head[0] == 0xfe && head[1] == 0xed && head[2] == 0xfa && (head[3] == 0xce || head[3] == 0xcf)
-    {
+    if b0 == 0xfe && b1 == 0xed && b2 == 0xfa && (b3 == 0xce || b3 == 0xcf) {
         return true;
     }
-    if head[0] == 0xce && head[1] == 0xfa && head[2] == 0xed && head[3] == 0xfe {
+    if b0 == 0xce && b1 == 0xfa && b2 == 0xed && b3 == 0xfe {
         return true;
     }
-    if head[0] == 0xcf && head[1] == 0xfa && head[2] == 0xed && head[3] == 0xfe {
+    if b0 == 0xcf && b1 == 0xfa && b2 == 0xed && b3 == 0xfe {
         return true;
     }
     // PE / DOS MZ ('M' 'Z')
-    if head[0] == b'M' && head[1] == b'Z' {
+    if b0 == b'M' && b1 == b'Z' {
         return true;
     }
     false
@@ -237,4 +367,62 @@ fn infra_report(tool: &str) -> Result<LaneReport, LaneFailure> {
 
     report.push(crate::Finding::new(rule, tool, 0, format!("{tool} is unavailable")));
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, path::Path};
+
+    use super::{
+        DylintLibrarySource, DylintLoad, LibraryProbe, cargo_manifest_names_titania_dylint,
+        resolve_libtitania_dylint,
+    };
+
+    #[test]
+    fn metadata_must_name_titania_library() {
+        let unrelated = r#"
+[workspace.metadata.dylint]
+libraries = [{ path = "crates/unrelated-lint" }]
+"#;
+        let titania = r#"
+[workspace.metadata.dylint]
+libraries = [{ path = "crates/titania-dylint" }]
+"#;
+
+        assert!(!cargo_manifest_names_titania_dylint(unrelated));
+        assert!(cargo_manifest_names_titania_dylint(titania));
+    }
+
+    #[test]
+    fn env_library_path_wins_over_metadata_and_sibling() {
+        let temp = tempfile::tempdir().expect("tempdir must be created");
+        let env_path = write_fake_library(temp.path(), "env_libtitania_dylint.so");
+        let sibling_path = write_fake_library(temp.path(), "sibling_libtitania_dylint.so");
+
+        let probe = resolve_libtitania_dylint(Some(env_path.clone()), true, Some(sibling_path));
+
+        let LibraryProbe::Compatible(DylintLoad::LibraryPath { source, path }) = probe else {
+            panic!("env path must resolve to a concrete library load");
+        };
+        assert_eq!(source, DylintLibrarySource::Env);
+        assert_eq!(path, env_path);
+    }
+
+    #[test]
+    fn metadata_wins_over_sibling_when_it_names_titania() {
+        let temp = tempfile::tempdir().expect("tempdir must be created");
+        let sibling_path = write_fake_library(temp.path(), "sibling_libtitania_dylint.so");
+
+        let probe = resolve_libtitania_dylint(None, true, Some(sibling_path));
+
+        let LibraryProbe::Compatible(DylintLoad::Metadata) = probe else {
+            panic!("Titania metadata must resolve to metadata load mode");
+        };
+    }
+
+    fn write_fake_library(dir: &Path, name: &str) -> std::path::PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, b"\x7fELFfake-dylint-library").expect("fake library file must be written");
+        path
+    }
 }

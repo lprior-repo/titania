@@ -208,7 +208,7 @@ mod tests {
     use super::{CargoLane, normalize_clippy_output};
     use crate::command::mock_output;
     use std::error::Error;
-    use titania_core::{LaneOutcome, TargetProject};
+    use titania_core::{LaneOutcome, Location, TargetProject};
 
     fn make_target() -> Result<(tempfile::TempDir, TargetProject), Box<dyn Error>> {
         let dir = tempfile::tempdir().map_err(std::io::Error::other)?;
@@ -219,6 +219,16 @@ mod tests {
         .map_err(std::io::Error::other)?;
         let target = TargetProject::try_from_path(dir.path()).map_err(std::io::Error::other)?;
         Ok((dir, target))
+    }
+
+    fn serialized_span_line_start(location: &Location) -> Result<u64, Box<dyn Error>> {
+        let value = serde_json::to_value(location)?;
+        let line_start = value
+            .get("Span")
+            .and_then(|span| span.get("line_start"))
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| std::io::Error::other(format!("expected serialized Span: {value}")))?;
+        Ok(line_start)
     }
 
     /// Regression: nonzero clippy exit + empty stdout → Failed, not Clean.
@@ -266,6 +276,22 @@ mod tests {
             assert!(
                 findings.iter().any(|f| f.rule_id().to_string() == "CLIPPY_UNWRAP_USED"),
                 "should contain CLIPPY_UNWRAP_USED finding; got: {findings:?}"
+            );
+            assert!(
+                findings.iter().any(|f| f
+                    .location()
+                    .span_file()
+                    .is_some_and(|path| path.as_str() == "src/lib.rs")),
+                "clippy findings must preserve source span locations; got: {findings:?}"
+            );
+            let span_line_starts = findings
+                .iter()
+                .map(|finding| serialized_span_line_start(finding.location()))
+                .collect::<Result<Vec<_>, _>>()?;
+            assert_eq!(
+                span_line_starts,
+                vec![3, 7],
+                "clippy findings must preserve exact serialized Location::Span line_start values from fixture"
             );
         }
         Ok(())

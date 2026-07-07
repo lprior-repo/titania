@@ -165,8 +165,8 @@ pub(crate) enum AggregateError {
     Serialize(serde_json::Error),
     /// Digest computation failed (IO error on non-missing file).
     Digest(std::io::Error),
-    /// Toolchain digest probe failed (rustc/cargo version probe IO failure).
-    ToolchainProbe(std::io::Error),
+    /// Toolchain digest probe failed.
+    ToolchainProbe(String),
 }
 
 impl AggregateError {
@@ -188,7 +188,7 @@ fn serialize_diagnostic(error: &serde_json::Error) -> String {
     format!("InputError: aggregate serialization failed: {error}")
 }
 
-fn toolchain_probe_diagnostic(error: &std::io::Error) -> String {
+fn toolchain_probe_diagnostic(error: &str) -> String {
     format!("InternalError: toolchain digest probe failed: {error}")
 }
 
@@ -385,7 +385,7 @@ fn policy_digest(target_root: &Path) -> Result<Digest, AggregateError> {
 /// toolchain, not the titania-check binary's compile-time `CARGO_PKG_VERSION`.
 ///
 /// # Errors
-/// - [`AggregateError::ToolchainProbe`] when the rustc or cargo probe fails to spawn.
+/// - [`AggregateError::ToolchainProbe`] when the rustc or cargo probe fails.
 fn toolchain_digest(target_root: &Path) -> Result<Digest, AggregateError> {
     let rustc_version = probe_version(target_root, "rustc", &["--version"])?;
     let cargo_version = probe_version(target_root, "cargo", &["--version"])?;
@@ -403,7 +403,8 @@ fn toolchain_digest(target_root: &Path) -> Result<Digest, AggregateError> {
 /// Spawn `program --version` rooted at `target_root` and return its stdout as a string.
 ///
 /// # Errors
-/// - [`AggregateError::ToolchainProbe`] when spawn/wait fails or stdout is non-UTF-8.
+/// - [`AggregateError::ToolchainProbe`] when spawn/wait fails, the command exits
+///   nonzero, stdout is non-UTF-8, or stdout is empty.
 fn probe_version(
     target_root: &Path,
     program: &str,
@@ -416,8 +417,24 @@ fn probe_version(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .output()
-        .map_err(AggregateError::ToolchainProbe)?;
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        .map_err(|error| AggregateError::ToolchainProbe(error.to_string()))?;
+    if !output.status.success() {
+        return Err(AggregateError::ToolchainProbe(format!(
+            "{program} {} exited with {status}",
+            args.join(" "),
+            status = output.status,
+        )));
+    }
+    let text = String::from_utf8(output.stdout)
+        .map_err(|error| AggregateError::ToolchainProbe(error.to_string()))?
+        .trim()
+        .to_owned();
+    if text.is_empty() {
+        return Err(AggregateError::ToolchainProbe(format!(
+            "{program} {} produced empty stdout",
+            args.join(" "),
+        )));
+    }
     Ok(text)
 }
 

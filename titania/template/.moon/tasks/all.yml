@@ -2,6 +2,11 @@ fileGroups:
   sources:
     - 'src/**/*.rs'
     - 'crates/**/*.rs'
+    - 'Cargo.toml'
+    - 'Cargo.lock'
+    - '.cargo/**'
+    - '.titania/profiles/**'
+    - 'rust-toolchain.toml'
   tests:
     - 'tests/**/*.rs'
     - 'crates/**/tests/**/*.rs'
@@ -15,6 +20,7 @@ tasks:
     toolchains: [rust]
     options: { runInCI: true }
     inputs: ['@globs(sources)', 'rustfmt.toml', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
+    outputs: ['.titania/out/edit/fmt.json', '.titania/out/prepush/fmt.json', '.titania/out/release/fmt.json']
 
   titania-compile:
     command: 'titania-check run-lane compile'
@@ -23,6 +29,7 @@ tasks:
     toolchains: [rust]
     options: { runInCI: true }
     inputs: ['@globs(sources)', 'Cargo.toml', 'Cargo.lock', '.cargo/**', 'rust-toolchain.toml']
+    outputs: ['.titania/out/edit/compile.json', '.titania/out/prepush/compile.json', '.titania/out/release/compile.json']
 
   titania-clippy:
     command: 'titania-check run-lane clippy'
@@ -31,28 +38,33 @@ tasks:
     toolchains: [rust]
     deps: ['~:titania-compile']
     options: { runInCI: true }
-    inputs: ['@globs(sources)', 'clippy.toml', 'Cargo.toml', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
+    inputs: ['@globs(sources)', 'clippy.toml', 'Cargo.toml', 'Cargo.lock', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
+    outputs: ['.titania/out/edit/clippy.json', '.titania/out/prepush/clippy.json', '.titania/out/release/clippy.json']
 
   titania-ast-grep:
     command: 'titania-check run-lane ast-grep'
     options: { runInCI: true }
     inputs: ['@globs(sources)']
+    outputs: ['.titania/out/edit/ast-grep.json', '.titania/out/prepush/ast-grep.json', '.titania/out/release/ast-grep.json']
 
   titania-dylint:
     command: 'titania-check run-lane dylint'
     toolchains: [rust]
     options: { runInCI: true }
-    inputs: ['@globs(sources)']
+    inputs: ['@globs(sources)', 'Cargo.toml', 'Cargo.lock']
+    outputs: ['.titania/out/edit/dylint.json', '.titania/out/prepush/dylint.json', '.titania/out/release/dylint.json']
 
   titania-panic-scan:
     command: 'titania-check run-lane panic-scan'
     options: { runInCI: true }
     inputs: ['@globs(sources)']
+    outputs: ['.titania/out/edit/panic-scan.json', '.titania/out/prepush/panic-scan.json', '.titania/out/release/panic-scan.json']
 
   titania-policy-scan:
     command: 'titania-check run-lane policy-scan'
     options: { runInCI: true }
     inputs: ['@globs(sources)', 'Cargo.toml', '**/Cargo.toml', '.cargo/**', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
+    outputs: ['.titania/out/edit/policy-scan.json', '.titania/out/prepush/policy-scan.json', '.titania/out/release/policy-scan.json']
 
   titania-test:
     command: 'titania-check run-lane test'
@@ -61,12 +73,14 @@ tasks:
     toolchains: [rust]
     deps: ['~:titania-compile']
     options: { runInCI: true }
-    inputs: ['@globs(sources)', '@globs(tests)']
+    inputs: ['@globs(sources)', '@globs(tests)', 'Cargo.toml', 'Cargo.lock', '.cargo/**', 'rust-toolchain.toml']
+    outputs: ['.titania/out/prepush/test.json', '.titania/out/release/test.json']
 
   titania-deny:
     command: 'titania-check run-lane deny'
     options: { runInCI: true }
     inputs: ['@globs(sources)', 'Cargo.lock', 'deny.toml']
+    outputs: ['.titania/out/prepush/deny.json', '.titania/out/release/deny.json']
 
   titania-build:
     command: 'titania-check run-lane build'
@@ -75,8 +89,8 @@ tasks:
     toolchains: [rust]
     deps: ['~:titania-compile']
     options: { runInCI: true }
-    inputs: ['@globs(sources)']
-    outputs: ['target/release/titania-check']
+    inputs: ['@globs(sources)', 'Cargo.toml', 'Cargo.lock', '.cargo/**', 'rust-toolchain.toml']
+    outputs: ['.titania/out/release/build.json']
 
   # Composite gates
   gate-edit:

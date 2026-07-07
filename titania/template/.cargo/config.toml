@@ -1,5 +1,6 @@
 [build]
-rustc-wrapper = "sccache"
+# sccache is intentionally optional for generated workspaces. Install and set a
+# local rustc-wrapper yourself if your environment provides it.
 # The unstable `non_exhaustive_omitted_patterns` lint is intentionally NOT
 # enforced: on nightly-2026-04-27 the workspace-lint path leaves clippy
 # unable to recognize it, while explicit `-Zcrate-attr` injection collides

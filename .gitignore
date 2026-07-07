@@ -9,6 +9,7 @@
 # Build artifacts.
 /target/
 **/fixtures/*/target/
+**/fixtures/**/target/
 
 # rustfmt backup files (cargo fmt renames the original to .rs.bk
 # mid-rewrite, then overwrites).

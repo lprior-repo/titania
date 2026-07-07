@@ -16,6 +16,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
+use titania_policy::parse_exceptions;
 use toml_edit::{DocumentMut, Item, Table};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -98,6 +99,191 @@ fn assert_keys_present(map: &BTreeMap<&str, &str>, required: &[&str], section: &
     }
     Ok(())
 }
+
+#[derive(Debug)]
+struct MoonTaskEntry {
+    name: String,
+    command: Option<String>,
+    inputs: Vec<String>,
+    outputs: Vec<String>,
+}
+
+impl MoonTaskEntry {
+    fn named(name: &str) -> Self {
+        Self { name: name.to_owned(), command: None, inputs: Vec::new(), outputs: Vec::new() }
+    }
+}
+
+fn parse_moon_task_entries(text: &str) -> Vec<MoonTaskEntry> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut entries = Vec::new();
+    let mut current = None;
+    let mut in_tasks = false;
+    let mut index = 0;
+
+    while index < lines.len() {
+        let line = lines[index];
+        let trimmed = line.trim();
+        let indent = line.chars().take_while(|ch| *ch == ' ').count();
+
+        if !in_tasks {
+            in_tasks = indent == 0 && trimmed == "tasks:";
+            index += 1;
+            continue;
+        }
+
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            index += 1;
+            continue;
+        }
+        if indent == 0 {
+            break;
+        }
+        if indent == 2 && trimmed.ends_with(':') {
+            if let Some(entry) = current.take() {
+                entries.push(entry);
+            }
+            current = Some(MoonTaskEntry::named(trimmed.trim_end_matches(':')));
+            index += 1;
+            continue;
+        }
+
+        if let Some(entry) = current.as_mut() {
+            if let Some(value) = trimmed.strip_prefix("command:") {
+                entry.command = Some(parse_yaml_scalar(value));
+                index += 1;
+                continue;
+            }
+            if let Some(value) = trimmed.strip_prefix("inputs:") {
+                let (values, next_index) = parse_yaml_sequence(&lines, index, indent, value);
+                entry.inputs = values;
+                index = next_index;
+                continue;
+            }
+            if let Some(value) = trimmed.strip_prefix("outputs:") {
+                let (values, next_index) = parse_yaml_sequence(&lines, index, indent, value);
+                entry.outputs = values;
+                index = next_index;
+                continue;
+            }
+        }
+
+        index += 1;
+    }
+
+    if let Some(entry) = current.take() {
+        entries.push(entry);
+    }
+
+    entries
+}
+
+fn parse_yaml_sequence(
+    lines: &[&str],
+    field_index: usize,
+    field_indent: usize,
+    field_value: &str,
+) -> (Vec<String>, usize) {
+    let value = field_value.trim();
+    if !value.is_empty() {
+        return (parse_flow_array(value), field_index + 1);
+    }
+
+    let mut values = Vec::new();
+    let mut index = field_index + 1;
+    while index < lines.len() {
+        let line = lines[index];
+        let trimmed = line.trim();
+        let indent = line.chars().take_while(|ch| *ch == ' ').count();
+        if trimmed.is_empty() {
+            index += 1;
+            continue;
+        }
+        if indent <= field_indent {
+            break;
+        }
+        if let Some(value) = trimmed.strip_prefix("- ") {
+            values.push(parse_yaml_scalar(value));
+        }
+        index += 1;
+    }
+    (values, index)
+}
+
+fn parse_flow_array(value: &str) -> Vec<String> {
+    let inner = value.trim().strip_prefix('[').unwrap_or(value).strip_suffix(']').unwrap_or(value);
+    inner.split(',').map(parse_yaml_scalar).filter(|value| !value.is_empty()).collect()
+}
+
+fn parse_yaml_scalar(value: &str) -> String {
+    value.trim().trim_matches('\'').trim_matches('"').to_owned()
+}
+
+fn moon_task_map<'a>(entries: &'a [MoonTaskEntry]) -> BTreeMap<&'a str, &'a MoonTaskEntry> {
+    entries.iter().map(|entry| (entry.name.as_str(), entry)).collect()
+}
+
+const TEMPLATE_LANE_OUTPUTS: &[(&str, &[&str])] = &[
+    (
+        "titania-fmt",
+        &[
+            ".titania/out/edit/fmt.json",
+            ".titania/out/prepush/fmt.json",
+            ".titania/out/release/fmt.json",
+        ],
+    ),
+    (
+        "titania-compile",
+        &[
+            ".titania/out/edit/compile.json",
+            ".titania/out/prepush/compile.json",
+            ".titania/out/release/compile.json",
+        ],
+    ),
+    (
+        "titania-clippy",
+        &[
+            ".titania/out/edit/clippy.json",
+            ".titania/out/prepush/clippy.json",
+            ".titania/out/release/clippy.json",
+        ],
+    ),
+    (
+        "titania-ast-grep",
+        &[
+            ".titania/out/edit/ast-grep.json",
+            ".titania/out/prepush/ast-grep.json",
+            ".titania/out/release/ast-grep.json",
+        ],
+    ),
+    (
+        "titania-dylint",
+        &[
+            ".titania/out/edit/dylint.json",
+            ".titania/out/prepush/dylint.json",
+            ".titania/out/release/dylint.json",
+        ],
+    ),
+    (
+        "titania-panic-scan",
+        &[
+            ".titania/out/edit/panic-scan.json",
+            ".titania/out/prepush/panic-scan.json",
+            ".titania/out/release/panic-scan.json",
+        ],
+    ),
+    (
+        "titania-policy-scan",
+        &[
+            ".titania/out/edit/policy-scan.json",
+            ".titania/out/prepush/policy-scan.json",
+            ".titania/out/release/policy-scan.json",
+        ],
+    ),
+    ("titania-test", &[".titania/out/prepush/test.json", ".titania/out/release/test.json"]),
+    ("titania-deny", &[".titania/out/prepush/deny.json", ".titania/out/release/deny.json"]),
+    ("titania-build", &[".titania/out/release/build.json"]),
+];
 
 // ── test 1: template_metadata ───────────────────────────────────────────────
 
@@ -237,12 +423,8 @@ fn template_policy_rust_configs() -> Result<()> {
 
     // ── 2a. Exact-copy configs ──────────────────────────────────────────────
     // These files should be byte-for-byte identical between the template and the root workspace.
-    let copy_pairs: [(&str, &str); 5] = [
+    let copy_pairs: [(&str, &str); 4] = [
         (".titania/profiles/strict-ai/policy.toml", ".titania/profiles/strict-ai/policy.toml"),
-        (
-            ".titania/profiles/strict-ai/exceptions.toml",
-            ".titania/profiles/strict-ai/exceptions.toml",
-        ),
         ("clippy.toml", "clippy.toml"),
         ("rustfmt.toml", "rustfmt.toml"),
         ("rust-toolchain.toml", "rust-toolchain.toml"),
@@ -254,14 +436,29 @@ fn template_policy_rust_configs() -> Result<()> {
         files_match(&template_path, &root_path, root_rel)?;
     }
 
+    let template_exceptions = read_file(
+        &tmpl.join(".titania/profiles/strict-ai/exceptions.toml"),
+        "template strict-ai exceptions",
+    )?;
+    let parsed_exceptions =
+        parse_exceptions(&template_exceptions, "2026-07-06").map_err(|error| {
+            anyhow::anyhow!(
+                "template strict-ai exceptions must parse with policy parser: {error:?}"
+            )
+        })?;
+    assert_eq!(
+        parsed_exceptions.len(),
+        0,
+        "template strict-ai exceptions must contain zero active repository-specific waivers"
+    );
+
     let cargo_config_text =
         read_file(&tmpl.join(".cargo").join("config.toml"), ".cargo/config.toml (template)")?;
     let cargo_config_doc = parse_toml(&cargo_config_text, ".cargo/config.toml")?;
     let rustc_wrapper = nested_str(&cargo_config_doc, "build", "rustc-wrapper")?;
     assert_eq!(
-        rustc_wrapper,
-        Some("sccache"),
-        "template .cargo/config.toml must configure the sccache rustc wrapper"
+        rustc_wrapper, None,
+        "template .cargo/config.toml must not require optional sccache on fresh workspaces"
     );
     assert!(
         cargo_config_text.contains("non_exhaustive_omitted_patterns"),
@@ -408,13 +605,15 @@ fn template_policy_rust_configs() -> Result<()> {
 /// CARGO_TARGET_DIR env values, release output, and absence of repo-specific
 /// legacy crate paths.
 ///
-/// The YAML parser is not in dev-dependencies; assertions are text-based but
-/// each line is checked at the semantic level that matters for the DAG contract.
+/// The YAML parser is intentionally a small local line scanner: enough to prove
+/// the template task entries, inputs, and outputs that form the DAG contract.
 #[test]
 fn template_moon_configs() -> Result<()> {
     let tmpl = template_root()?;
     let tasks_path = tmpl.join(".moon").join("tasks").join("all.yml");
     let text = read_file(&tasks_path, "tasks/all.yml")?;
+    let task_entries = parse_moon_task_entries(&text);
+    let task_map = moon_task_map(&task_entries);
 
     // ── 3a. File groups and required task names under the Moon `tasks:` map ──
     assert!(
@@ -445,8 +644,9 @@ fn template_moon_configs() -> Result<()> {
     ];
     for task in &required_tasks {
         assert!(
-            text.contains(&format!("  {task}:")),
-            "task {task} must be an entry in the top-level Moon tasks map"
+            task_map.contains_key(*task),
+            "task {task} must be an entry in the top-level Moon tasks map (found: {:?})",
+            task_entries.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>()
         );
     }
 
@@ -465,9 +665,15 @@ fn template_moon_configs() -> Result<()> {
     ];
     for lane in lanes {
         let expected = format!("command: 'titania-check run-lane {lane}'");
+        let expected_command = format!("titania-check run-lane {lane}");
+        let task_name = format!("titania-{lane}");
+        let task = task_map
+            .get(task_name.as_str())
+            .with_context(|| format!("parsed task {task_name} must exist"))?;
         assert!(
-            text.contains(&expected),
-            "lane '{lane}' must have command 'titania-check run-lane {lane}' (found: {expected})"
+            task.command.as_deref() == Some(expected_command.as_str()),
+            "lane '{lane}' must have command 'titania-check run-lane {lane}' (text form: {expected}, parsed: {:?})",
+            task.command
         );
     }
 
@@ -476,9 +682,13 @@ fn template_moon_configs() -> Result<()> {
         &[("gate-edit", "edit"), ("gate-prepush", "prepush"), ("gate-release", "release")];
     for (gate, scope) in gates {
         let expected = format!("command: 'titania-check aggregate --scope {scope}'");
+        let expected_command = format!("titania-check aggregate --scope {scope}");
+        let task =
+            task_map.get(*gate).with_context(|| format!("parsed gate task {gate} must exist"))?;
         assert!(
-            text.contains(&expected),
-            "gate '{gate}' must have command 'titania-check aggregate --scope {scope}'"
+            task.command.as_deref() == Some(expected_command.as_str()),
+            "gate '{gate}' must have command 'titania-check aggregate --scope {scope}' (text form: {expected}, parsed: {:?})",
+            task.command
         );
     }
 
@@ -544,10 +754,32 @@ fn template_moon_configs() -> Result<()> {
         );
     }
 
-    // ── 3g. Release output artifact ──────────────────────────────────────────
+    // ── 3g. Lane output artifacts ────────────────────────────────────────────
+    for (task_name, expected_outputs) in TEMPLATE_LANE_OUTPUTS {
+        let task = task_map
+            .get(*task_name)
+            .with_context(|| format!("parsed lane task {task_name} must exist"))?;
+        assert_eq!(
+            task.outputs.as_slice(),
+            *expected_outputs,
+            "task {task_name} must declare exactly the expected output artifacts"
+        );
+    }
+    for entry in &task_entries {
+        for input in &entry.inputs {
+            if input.starts_with('!') {
+                continue;
+            }
+            assert!(
+                !input.contains(".titania/cache") && !input.contains(".titania/out"),
+                "positive input in task {} must not hash volatile Titania runtime paths: {input}",
+                entry.name
+            );
+        }
+    }
     assert!(
-        text.contains("outputs: ['target/release/titania-check']"),
-        "titania-build must declare outputs: ['target/release/titania-check']"
+        !text.contains("target/release/titania-check"),
+        "generated template must not declare Titania's repository binary as a build output"
     );
 
     // ── 3h. Absence of repo-specific legacy crate paths ──────────────────────

@@ -1,4 +1,4 @@
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 
 use super::LaneError;
 
@@ -25,7 +25,12 @@ pub(super) fn terminate_child_tree(child: &mut Child, program: String) -> Result
 #[cfg(unix)]
 fn terminate_process_group(child_id: u32) {
     let group = format!("-{child_id}");
-    let status = Command::new("/bin/kill").arg("-TERM").arg(group).status();
+    let status = Command::new("/bin/kill")
+        .arg("-TERM")
+        .arg(group)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
     match status {
         Ok(_) | Err(_) => (),
     }
