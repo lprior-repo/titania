@@ -9,6 +9,7 @@ use wait_timeout::ChildExt;
 
 use super::{CommandIn, CommandOutput, EnvPolicy, LaneError, OutputStream};
 use crate::command::{
+    env_filter::ScrubbedEnv,
     process::{configure_process_group, terminate_child_tree},
     reader::{
         ReaderHandle, drain_after_termination, duration_millis, remaining_budget, spawn_reader,
@@ -146,8 +147,10 @@ fn build_base_command(owner: &CommandIn<'_>) -> Command {
     let mut cmd = Command::new(owner.program.as_ref());
     configure_process_group(&mut cmd);
     let _ = cmd.current_dir(owner.cwd.as_std_path());
-    if owner.env_policy == EnvPolicy::Clear {
-        let _ = cmd.env_clear();
+    let _ = cmd.env_clear();
+    if owner.env_policy == EnvPolicy::Inherit {
+        ScrubbedEnv::from_parent_for_target(std::env::vars_os(), owner.cwd.as_std_path())
+            .apply_to(&mut cmd);
     }
     let _ = cmd.args(owner.args.iter().map(<Cow<'_, str> as AsRef<str>>::as_ref));
     let _ = cmd.envs(owner.env.iter().map(|(key, value)| (key.as_ref(), value.as_ref())));

@@ -14,12 +14,16 @@ const RULE_FLAGS: &str = "BYPASS_CARGO_CONFIG_FLAGS";
 const RULE_WRAPPER: &str = "BYPASS_CARGO_CONFIG_WRAPPER";
 const CONFIG_NAMES: &[&str] = &["config", "config.toml"];
 const RULE_PARENT: &str = "BYPASS_CARGO_CONFIG_PARENT";
+const RULE_READ_ERROR: &str = "BYPASS_CARGO_CONFIG_READ_ERROR";
+const RULE_PARSE_ERROR: &str = "BYPASS_CARGO_CONFIG_PARSE_ERROR";
 
 #[derive(Debug, Clone)]
 struct CargoConfigRules {
     flags: RuleId,
     wrapper: RuleId,
     parent: RuleId,
+    read_error: RuleId,
+    parse_error: RuleId,
 }
 
 impl CargoConfigRules {
@@ -32,6 +36,8 @@ impl CargoConfigRules {
             flags: RuleId::new(RULE_FLAGS)?,
             wrapper: RuleId::new(RULE_WRAPPER)?,
             parent: RuleId::new(RULE_PARENT)?,
+            read_error: RuleId::new(RULE_READ_ERROR)?,
+            parse_error: RuleId::new(RULE_PARSE_ERROR)?,
         })
     }
 }
@@ -104,10 +110,12 @@ fn scan_config_path(base: &Path, path: &Path, rules: &CargoConfigRules) -> Vec<F
     if !path.is_file() {
         return Vec::new();
     }
-    std::fs::read_to_string(path).map_or_else(
-        |_| Vec::new(),
-        |content| document_findings(parse_config(&content), &relative_path(base, path), rules),
-    )
+    let display = relative_path(base, path);
+    match std::fs::read_to_string(path) {
+        Ok(content) => document_findings(parse_config(&content), &display, rules),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => vec![read_error_finding(&error, &display, rules)],
+    }
 }
 
 fn parse_config(content: &str) -> Option<DocumentMut> {
@@ -119,13 +127,26 @@ fn document_findings(
     path: &str,
     rules: &CargoConfigRules,
 ) -> Vec<Finding> {
-    document
-        .and_then(|document| build_item(&document).cloned())
-        .map_or_else(Vec::new, |build| build_findings(&build, path, rules))
+    let Some(document) = document else {
+        return vec![parse_error_finding(path, rules)];
+    };
+    let build_findings =
+        build_item(&document).map_or_else(Vec::new, |build| build_findings(build, path, rules));
+    build_findings.into_iter().chain(target_findings(&document, path, rules)).collect()
 }
 
 fn build_item(document: &DocumentMut) -> Option<&Item> {
     document.get("build")
+}
+fn target_findings(document: &DocumentMut, path: &str, rules: &CargoConfigRules) -> Vec<Finding> {
+    document.get("target").and_then(Item::as_table_like).map_or_else(Vec::new, |target| {
+        target
+            .iter()
+            .flat_map(|(_, item)| {
+                rustflags_values(item).into_iter().map(|flag| rustflag_finding(&flag, path, rules))
+            })
+            .collect()
+    })
 }
 
 fn build_findings(build: &Item, path: &str, rules: &CargoConfigRules) -> Vec<Finding> {
@@ -142,7 +163,7 @@ fn build_findings(build: &Item, path: &str, rules: &CargoConfigRules) -> Vec<Fin
 
 fn wrapper_value<'a>(build: &'a Item, key: &str) -> Option<&'a str> {
     build
-        .as_table()
+        .as_table_like()
         .and_then(|table| table.get(key))
         .and_then(Item::as_value)
         .and_then(Value::as_str)
@@ -150,7 +171,7 @@ fn wrapper_value<'a>(build: &'a Item, key: &str) -> Option<&'a str> {
 
 fn rustflags_values(build: &Item) -> Vec<String> {
     build
-        .as_table()
+        .as_table_like()
         .and_then(|table| table.get("rustflags"))
         .and_then(Item::as_value)
         .map(rustflags_value_to_strings)
@@ -196,5 +217,22 @@ fn rustflag_finding(flag: &str, path: &str, rules: &CargoConfigRules) -> Finding
         format!(
             "unexpected rustflag {flag:?} - policy flags belong in Cargo.toml, not .cargo/config"
         ),
+    )
+}
+fn read_error_finding(error: &std::io::Error, display: &str, rules: &CargoConfigRules) -> Finding {
+    Finding::new(
+        rules.read_error.clone(),
+        display,
+        0,
+        format!("cannot read Cargo config file: {error}"),
+    )
+}
+
+fn parse_error_finding(path: &str, rules: &CargoConfigRules) -> Finding {
+    Finding::new(
+        rules.parse_error.clone(),
+        path,
+        0,
+        format!("malformed Cargo config file at {path}: cannot parse as TOML"),
     )
 }

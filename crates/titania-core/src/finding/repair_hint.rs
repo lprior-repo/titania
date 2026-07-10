@@ -7,9 +7,9 @@
 //! Serde deserialization uses a private `RepairHintReadWire` intermediate so that
 //! validation runs on every deserialize path.
 
-use serde::{Deserialize, Serialize, de::Error};
+use serde::{Deserialize, Serialize};
 
-use crate::{error::RepairHintError, text_range::TextRange};
+use crate::text_range::TextRange;
 
 // ── Private inner enum ──────────────────────────────────────────────────────
 
@@ -84,15 +84,14 @@ pub struct RepairHint(RepairHintInner);
 impl RepairHint {
     /// Construct a [`RepairHint`] that proposes an auto-applicable text patch over a [`TextRange`].
     ///
-    /// # Errors
-    /// - [`RepairHintError::EmptyRange`] if `range.width() == 0`.
-    pub fn patch(
-        file: String,
-        range: TextRange,
-        replacement: String,
-    ) -> Result<Self, RepairHintError> {
-        validate_patch_range(range)?;
-        Ok(Self(RepairHintInner::Patch { file, range, replacement }))
+    /// The range is half-open `[start_byte, end_byte)`. A zero-width range
+    /// (`start_byte == end_byte`) is a valid insertion patch: `replacement`
+    /// is inserted at `start_byte` without consuming any bytes of the
+    /// source file. Range *bounds* (`start_byte <= end_byte`) are enforced
+    /// by [`TextRange::new`].
+    #[must_use]
+    pub const fn patch(file: String, range: TextRange, replacement: String) -> Self {
+        Self(RepairHintInner::Patch { file, range, replacement })
     }
 
     /// Construct a [`RepairHint`] suggesting an iterator-pipeline rewrite.
@@ -156,15 +155,10 @@ enum RepairHintReadWire {
 
 /// Construct a [`RepairHint`] that proposes an auto-applicable text patch over a [`TextRange`].
 ///
-/// # Errors
-/// - [`RepairHintError::EmptyRange`] if `range.width() == 0`.
-fn construct_patch(
-    file: String,
-    range: TextRange,
-    replacement: String,
-) -> Result<RepairHint, RepairHintError> {
-    validate_patch_range(range)?;
-    Ok(RepairHint(RepairHintInner::Patch { file, range, replacement }))
+/// Zero-width ranges are valid insertion patches; range bounds are
+/// enforced upstream by [`TextRange::new`].
+const fn construct_patch(file: String, range: TextRange, replacement: String) -> RepairHint {
+    RepairHint(RepairHintInner::Patch { file, range, replacement })
 }
 
 /// Construct a [`RepairHint`] suggesting an iterator-pipeline rewrite.
@@ -199,12 +193,12 @@ const fn human_review(note: String) -> RepairHint {
 
 /// Convert deserialized repair-hint wire data into a validated domain hint.
 ///
-/// # Errors
-/// - [`RepairHintError::EmptyRange`] when `range.width() == 0`.
-fn repair_hint_from_wire(wire: RepairHintReadWire) -> Result<RepairHint, RepairHintError> {
-    let hint = match wire {
+/// Zero-width ranges are accepted for the `Patch` variant (insertion
+/// patches). Range bounds are enforced upstream by [`TextRange::new`].
+fn repair_hint_from_wire(wire: RepairHintReadWire) -> RepairHint {
+    match wire {
         RepairHintReadWire::Patch { file, range, replacement } => {
-            construct_patch(file, range, replacement)?
+            construct_patch(file, range, replacement)
         }
         RepairHintReadWire::UseIteratorPipeline { suggestion } => iterator_pipeline(suggestion),
         RepairHintReadWire::FlattenNesting { suggestion } => flatten_nesting(suggestion),
@@ -212,8 +206,7 @@ fn repair_hint_from_wire(wire: RepairHintReadWire) -> Result<RepairHint, RepairH
         RepairHintReadWire::RemoveAllowAttribute { attr } => remove_allow(attr),
         RepairHintReadWire::ReplaceDependency { from, to } => replace_dependency(from, to),
         RepairHintReadWire::RequiresHumanReview { note } => human_review(note),
-    };
-    Ok(hint)
+    }
 }
 
 /// Deserialize a [`RepairHint`] from wire format.
@@ -224,24 +217,11 @@ fn deserialize_repair_hint<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<RepairHint, D::Error> {
     let wire = RepairHintReadWire::deserialize(deserializer)?;
-    repair_hint_from_wire(wire).map_err(D::Error::custom)
+    Ok(repair_hint_from_wire(wire))
 }
 
 impl<'de> Deserialize<'de> for RepairHint {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserialize_repair_hint(deserializer)
     }
-}
-
-// ── Patch validation ────────────────────────────────────────────────────────
-
-/// Validate that a patch range is non-empty.
-///
-/// # Errors
-/// - [`RepairHintError::EmptyRange`] when `range.width() == 0`.
-const fn validate_patch_range(range: TextRange) -> Result<(), RepairHintError> {
-    if range.width() == 0 {
-        return Err(RepairHintError::EmptyRange);
-    }
-    Ok(())
 }

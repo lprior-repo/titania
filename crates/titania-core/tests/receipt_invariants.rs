@@ -73,7 +73,8 @@ fn quality_receipt_deserialization_rejects_lane_missing_evidence_digest()
 type TestResult = Result<(), Box<dyn Error>>;
 
 fn target_project(root: &Path) -> Result<TargetProject, TargetProjectError> {
-    TargetProject::try_from_path(root)
+    let utf8 = camino::Utf8Path::from_path(root).ok_or(TargetProjectError::NotUtf8)?;
+    TargetProject::try_from_path_string(utf8)
 }
 
 fn lane_digest() -> Result<LaneDigest, ReceiptError> {

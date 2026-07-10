@@ -35,6 +35,7 @@ let_underscore_drop = "deny"
 
 elided_lifetimes_in_paths = "deny"
 explicit_outlives_requirements = "deny"
+missing_debug_implementations = "deny"
 trivial_casts = "deny"
 trivial_numeric_casts = "deny"
 variant_size_differences = "deny"

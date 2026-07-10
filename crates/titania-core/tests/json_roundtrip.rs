@@ -17,6 +17,42 @@ use titania_core::{
 fn digest(seed: &'static [u8]) -> Digest {
     Digest::from_bytes(seed)
 }
+
+fn complete_edit_report_fixture(mut fixture: serde_json::Value) -> serde_json::Value {
+    let lanes = ["Fmt", "Compile", "Clippy", "AstGrep", "Dylint", "PanicScan", "PolicyScan"];
+    let receipt_template = fixture["receipt"]["lanes"][0].clone();
+    let per_lane_template = fixture["per_lane"][0].clone();
+    {
+        let receipt_lanes = fixture["receipt"]["lanes"].as_array_mut().unwrap();
+        lanes.iter().skip(1).for_each(|lane| {
+            let mut receipt = receipt_template.clone();
+            receipt["lane"] = serde_json::Value::String((*lane).to_owned());
+            receipt_lanes.push(receipt);
+        });
+    }
+    {
+        let per_lane = fixture["per_lane"].as_array_mut().unwrap();
+        lanes.iter().skip(1).for_each(|lane| {
+            let mut entry = per_lane_template.clone();
+            entry["lane"] = serde_json::Value::String((*lane).to_owned());
+            entry["outcome"] = serde_json::json!({"Skipped": "NotApplicable"});
+            per_lane.push(entry);
+        });
+    }
+    fixture
+}
+
+fn complete_edit_reject_fixture(mut fixture: serde_json::Value) -> serde_json::Value {
+    let lanes = ["Fmt", "Compile", "Clippy", "AstGrep", "Dylint", "PanicScan", "PolicyScan"];
+    let per_lane = fixture["per_lane"].as_array_mut().unwrap();
+    lanes.iter().for_each(|lane| {
+        per_lane.push(serde_json::json!({
+            "lane": lane,
+            "outcome": {"Skipped": "NotApplicable"},
+        }));
+    });
+    fixture
+}
 // ===========================================================================
 // Golden JSON fixtures — hardcoded constants, not generated at test time.
 // ===========================================================================
@@ -115,13 +151,17 @@ fn json_roundtrip_golden() {
     // ---- Report variants ----
 
     {
-        let fixture = serde_json::from_str::<serde_json::Value>(REPORT_PASS_JSON).unwrap();
+        let fixture = complete_edit_report_fixture(
+            serde_json::from_str::<serde_json::Value>(REPORT_PASS_JSON).unwrap(),
+        );
         let expected: Report = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
     {
-        let fixture = serde_json::from_str::<serde_json::Value>(REPORT_REJECT_JSON).unwrap();
+        let fixture = complete_edit_reject_fixture(
+            serde_json::from_str::<serde_json::Value>(REPORT_REJECT_JSON).unwrap(),
+        );
         let expected: Report = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
@@ -388,23 +428,34 @@ fn report_pass_constructs_and_round_trips() -> std::result::Result<(), Box<dyn s
             digest(b"policy"),
             digest(b"toolchain"),
         ),
-        Box::new([titania_core::LaneReceipt::new(Lane::Fmt, digest(b"evidence"), true)]),
+        GateScope::Edit
+            .lanes()
+            .iter()
+            .map(|&lane| titania_core::LaneReceipt::new(lane, digest(b"evidence"), true))
+            .collect(),
     )?;
 
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
-        Lane::Fmt,
-        LaneOutcome::Clean {
-            evidence: titania_core::LaneEvidence::new(
-                titania_core::CommandEvidence::new(
-                    "cargo".to_owned(),
-                    Box::new(["cargo".to_owned(), "fmt".to_owned(), "--check".to_owned()]),
-                )?,
-                "rustfmt 1.84.0".to_owned(),
-                ProcessTermination::Exited { code: 0 },
-                digest(b"result"),
-            )?,
-        },
-    )]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = GateScope::Edit
+        .lanes()
+        .iter()
+        .map(|&lane| {
+            let outcome = match lane {
+                Lane::Fmt => LaneOutcome::Clean {
+                    evidence: titania_core::LaneEvidence::new(
+                        titania_core::CommandEvidence::new(
+                            "cargo".to_owned(),
+                            Box::new(["cargo".to_owned(), "fmt".to_owned(), "--check".to_owned()]),
+                        )?,
+                        "rustfmt 1.84.0".to_owned(),
+                        ProcessTermination::Exited { code: 0 },
+                        digest(b"result"),
+                    )?,
+                },
+                _ => LaneOutcome::Skipped { reason: SkipReason::NotApplicable },
+            };
+            Ok(titania_core::PerLaneEntry::new(lane, outcome))
+        })
+        .collect::<Result<Box<[_]>, Box<dyn std::error::Error>>>()?;
 
     let report = Report::pass(receipt, per_lane)?;
     let json = serde_json::to_string(&report)?;
@@ -430,7 +481,16 @@ fn report_reject_constructs_and_round_trips() -> std::result::Result<(), Box<dyn
 
     let code_findings: Box<[Finding]> = Box::new([finding]);
     let gate_failures: Box<[titania_core::LaneFailure]> = Box::new([]);
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = GateScope::Edit
+        .lanes()
+        .iter()
+        .map(|&lane| {
+            titania_core::PerLaneEntry::new(
+                lane,
+                LaneOutcome::Skipped { reason: SkipReason::NotApplicable },
+            )
+        })
+        .collect();
 
     let report = Report::reject(code_findings, gate_failures, per_lane)?;
     assert!(report.is_reject());
@@ -440,6 +500,71 @@ fn report_reject_constructs_and_round_trips() -> std::result::Result<(), Box<dyn
     let parsed: Report = serde_json::from_str(&json)?;
     assert_eq!(report, parsed);
     Ok(())
+}
+
+/// Per v1 §10, a Reject's `per_lane` may be empty when the reject is
+/// CodeOnly or GateOnly. The constructor and wire deserializer must
+/// accept this shape and round-trip it losslessly.
+#[test]
+fn report_reject_code_only_with_empty_per_lane_round_trips()
+-> std::result::Result<(), Box<dyn std::error::Error>> {
+    let rule = RuleId::new("FUNC_LOOPS_FOR").unwrap();
+    let file = WorkspacePath::new("src/parser.rs").unwrap();
+    let location = Location::span(file, 42, 5, 42, 30).unwrap();
+    let repair = RepairHint::use_iterator_pipeline("items.iter().map(|item| ...)".to_owned());
+    let finding = Finding::reject(
+        Lane::AstGrep,
+        rule,
+        location,
+        "Imperative for loop in production source".to_owned(),
+        repair,
+    );
+
+    let code_findings: Box<[Finding]> = Box::new([finding]);
+    let gate_failures: Box<[titania_core::LaneFailure]> = Box::new([]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([]);
+
+    let report = Report::reject(code_findings, gate_failures, per_lane)?;
+    assert!(report.is_reject());
+    assert_eq!(report.reject_kind(), Some(titania_core::RejectKind::CodeOnly));
+    assert!(report.per_lane().unwrap().is_empty());
+
+    let json = serde_json::to_string(&report)?;
+    let parsed: Report = serde_json::from_str(&json)?;
+    assert_eq!(report, parsed);
+    Ok(())
+}
+
+#[test]
+fn report_reject_gate_only_with_empty_per_lane_round_trips()
+-> std::result::Result<(), Box<dyn std::error::Error>> {
+    let failure = titania_core::LaneFailure::Infra {
+        tool: "cargo-fmt".to_owned(),
+        reason: "binary not found".to_owned(),
+    };
+
+    let code_findings: Box<[Finding]> = Box::new([]);
+    let gate_failures: Box<[titania_core::LaneFailure]> = Box::new([failure]);
+    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([]);
+
+    let report = Report::reject(code_findings, gate_failures, per_lane)?;
+    assert!(report.is_reject());
+    assert_eq!(report.reject_kind(), Some(titania_core::RejectKind::GateOnly));
+    assert!(report.per_lane().unwrap().is_empty());
+
+    let json = serde_json::to_string(&report)?;
+    let parsed: Report = serde_json::from_str(&json)?;
+    assert_eq!(report, parsed);
+    Ok(())
+}
+
+/// The existing empty-reject invariant must remain in force: a Reject
+/// with both `code_findings` and `gate_failures` empty is still a bug
+/// and must be rejected by the constructor, regardless of `per_lane`.
+#[test]
+fn report_reject_still_rejects_empty_collections_with_empty_per_lane() {
+    let result = Report::reject(Box::new([]), Box::new([]), Box::new([]));
+    assert!(matches!(result, Err(titania_core::ReportError::EmptyReject)));
 }
 
 #[test]
@@ -569,8 +694,7 @@ fn repair_hint_all_variants() {
         "src/lib.rs".to_owned(),
         TextRange::new(10, 20).unwrap(),
         "replacement".to_owned(),
-    )
-    .unwrap();
+    );
     let json = serde_json::to_string(&patch).unwrap();
     let parsed: RepairHint = serde_json::from_str(&json).unwrap();
     assert_eq!(patch, parsed);

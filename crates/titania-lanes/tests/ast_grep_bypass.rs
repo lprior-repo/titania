@@ -22,7 +22,7 @@ const BYPASS_YAML: &str = include_str!("../rules/bypass.yml");
 // Required rule IDs and their expected repair hints.
 // ---------------------------------------------------------------------------
 
-/// The six rule IDs that MUST appear in the bypass catalog.
+/// The rule IDs that MUST appear in the bypass catalog.
 const REQUIRED_RULE_IDS: &[&str] = &[
     "BYPASS_ALLOW_ATTR",
     "BYPASS_EXPECT_ATTR",
@@ -30,6 +30,7 @@ const REQUIRED_RULE_IDS: &[&str] = &[
     "BYPASS_CRATE_ALLOW",
     "BYPASS_CRATE_EXPECT",
     "BYPASS_INLINE_SUPPRESSION",
+    "BYPASS_GENERATED_INCLUDE",
 ];
 
 /// Expected repair hints that MUST appear in at least one rule's metadata.

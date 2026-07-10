@@ -34,7 +34,7 @@ const fn report_code(status: DoctorStatus) -> u8 {
 /// Render a doctor report as the human-readable table.
 #[must_use]
 pub fn render_human(report: &DoctorReport) -> String {
-    let rows = report.tools.iter().map(to_human_row).collect::<String>();
+    let rows = report.tools.iter().map(|tool| to_human_row(report.scope, tool)).collect::<String>();
     format!(
         "titania-check doctor — scope: {scope}\n\n{header}{rows}\nStatus: {status}\n",
         scope = scope_name(report.scope),
@@ -47,8 +47,8 @@ fn format_headers() -> String {
     format!("{:<20} {:<10} {:<10} {:<22} {}\n", "Tool", "Required", "Installed", "Version", "Path")
 }
 
-fn to_human_row(tool: &ToolRow) -> String {
-    let required = required_label(tool);
+fn to_human_row(scope: GateScope, tool: &ToolRow) -> String {
+    let required = required_label(scope, tool);
     let installed = installed_label(tool);
     let version = tool.version.as_deref().map_or("—", |version| version);
     let path = tool
@@ -56,15 +56,50 @@ fn to_human_row(tool: &ToolRow) -> String {
         .as_ref()
         .map_or_else(|| "—".to_owned(), |path| path.to_string_lossy().into_owned());
 
-    format!("{:<20} {:<10} {:<10} {:<22} {path}\n", tool.name, required, installed, version)
+    format!(
+        "{:<20} {:<10} {:<10} {:<22} {path}\n",
+        human_label(tool.name),
+        required,
+        installed,
+        version
+    )
 }
 
-const fn required_label(tool: &ToolRow) -> &'static str {
+fn required_label(scope: GateScope, tool: &ToolRow) -> &'static str {
+    if tool.name == "ast-grep" {
+        return "embedded";
+    }
+    if tool.name == "sccache" {
+        return "optional";
+    }
+    if tool.name == "cargo-deny" && matches!(scope, GateScope::Edit) {
+        return "no (edit)";
+    }
     if tool.required { "yes" } else { "no" }
 }
 
-const fn installed_label(tool: &ToolRow) -> &'static str {
-    if tool.installed { "yes" } else { "no" }
+fn installed_label(tool: &ToolRow) -> &'static str {
+    if tool.name == "ast-grep" {
+        "—"
+    } else if tool.installed {
+        "yes"
+    } else {
+        "no"
+    }
+}
+
+/// Map the internal tool name to the v1-spec human display label.
+///
+/// `clippy-driver` is the on-disk binary name but the v1 spec shows `clippy`
+/// in the `Tool` column; the same applies to `cargo-dylint` → `dylint`. JSON
+/// output keeps the internal name unchanged.
+fn human_label(name: &'static str) -> &'static str {
+    match name {
+        "clippy-driver" => "clippy",
+        "cargo-dylint" => "dylint",
+        "libtitania_dylint" => "dylint-lib",
+        _ => name,
+    }
 }
 
 /// Render a doctor report as machine-readable JSON.

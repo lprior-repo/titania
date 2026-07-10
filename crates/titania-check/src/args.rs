@@ -249,12 +249,12 @@ struct AggregateState {
 
 impl Default for AggregateState {
     fn default() -> Self {
-        Self { scope: None, emit: EmitFormat::Human, out: None }
+        Self { scope: None, emit: EmitFormat::Json, out: None }
     }
 }
 impl Default for CheckOptions {
     fn default() -> Self {
-        Self { scope: GateScope::Edit, emit: EmitFormat::Human, out: None }
+        Self { scope: GateScope::Edit, emit: EmitFormat::Json, out: None }
     }
 }
 
@@ -296,7 +296,7 @@ USAGE:
 
 OPTIONS:
     --scope <edit|prepush|release>          Gate scope (default: edit).
-    --emit <human|json>                     Output format (default: human).
+    --emit <json>                           Check/aggregate output (default: json); doctor accepts json|human (default: human).
     --out <path>                            Write report to file instead of stdout.
     --version, -V                           Print version and git SHA, then exit 0.
 

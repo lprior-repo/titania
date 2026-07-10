@@ -1,7 +1,7 @@
 //! Typed errors for the domain primitives. One error enum per constructor,
 //! using `thiserror` so the messages are stable and machine-consumable.
 
-use crate::Lane;
+use crate::{GateScope, Lane};
 use std::io;
 
 use thiserror::Error;
@@ -55,6 +55,15 @@ pub enum WorkspacePathError {
     /// Workspace-relative path contained an ASCII control byte.
     #[error("workspace path must not contain control characters; bad byte {0}")]
     ControlByte(u8),
+    /// Workspace-relative path used a Windows drive-absolute prefix (e.g.
+    /// `C:`, `c:`). The `String` carries the original drive prefix as
+    /// supplied, preserving upper- or lowercase.
+    #[error("workspace path must not use a Windows drive prefix ({0})")]
+    DriveAbsolute(String),
+    /// Workspace-relative path used a UNC prefix (`\\server\share\...` or
+    /// its forward-slash form `//server/share/...`).
+    #[error("workspace path must not use a UNC path")]
+    UncForm,
 }
 
 /// Errors produced by [`crate::TextRange::new`].
@@ -70,8 +79,8 @@ pub enum TextRangeError {
     },
 }
 
-/// Errors produced by [`crate::TargetProject::try_from_path`] and
-/// [`crate::discover_target`].
+/// Errors produced while validating a target project path or discovering its
+/// Cargo manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TargetProjectError {
     /// Target project path was empty.
@@ -194,23 +203,12 @@ pub enum LocationError {
     },
 }
 
-/// Errors produced by [`crate::RepairHint::patch`].
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum RepairHintError {
-    /// Patch replacement range was empty.
-    #[error("patch range must be non-empty (width > 0)")]
-    EmptyRange,
-}
-
 /// Errors produced by [`crate::Finding`] construction.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum FindingError {
     /// Finding location failed validation.
     #[error(transparent)]
     Location(#[from] LocationError),
-    /// Finding repair hint failed validation.
-    #[error(transparent)]
-    RepairHint(#[from] RepairHintError),
 }
 
 /// Errors produced by [`crate::ProcessTermination::signaled`].
@@ -268,6 +266,41 @@ pub enum ReportError {
         "pass requires all lane outcomes to be Clean, Skipped, or informational-only Findings; lane {0} has {1}"
     )]
     NonPassLaneOutcome(Lane, String),
+    /// `per_lane` lane identities did not match the canonical lane sequence
+    /// required by the receipt scope (Pass) or the v1 lane DAG (Reject).
+    #[error("per_lane does not match canonical scope ordering for {scope:?}: {error}")]
+    PerLaneScopeMismatch {
+        /// Scope the constructor was validating against.
+        scope: GateScope,
+        /// Specific scope-mismatch failure.
+        error: PerLaneScopeError,
+    },
+}
+
+/// Scope-mismatch sub-error for [`ReportError::PerLaneScopeMismatch`].
+///
+/// The variants cover every shape of per-lane sequence violation:
+/// duplicates, missing lanes (in scope but not `per_lane`), extra lanes
+/// (in `per_lane` but not scope), and out-of-order lane appearances.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum PerLaneScopeError {
+    /// A lane appeared more than once in `per_lane`.
+    #[error("per_lane contains duplicate lane identity {0}")]
+    Duplicate(Lane),
+    /// A lane expected by `scope` was missing from `per_lane`.
+    #[error("per_lane is missing lane identity {0} required by scope")]
+    Missing(Lane),
+    /// A lane present in `per_lane` was not part of the canonical scope.
+    #[error("per_lane contains lane identity {0} not in canonical scope")]
+    Extra(Lane),
+    /// A lane appeared at a position inconsistent with canonical ordering.
+    #[error("per_lane lane identity {got} appears out of order after {previous}")]
+    OutOfOrder {
+        /// Lane that previously appeared in the canonical sequence.
+        previous: Lane,
+        /// Lane that broke the canonical ordering.
+        got: Lane,
+    },
 }
 /// Aggregate for callers that want a single error type across primitives.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -299,9 +332,6 @@ pub enum CoreError {
     /// Finding location validation failed.
     #[error(transparent)]
     Location(#[from] LocationError),
-    /// Repair hint validation failed.
-    #[error(transparent)]
-    RepairHint(#[from] RepairHintError),
     /// Finding construction failed.
     #[error(transparent)]
     Finding(#[from] FindingError),

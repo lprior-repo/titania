@@ -10,6 +10,7 @@ use super::{
     PerLaneEntry, QualityReceipt, RejectKind, Report, ReportInner, ReportKind,
     validators::{
         check_per_lane_not_empty, check_reject_not_empty, reject_kind_for, validate_per_lane_pass,
+        validate_per_lane_pass_scope, validate_per_lane_reject,
     },
 };
 use crate::{
@@ -17,20 +18,31 @@ use crate::{
     error::ReportError,
     failure::LaneFailure,
     finding::Finding,
+    gate_scope::GateScope,
 };
 
 impl Report {
-    /// Create a [`Report`] in the reject state, validating the invariant.
+    /// Create a [`Report`] in the reject state, validating the invariants.
     ///
     /// # Errors
     /// - [`ReportError::EmptyReject`] if both `code_findings` and
     ///   `gate_failures` are empty.
+    /// - [`ReportError::PerLaneScopeMismatch`] if `per_lane`'s lane
+    ///   identities contain a duplicate, appear out of v1 DAG order, or
+    ///   include a lane not in the v1 lane DAG.
+    ///
+    /// # Notes
+    /// Per v1 §10, a `Reject` is only required to have at least one of
+    /// `code_findings` or `gate_failures` non-empty. `per_lane` may be
+    /// empty for CodeOnly/GateOnly rejects; the v1 constructor permits
+    /// it. Pass reports still require non-empty `per_lane`.
     pub fn reject(
         code_findings: Box<[Finding]>,
         gate_failures: Box<[LaneFailure]>,
         per_lane: Box<[PerLaneEntry]>,
     ) -> Result<Self, ReportError> {
         check_reject_not_empty(&code_findings, &gate_failures)?;
+        validate_per_lane_reject(&per_lane)?;
         Ok(Self(ReportInner::Reject { code_findings, gate_failures, per_lane }))
     }
 
@@ -41,11 +53,16 @@ impl Report {
     /// - [`ReportError::NonPassLaneOutcome`] if any lane outcome is not
     ///   pass-shaped (i.e., not `Clean`, `Skipped`, or informational-only
     ///   `Findings`).
+    /// - [`ReportError::PerLaneScopeMismatch`] if `per_lane`'s lane
+    ///   identities are not exactly the ordered lane sequence required by
+    ///   `receipt.scope()` (missing, extra, duplicate, or out of order).
     pub fn pass(
         receipt: QualityReceipt,
         per_lane: Box<[PerLaneEntry]>,
     ) -> Result<Self, ReportError> {
+        let scope: GateScope = *receipt.scope();
         check_per_lane_not_empty(&per_lane)?;
+        validate_per_lane_pass_scope(scope, &per_lane)?;
         validate_per_lane_pass(&per_lane)?;
         Ok(Self(ReportInner::Pass { receipt, per_lane }))
     }

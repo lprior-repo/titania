@@ -53,7 +53,7 @@ pub fn scan_policy_inputs_with_exceptions<'a>(
     normalized_manifests.iter().try_for_each(|manifest_path| {
         cargo_lints::scan_cargo_lints_weakening(root, manifest_path, &mut raw_report).map(|_| ())
     })?;
-    env_vars::scan_env_vars(&mut raw_report)?;
+    env_vars::scan_env_vars_with_target(&mut raw_report, &env_vars::real_env, root)?;
     report.extend_finding(filtered_findings(&raw_report, active_exceptions));
     Ok(())
 }

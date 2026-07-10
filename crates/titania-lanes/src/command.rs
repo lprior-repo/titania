@@ -6,6 +6,7 @@
 //! explicit and typed.
 
 mod budget;
+mod env_filter;
 mod error;
 mod execution;
 mod output;

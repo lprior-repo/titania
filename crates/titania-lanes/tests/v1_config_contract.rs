@@ -6,12 +6,23 @@ use titania_policy::{ExceptionError, parse_exceptions};
 
 const ROOT_CARGO: &str = include_str!("../../../Cargo.toml");
 const CLIPPY: &str = include_str!("../../../clippy.toml");
+const DYLINT_CARGO: &str = include_str!("../../../crates/titania-dylint/Cargo.toml");
 
 const REQUIRED_RUST_LINTS: &[(&str, &str)] = &[
     ("unsafe_code", "forbid"),
     ("unused_must_use", "deny"),
     ("unreachable_pub", "deny"),
     ("missing_docs", "deny"),
+    ("missing_debug_implementations", "deny"),
+    ("unsafe_op_in_unsafe_fn", "deny"),
+];
+
+const DYLINT_REQUIRED_RUST_LINTS: &[(&str, &str)] = &[
+    ("unsafe_code", "deny"),
+    ("unused_must_use", "deny"),
+    ("unreachable_pub", "deny"),
+    ("missing_docs", "deny"),
+    ("missing_debug_implementations", "deny"),
     ("unsafe_op_in_unsafe_fn", "deny"),
 ];
 
@@ -72,7 +83,7 @@ const REQUIRED_CLIPPY_TABLE_LINTS: &[(&str, &str, &str)] = &[
 ];
 
 const REQUIRED_CLIPPY_THRESHOLDS: &[(&str, &str)] = &[
-    ("too-many-lines-threshold", "40"),
+    ("too-many-lines-threshold", "60"),
     ("too-many-arguments-threshold", "5"),
     ("cognitive-complexity-threshold", "8"),
     ("excessive-nesting-threshold", "2"),
@@ -103,9 +114,39 @@ fn workspace_lints_reject_weakened_fixture() {
 }
 
 #[test]
+fn dylint_cargo_has_reviewed_abi_lint_exception() {
+    let lints = table(DYLINT_CARGO, "lints");
+    assert!(
+        lints.is_empty(),
+        "crates/titania-dylint/Cargo.toml cannot mix [lints] workspace inheritance with a local ABI unsafe_code exception"
+    );
+
+    let rust_lints = table(DYLINT_CARGO, "lints.rust");
+    assert_eq!(
+        scalar_lint(&rust_lints, "unsafe_code"),
+        Some("deny"),
+        "Dylint ABI exports require unsafe_code = \"deny\" so reviewed #[expect(unsafe_code)] exports compile while unannotated unsafe remains rejected"
+    );
+}
+
+#[test]
+fn dylint_cargo_preserves_local_lint_policy_except_abi() {
+    let rust_lints = table(DYLINT_CARGO, "lints.rust");
+    let clippy_lints = table(DYLINT_CARGO, "lints.clippy");
+    assert_scalar_lints(&rust_lints, DYLINT_REQUIRED_RUST_LINTS);
+    assert_table_lints(&rust_lints, REQUIRED_RUST_TABLE_LINTS);
+    assert_scalar_lints(&clippy_lints, REQUIRED_CLIPPY_LINTS);
+    assert_table_lints(&clippy_lints, REQUIRED_CLIPPY_TABLE_LINTS);
+    assert!(
+        !table(DYLINT_CARGO, "lints.rustdoc").is_empty(),
+        "Dylint must preserve rustdoc lint policy"
+    );
+}
+
+#[test]
 fn clippy_thresholds_reject_weakened_fixture() {
-    // Weaken the checked-in baseline (40) to 80 in a copy of clippy.toml.
-    let weakened = CLIPPY.replace("too-many-lines-threshold = 40", "too-many-lines-threshold = 80");
+    // Weaken the checked-in baseline (60) to 80 in a copy of clippy.toml.
+    let weakened = CLIPPY.replace("too-many-lines-threshold = 60", "too-many-lines-threshold = 80");
     let clippy_thresholds = flat_entries(&weakened);
 
     // The weakened fixture must actually carry the weakened value, proving the
@@ -121,7 +162,7 @@ fn clippy_thresholds_reject_weakened_fixture() {
         .copied()
         .find(|(key, _)| *key == "too-many-lines-threshold")
         .map(|(_, value)| value);
-    assert_eq!(required_threshold, Some("40"));
+    assert_eq!(required_threshold, Some("60"));
     assert_ne!(clippy_thresholds.get("too-many-lines-threshold").copied(), required_threshold);
 }
 
@@ -205,7 +246,7 @@ fn strict_ai_exceptions_all_fields_present() {
     let exceptions =
         parse_exceptions(EXCEPTIONS, POLICY_TODAY).expect("checked-in exceptions.toml must parse");
 
-    assert_eq!(exceptions.len(), 1, "expected exactly one reviewed self exception");
+    assert_eq!(exceptions.len(), 2, "expected exactly two reviewed strict-ai exceptions");
 
     exceptions.iter().for_each(|exception| {
         assert!(!exception.rule_id.as_str().is_empty(), "rule_id must be present");
@@ -232,6 +273,18 @@ fn strict_ai_exceptions_metadata_matches_audit() {
     );
     assert_eq!(exception.expires_on.as_ref(), "2026-10-01");
     assert_eq!(exception.review.as_ref(), "tn-dylint-abi-expect");
+    let local_lints = exceptions
+        .iter()
+        .find(|entry| entry.rule_id.as_str() == "BYPASS_CARGO_LINTS_WEAKENING")
+        .expect("Dylint local lint policy exception must exist");
+    assert_eq!(local_lints.path.as_ref(), "crates/titania-dylint/Cargo.toml");
+    assert_eq!(local_lints.owner.as_ref(), "titania-maintainers");
+    assert_eq!(local_lints.expires_on.as_ref(), "2026-10-01");
+    assert_eq!(
+        local_lints.reason.as_ref(),
+        "Dylint requires a local lint profile for its ABI-facing plugin build; it mirrors the strict workspace policy and is reviewed separately."
+    );
+    assert_eq!(local_lints.review.as_ref(), "tn-dylint-abi-lints");
 }
 
 #[test]

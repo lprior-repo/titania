@@ -5,7 +5,7 @@ FUNC_NESTING_DEPTH	ast-grep	Reject	FlattenNesting	nesting depth > 2	Rejects deep
 FUNC_RECURSION_DIRECT	ast-grep	Reject	RequiresHumanReview	function calls itself	Rejects direct recursion in production source.
 FUNC_PRINT_STDOUT	ast-grep	Reject	RequiresHumanReview	print! or println!	Rejects stdout printing in production source.
 FUNC_PRINT_STDERR	ast-grep	Reject	RequiresHumanReview	eprint! or eprintln!	Rejects stderr printing in production source.
-FUNC_WILDCARD_IMPORT	ast-grep	Informational	RequiresHumanReview	use $PATH::*	Reports wildcard imports for human review.
+FUNC_WILDCARD_IMPORT	ast-grep	Informational	—	use $PATH::*	Reports wildcard imports for human review.
 FUNC_UNWRAP_USED	dylint	Reject	RequiresHumanReview	unwrap()	Rejects panic-prone unwrap calls in production source.
 FUNC_EXPECT_USED	dylint	Reject	RequiresHumanReview	expect(...)	Rejects panic-prone expect calls in production source.
 FUNC_UNWRAP_OR	ast-grep+dylint	Reject	RequiresHumanReview	unwrap_or / unwrap_or_else / unwrap_or_default	Rejects hidden default recovery through unwrap_or variants.
@@ -16,6 +16,7 @@ BYPASS_CFG_ATTR_ALLOW	ast-grep	Reject	RequiresHumanReview	cfg_attr(..., allow(..
 BYPASS_CRATE_ALLOW	ast-grep	Reject	RemoveAllowAttribute	#![allow(...)]	Rejects crate-level allow suppressions.
 BYPASS_CRATE_EXPECT	ast-grep	Reject	RemoveAllowAttribute	#![expect(...)]	Rejects crate-level expect suppressions.
 BYPASS_INLINE_SUPPRESSION	ast-grep	Reject	RequiresHumanReview	ast-grep-ignore or sg-ignore	Rejects inline structural-scan suppression comments.
+BYPASS_GENERATED_INCLUDE	ast-grep	Reject	RequiresHumanReview	include!(concat!(env!("OUT_DIR"), "..."))	Rejects generated code includes through OUT_DIR.
 ARCHITECTURE_IMPORT_CORE_INFRA	ast-grep	Reject	ReplaceDependency	core/domain imports infrastructure	Rejects infrastructure imports from core/domain code.
 ARCHITECTURE_IMPORT_CORE_FS	ast-grep	Reject	RequiresHumanReview	core/domain imports std::fs/env/net	Rejects direct filesystem, environment, or network imports from core/domain code.
 ARCHITECTURE_IMPORT_CORE_TIME	ast-grep	Reject	RequiresHumanReview	core/domain imports SystemTime or Instant	Rejects direct wall-clock reads from core/domain code.
@@ -30,11 +31,15 @@ BYPASS_CARGO_LINTS_WEAKENING	policy-scan	Reject	RequiresHumanReview	Cargo.toml [
 BYPASS_CARGO_CONFIG_FLAGS	policy-scan	Reject	RequiresHumanReview	.cargo/config rustflags	Rejects unexpected Cargo rustflags.
 BYPASS_CARGO_CONFIG_WRAPPER	policy-scan	Reject	RequiresHumanReview	.cargo/config rustc-wrapper	Rejects unexpected rustc wrapper configuration.
 BYPASS_CARGO_CONFIG_PARENT	policy-scan	Reject	RequiresHumanReview	parent .cargo/config	Rejects inherited parent Cargo configuration.
+BYPASS_CARGO_CONFIG_PARSE_ERROR	policy-scan	Reject	RequiresHumanReview	.cargo/config parse error	Reports malformed Cargo configuration files.
+BYPASS_CARGO_CONFIG_READ_ERROR	policy-scan	Reject	RequiresHumanReview	.cargo/config read error	Reports unreadable Cargo configuration files.
 BYPASS_ENV_RUSTFLAGS	policy-scan	Reject	RequiresHumanReview	RUSTFLAGS	Rejects runtime RUSTFLAGS bypasses.
 BYPASS_ENV_CARGO_ENCODED_RUSTFLAGS	policy-scan	Reject	RequiresHumanReview	CARGO_ENCODED_RUSTFLAGS	Rejects runtime encoded rustflags bypasses.
 BYPASS_ENV_RUSTC_WRAPPER	policy-scan	Reject	RequiresHumanReview	RUSTC_WRAPPER	Rejects runtime rustc wrapper bypasses.
 BYPASS_ENV_RUSTC_WORKSPACE_WRAPPER	policy-scan	Reject	RequiresHumanReview	RUSTC_WORKSPACE_WRAPPER	Rejects runtime workspace wrapper bypasses.
 BYPASS_ENV_RUSTC_BOOTSTRAP	policy-scan	Reject	RequiresHumanReview	RUSTC_BOOTSTRAP	Rejects RUSTC_BOOTSTRAP bypasses.
+BYPASS_ENV_CARGO_HOME	policy-scan	Reject	RequiresHumanReview	CARGO_HOME	Rejects runtime CARGO_HOME bypasses.
+BYPASS_ENV_RUSTUP_HOME	policy-scan	Reject	RequiresHumanReview	RUSTUP_HOME	Rejects runtime RUSTUP_HOME bypasses.
 POLICY_EXCEPTION_READ_ERROR	policy-scan	Reject	RequiresHumanReview	exceptions.toml read error	Reports unreadable policy exception ledgers.
 POLICY_EXCEPTION_EXPIRED	policy-scan	Reject	RequiresHumanReview	expired exception	Rejects expired policy exceptions.
 POLICY_EXCEPTION_INVALID_FIELD	policy-scan	Reject	RequiresHumanReview	invalid exception field	Rejects malformed policy exception fields.

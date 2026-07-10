@@ -8,8 +8,9 @@
 use serde_json::Value;
 use std::{
     env,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::LazyLock,
 };
 
 fn binary() -> std::path::PathBuf {
@@ -21,16 +22,28 @@ fn binary() -> std::path::PathBuf {
 fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     let mut cmd = Command::new(binary());
     let _ = cmd.current_dir(cwd);
-    let normalized_args = aggregate_args(args);
-    let _ = cmd.args(&normalized_args);
+    let _ = cmd.args(args);
     let _ = cmd.stdout(Stdio::piped());
     let _ = cmd.stderr(Stdio::piped());
 
     // Stub Moon via TITANIA_MOON_BIN so `Command::Check` does not invoke the
     // real moon binary (which would error on tempdirs without `.moon/`).
-    // `/bin/true` exits 0 with any args. The moon-dispatch integration test
-    // (`check_drives_moon_stub` below) sets its own recording stub.
-    let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
+    // The stub script (written by `write_moon_stub`) records its argv and,
+    // for each `run <task-id>` invocation, runs
+    // `$TITANIA_CHECK_BIN run-lane <lane>` in the inherited cwd. That writes
+    // fresh lane artifacts that `check` then aggregates — proving the
+    // check→moon→run-lane→aggregate path end to end.
+    // The standalone spawn-ordering test (`check_drives_moon_stub`) sets
+    // TITANIA_MOON_BIN to its own recording-only stub. Unix-only because the
+    // helper writes a POSIX shell script and chmod 0o755s it.
+    #[cfg(unix)]
+    let _ = cmd.env("TITANIA_MOON_BIN", write_moon_stub(cwd, &None));
+    // The Moon stub invokes `$TITANIA_CHECK_BIN run-lane <lane>` so we
+    // explicitly pass the test binary path (PATH lookup is unreliable
+    // inside the cargo-test deps directory).
+    let _ = cmd.env("TITANIA_CHECK_BIN", binary());
+    #[cfg(unix)]
+    configure_killer_environment(&mut cmd, cwd);
 
     // Pass CARGO_TARGET_DIR through as-is so that library_is_available
     // can resolve it relative to the workspace root when walking up
@@ -48,22 +61,110 @@ fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     (code, stdout, stderr)
 }
 
-fn aggregate_args<'a>(args: &'a [&'a str]) -> Vec<&'a str> {
-    if args.first().is_some_and(|arg| *arg == "--scope") {
-        return std::iter::once("aggregate").chain(args.iter().copied()).collect();
-    }
-    args.to_vec()
-}
-
 fn external_tag(value: &Value) -> Option<&str> {
     value.as_object().and_then(|object| object.keys().next().map(String::as_str))
+}
+
+#[cfg(unix)]
+fn configure_killer_environment(command: &mut Command, cwd: &Path) {
+    let hermetic_root = cwd.join(".titania").join("hermetic");
+    let cargo_home = controlled_home_path(
+        &hermetic_root,
+        "cargo-home",
+        env::var_os("CARGO_HOME")
+            .map(PathBuf::from)
+            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo"))),
+    );
+    let rustup_home = controlled_home_path(
+        &hermetic_root,
+        "rustup-home",
+        env::var_os("RUSTUP_HOME")
+            .map(PathBuf::from)
+            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".rustup"))),
+    );
+    let _ = command.env("CARGO_HOME", cargo_home);
+    let _ = command.env("RUSTUP_HOME", rustup_home);
+    match dylint_library() {
+        Some(path) => {
+            let _ = command.env("TITANIA_DYLINT_LIB", path);
+        }
+        None => {
+            let _ = command.env_remove("TITANIA_DYLINT_LIB");
+        }
+    }
+}
+
+#[cfg(unix)]
+fn controlled_home_path(root: &Path, suffix: &str, source: Option<PathBuf>) -> PathBuf {
+    let controlled = root.join(suffix);
+    if !controlled.exists() {
+        if let Some(source) = source.filter(|path| path.is_dir()) {
+            let _symlink_result = std::os::unix::fs::symlink(source, &controlled);
+        }
+        if !controlled.exists() {
+            std::fs::create_dir_all(&controlled).expect("controlled home must be creatable");
+        }
+    }
+    controlled
+}
+
+#[cfg(unix)]
+fn dylint_library() -> Option<PathBuf> {
+    static LIBRARY: LazyLock<Option<PathBuf>> = LazyLock::new(resolve_dylint_library);
+    LIBRARY.clone()
+}
+
+#[cfg(unix)]
+fn resolve_dylint_library() -> Option<PathBuf> {
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2)?.to_path_buf();
+    let target_dir = resolve_target_dir(&workspace);
+    let library_root = target_dir.join("dylint").join("libraries");
+    find_dylint_library(&library_root).or_else(|| {
+        let status = Command::new("cargo")
+            .current_dir(&workspace)
+            .args(["dylint", "list", "--all"])
+            .status()
+            .ok()?;
+        if !status.success() {
+            return None;
+        }
+        find_dylint_library(&library_root)
+    })
+}
+
+#[cfg(unix)]
+fn resolve_target_dir(workspace: &Path) -> PathBuf {
+    env::var_os("CARGO_TARGET_DIR").map_or_else(
+        || workspace.join("target"),
+        |value| {
+            let target = PathBuf::from(value);
+            if target.is_absolute() { target } else { workspace.join(target) }
+        },
+    )
+}
+
+#[cfg(unix)]
+fn find_dylint_library(root: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(root).ok()?.filter_map(Result::ok).find_map(|entry| {
+        let path = entry.path();
+        if path.is_dir() {
+            return find_dylint_library(&path);
+        }
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                name.starts_with(&format!("{}titania_dylint@", std::env::consts::DLL_PREFIX))
+                    && name.ends_with(std::env::consts::DLL_SUFFIX)
+            })
+            .then_some(path)
+    })
 }
 
 // ---------------------------------------------------------------------------
 // E2E: Bad Fixture — Report::Reject with code findings
 // ---------------------------------------------------------------------------
 
-/// AC-1: A bad fixture (for-loop + `.unwrap()`) is rejected with exactly two code findings.
+/// AC-1: A bad fixture (for-loop + `.unwrap()`) is rejected with the required producer findings.
 #[test]
 fn bad_fixture_rejects_with_code_findings() {
     // Given: the bad fixture workspace
@@ -80,10 +181,15 @@ fn bad_fixture_rejects_with_code_findings() {
 
     assert_eq!(report["variant"], "Reject", "report variant must be Reject");
 
-    // Exactly 2 code findings
+    // Required findings from the producer lanes. Dylint independently reports
+    // the same policy surface, so this assertion deliberately does not discard
+    // those per-lane diagnostics from the aggregate.
     let findings = report["code_findings"].as_array().expect("code_findings is array");
-    assert_eq!(findings.len(), 2, "expected 2 code_findings, got {}: {findings:?}", findings.len());
-
+    assert!(
+        findings.len() >= 2,
+        "expected required code findings, got {}: {findings:?}",
+        findings.len()
+    );
     // Exactly 0 gate failures
     let gates = report["gate_failures"].as_array().expect("gate_failures is array");
     assert_eq!(
@@ -121,13 +227,11 @@ fn bad_fixture_has_func_loops_for_finding() {
     let (code, stdout, _stderr) = run_in(bad.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 1, "must reject");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
-
-    // Then: find the FUNC_LOOPS_FOR finding
     let findings = report["code_findings"].as_array().expect("code_findings");
     let for_finding = findings
         .iter()
-        .find(|f| f["rule_id"] == "FUNC_LOOPS_FOR")
-        .expect("must find FUNC_LOOPS_FOR finding");
+        .find(|f| f["rule_id"] == "FUNC_LOOPS_FOR" && f["lane"] == "AstGrep")
+        .expect("must find FUNC_LOOPS_FOR finding from AstGrep");
 
     assert_eq!(
         for_finding["lane"].as_str(),
@@ -203,10 +307,10 @@ fn bad_fixture_findings_have_correct_repair_hints() {
         let hint = external_tag(&f["repair"]).unwrap_or("");
         match rule {
             "FUNC_LOOPS_FOR" => {
-                found_for_hint = hint == "UseIteratorPipeline";
+                found_for_hint |= hint == "UseIteratorPipeline";
             }
             "CLIPPY_UNWRAP_USED" => {
-                found_unwrap_hint = hint == "RequiresHumanReview";
+                found_unwrap_hint |= hint == "RequiresHumanReview";
             }
             _ => {}
         }
@@ -461,7 +565,7 @@ fn mixed_report_separates_code_findings_from_gate_failures() {
                 }
             }
         ],
-        "per_lane": []
+        "per_lane": [{"lane": "Fmt", "outcome": {"Skipped": "NotApplicable"}}]
     }"#;
 
     // When: deserialize and compute reject_kind
@@ -508,7 +612,7 @@ fn report_reject_gate_only() {
                 }
             }
         ],
-        "per_lane": []
+        "per_lane": [{"lane": "Fmt", "outcome": {"Skipped": "NotApplicable"}}]
     }"#;
 
     // When: deserialize and compute reject_kind
@@ -550,7 +654,7 @@ fn report_reject_mixed() {
                 }
             }
         ],
-        "per_lane": []
+        "per_lane": [{"lane": "Fmt", "outcome": {"Skipped": "NotApplicable"}}]
     }"#;
 
     // When: deserialize and compute reject_kind
@@ -644,12 +748,15 @@ mod fixtures {
 // ---------------------------------------------------------------------------
 // Integration: Command::Check drives Moon (spec §12, §13)
 // ---------------------------------------------------------------------------
-
 /// `Command::Check` must invoke Moon before aggregating. Proven by pointing
 /// `TITANIA_MOON_BIN` at a recording stub that writes a marker file with its
 /// argv when invoked: the marker must exist and contain `moon run` plus the
 /// scope's task list. This is the central fraud fix — `check` is no longer a
 /// synonym for `aggregate`; it actually drives Moon.
+// The shell-stub + `chmod 0o755` recording stub is Unix-specific; the helper
+// already gates its `chmod` block, but the test scenario itself remains
+// Unix-only.
+#[cfg(unix)]
 #[test]
 fn check_drives_moon_stub_and_aggregates_after() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -704,6 +811,8 @@ fn check_drives_moon_stub_and_aggregates_after() {
     assert_eq!(report["variant"], "Reject", "empty workspace aggregate must be Reject");
 }
 
+// Writes a POSIX shell stub (`/bin/sh`) and chmod 0o755s it. Unix-only.
+#[cfg(unix)]
 /// Write a tiny POSIX shell stub that captures its argv to `marker` on
 /// invocation, then exits 0. Used to prove the check→moon spawn path.
 fn write_recording_stub(dir: &Path, marker: &Path) -> String {
@@ -712,6 +821,79 @@ fn write_recording_stub(dir: &Path, marker: &Path) -> String {
     // its own line so the test can assert presence of individual task IDs.
     let script = format!("#!/bin/sh\nprintf '%s\\n' \"$@\" >> '{}'\nexit 0\n", marker.display(),);
     std::fs::write(&stub_path, script).expect("recording stub script must be written");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms =
+            std::fs::metadata(&stub_path).expect("stub metadata must be readable").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&stub_path, perms).expect("stub must be made executable");
+    }
+    stub_path.to_str().expect("stub path must be valid UTF-8").to_owned()
+}
+// Writes a POSIX shell stub that records argv (best-effort) and, on
+// `run <task-id>`, runs `$TITANIA_CHECK_BIN run-lane <lane>` so Check can
+// aggregate fresh artifacts. Unix-only.
+#[cfg(unix)]
+/// Write a Moon stub for the fixture-based tests: a POSIX shell script that
+/// records its argv (when `marker` is `Some`) and dispatches `run <task-id>`
+/// to `run-lane <lane>` via the explicit `TITANIA_CHECK_BIN` env var the test
+/// passes. The stub suppresses child stderr and ignores the spawned run-lane
+/// exit code (finding lanes legitimately return 1) so Moon sees every task as
+/// successful; the resulting fresh lane artifacts are then aggregated by
+/// `check` as usual.
+///
+/// The `task-id → lane` mapping mirrors the v1 edit-scope task list in
+/// `titania-check::moon::EDIT_TASKS`; other task ids are ignored so future
+/// scope additions do not break unrelated tests.
+fn write_moon_stub(dir: &Path, marker: &Option<&Path>) -> String {
+    let stub_path = dir.join("moon-fixture-stub.sh");
+    let marker_redir = match marker {
+        Some(path) => format!(">> '{}' 2>/dev/null || :", path.display()),
+        None => String::from(">> /dev/null 2>&1 || :"),
+    };
+    // The script is intentionally minimal: one argv-recording block and one
+    // `run <task-id>` dispatch. We avoid `set -u` so the script remains
+    // runnable when TITANIA_CHECK_BIN is unset (which the recording-only
+    // variant of the stub, used by `check_drives_moon_stub`, relies on).
+    //
+    // Indentation inside the heredoc-style literal uses literal tabs so the
+    // resulting shell script is readable without depending on Rust's
+    // `\x20` / `\t` escape handling.
+    let script = format!(
+        "#!/bin/sh\n\
+         \n\
+         # Record argv (best-effort).\n\
+         for arg in \"$@\"; do printf '%s\\n' \"$arg\" {marker_redir}; done\n\
+         printf '%s\\n' '---' {marker_redir}\n\
+         \n\
+         # Dispatch `run <task-id>` to a fresh run-lane invocation so Check's\n\
+         # subsequent aggregate reads fresh artifacts. Unknown task ids are\n\
+         # ignored to stay forward-compatible with future scope additions.\n\
+         # Lane stderr is suppressed and the lane exit code is intentionally\n\
+         # ignored (finding lanes legitimately return 1); the stub always\n\
+         # exits 0 so Moon treats every task as successful and Check can\n\
+         # aggregate the fresh artifacts written by run-lane.\n\
+         if [ \"$1\" = 'run' ] && [ -n \"$2\" ] && [ -n \"$TITANIA_CHECK_BIN\" ]; then\n\
+         \tcase \"$2\" in\n\
+         \t\t:titania-fmt)         lane=fmt ;;\n\
+         \t\t:titania-compile)     lane=compile ;;\n\
+         \t\t:titania-clippy)      lane=clippy ;;\n\
+         \t\t:titania-ast-grep)    lane=ast-grep ;;\n\
+         \t\t:titania-dylint)      lane=dylint ;;\n\
+         \t\t:titania-panic-scan)  lane=panic-scan ;;\n\
+         \t\t:titania-policy-scan) lane=policy-scan ;;\n\
+         \t\t*)                    lane= ;;\n\
+         \tesac\n\
+         \tif [ -n \"$lane\" ]; then\n\
+         \t\t\"$TITANIA_CHECK_BIN\" run-lane \"$lane\" >/dev/null 2>&1 || :\n\
+         \tfi\n\
+         fi\n\
+         \n\
+         exit 0\n",
+        marker_redir = marker_redir,
+    );
+    std::fs::write(&stub_path, script).expect("moon stub script must be written");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

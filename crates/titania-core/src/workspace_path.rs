@@ -9,6 +9,10 @@
 //! - No `\` (we use forward-slash paths only).
 //! - No NUL byte.
 //! - No control characters (0x00–0x1F except in the byte stream; tab 0x09 is rejected).
+//! - No Windows drive-absolute prefix (`<letter>:` as the first two bytes).
+//! - No UNC prefix. Backslash UNC (`\\server\share\...`) is rejected as
+//!   `ContainsBackslash`; forward-slash UNC (`//server/share/...`) is
+//!   rejected as `UncForm`.
 
 use core::fmt;
 
@@ -61,15 +65,22 @@ impl WorkspacePath {
 ///
 /// # Errors
 /// - [`WorkspacePathError::Empty`] if the path is empty.
+/// - [`WorkspacePathError::DriveAbsolute`] if the path starts with a Windows
+///   drive prefix (e.g. `C:` or `C:/src/lib.rs`).
+/// - [`WorkspacePathError::ContainsBackslash`] if the path uses `\` (this
+///   also rejects the backslash UNC form `\\server\share\...`).
+/// - [`WorkspacePathError::UncForm`] if the path starts with `//` (the
+///   forward-slash UNC form `//server/share/...`).
 /// - [`WorkspacePathError::LeadingSlash`] if the path is absolute.
-/// - [`WorkspacePathError::ContainsBackslash`] if the path uses `\`.
 /// - [`WorkspacePathError::ContainsNull`] if the path contains a NUL byte.
 /// - [`WorkspacePathError::ControlByte`] if the path contains an ASCII control byte.
 /// - [`WorkspacePathError::ContainsDotDot`] if the path contains a `..` segment.
 fn validate_workspace_path(s: &str) -> Result<(), WorkspacePathError> {
     check_non_empty(s)?;
-    check_relative(s)?;
+    check_no_drive_absolute(s)?;
     check_no_backslash(s)?;
+    check_no_unc(s)?;
+    check_relative(s)?;
     check_no_null(s)?;
     check_no_control_bytes(s)?;
     check_no_dotdot(s)?;
@@ -86,6 +97,23 @@ const fn check_non_empty(s: &str) -> Result<(), WorkspacePathError> {
 }
 
 /// # Errors
+/// [`WorkspacePathError::DriveAbsolute`] if the path starts with an ASCII
+/// letter followed by `:` (Windows drive-absolute prefix).
+fn check_no_drive_absolute(s: &str) -> Result<(), WorkspacePathError> {
+    let bytes = s.as_bytes();
+    let Some((first, rest)) = bytes.split_first() else {
+        return Ok(());
+    };
+    if !first.is_ascii_alphabetic() || rest.first() != Some(&b':') {
+        return Ok(());
+    }
+    // `<letter>:` are both single-byte ASCII, so the 2-char prefix is
+    // valid UTF-8 and `s.get(..2)` always returns `Some`.
+    let prefix = s.get(..2).map_or_else(|| format!("{first}:"), ToOwned::to_owned);
+    Err(WorkspacePathError::DriveAbsolute(prefix))
+}
+
+/// # Errors
 /// [`WorkspacePathError::LeadingSlash`] if the path is absolute.
 fn check_relative(s: &str) -> Result<(), WorkspacePathError> {
     if s.starts_with('/') {
@@ -99,6 +127,16 @@ fn check_relative(s: &str) -> Result<(), WorkspacePathError> {
 fn check_no_backslash(s: &str) -> Result<(), WorkspacePathError> {
     if s.as_bytes().contains(&b'\\') {
         return Err(WorkspacePathError::ContainsBackslash);
+    }
+    Ok(())
+}
+
+/// # Errors
+/// [`WorkspacePathError::UncForm`] if the path starts with `//` (the
+/// forward-slash rendering of a Windows UNC path).
+fn check_no_unc(s: &str) -> Result<(), WorkspacePathError> {
+    if s.starts_with("//") {
+        return Err(WorkspacePathError::UncForm);
     }
     Ok(())
 }

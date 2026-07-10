@@ -478,22 +478,44 @@ fn template_policy_rust_configs() -> Result<()> {
         "template deny.toml must not carry repo-specific advisory ignores"
     );
     assert!(
-        deny_text.contains("allow = [\"MIT\", \"Apache-2.0\"]"),
-        "template deny.toml must allow only the starter package licenses"
+        deny_text.contains(
+            "allow = [\"MIT\", \"Apache-2.0\", \"BSD-3-Clause\", \"ISC\", \"Unicode-DFS-2016\"]"
+        ),
+        "template deny.toml must carry the v1 starter license allowlist"
     );
 
     // ── 2b. Template Cargo.toml must carry strict-ai workspace lint keys ────
     let template_cargo_text = read_file(&tmpl.join("Cargo.toml"), "template Cargo.toml")?;
     let template_cargo_doc = parse_toml(&template_cargo_text, "template Cargo.toml")?;
 
-    // [workspace.lints.rust] must exist and contain these non-negotiable lints
+    // [workspace.lints.rust] must exist and contain every v1-spec §9.1 Rust lint
+    // listed in the canonical strict-ai table. The template must mirror §9.1 so
+    // generated workspaces inherit the same baseline; absent keys block release.
     let required_rust_lints = [
-        "unsafe_code",
-        "unused_must_use",
-        "unreachable_pub",
-        "missing_docs",
-        "unsafe_op_in_unsafe_fn",
+        // Lint-table headers.
+        "warnings",
+        "future_incompatible",
         "rust_2018_idioms",
+        // Unsafe-discipline.
+        "unsafe_code",
+        "unsafe_op_in_unsafe_fn",
+        // Unused-result hygiene.
+        "unused_must_use",
+        "unused_results",
+        "let_underscore_drop",
+        // Public-API / documentation discipline.
+        "missing_docs",
+        "missing_debug_implementations",
+        "unreachable_pub",
+        // Lifetime/outlives/cast/keyword hygiene.
+        "elided_lifetimes_in_paths",
+        "explicit_outlives_requirements",
+        "trivial_casts",
+        "trivial_numeric_casts",
+        "variant_size_differences",
+        "unused_extern_crates",
+        "unused_import_braces",
+        "keyword_idents_2024",
     ];
 
     // [workspace.lints.clippy] must exist and contain these non-negotiable lints

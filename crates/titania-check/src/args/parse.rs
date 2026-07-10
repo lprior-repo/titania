@@ -170,7 +170,7 @@ fn parse_check_scope(args: &[String], options: CheckOptions) -> Result<CheckOpti
 /// or unsupported CLI input.
 fn parse_check_emit(args: &[String], options: CheckOptions) -> Result<CheckOptions, CliError> {
     let (value, rest) = take_value("--emit", args)?;
-    let emit = parse_emit(value)?;
+    let emit = parse_primary_emit(value)?;
     parse_check_options(rest, CheckOptions { scope: options.scope, emit, out: options.out })
 }
 
@@ -260,7 +260,7 @@ fn parse_aggregate_emit(
     state: AggregateState,
 ) -> Result<AggregateState, CliError> {
     let (value, rest) = take_value("--emit", args)?;
-    let emit = parse_emit(value)?;
+    let emit = parse_primary_emit(value)?;
     parse_aggregate_options(rest, AggregateState { scope: state.scope, emit, out: state.out })
 }
 
@@ -414,6 +414,16 @@ fn parse_scope(value: &str) -> Result<GateScope, CliError> {
 fn parse_emit(value: &str) -> Result<EmitFormat, CliError> {
     match value {
         "human" => Ok(EmitFormat::Human),
+        "json" => Ok(EmitFormat::Json),
+        _ => Err(CliError::UnknownEmit(value.to_owned())),
+    }
+}
+/// Parse the machine-readable format accepted by the primary report commands.
+///
+/// `check` and `aggregate` are JSON-only under v1 §12; `doctor` is the only
+/// command that retains the human renderer.
+fn parse_primary_emit(value: &str) -> Result<EmitFormat, CliError> {
+    match value {
         "json" => Ok(EmitFormat::Json),
         _ => Err(CliError::UnknownEmit(value.to_owned())),
     }

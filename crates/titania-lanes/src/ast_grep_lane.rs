@@ -51,6 +51,12 @@ pub enum AstGrepLaneError {
         #[source]
         source: io::Error,
     },
+    /// A catalog document declared a rule id not present in the embedded runtime table.
+    #[error("unknown ast-grep rule id: {id}")]
+    UnknownRuleId {
+        /// Unknown identifier from the catalog document.
+        id: String,
+    },
     /// Rule id validation failed.
     #[error(transparent)]
     RuleId(#[from] RuleIdError),
@@ -87,7 +93,7 @@ pub fn run(
     fixture_paths: &[PathBuf],
     exceptions: &[(RuleId, String)],
 ) -> Result<LaneOutcome, AstGrepLaneError> {
-    let catalog = catalog_text(rules_yaml);
+    let catalog = catalog_text(rules_yaml)?;
     let findings = fixture_paths
         .iter()
         .map(|path| scan_path(path.as_path(), &catalog, exceptions))
@@ -268,12 +274,37 @@ fn clean_outcome() -> Result<LaneOutcome, AstGrepLaneError> {
     Ok(LaneOutcome::Clean { evidence })
 }
 
-fn catalog_text(rules_yaml: &[&'static str]) -> String {
-    rules_yaml.join("\n")
+/// Concatenate the supplied rule YAML fragments into one catalog string.
+///
+/// # Errors
+/// Returns [`AstGrepLaneError::UnknownRuleId`] when the concatenated catalog
+/// declares a top-level `id:` that is not present in the embedded `RULES` table.
+fn catalog_text(rules_yaml: &[&'static str]) -> Result<String, AstGrepLaneError> {
+    let catalog = rules_yaml.join("\n");
+    let unknown = catalog_ids(&catalog)
+        .into_iter()
+        .find(|id| !RULES.iter().any(|rule| rule.id == *id))
+        .map(str::to_owned);
+    unknown.map_or_else(|| Ok(catalog), |id| Err(AstGrepLaneError::UnknownRuleId { id }))
+}
+
+fn catalog_ids(catalog: &str) -> Vec<&str> {
+    catalog.lines().filter_map(top_level_id).collect()
+}
+
+fn top_level_id(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("id:")?.trim();
+    if let Some(quoted) = rest.strip_prefix('"') {
+        return quoted.split('"').next();
+    }
+    if let Some(quoted) = rest.strip_prefix('\'') {
+        return quoted.split('\'').next();
+    }
+    Some(rest.split('#').next().map_or(rest, str::trim))
 }
 
 fn rule_enabled(catalog: &str, rule_id: &str) -> bool {
-    catalog.contains(&["id: ", rule_id].concat())
+    catalog_ids(catalog).into_iter().any(|id| id == rule_id)
 }
 
 fn path_display(path: &Path) -> String {

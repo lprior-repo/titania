@@ -110,3 +110,21 @@ rule:
 metadata:
   effect: Reject
   repair_hint: RemoveInlineSuppression
+---
+id: BYPASS_GENERATED_INCLUDE
+language: Rust
+severity: error
+message: "BYPASS_GENERATED_INCLUDE: do not include generated code through OUT_DIR"
+files:
+  - "**/*.rs"
+ignores:
+  - "**/fixtures/**"
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  pattern: "include!(concat!(env!(\"OUT_DIR\"), $PATH))"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview

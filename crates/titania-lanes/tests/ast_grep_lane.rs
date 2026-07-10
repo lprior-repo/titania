@@ -703,6 +703,7 @@ fn all_rule_fixture_paths() -> Vec<PathBuf> {
         "bypass/bypass_crate_allow_violation.rs",
         "bypass/bypass_crate_expect_violation.rs",
         "bypass/bypass_inline_suppression_violation.rs",
+        "bypass/bypass_generated_include_violation.rs",
         "crates/example-core/src/architecture_import_core_infra_violation.rs",
         "crates/example-core/src/architecture_import_core_fs_grouped_violation.rs",
         "crates/example-core/src/architecture_import_core_time_violation.rs",

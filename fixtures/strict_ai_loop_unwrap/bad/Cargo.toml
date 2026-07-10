@@ -2,5 +2,36 @@
 name = "strict_ai_loop_unwrap_bad"
 version = "0.1.0"
 edition = "2024"
+description = "Titania strict-ai killer fixture with intentional violations"
+license = "MIT"
+repository = "https://example.com/titania-killer-fixture"
+readme = "src/lib.rs"
+keywords = ["titania"]
+categories = ["development-tools"]
 
 [workspace]
+
+[lints]
+workspace = true
+
+[workspace.lints.clippy]
+panic = "deny"
+pedantic = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+dbg_macro = "deny"
+as_conversions = "deny"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "deny"
+missing_debug_implementations = "deny"
+future_incompatible = { level = "deny", priority = -1 }
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"

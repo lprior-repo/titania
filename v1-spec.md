@@ -284,6 +284,7 @@ All structural rules exclude `tests/`, `benches/`, `examples/`, `build.rs`.
 | `BYPASS_CRATE_ALLOW` | `#![allow($LINT)]` at crate level | Reject |
 | `BYPASS_CRATE_EXPECT` | `#![expect($LINT)]` at crate level | Reject |
 | `BYPASS_INLINE_SUPPRESSION` | `// ast-grep-ignore` or `// sg-ignore` | Reject |
+| `BYPASS_GENERATED_INCLUDE` | `include!(concat!(env!("OUT_DIR"), $PATH))` | Reject |
 
 ### Architecture import rules
 
@@ -359,8 +360,12 @@ because they scan TOML files and environment variables, not Rust source.
 | `BYPASS_CARGO_LINTS_WEAKENING` | `Cargo.toml` `[lints]` sections | Reject | Detects lowering of required lints |
 | `BYPASS_CARGO_CONFIG_WRAPPER` | `.cargo/config.toml` `rustc-wrapper` | Reject | Must be absent or `sccache` |
 | `BYPASS_CARGO_CONFIG_FLAGS` | `.cargo/config.toml` `rustflags` | Reject | Must match policy-allowed flags |
+| `BYPASS_CARGO_CONFIG_PARSE_ERROR` | `.cargo/config` or `.cargo/config.toml` malformed TOML | Reject | A checked-in config must parse before policy evaluation |
+| `BYPASS_CARGO_CONFIG_READ_ERROR` | `.cargo/config` or `.cargo/config.toml` unreadable | Reject | A checked-in config must be readable before policy evaluation |
 | `BYPASS_ENV_RUSTFLAGS` | `$RUSTFLAGS` / `$CARGO_ENCODED_RUSTFLAGS` | Reject | Unexpected values at runtime |
 | `BYPASS_ENV_RUSTC_WRAPPER` | `$RUSTC_WRAPPER` / `$RUSTC_WORKSPACE_WRAPPER` | Reject | Must be absent or `sccache` |
+| `BYPASS_ENV_CARGO_HOME` | `$CARGO_HOME` | Reject | Must equal the controlled `<target>/.titania/hermetic/cargo-home` directory |
+| `BYPASS_ENV_RUSTUP_HOME` | `$RUSTUP_HOME` | Reject | Must equal the controlled `<target>/.titania/hermetic/rustup-home` directory |
 | `BYPASS_ENV_RUSTC_BOOTSTRAP` | `$RUSTC_BOOTSTRAP` set | Reject | Always a violation |
 
 ---
@@ -713,7 +718,7 @@ wildcards = "deny"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-registry = ["https://github.com/rustsec/advisory-db"]
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 ```
 
 ### 9.5 Hermeticity rules
@@ -1069,7 +1074,7 @@ All types are defined here. No external document is needed.
 ### Core primitives
 
 ```rust
-/// SHA-256 content digest, hex-encoded (64 ASCII chars).
+/// BLAKE3 content digest, hex-encoded (64 ASCII chars).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Digest(pub String);  // invariant: len == 64, hex-only
 
@@ -1551,7 +1556,7 @@ titania-build:
   deps: [':titania-compile']
   options: { runInCI: true }
   inputs: ['@globs(sources)']
-  outputs: ['target/release/titania-check']
+  outputs: ['.titania/out/release/build.json']
 
 # Composite gates
 gate-edit:

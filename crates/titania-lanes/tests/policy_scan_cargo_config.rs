@@ -56,18 +56,71 @@ fn extensionless_config_rustflags_are_scanned() -> TestResult {
 }
 
 #[test]
-fn empty_rustflags_and_non_build_rustflags_are_clean() -> TestResult {
+fn empty_target_tables_are_clean_but_target_rustflags_are_findings() -> TestResult {
     let empty = fixture()?;
-    write_file(empty.path(), ".cargo/config.toml", "[build]\nrustflags = []\n")?;
+    write_file(empty.path(), ".cargo/config.toml", "[target.'cfg(unix)']\n")?;
     assert!(scan_from(empty.path())?.is_clean());
 
-    let target = fixture()?;
+    let target_string = fixture()?;
     write_file(
-        target.path(),
+        target_string.path(),
         ".cargo/config.toml",
-        "[target.x86_64-unknown-linux-gnu]\nrustflags = [\"-C\", \"linker=lld\"]\n",
+        "[target.'cfg(unix)']\nrustflags = \"-C debuginfo=0\"\n",
     )?;
-    assert!(scan_from(target.path())?.is_clean());
+    let string_report = scan_from(target_string.path())?;
+    assert_eq!(string_report.finding_count(), 1);
+    assert!(string_report.findings()[0].message().contains("debuginfo"));
+
+    let target_array = fixture()?;
+    write_file(
+        target_array.path(),
+        ".cargo/config.toml",
+        "[target.x86_64-unknown-linux-gnu]\nrustflags = [\"-Z\", \"unstable\"]\n",
+    )?;
+    let array_report = scan_from(target_array.path())?;
+    assert_eq!(array_report.finding_count(), 2);
+    assert!(
+        array_report.findings().iter().all(|f| f.rule().as_str() == "BYPASS_CARGO_CONFIG_FLAGS")
+    );
+    Ok(())
+}
+
+#[test]
+fn inline_build_table_rustflags_emit_flag_findings() -> TestResult {
+    let tmp = fixture()?;
+    write_file(
+        tmp.path(),
+        ".cargo/config.toml",
+        "build = { rustflags = [\"-Z\", \"unstable\"] }\n",
+    )?;
+    let report = scan_from(tmp.path())?;
+    assert_eq!(report.finding_count(), 2);
+    assert!(report.findings().iter().all(|f| f.rule().as_str() == "BYPASS_CARGO_CONFIG_FLAGS"));
+    assert!(report.findings()[0].message().contains("-Z"));
+    assert!(report.findings()[1].message().contains("unstable"));
+    Ok(())
+}
+
+#[test]
+fn inline_target_table_rustflags_emit_flag_findings() -> TestResult {
+    let tmp = fixture()?;
+    write_file(
+        tmp.path(),
+        ".cargo/config.toml",
+        "target = { \"x86_64-unknown-linux-gnu\" = { rustflags = [\"-Z\"] } }\n",
+    )?;
+    let report = scan_from(tmp.path())?;
+    assert_eq!(report.finding_count(), 1);
+    assert_eq!(report.findings()[0].rule().as_str(), "BYPASS_CARGO_CONFIG_FLAGS");
+    assert!(report.findings()[0].message().contains("-Z"));
+    Ok(())
+}
+
+#[test]
+fn inline_target_table_with_cfg_key_is_clean() -> TestResult {
+    let tmp = fixture()?;
+    write_file(tmp.path(), ".cargo/config.toml", "target = { \"cfg(unix)\" = {} }\n")?;
+    assert!(scan_from(tmp.path())?.is_clean());
     Ok(())
 }
 
@@ -169,5 +222,56 @@ fn local_sccache_wrapper_in_child_is_clean() -> TestResult {
     assert_eq!(report.finding_count(), 1);
     assert!(report.findings()[0].path().ends_with(".cargo/config.toml"));
     assert!(report.findings()[0].message().contains("parent-directory Cargo config is rejected"));
+    Ok(())
+}
+
+#[test]
+fn malformed_cargo_config_emits_parse_error_finding() -> TestResult {
+    let tmp = fixture()?;
+    write_file(tmp.path(), ".cargo/config.toml", "this is = not valid toml ]\n")?;
+    let report = scan_from(tmp.path())?;
+    assert_eq!(report.finding_count(), 1);
+    assert_eq!(report.findings()[0].rule().as_str(), "BYPASS_CARGO_CONFIG_PARSE_ERROR");
+    assert_eq!(report.findings()[0].path(), ".cargo/config.toml");
+    assert!(report.findings()[0].message().contains("malformed Cargo config"));
+    Ok(())
+}
+
+#[test]
+fn extensionless_malformed_cargo_config_still_parses_to_parse_error() -> TestResult {
+    let tmp = fixture()?;
+    write_file(tmp.path(), ".cargo/config", "[unterminated section\n")?;
+    let report = scan_from(tmp.path())?;
+    assert_eq!(report.finding_count(), 1);
+    assert_eq!(report.findings()[0].rule().as_str(), "BYPASS_CARGO_CONFIG_PARSE_ERROR");
+    assert_eq!(report.findings()[0].path(), ".cargo/config");
+    Ok(())
+}
+
+#[test]
+fn unreadable_cargo_config_emits_read_error_finding() -> TestResult {
+    let tmp = fixture()?;
+    let config_path = tmp.path().join(".cargo/config.toml");
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // Invalid UTF-8 bytes force `read_to_string` to fail with `InvalidData`,
+    // which is a deterministic, cross-platform read error.
+    std::fs::write(&config_path, [0xFF_u8, 0xFE, 0xFD])?;
+    let report = scan_from(tmp.path())?;
+    assert_eq!(report.finding_count(), 1);
+    assert_eq!(report.findings()[0].rule().as_str(), "BYPASS_CARGO_CONFIG_READ_ERROR");
+    assert_eq!(report.findings()[0].path(), ".cargo/config.toml");
+    assert!(report.findings()[0].message().contains("cannot read Cargo config file"));
+    Ok(())
+}
+
+#[test]
+fn absent_cargo_config_stays_clean_when_siblings_are_present() -> TestResult {
+    let tmp = fixture()?;
+    // Empty `.cargo/` directory: no `config` or `config.toml` present.
+    std::fs::create_dir_all(tmp.path().join(".cargo"))?;
+    let report = scan_from(tmp.path())?;
+    assert!(report.is_clean(), "expected clean report, got: {}", report.render());
     Ok(())
 }

@@ -759,6 +759,7 @@ dependencies = [
  "anyhow",
  "ast-grep-core",
  "ast-grep-language",
+ "camino",
  "serde",
  "serde_json",
  "smallvec",

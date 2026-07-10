@@ -20,6 +20,7 @@ unsafe_op_in_unsafe_fn = "deny"
 unused_must_use = "deny"
 unused_results = "deny"
 missing_docs = "deny"
+missing_debug_implementations = "deny"
 unreachable_pub = "deny"
 let_underscore_drop = "deny"
 

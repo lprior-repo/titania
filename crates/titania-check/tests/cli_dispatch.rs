@@ -37,6 +37,12 @@ fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     // real moon binary (which would error on tempdirs without `.moon/`).
     // `/bin/true` exits 0 with any args. Tests that exercise real Moon dispatch
     // (missing-moon handling, moon-invocation proof) override or clear this.
+    // `/bin/true` is Unix-only; gate the env override so that Windows
+    // compilation never carries the literal. Tests that go through
+    // `Command::Check` and depend on this stub exiting 0 are themselves
+    // gated to `cfg(unix)` below; on non-Unix the production moon spawn
+    // falls back to the `moon` PATH lookup, which those tests avoid.
+    #[cfg(unix)]
     let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
 
     // Pass CARGO_TARGET_DIR through as-is so that library_is_available
@@ -58,19 +64,20 @@ fn run_in_without_policy_env(cwd: &Path, args: &[&str]) -> (i32, String, String)
     let _ = cmd.current_dir(cwd);
     let _ = cmd.args(args);
     let _ = cmd.stdout(Stdio::piped());
-    let _ = cmd.stderr(Stdio::piped());
     let _ = cmd.env_remove("RUSTFLAGS");
     let _ = cmd.env_remove("CARGO_ENCODED_RUSTFLAGS");
     let _ = cmd.env_remove("RUSTC_WRAPPER");
     let _ = cmd.env_remove("RUSTC_WORKSPACE_WRAPPER");
     let _ = cmd.env_remove("RUSTC_BOOTSTRAP");
-
-    // Stub Moon (see run_in for rationale).
+    // Stub Moon (see run_in for rationale). Unix-only.
+    #[cfg(unix)]
     let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
 
     if let Ok(ctd) = env::var("CARGO_TARGET_DIR") {
         let _ = cmd.env("CARGO_TARGET_DIR", ctd);
     }
+    let _ = cmd.env("CARGO_HOME", cwd.join(".titania").join("hermetic").join("cargo-home"));
+    let _ = cmd.env("RUSTUP_HOME", cwd.join(".titania").join("hermetic").join("rustup-home"));
 
     let output = cmd.output().expect("failed to spawn titania-check");
     let code = output.status.code().unwrap_or(-1);
@@ -126,10 +133,19 @@ fn package(name: &str, lib_rs: &str, main_rs: &str) -> Result<TempDir, std::io::
     let temp = tempfile::tempdir()?;
     fs::write(
         temp.path().join("Cargo.toml"),
-        format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"),
+        format!(
+            "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\
+             description = \"temporary Titania lane test package\"\n\
+             license = \"MIT\"\n\
+             repository = \"https://example.com/titania-test\"\n\
+             readme = \"README.md\"\n\
+             keywords = [\"titania\"]\n\
+             categories = [\"development-tools\"]\n"
+        ),
     )?;
     fs::create_dir_all(temp.path().join("src"))?;
     fs::write(temp.path().join("src/lib.rs"), lib_rs)?;
+    fs::write(temp.path().join("README.md"), "# Temporary Titania lane fixture\n")?;
     fs::write(temp.path().join("src/main.rs"), main_rs)?;
     Ok(temp)
 }
@@ -167,26 +183,36 @@ fn generate_lockfile(root: &Path) {
     );
 }
 
+// Default `--scope edit --emit json` dispatches through `Command::Check`, which
+// spawns Moon. Without a Unix stub (`/bin/true`) Moon's PATH lookup fails on
+// Windows and the assertion shape (exit 1 reject on empty workspace) breaks.
+#[cfg(unix)]
 #[test]
 fn cli_args_default_scope_edit() {
     assert_empty_workspace_reject(&["--emit", "json"], 7);
 }
 
+#[cfg(unix)]
 #[test]
 fn cli_args_scope_prepush() {
     assert_empty_workspace_reject(&["--emit", "json", "--scope", "prepush"], 9);
 }
 
+#[cfg(unix)]
 #[test]
 fn cli_args_scope_release() {
     assert_empty_workspace_reject(&["--emit", "json", "--scope", "release"], 10);
 }
 
+#[cfg(unix)]
 #[test]
 fn cli_args_emit_json_flag() {
     assert_empty_workspace_reject(&["--emit", "json"], 7);
 }
 
+// `--out <path>` with `--emit json` (no subcommand) routes through
+// `Command::Check` and Moon; see the rationale on `cli_args_default_scope_edit`.
+#[cfg(unix)]
 #[test]
 fn cli_args_out_path() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -202,7 +228,6 @@ fn cli_args_out_path() {
     assert_eq!(report["variant"], "Reject");
     assert_eq!(report["gate_failures"].as_array().map(|items| items.len()), Some(7),);
 }
-
 #[test]
 fn cli_args_unknown_scope_rejected() {
     let (code, stdout, stderr) = run(&["--scope", "full"]);
@@ -211,6 +236,9 @@ fn cli_args_unknown_scope_rejected() {
     assert_stderr_contains(&stderr, "full");
 }
 
+// Default `--emit json` dispatches to `Command::Check`; see rationale on
+// `cli_args_default_scope_edit`.
+#[cfg(unix)]
 #[test]
 fn dispatch_default_check_aggregates_empty_workspace() {
     assert_empty_workspace_reject(&["--emit", "json"], 7);
@@ -261,9 +289,12 @@ fn dispatch_run_lane_fmt_writes_typed_clean_artifact() {
 
 #[test]
 fn dispatch_run_lane_clippy_executes_on_clean_project() {
-    let temp =
-        package("dispatch_clippy_clean", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
-            .expect("temp package must be created");
+    let temp = package(
+        "dispatch_clippy_clean",
+        "#[must_use]\npub const fn value() -> u8 {\n    1\n}\n",
+        "fn main() {}\n",
+    )
+    .expect("temp package must be created");
     // Generate a lock file (clippy lane uses --frozen which requires one).
     generate_lockfile(temp.path());
     let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "clippy"]);
@@ -435,6 +466,9 @@ fn dispatch_missing_implementation_unknown_lane() {
     assert_stderr_contains(&stderr, "unknown lane 'nonexistent-lane'");
 }
 
+// Default `--emit json` dispatches to `Command::Check`; see rationale on
+// `cli_args_default_scope_edit`.
+#[cfg(unix)]
 #[test]
 fn exit_codes_reject_report_exits_1() {
     assert_empty_workspace_reject(&["--emit", "json"], 7);
@@ -473,6 +507,9 @@ fn exit_codes_run_lane_invalid_lane() {
     assert_stderr_contains(&stderr, "unknown lane 'invalid-lane'");
 }
 
+// `--scope prepush --emit json --out ...` (no subcommand) routes through
+// `Command::Check`; see rationale on `cli_args_default_scope_edit`.
+#[cfg(unix)]
 #[test]
 fn exit_codes_scope_emit_out_combination() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -489,11 +526,17 @@ fn exit_codes_scope_emit_out_combination() {
     assert_eq!(report["gate_failures"].as_array().map(|items| items.len()), Some(9),);
 }
 
+// `--scope prepush --emit json` (no subcommand) dispatches to `Command::Check`;
+// see rationale on `cli_args_default_scope_edit`.
+#[cfg(unix)]
 #[test]
 fn exit_codes_scope_prepush_emit_json() {
     assert_empty_workspace_reject(&["--scope", "prepush", "--emit", "json"], 9);
 }
 
+// `--scope release --emit json --out ...` (no subcommand) routes through
+// `Command::Check`; see rationale on `cli_args_default_scope_edit`.
+#[cfg(unix)]
 #[test]
 fn exit_codes_scope_release_emit_json_out() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -510,6 +553,10 @@ fn exit_codes_scope_release_emit_json_out() {
     assert_eq!(report["gate_failures"].as_array().map(|items| items.len()), Some(10),);
 }
 
+// Aggregates a `Command::Check` scenario with follow-on doctor/explain/run-lane
+// probes. The first assertion routes through Moon and depends on the Unix
+// `/bin/true` stub, so the whole acceptance-filter check is Unix-only.
+#[cfg(unix)]
 #[test]
 fn cli_args_dispatch_missing_implementation_exit_codes() {
     assert_empty_workspace_reject(&["--emit", "json"], 7);
@@ -523,10 +570,9 @@ fn cli_args_dispatch_missing_implementation_exit_codes() {
     assert_stderr_contains(&stderr, "unknown lane 'invalid-lane'");
 }
 
-// ===== M7: explicit 'check' subcommand must be recognized =====
-
 /// M7: `titania-check check --scope edit` must dispatch to the aggregate check
 /// path (exit 1 for reject on empty workspace), not return UnknownSubcommand.
+#[cfg(unix)]
 #[test]
 fn m7_check_subcommand_dispatches_to_aggregate() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -544,9 +590,9 @@ fn m7_check_subcommand_dispatches_to_aggregate() {
         serde_json::from_str(&stdout).expect("check must emit JSON report to stdout");
     assert_eq!(report["variant"], "Reject", "check report variant must be Reject");
 }
-
 /// M7: `titania-check check` (no explicit scope, default edit) must dispatch
 /// to aggregate and produce a typed reject report.
+#[cfg(unix)]
 #[test]
 fn m7_check_subcommand_default_scope() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -561,6 +607,7 @@ fn m7_check_subcommand_default_scope() {
 // ===== M8: --emit must affect output format for check/aggregate commands =====
 
 /// M8: `--emit json` must produce parseable JSON output (not text/table format).
+#[cfg(unix)]
 #[test]
 fn m8_emit_json_produces_valid_json() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -572,38 +619,32 @@ fn m8_emit_json_produces_valid_json() {
     assert_eq!(parsed["variant"], "Reject", "JSON report must have variant field");
 }
 
-/// M8: `--emit human` must produce human-readable output, NOT JSON.
-/// When emit is human, the output should be plain text (contains headings/tables),
-/// not a JSON object starting with '{'.
+/// M8: primary report commands reject the human renderer under v1 §12.
+#[cfg(unix)]
 #[test]
-fn m8_emit_human_produces_text_not_json() {
+fn m8_emit_human_rejected() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
     let (code, stdout, stderr) = run_in(workspace.path(), &["--scope", "edit", "--emit", "human"]);
-    assert_eq!(code, 1, "reject on empty workspace must exit 1, stderr: {stderr}");
-    // Human output should NOT be JSON — it should start with text content
-    let trimmed = stdout.trim();
-    assert!(
-        !trimmed.starts_with('{'),
-        "--emit human must NOT produce JSON output (should be human-readable text); got: {trimmed}",
-    );
-    // Human output for a reject should contain at least the word "reject" or
-    // "gate failure" or "report" — not a JSON key.
-    assert!(
-        trimmed.contains("reject") || trimmed.contains("failure") || trimmed.contains("report"),
-        "human output should contain meaningful text; got: {trimmed}",
-    );
+    assert_eq!(code, 3, "human emit must be an input error, stderr: {stderr}");
+    assert!(stdout.is_empty(), "rejected human emit must not write stdout: {stdout}");
+    assert_stderr_contains(&stderr, "unknown emit format");
 }
 
-/// M8: `--emit json` and `--emit human` produce DIFFERENT output.
+/// M8: primary report commands accept JSON and reject human output.
+#[cfg(unix)]
 #[test]
 fn m8_emit_format_changes_output() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (_, json_out, _) = run_in(workspace.path(), &["--scope", "edit", "--emit", "json"]);
-    let (_, human_out, _) = run_in(workspace.path(), &["--scope", "edit", "--emit", "human"]);
-    assert_ne!(
-        json_out, human_out,
-        "--emit json and --emit human must produce different output; both produced: {json_out}",
-    );
+    let (json_code, json_out, json_stderr) =
+        run_in(workspace.path(), &["--scope", "edit", "--emit", "json"]);
+    assert_eq!(json_code, 1, "JSON reject must exit 1, stderr: {json_stderr}");
+    drop(serde_json::from_str::<serde_json::Value>(&json_out).expect("JSON output must parse"));
+
+    let (human_code, human_out, human_stderr) =
+        run_in(workspace.path(), &["--scope", "edit", "--emit", "human"]);
+    assert_eq!(human_code, 3, "human emit must be an input error, stderr: {human_stderr}");
+    assert!(human_out.is_empty(), "rejected human emit must not write stdout: {human_out}");
+    assert_stderr_contains(&human_stderr, "unknown emit format");
 }
 
 /// M8: invalid `--emit` value must be rejected.
@@ -618,6 +659,7 @@ fn m8_emit_invalid_value_rejected() {
 
 /// M8: `--out <path>` must write the report to the specified file path.
 /// On success, stdout must be empty and the file must contain the JSON report.
+#[cfg(unix)]
 #[test]
 fn m8_out_path_writes_report_to_file() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -638,6 +680,7 @@ fn m8_out_path_writes_report_to_file() {
 }
 
 /// M8: `--out` with `--emit json` writes JSON to file.
+#[cfg(unix)]
 #[test]
 fn m8_out_with_emit_json_writes_json_file() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -678,8 +721,12 @@ fn h1_run_lane_clean_fmt_exits_0() {
 /// H1: `run-lane clippy` on a clean project (with lockfile) must exit 0 (pass).
 #[test]
 fn h1_run_lane_clean_clippy_exits_0() {
-    let temp = package("h1_clippy_clean", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
-        .expect("temp package must be created");
+    let temp = package(
+        "h1_clippy_clean",
+        "#[must_use]\npub const fn value() -> u8 {\n    1\n}\n",
+        "fn main() {}\n",
+    )
+    .expect("temp package must be created");
     // Generate lockfile for clippy's --frozen mode
     drop(
         std::process::Command::new("cargo")
@@ -716,6 +763,7 @@ fn h1_aggregate_empty_workspace_exits_1_not_0() {
 
 /// H1: `titania-check check --scope edit` exit code must equal aggregate's exit code.
 /// Both should map the same ReportStatus → exit code.
+#[cfg(unix)]
 #[test]
 fn h1_check_and_aggregate_exit_codes_match() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -740,6 +788,8 @@ fn h1_check_and_aggregate_exit_codes_match() {
 /// write the temp artifact file. `execute_lane_checked` then returns Err, and
 /// `execute_lane` synthesizes `LaneExit::Failure`. `map_lane_exit` must route
 /// that to exit 4.
+// chmod 0o555 on the artifact directory is Unix-only (see `make_read_only`).
+#[cfg(unix)]
 #[test]
 fn h1_lane_failure_maps_to_internal_error() {
     let temp = package("h1_lane_failure", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
@@ -796,6 +846,10 @@ fn help_long_flag_prints_usage_and_exits_zero() {
     assert!(stdout.contains("--scope"), "usage must mention --scope flag: {stdout}");
     assert!(stdout.contains("--emit"), "usage must mention --emit flag: {stdout}");
     assert!(stdout.contains("--out"), "usage must mention --out flag: {stdout}");
+    assert!(
+        stdout.contains("Check/aggregate output"),
+        "usage must state check/aggregate output format: {stdout}",
+    );
 }
 
 /// `-h` is an alias for `--help`.
@@ -845,6 +899,12 @@ fn help_after_aggregate_subcommand_short_circuits_scope_requirement() {
 
 /// `Command::Check` with no moon binary on PATH (TITANIA_MOON_BIN points at a
 /// missing path) must surface InputError(3) with the install hint.
+// TITANIA_MOON_BIN pointed at an absent path; `Command::Check` then spawns
+// Moon and surfaces `MoonSpawnError::NotFound`. The Unix-only assertion
+// shape (exit 3 + install hint) validates the Moon-not-found diagnostic;
+// non-Unix hosts have no canonical Moon install path or hint to compare
+// against, so the positive scenario stays Unix-gated.
+#[cfg(unix)]
 #[test]
 fn check_with_missing_moon_binary_yields_input_error() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -875,6 +935,8 @@ fn check_with_missing_moon_binary_yields_input_error() {
 /// aggregate). Proven by setting TITANIA_MOON_BIN to a recording stub that
 /// writes a marker file when invoked: the marker must exist after `check`
 /// returns. `aggregate` must NOT invoke moon (marker stays absent).
+// Recording stub is a `/bin/sh` shell script + `chmod 0o755`; Unix-only.
+#[cfg(unix)]
 #[test]
 fn check_invokes_moon_aggregate_does_not() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -913,6 +975,10 @@ fn check_invokes_moon_aggregate_does_not() {
 
 /// Write a tiny POSIX shell stub that touches `marker` on invocation, then
 /// exits 0. Used to prove the check→moon spawn path is taken.
+// POSIX shell (`/bin/sh`) + chmod 0o755. The only caller is the Unix-gated
+// `check_invokes_moon_aggregate_does_not`; gating the helper keeps Windows
+// compilation free of the shell-script and `chmod` literals.
+#[cfg(unix)]
 fn write_recording_stub(dir: &Path, marker: &Path) -> String {
     let stub_path = dir.join("moon-recording-stub.sh");
     let script = format!("#!/bin/sh\ntouch '{}'\nexit 0\n", marker.display());

@@ -45,6 +45,55 @@ fn tool<'a>(report: &'a Value, name: &str) -> &'a Value {
         .find(|tool| tool["name"] == name)
         .unwrap_or_else(|| panic!("missing tool row {name}; report={report:#}"))
 }
+/// Parse a single human doctor row into `[Tool, Required, Installed, Version, Path]`.
+///
+/// Columns are separated by runs of two or more whitespace characters, so the
+/// split is robust to column-width changes — only the inter-column gap matters,
+/// not its exact width. Required-column labels with an internal space (e.g.
+/// `no (edit)`) survive because the gap before/after the label is wider than
+/// the single space inside it. The trailing `Path` column is taken verbatim so
+/// paths containing spaces are preserved.
+fn parse_row(row: &str) -> Option<Vec<&str>> {
+    let trimmed = row.trim();
+    if trimmed.is_empty() || trimmed.starts_with("titania-check") || trimmed.starts_with("Status:")
+    {
+        return None;
+    }
+    let bytes = trimmed.as_bytes();
+    let mut cols: Vec<&str> = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_whitespace() {
+            let mut j = i;
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if j - i >= 2 {
+                cols.push(&trimmed[start..i]);
+                start = j;
+            }
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    cols.push(&trimmed[start..]);
+    if cols.len() < 5 {
+        return None;
+    }
+    let mut out: Vec<&str> = cols[..4].iter().map(|s| s.trim()).collect();
+    out.extend(cols[4..].iter().map(|s| s.trim()));
+    Some(out)
+}
+
+/// Locate a tool row in human doctor output and return its columns.
+fn row_columns<'a>(stdout: &'a str, tool: &str) -> Option<Vec<&'a str>> {
+    stdout.lines().find_map(|line| {
+        let cols = parse_row(line)?;
+        (cols.first() == Some(&tool)).then_some(cols)
+    })
+}
 
 #[test]
 fn doctor_human_output_contains_contract_columns_and_rows() {
@@ -60,11 +109,65 @@ fn doctor_human_output_contains_contract_columns_and_rows() {
     assert!(stdout.contains("moon"), "missing moon row: {stdout}");
     assert!(stdout.contains("cargo"), "missing cargo row: {stdout}");
     assert!(stdout.contains("rustfmt"), "missing rustfmt row: {stdout}");
-    assert!(stdout.contains("clippy-driver"), "missing clippy row: {stdout}");
+    // v1 §12: clippy-driver row is labeled `clippy` in the Tool column.
+    assert!(stdout.contains("clippy"), "missing clippy row: {stdout}");
     assert!(stdout.contains("ast-grep"), "missing ast-grep row: {stdout}");
-    assert!(stdout.contains("cargo-dylint"), "missing cargo-dylint row: {stdout}");
-    assert!(stdout.contains("libtitania_dylint"), "missing dylint library row: {stdout}");
+    // v1 §12: cargo-dylint row is labeled `dylint` in the Tool column.
+    assert!(stdout.contains("dylint"), "missing dylint row: {stdout}");
+    // The library row keeps an internal label so ABI state is visible.
+    assert!(stdout.contains("dylint-lib"), "missing dylint-lib row: {stdout}");
     assert!(stdout.contains("Status:"), "missing status: {stdout}");
+}
+
+/// v1 §12 edit-scope row labels: `embedded` (ast-grep) in Required and `—`
+/// in Installed, `no (edit)` (cargo-deny), and `optional` (sccache).
+#[test]
+fn doctor_human_required_labels_match_v1_spec_edit_scope() {
+    let (_code, stdout, _stderr) = run(&["doctor", "--scope", "edit"]);
+    // Required / Installed column labels per tool — checked by parsing each
+    // row into `[Tool, Required, Installed, Version, Path]` so the assertion
+    // is independent of column widths.
+    let ast_grep = row_columns(&stdout, "ast-grep")
+        .unwrap_or_else(|| panic!("missing ast-grep row in edit scope: {stdout}"));
+    assert_eq!(
+        ast_grep[1], "embedded",
+        "ast-grep Required column must read `embedded` (v1 §12); row={ast_grep:?}"
+    );
+    assert_eq!(
+        ast_grep[2], "—",
+        "ast-grep Installed column must read `—` (v1 §12); row={ast_grep:?}"
+    );
+    let cargo_deny = row_columns(&stdout, "cargo-deny")
+        .unwrap_or_else(|| panic!("missing cargo-deny row in edit scope: {stdout}"));
+    assert_eq!(
+        cargo_deny[1], "no (edit)",
+        "cargo-deny Required column must read `no (edit)` in edit scope (v1 §12); row={cargo_deny:?}"
+    );
+    let sccache = row_columns(&stdout, "sccache")
+        .unwrap_or_else(|| panic!("missing sccache row in edit scope: {stdout}"));
+    assert_eq!(
+        sccache[1], "optional",
+        "sccache Required column must read `optional` (v1 §12); row={sccache:?}"
+    );
+}
+/// In prepush/release scope, cargo-deny is required: the Required column must
+/// read `yes`, not `no (edit)`.
+#[test]
+fn doctor_human_cargo_deny_required_label_flips_outside_edit() {
+    let (_prepush_code, prepush_stdout, _stderr) = run(&["doctor", "--scope", "prepush"]);
+    let (_release_code, release_stdout, _stderr) = run(&["doctor", "--scope", "release"]);
+    let prepush_deny = row_columns(&prepush_stdout, "cargo-deny")
+        .unwrap_or_else(|| panic!("missing cargo-deny row in prepush scope: {prepush_stdout}"));
+    assert_eq!(
+        prepush_deny[1], "yes",
+        "cargo-deny Required column must read `yes` in prepush scope; row={prepush_deny:?}"
+    );
+    let release_deny = row_columns(&release_stdout, "cargo-deny")
+        .unwrap_or_else(|| panic!("missing cargo-deny row in release scope: {release_stdout}"));
+    assert_eq!(
+        release_deny[1], "yes",
+        "cargo-deny Required column must read `yes` in release scope; row={release_deny:?}"
+    );
 }
 
 #[test]
@@ -171,6 +274,7 @@ fn doctor_empty_path_prepush_release_require_cargo_deny() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn doctor_abi_mismatch_yields_missing_required_library() {
     // Build a temp dir containing a fake cargo-dylint (shell script) and an
@@ -225,6 +329,7 @@ fn doctor_abi_mismatch_yields_missing_required_library() {
 
 /// Prove the ABI probe works without `nm` on the PATH using a self-contained
 /// dynamic-library-header plus marker fixture.
+#[cfg(unix)]
 #[test]
 fn doctor_abi_probe_no_nm_dependency() {
     let tmp = tempfile::tempdir().expect("must create temp dir");

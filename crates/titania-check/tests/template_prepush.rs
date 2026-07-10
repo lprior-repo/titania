@@ -114,18 +114,18 @@ impl CmdResult {
 /// 1. `CARGO_TARGET_DIR` / debug / titania-check  (if set)
 /// 2. `<worktree>/target/debug/titania-check` relative to the crate root
 fn find_titania_check() -> PathBuf {
+    let binary_name = format!("titania-check{}", std::env::consts::EXE_SUFFIX);
     // Derive the target/debug directory from the test binary's location.
     // Test binary: target/debug/deps/template_prepush-XXXX
-    // Target binary: target/debug/titania-check
+    // Target binary: target/debug/titania-check[.exe]
     let mut exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-    _ = exe.pop(); // remove test binary name → deps/
-    _ = exe.pop(); // remove deps → debug/
+    _ = exe.pop();
+    _ = exe.pop();
     let target_debug = exe;
-    let mut p = target_debug.join("titania-check");
+    let mut p = target_debug.join(&binary_name);
     if !p.exists() {
-        // fallback: check CARGO_TARGET_DIR env var or default
         if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
-            p = PathBuf::from(&dir).join("debug").join("titania-check");
+            p = PathBuf::from(&dir).join("debug").join(&binary_name);
         }
     }
     p
@@ -237,6 +237,12 @@ fn configure_clean_child_env(
         "HOME",
         "USER",
         "LOGNAME",
+        "USERPROFILE",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "SystemRoot",
+        "APPDATA",
+        "LOCALAPPDATA",
         "CARGO_HOME",
         "RUSTUP_HOME",
         "SCCACHE_DIR",

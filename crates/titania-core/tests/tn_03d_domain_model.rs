@@ -209,7 +209,7 @@ fn location_serde_round_trip() {
 #[test]
 fn repair_hint_patch() {
     let range = TextRange::new(0, 10).unwrap();
-    let patch = RepairHint::patch("file.rs".to_string(), range, "replacement".to_string()).unwrap();
+    let patch = RepairHint::patch("file.rs".to_string(), range, "replacement".to_string());
     assert!(patch.is_auto_applicable());
 }
 
@@ -223,17 +223,18 @@ fn repair_hint_other_variants() {
 }
 
 #[test]
-fn repair_hint_patch_rejects_zero_width() {
+fn repair_hint_patch_accepts_zero_width() {
+    // v1 §10: TextRange invariant is end_byte >= start_byte, so a zero-width
+    // range is a valid patch range and must be accepted.
     let range = TextRange::new(5, 5).unwrap();
-    let result = RepairHint::patch("f.rs".to_string(), range, "x".to_string());
-    assert!(result.is_err());
+    let _patch = RepairHint::patch("f.rs".to_string(), range, "x".to_string());
 }
 
 #[test]
 fn repair_hint_serde_round_trip() {
     let range = TextRange::new(0, 10).unwrap();
     let hints = [
-        RepairHint::patch("a.rs".to_string(), range, "r".to_string()).unwrap(),
+        RepairHint::patch("a.rs".to_string(), range, "r".to_string()),
         RepairHint::use_iterator_pipeline("s".to_string()),
         RepairHint::flatten_nesting("s".to_string()),
         RepairHint::use_checked_arithmetic("add".to_string()),
@@ -241,11 +242,11 @@ fn repair_hint_serde_round_trip() {
         RepairHint::replace_dependency("a".to_string(), "b".to_string()),
         RepairHint::requires_human_review("n".to_string()),
     ];
-    for hint in &hints {
+    hints.iter().for_each(|hint| {
         let json = serde_json::to_string(hint).unwrap();
         let back: RepairHint = serde_json::from_str(&json).unwrap();
         assert_eq!(*hint, back);
-    }
+    });
 }
 
 // ===========================================================================
@@ -254,20 +255,64 @@ fn repair_hint_serde_round_trip() {
 
 fn make_quality_receipt() -> Result<QualityReceipt, ReceiptError> {
     let digest = Digest::from_bytes(b"test");
+    let edit_lanes: Box<[LaneReceipt]> = GateScope::Edit
+        .lanes()
+        .iter()
+        .map(|&lane| LaneReceipt::new(lane, digest.clone(), true))
+        .collect();
     QualityReceipt::new(
         GateScope::Edit,
-        ReceiptDigests::new(digest.clone(), digest.clone(), digest.clone(), digest.clone()),
-        Box::new([LaneReceipt::new(Lane::Fmt, digest, true)]),
+        ReceiptDigests::new(digest.clone(), digest.clone(), digest.clone(), digest),
+        edit_lanes,
     )
+}
+
+/// Build the canonical `per_lane` slice for a [`GateScope::Edit`] Pass
+/// report: every Edit lane present, each carrying a pass-shaped `Skipped`
+/// outcome. Used by tests that exercise Pass construction without caring
+/// about a specific lane's outcome.
+#[must_use]
+fn make_edit_per_lane_skipped() -> Box<[titania_core::PerLaneEntry]> {
+    use titania_core::{LaneOutcome, SkipReason};
+    GateScope::Edit
+        .lanes()
+        .iter()
+        .map(|&lane| {
+            titania_core::PerLaneEntry::new(
+                lane,
+                LaneOutcome::Skipped { reason: SkipReason::NotApplicable },
+            )
+        })
+        .collect()
+}
+
+/// Build a canonical Edit `per_lane` slice where every lane uses the
+/// pass-shaped `Skipped { NotApplicable }` outcome except `target`, which
+/// receives `make_outcome(target)`.
+#[must_use]
+fn build_edit_per_lane_with(
+    target: titania_core::Lane,
+    make_outcome: impl Fn(titania_core::Lane) -> titania_core::LaneOutcome,
+) -> Box<[titania_core::PerLaneEntry]> {
+    use titania_core::{LaneOutcome, SkipReason};
+    GateScope::Edit
+        .lanes()
+        .iter()
+        .map(|&lane| {
+            let outcome = if lane == target {
+                make_outcome(lane)
+            } else {
+                LaneOutcome::Skipped { reason: SkipReason::NotApplicable }
+            };
+            titania_core::PerLaneEntry::new(lane, outcome)
+        })
+        .collect()
 }
 
 #[test]
 fn report_pass_direct_construction() {
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
-        Lane::Fmt,
-        LaneOutcome::Skipped { reason: titania_core::SkipReason::PriorCompilationFailure },
-    )]);
+    let per_lane = make_edit_per_lane_skipped();
     let report = Report::pass(receipt, per_lane).unwrap();
     assert!(report.is_pass());
     assert!(!report.is_reject());
@@ -275,10 +320,7 @@ fn report_pass_direct_construction() {
 #[test]
 fn report_pass_constructor_accepts_lane_outcomes() {
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
-        Lane::Fmt,
-        LaneOutcome::Skipped { reason: SkipReason::NotApplicable },
-    )]);
+    let per_lane = make_edit_per_lane_skipped();
     let report = Report::pass(receipt, per_lane).unwrap();
     assert!(report.is_pass());
 }
@@ -294,7 +336,8 @@ fn report_pass_constructor_rejects_empty_lane_outcomes() {
 #[test]
 fn report_reject_code_only() {
     let finding = make_valid_finding();
-    let report = Report::reject(Box::new([finding]), Box::new([]), Box::new([])).unwrap();
+    let per_lane = make_edit_per_lane_skipped();
+    let report = Report::reject(Box::new([finding]), Box::new([]), per_lane).unwrap();
     assert_eq!(report.reject_kind(), Some(RejectKind::CodeOnly));
     assert_eq!(report.code_findings().unwrap().len(), 1);
     assert!(report.gate_failures().unwrap().is_empty());
@@ -304,7 +347,8 @@ fn report_reject_code_only() {
 fn report_reject_gate_only() {
     let failure =
         LaneFailure::Infra { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
-    let report = Report::reject(Box::new([]), Box::new([failure]), Box::new([])).unwrap();
+    let per_lane = make_edit_per_lane_skipped();
+    let report = Report::reject(Box::new([]), Box::new([failure]), per_lane).unwrap();
     assert_eq!(report.reject_kind(), Some(RejectKind::GateOnly));
 }
 
@@ -313,7 +357,8 @@ fn report_reject_mixed() {
     let finding = make_valid_finding();
     let failure =
         LaneFailure::Infra { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
-    let report = Report::reject(Box::new([finding]), Box::new([failure]), Box::new([])).unwrap();
+    let per_lane = make_edit_per_lane_skipped();
+    let report = Report::reject(Box::new([finding]), Box::new([failure]), per_lane).unwrap();
     assert_eq!(report.reject_kind(), Some(RejectKind::Mixed));
 }
 
@@ -326,14 +371,7 @@ fn report_reject_rejects_empty_collections() {
 #[test]
 fn report_reject_kind_none_on_non_reject() {
     let receipt = make_quality_receipt().unwrap();
-    let p = Report::pass(
-        receipt,
-        Box::new([titania_core::PerLaneEntry::new(
-            Lane::Fmt,
-            LaneOutcome::Skipped { reason: titania_core::SkipReason::PriorCompilationFailure },
-        )]),
-    )
-    .unwrap();
+    let p = Report::pass(receipt, make_edit_per_lane_skipped()).unwrap();
     assert_eq!(p.reject_kind(), None);
     let diag = Box::new([PolicyDiagnostic {
         message: "bad policy".to_string(),
@@ -347,7 +385,8 @@ fn report_reject_kind_none_on_non_reject() {
 #[test]
 fn report_serde_round_trip() {
     let finding = make_valid_finding();
-    let report = Report::reject(Box::new([finding]), Box::new([]), Box::new([])).unwrap();
+    let per_lane = make_edit_per_lane_skipped();
+    let report = Report::reject(Box::new([finding]), Box::new([]), per_lane).unwrap();
     let json = serde_json::to_string(&report).unwrap();
     let back: Report = serde_json::from_str(&json).unwrap();
     assert_eq!(report, back);
@@ -364,21 +403,18 @@ fn report_pass_accepts_informational_only_findings() {
         "src/main.rs".to_string(),
         TextRange::new(0, 10).unwrap(),
         "// style fix".to_string(),
-    )
-    .unwrap();
+    );
     let finding = Finding::informational(Lane::Fmt, rule_id, loc, "style note".into(), repair);
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
-        Lane::Fmt,
-        LaneOutcome::Findings { findings: Box::new([finding]) },
-    )]);
+    let per_lane = build_edit_per_lane_with(Lane::Fmt, move |_| LaneOutcome::Findings {
+        findings: Box::new([finding.clone()]),
+    });
     let result = Report::pass(receipt, per_lane);
     assert!(
         result.is_ok(),
         "Report::pass with informational-only findings should succeed: {result:?}"
     );
 }
-
 #[test]
 fn report_pass_rejects_findings_with_reject() {
     let rule_id = RuleId::new("TEST_LINT_VIOLATION").unwrap();
@@ -388,14 +424,12 @@ fn report_pass_rejects_findings_with_reject() {
         "src/main.rs".to_string(),
         TextRange::new(0, 10).unwrap(),
         "// fix".to_string(),
-    )
-    .unwrap();
+    );
     let finding = Finding::reject(Lane::Fmt, rule_id, loc, "lint violation".into(), repair);
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([titania_core::PerLaneEntry::new(
-        Lane::Fmt,
-        LaneOutcome::Findings { findings: Box::new([finding]) },
-    )]);
+    let per_lane = build_edit_per_lane_with(Lane::Fmt, move |_| LaneOutcome::Findings {
+        findings: Box::new([finding.clone()]),
+    });
     let result = Report::pass(receipt, per_lane);
     assert!(result.is_err(), "Report::pass must reject Findings with reject findings");
 }
@@ -405,8 +439,9 @@ fn report_pass_rejects_failed_outcome() {
     let failure =
         LaneFailure::Infra { tool: "cargo-test".to_string(), reason: "not found".to_string() };
     let receipt = make_quality_receipt().unwrap();
-    let per_lane: Box<[titania_core::PerLaneEntry]> =
-        Box::new([titania_core::PerLaneEntry::new(Lane::Fmt, LaneOutcome::Failed { failure })]);
+    let per_lane = build_edit_per_lane_with(Lane::Fmt, move |_| LaneOutcome::Failed {
+        failure: failure.clone(),
+    });
     let result = Report::pass(receipt, per_lane);
     assert!(result.is_err());
 }
@@ -504,8 +539,7 @@ fn lane_outcome_is_not_pass_findings_with_reject() {
         "src/main.rs".to_string(),
         TextRange::new(0, 10).unwrap(),
         "// fix".to_string(),
-    )
-    .unwrap();
+    );
     let finding = Finding::reject(Lane::Fmt, rule_id, loc, "lint violation".into(), repair);
     let outcome = LaneOutcome::Findings { findings: Box::new([finding]) };
     assert!(!outcome.is_pass());
@@ -521,8 +555,7 @@ fn lane_outcome_is_not_pass_findings_mixed() {
         "src/main.rs".to_string(),
         TextRange::new(0, 10).unwrap(),
         "// fix".to_string(),
-    )
-    .unwrap();
+    );
     let reject = Finding::reject(Lane::Fmt, rule_id_r, loc.clone(), "lint".into(), repair.clone());
     let info = Finding::informational(Lane::Fmt, rule_id_i, loc, "style note".into(), repair);
     let outcome = LaneOutcome::Findings { findings: Box::new([info, reject]) };
@@ -572,8 +605,12 @@ fn process_termination_exit_code() {
 fn process_termination_signaled_validates() {
     assert!(ProcessTermination::signaled(1).is_ok());
     assert!(ProcessTermination::signaled(31).is_ok());
+    assert!(ProcessTermination::signaled(32).is_ok());
+    assert!(ProcessTermination::signaled(34).is_ok());
+    let signaled = ProcessTermination::signaled(34).expect("signal 34 must be accepted");
+    assert_eq!(signaled, ProcessTermination::Signaled { signal: 34 });
     assert!(ProcessTermination::signaled(0).is_err());
-    assert!(ProcessTermination::signaled(32).is_err());
+    assert!(ProcessTermination::signaled(-1).is_err());
 }
 
 #[test]
@@ -582,6 +619,7 @@ fn process_termination_serde_round_trip() {
         ProcessTermination::Exited { code: 0 },
         ProcessTermination::Exited { code: 1 },
         ProcessTermination::Signaled { signal: 9 },
+        ProcessTermination::Signaled { signal: 34 },
         ProcessTermination::TimedOut,
         ProcessTermination::MemoryLimitExceeded,
         ProcessTermination::SpawnFailed,
@@ -590,6 +628,23 @@ fn process_termination_serde_round_trip() {
         let json = serde_json::to_string(term).unwrap();
         let back: ProcessTermination = serde_json::from_str(&json).unwrap();
         assert_eq!(*term, back);
+    }
+}
+
+#[test]
+fn process_termination_signaled_34_json_shape() {
+    let signaled = ProcessTermination::signaled(34).expect("signal 34 must be accepted");
+    let json = serde_json::to_string(&signaled).unwrap();
+    assert_eq!(json, r#"{"Signaled":{"signal":34}}"#);
+    let back: ProcessTermination = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, signaled);
+}
+
+#[test]
+fn process_termination_serde_rejects_invalid_signals() {
+    for json in [r#"{"Signaled":{"signal":0}}"#, r#"{"Signaled":{"signal":-1}}"#] {
+        let result = serde_json::from_str::<ProcessTermination>(json);
+        assert!(result.is_err(), "invalid signal must be rejected: {json}");
     }
 }
 

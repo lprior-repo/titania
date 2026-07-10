@@ -45,8 +45,9 @@ impl Finding {
     /// a new finding whose effect is set to [`FindingEffect::Reject`].
     ///
     /// Validation of individual fields is the responsibility of the caller —
-    /// [`RuleId::new`], [`Location::span`], and [`RepairHint::patch`] all
-    /// enforce their own invariants and return `Result`.
+    /// [`RuleId::new`] and [`Location::span`] enforce their own invariants
+    /// and return `Result`; [`RepairHint::patch`] is infallible because the
+    /// byte-range bounds precondition is owned by the `TextRange` type.
     #[must_use]
     pub const fn reject(
         lane: Lane,

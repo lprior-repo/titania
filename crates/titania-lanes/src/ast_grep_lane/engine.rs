@@ -40,6 +40,10 @@ impl AstEngine {
         Some(self.line_of_match(&node_match))
     }
 
+    fn line_of_match(&self, node_match: &NodeMatch<'_, StrDoc<Rust>>) -> usize {
+        line_at_byte(&self.line_offsets, node_match.range().start)
+    }
+
     /// 0-based line index of the first match across an iterator of patterns.
     ///
     /// Used for rules expressed as `any: [pattern, pattern, ...]` in YAML.
@@ -148,10 +152,293 @@ impl AstEngine {
         self.first_match_line(&pat)
     }
 
-    /// Convert a [`NodeMatch`] byte range into a 0-based source line index.
-    fn line_of_match(&self, node_match: &NodeMatch<'_, StrDoc<Rust>>) -> usize {
-        line_at_byte(&self.line_offsets, node_match.range().start)
+    /// Line of the first generated-code include using `OUT_DIR`.
+    pub(super) fn detect_generated_include(&self) -> Option<usize> {
+        let concat_pattern = Pattern::new("concat!($$$PARTS)", Rust);
+        let direct_pattern = Pattern::new("include!(concat!(env!($ENV), $PATH))", Rust);
+        let message_pattern =
+            Pattern::new("include!(concat!(env!($ENV, $$$MESSAGE), $PATH))", Rust);
+        let many_pattern = Pattern::new("include!(concat!(env!($ENV), $$$PATHS))", Rust);
+        let many_message_pattern =
+            Pattern::new("include!(concat!(env!($ENV, $$$MESSAGE), $$$PATHS))", Rust);
+        [
+            single_include_line(&self.grep, &direct_pattern, &concat_pattern),
+            single_include_line(&self.grep, &message_pattern, &concat_pattern),
+            many_include_line(&self.grep, &many_pattern, &concat_pattern),
+            many_include_line(&self.grep, &many_message_pattern, &concat_pattern),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
+}
+
+fn is_out_dir_expression(node: &Node<'_, StrDoc<Rust>>, concat_pattern: &Pattern) -> bool {
+    if is_out_dir_node(node) {
+        return true;
+    }
+    decode_concat_expression(node, concat_pattern).is_some_and(|decoded| decoded == "OUT_DIR")
+}
+
+/// Decode every `concat!` part under `node` into a single string, returning
+/// `None` when any part is malformed or contains trailing junk.
+fn decode_concat_expression(
+    node: &Node<'_, StrDoc<Rust>>,
+    concat_pattern: &Pattern,
+) -> Option<String> {
+    let concat_match = node.find(concat_pattern)?;
+    concat_match
+        .get_env()
+        .get_multiple_matches("PARTS")
+        .iter()
+        .try_fold(String::new(), append_decoded_part)
+}
+
+/// Append a single `concat!` part to `output` after decoding it. Returns
+/// `None` if the part is not a recognizable string literal, has trailing
+/// content, or fails escape decoding.
+fn append_decoded_part(mut output: String, part: &Node<'_, StrDoc<Rust>>) -> Option<String> {
+    let text = part.text();
+    let (literal, tail, raw) = parse_literal(text.as_ref())?;
+    if !tail.is_empty() {
+        return None;
+    }
+    let decoded = decode_literal(literal, raw)?;
+    output.push_str(&decoded);
+    Some(output)
+}
+
+/// Line of the first `include!(concat!(env!($ENV), $PATH))` match where
+/// `env!` resolves to `OUT_DIR` and `$PATH` is non-empty.
+fn single_include_line(
+    grep: &AstGrep<StrDoc<Rust>>,
+    pattern: &Pattern,
+    concat_pattern: &Pattern,
+) -> Option<usize> {
+    grep.root().find_all(pattern).find_map(|node_match| {
+        let environment = node_match.get_env().get_match("ENV")?;
+        let path = node_match.get_env().get_match("PATH")?;
+        (is_out_dir_expression(environment, concat_pattern) && path_non_empty(path))
+            .then_some(node_match.start_pos().line())
+    })
+}
+
+/// Line of the first `include!(concat!(env!($ENV), $$$PATHS))` match where
+/// `env!` resolves to `OUT_DIR` and at least one of the `$$$PATHS` is
+/// non-empty.
+fn many_include_line(
+    grep: &AstGrep<StrDoc<Rust>>,
+    pattern: &Pattern,
+    concat_pattern: &Pattern,
+) -> Option<usize> {
+    grep.root().find_all(pattern).find_map(|node_match| {
+        let environment = node_match.get_env().get_match("ENV")?;
+        let paths = node_match.get_env().get_multiple_matches("PATHS");
+        (!paths.is_empty()
+            && is_out_dir_expression(environment, concat_pattern)
+            && paths.iter().any(path_non_empty))
+        .then_some(node_match.start_pos().line())
+    })
+}
+
+/// `true` when `node`'s source text is not pure whitespace.
+fn path_non_empty(node: &Node<'_, StrDoc<Rust>>) -> bool {
+    !node.text().trim().is_empty()
+}
+
+fn is_out_dir_node(node: &Node<'_, StrDoc<Rust>>) -> bool {
+    let text = node.text();
+    let Some((literal, tail, raw)) = parse_literal(text.as_ref()) else {
+        return false;
+    };
+    tail.is_empty() && is_out_dir_literal(literal, raw)
+}
+
+/// Components of a Rust string literal: `(content, trailing, raw)`.
+///
+/// `content` is the raw text between the opening and closing quotes,
+/// `trailing` is whatever follows the closing quote (used to detect
+/// literals that have junk after them, e.g. `"foo"bar`), and `raw` is
+/// `true` for raw literals like `r"..."` / `r#"..."#`.
+type LiteralParts<'a> = (&'a str, &'a str, bool);
+
+/// State machine driving the `decode_literal` fold.
+#[derive(Debug)]
+enum EscapeMode {
+    Plain,
+    AfterSlash,
+    LineContinuation,
+    Hex { digits: String },
+    Unicode { digits: String, started: bool },
+}
+
+fn is_out_dir_literal(literal: &str, raw: bool) -> bool {
+    decode_literal(literal, raw).is_some_and(|decoded| decoded == "OUT_DIR")
+}
+
+/// Decode a Rust string literal into its escaped form. `raw` literals are
+/// returned verbatim; cooked literals are processed through the
+/// `EscapeMode` state machine below.
+fn decode_literal(literal: &str, raw: bool) -> Option<String> {
+    if raw {
+        return Some(literal.to_owned());
+    }
+    let (decoded, mode) = fold_escape_sequence(literal)?;
+    matches!(mode, EscapeMode::Plain).then_some(decoded)
+}
+
+/// Walk every character of `literal` through the escape state machine,
+/// short-circuiting on the first malformed sequence. The final state is
+/// returned so the caller can reject dangling escape runs.
+fn fold_escape_sequence(literal: &str) -> Option<(String, EscapeMode)> {
+    literal.chars().fold(Some((String::new(), EscapeMode::Plain)), |state, character| {
+        state.and_then(|current| advance_escape(current, character))
+    })
+}
+
+/// Dispatch a single character through the escape state machine. Each
+/// [`EscapeMode`] variant delegates to a per-mode handler so no arm of
+/// the dispatcher grows past a handful of lines.
+fn advance_escape(
+    (decoded, mode): (String, EscapeMode),
+    character: char,
+) -> Option<(String, EscapeMode)> {
+    match mode {
+        EscapeMode::Plain => Some(plain_state(decoded, character)),
+        EscapeMode::AfterSlash => after_slash(decoded, character),
+        EscapeMode::LineContinuation => Some(line_continuation_state(decoded, character)),
+        EscapeMode::Hex { digits } => hex_digit(decoded, character, digits),
+        EscapeMode::Unicode { digits, started } => {
+            unicode_digit(decoded, character, digits, started)
+        }
+    }
+}
+
+/// `Plain` mode: append the character, unless it is `\\` which opens an
+/// escape sequence.
+fn plain_state(decoded: String, character: char) -> (String, EscapeMode) {
+    if character == '\\' {
+        (decoded, EscapeMode::AfterSlash)
+    } else {
+        push_decoded(decoded, character)
+    }
+}
+
+/// `AfterSlash` mode: classify the escape and either enter a sub-state or
+/// emit a single decoded character. The branches that share `push_decoded`
+/// are collapsed into a `simple_escape` lookup.
+fn after_slash(decoded: String, character: char) -> Option<(String, EscapeMode)> {
+    if let Some(next) = control_escape(character) {
+        return Some((decoded, next));
+    }
+    let mapped = simple_escape(character)?;
+    Some(push_decoded(decoded, mapped))
+}
+
+/// `LineContinuation` mode: skip whitespace until a non-blank character
+/// terminates the run and re-enters `Plain` mode.
+fn line_continuation_state(decoded: String, character: char) -> (String, EscapeMode) {
+    if character.is_whitespace() {
+        (decoded, EscapeMode::LineContinuation)
+    } else {
+        push_decoded(decoded, character)
+    }
+}
+
+/// `Hex` mode: collect up to two hex digits and emit the byte.
+fn hex_digit(decoded: String, character: char, mut digits: String) -> Option<(String, EscapeMode)> {
+    digits.push(character);
+    match digits.len() {
+        0 | 1 => Some((decoded, EscapeMode::Hex { digits })),
+        2 => {
+            let code = parse_hex_byte(&digits)?;
+            Some(push_decoded(decoded, char::from(code)))
+        }
+        _ => None,
+    }
+}
+
+/// `Unicode` mode: collect hex digits (and optional `_` separators)
+/// between `{` and `}` and emit the codepoint.
+fn unicode_digit(
+    decoded: String,
+    character: char,
+    mut digits: String,
+    started: bool,
+) -> Option<(String, EscapeMode)> {
+    if !started && character == '{' {
+        return Some((decoded, EscapeMode::Unicode { digits, started: true }));
+    }
+    if started && character == '}' {
+        let code = parse_hex_codepoint(&digits)?;
+        let decoded_character = char::from_u32(code)?;
+        return Some(push_decoded(decoded, decoded_character));
+    }
+    if !started {
+        return None;
+    }
+    if character != '_' {
+        digits.push(character);
+    }
+    Some((decoded, EscapeMode::Unicode { digits, started }))
+}
+
+/// Escape sequence that opens a sub-state (no character is emitted).
+const fn control_escape(character: char) -> Option<EscapeMode> {
+    match character {
+        'x' => Some(EscapeMode::Hex { digits: String::new() }),
+        'u' => Some(EscapeMode::Unicode { digits: String::new(), started: false }),
+        '\n' | '\r' => Some(EscapeMode::LineContinuation),
+        _ => None,
+    }
+}
+
+/// Single-character escape mapping used by `after_slash`.
+const fn simple_escape(character: char) -> Option<char> {
+    match character {
+        'n' => Some('\n'),
+        'r' => Some('\r'),
+        't' => Some('\t'),
+        '\\' | '"' => Some(character),
+        _ => None,
+    }
+}
+
+/// Parse exactly two hex digits into a byte. Returns `None` on parse
+/// failure rather than a discarded `ParseIntError`.
+fn parse_hex_byte(digits: &str) -> Option<u8> {
+    u8::from_str_radix(digits, 16).ok()
+}
+
+/// Parse the hex digits inside `\u{...}` into a Unicode codepoint.
+/// Returns `None` on parse failure rather than a discarded
+/// `ParseIntError`.
+fn parse_hex_codepoint(digits: &str) -> Option<u32> {
+    u32::from_str_radix(digits, 16).ok()
+}
+
+/// Append a decoded character to the buffer and reset to the
+/// `EscapeMode::Plain` state. The character is always accepted, so this
+/// helper is infallible.
+fn push_decoded(mut decoded: String, character: char) -> (String, EscapeMode) {
+    decoded.push(character);
+    (decoded, EscapeMode::Plain)
+}
+
+/// Split a Rust literal source slice into its `(content, tail, raw)`
+/// components. `raw` is `true` for `r"..."` / `r#"..."#` literals.
+fn parse_literal(source: &str) -> Option<LiteralParts<'_>> {
+    if let Some(body) = source.strip_prefix('"') {
+        let (content, tail) = body.split_once('"')?;
+        return Some((content, tail, false));
+    }
+    let raw = source.strip_prefix('r')?;
+    let hash_count = raw.chars().take_while(|ch| *ch == '#').count();
+    let opening = format!("r{}\"", "#".repeat(hash_count));
+    let body = source.strip_prefix(&opening)?;
+    let closing = format!("\"{}", "#".repeat(hash_count));
+    let (content, tail) = body.split_once(&closing)?;
+    Some((content, tail, true))
 }
 
 /// Compute byte offsets for the start of every source line.
@@ -274,6 +561,11 @@ fn is_call_to(node: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
         return false;
     }
     node.children()
-        .find(|child| child.kind() == "identifier" || child.kind() == "field_expression")
+        .find(|child| is_callee_kind(&child.kind()))
         .is_some_and(|callee| callee.text().trim() == name)
+}
+
+/// AST node kinds that may serve as the callee of a `call_expression`.
+fn is_callee_kind(kind: &str) -> bool {
+    matches!(kind, "identifier" | "field_expression")
 }

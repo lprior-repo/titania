@@ -43,10 +43,13 @@ mod workspace_path;
 pub use artifact::{ArtifactOutcome, ArtifactVariant, LaneArtifact};
 pub use diagnostic::{DiagnosticSeverity, InputDiagnostic, PolicyDiagnostic};
 pub use digest::Digest;
-pub use discover::discover_target;
+pub use discover::{
+    ManifestKind, ManifestObservation, ManifestStatus, TargetObservation, classify_manifest,
+    select_target_observation, select_target_root,
+};
 pub use error::{
     ArtifactError, CoreError, DigestError, FailureError, FindingError, GateScopeError, LaneError,
-    LocationError, OutcomeError, ReceiptError, RepairHintError, ReportError, RuleIdError,
+    LocationError, OutcomeError, PerLaneScopeError, ReceiptError, ReportError, RuleIdError,
     TargetProjectError, TextRangeError, WorkspacePathError,
 };
 pub use failure::{LaneFailure, ProcessTermination};

@@ -6,8 +6,8 @@
 use super::run_cargo::{
     CargoLane, RunCargoError, args_for_lane, clean_outcome, findings_outcome, process_termination,
 };
-use crate::{LaneExit, LaneReport};
-use titania_core::{Lane, LaneFailure, LaneOutcome, TargetProject, discover_target};
+use crate::{LaneExit, LaneReport, discover::discover_target};
+use titania_core::{Lane, LaneFailure, LaneOutcome, TargetProject};
 
 /// Cargo-backed lane dispatch result.
 pub(super) enum CargoRun {
@@ -206,7 +206,7 @@ fn normalize_clippy_output(
 #[cfg(test)]
 mod tests {
     use super::{CargoLane, normalize_clippy_output};
-    use crate::command::mock_output;
+    use crate::{command::mock_output, discover::try_from_path};
     use std::error::Error;
     use titania_core::{LaneOutcome, Location, TargetProject};
 
@@ -217,7 +217,7 @@ mod tests {
             "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
         )
         .map_err(std::io::Error::other)?;
-        let target = TargetProject::try_from_path(dir.path()).map_err(std::io::Error::other)?;
+        let target = try_from_path(dir.path()).map_err(std::io::Error::other)?;
         Ok((dir, target))
     }
 

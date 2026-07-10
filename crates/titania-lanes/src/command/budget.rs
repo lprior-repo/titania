@@ -10,8 +10,8 @@ pub enum EnvPolicy {
     /// Clear the process environment, then apply explicitly supplied env
     /// pairs. This is the default for deterministic target judgment.
     Clear,
-    /// Inherit the parent process environment, then apply explicitly
-    /// supplied env pairs.
+    /// Scrub inherited variables through the lane allowlist, then apply
+    /// explicit variables and the target's controlled tool homes.
     Inherit,
 }
 

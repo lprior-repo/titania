@@ -1,3 +1,4 @@
+#![cfg(unix)]
 //! End-to-end tests for the external target evaluation path.
 //!
 //! Exercises the full chain: `TargetProject::try_from_path` on a temp Cargo
@@ -27,7 +28,7 @@ fn make_target(name: &str, lib_rs: &str) -> Result<(TempDir, TargetProject), Box
     fs::create_dir_all(tmp.path().join("src"))?;
     fs::write(tmp.path().join("Cargo.toml"), cargo_toml)?;
     fs::write(tmp.path().join("src/lib.rs"), lib_rs)?;
-    let target = TargetProject::try_from_path(tmp.path())?;
+    let target = titania_lanes::try_from_path(tmp.path())?;
     Ok((tmp, target))
 }
 
@@ -61,7 +62,7 @@ fn external_target_policy_validates_temp_project() -> TestResult {
         make_target("external_test_project", "pub fn hello() -> &'static str { \"world\" }\n")?;
 
     // When: we validate the target project.
-    let result = TargetProject::try_from_path(tmp.path());
+    let result = titania_lanes::try_from_path(tmp.path());
 
     // Then: construction succeeds and the path is absolute.
     let validated = result.expect("valid temp project must construct");
@@ -88,7 +89,7 @@ fn external_target_policy_rejects_missing_cargo_toml() -> TestResult {
     let tmp = tempfile::tempdir()?;
 
     // When: we try to construct a TargetProject from it.
-    let result = TargetProject::try_from_path(tmp.path());
+    let result = titania_lanes::try_from_path(tmp.path());
 
     // Then: we get the exact typed error.
     assert!(
@@ -97,6 +98,47 @@ fn external_target_policy_rejects_missing_cargo_toml() -> TestResult {
         result
     );
 
+    Ok(())
+}
+
+/// **Contract:** `TargetProject::try_from_path` returns `NotADirectory` for a
+/// regular file rather than collapsing it into `NotFound`.
+#[test]
+fn external_target_policy_rejects_regular_file() -> TestResult {
+    // Given: a regular file path.
+    let tmp = tempfile::tempdir()?;
+    let file = tmp.path().join("not-a-directory");
+    fs::write(&file, b"not a project directory")?;
+
+    // When: we try to construct a target from the file.
+    let result = titania_lanes::try_from_path(&file);
+
+    // Then: the typed error preserves the filesystem distinction.
+    assert!(
+        matches!(&result, Err(titania_core::TargetProjectError::NotADirectory)),
+        "expected NotADirectory, got {:?}",
+        result
+    );
+    Ok(())
+}
+
+/// **Contract:** `TargetProject::try_from_path` returns `NotFound` for a path
+/// that does not exist.
+#[test]
+fn external_target_policy_rejects_nonexistent_path() -> TestResult {
+    // Given: a path that is absent from an existing temporary directory.
+    let tmp = tempfile::tempdir()?;
+    let missing = tmp.path().join("missing-target");
+
+    // When: we try to construct a target from the missing path.
+    let result = titania_lanes::try_from_path(&missing);
+
+    // Then: the typed error preserves the missing-path distinction.
+    assert!(
+        matches!(&result, Err(titania_core::TargetProjectError::NotFound)),
+        "expected NotFound, got {:?}",
+        result
+    );
     Ok(())
 }
 

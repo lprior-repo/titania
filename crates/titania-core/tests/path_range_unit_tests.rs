@@ -122,6 +122,94 @@ fn workspace_path_serde_rejects_invalid_input() {
 }
 
 #[test]
+fn workspace_path_rejects_windows_drive_absolute_forward_slash() {
+    assert_eq!(
+        WorkspacePath::new("C:/src/lib.rs"),
+        Err(WorkspacePathError::DriveAbsolute("C:".to_owned()))
+    );
+    assert_eq!(
+        WorkspacePath::new("c:/src/lib.rs"),
+        Err(WorkspacePathError::DriveAbsolute("c:".to_owned()))
+    );
+    assert_eq!(
+        WorkspacePath::new("Z:/etc/passwd"),
+        Err(WorkspacePathError::DriveAbsolute("Z:".to_owned()))
+    );
+}
+
+#[test]
+fn workspace_path_rejects_windows_drive_absolute_backslash_via_drive_variant() {
+    assert_eq!(
+        WorkspacePath::new("C:\\src\\lib.rs"),
+        Err(WorkspacePathError::DriveAbsolute("C:".to_owned()))
+    );
+    assert_eq!(
+        WorkspacePath::new("C:\\Windows\\System32"),
+        Err(WorkspacePathError::DriveAbsolute("C:".to_owned()))
+    );
+}
+
+#[test]
+fn workspace_path_rejects_unc_forward_slash_form() {
+    assert_eq!(WorkspacePath::new("//server/share/foo"), Err(WorkspacePathError::UncForm));
+    assert_eq!(WorkspacePath::new("//srv/secret"), Err(WorkspacePathError::UncForm));
+}
+
+#[test]
+fn workspace_path_rejects_unc_backslash_is_already_backslash_error() {
+    let bad: Result<WorkspacePath, _> = WorkspacePath::new("\\\\server\\share\\foo");
+    assert_eq!(bad, Err(WorkspacePathError::ContainsBackslash));
+}
+
+#[test]
+fn workspace_path_drive_letter_alone_is_rejected_as_drive_absolute() {
+    assert_eq!(WorkspacePath::new("C:"), Err(WorkspacePathError::DriveAbsolute("C:".to_owned())));
+}
+
+#[test]
+fn workspace_path_preserves_forward_slash_relative_after_drive_rejection() {
+    // Sanity: rejection must not affect a plain valid relative path.
+    assert!(WorkspacePath::new("src/lib.rs").is_ok());
+    assert!(WorkspacePath::new("crates/titania-core/src/lib.rs").is_ok());
+}
+
+#[test]
+fn workspace_path_serde_rejects_windows_drive_absolute_form() {
+    let bad: Result<WorkspacePath, _> = serde_json::from_str("\"C:/src/lib.rs\"");
+    let msg = match bad {
+        Err(e) => e.to_string(),
+        Ok(value) => panic!("serde should reject drive-absolute forward-slash form, got {value:?}"),
+    };
+    assert!(msg.contains("C:"), "expected error to mention drive prefix 'C:', got {msg}");
+    let bad: Result<WorkspacePath, _> = serde_json::from_str("\"c:/Windows\"");
+    let msg = match bad {
+        Err(e) => e.to_string(),
+        Ok(value) => panic!("serde should reject drive-absolute forward-slash form, got {value:?}"),
+    };
+    assert!(msg.contains("c:"), "expected error to mention drive prefix 'c:', got {msg}");
+}
+
+#[test]
+fn workspace_path_serde_rejects_unc_forward_slash_form() {
+    let bad: Result<WorkspacePath, _> = serde_json::from_str("\"//server/share/foo\"");
+    let msg = match bad {
+        Err(e) => e.to_string(),
+        Ok(value) => panic!("serde should reject forward-slash UNC form, got {value:?}"),
+    };
+    assert!(msg.contains("UNC"), "expected error to mention UNC, got {msg}");
+}
+
+#[test]
+fn workspace_path_serde_rejects_windows_drive_backslash_form() {
+    let bad: Result<WorkspacePath, _> = serde_json::from_str("\"C:\\\\src\\\\lib.rs\"");
+    let msg = match bad {
+        Err(e) => e.to_string(),
+        Ok(value) => panic!("serde should reject drive-absolute backslash form, got {value:?}"),
+    };
+    assert!(msg.contains("C:"), "expected error to mention drive prefix 'C:', got {msg}");
+}
+
+#[test]
 fn workspace_path_try_from_str_matches_new() {
     let s = "src/lib.rs";
     assert_eq!(WorkspacePath::try_from(s).unwrap(), WorkspacePath::new(s).unwrap());

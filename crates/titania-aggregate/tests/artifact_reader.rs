@@ -197,6 +197,159 @@ fn dylint_specific_missing_file_becomes_failed_outcome() {
     assert_missing_lane(&records, Lane::Dylint);
 }
 
+#[test]
+fn unexpected_unknown_stem_returns_input_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+
+    // Drop a file whose stem does not name any known v1 lane.
+    fs::write(dir.join("extra.json"), clean_artifact_json(Lane::Fmt)).unwrap();
+
+    let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
+    match result {
+        Err(ReaderError::InputError { lane, cause }) => {
+            assert_eq!(lane, GateScope::Edit.lanes()[0]);
+            assert!(cause.contains("unexpected artifact file"));
+            assert!(cause.contains("\"extra.json\""));
+            assert!(cause.contains("does not name a known lane"));
+        }
+        other => panic!("expected InputError, got {other:?}"),
+    }
+}
+
+#[test]
+fn unexpected_out_of_scope_lane_returns_input_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+
+    // Write a clean Edit scope, then drop a `build.json` artifact at the same dir.
+    for lane in GateScope::Edit.lanes() {
+        fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
+            .unwrap();
+    }
+    fs::write(dir.join("build.json"), clean_artifact_json(Lane::Build)).unwrap();
+
+    let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
+    match result {
+        Err(ReaderError::InputError { lane, cause }) => {
+            assert_eq!(lane, Lane::Build);
+            assert!(cause.contains("unexpected artifact file"));
+            assert!(cause.contains("not part of this gate"));
+        }
+        other => panic!("expected InputError, got {other:?}"),
+    }
+}
+
+#[test]
+fn non_json_files_in_scope_dir_are_ignored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+
+    // Drop a stray non-JSON file alongside the expected artifacts.
+    fs::write(dir.join("README.txt"), "this lane is fake").unwrap();
+    fs::write(dir.join("notes.md"), "# scratch").unwrap();
+
+    for lane in GateScope::Edit.lanes() {
+        fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
+            .unwrap();
+    }
+
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_eq!(records.len(), GateScope::Edit.lanes().len());
+    for (i, &expected) in GateScope::Edit.lanes().iter().enumerate() {
+        assert_eq!(records[i].0, expected);
+        assert!(matches!(records[i].1, LaneOutcome::Clean { .. }));
+    }
+}
+
+#[test]
+fn subdirectory_under_scope_dir_is_ignored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+
+    // A subdirectory named after a lane must not satisfy the missing-file
+    // check; the lane is still treated as missing.
+    fs::create_dir_all(dir.join("fmt")).unwrap();
+    fs::write(dir.join("fmt").join("placeholder"), "ignored").unwrap();
+
+    for lane in GateScope::Edit.lanes().iter().filter(|l| **l != Lane::Fmt) {
+        fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
+            .unwrap();
+    }
+
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_missing_lane(&records, Lane::Fmt);
+}
+
+#[test]
+fn unexpected_uppercase_stem_is_rejected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+
+    // A file with a capitalised stem is a different path on case-sensitive
+    // filesystems and must be rejected as an unknown stem.
+    fs::write(dir.join("Fmt.json"), clean_artifact_json(Lane::Fmt)).unwrap();
+
+    let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
+    match result {
+        Err(ReaderError::InputError { lane, cause }) => {
+            assert_eq!(lane, GateScope::Edit.lanes()[0]);
+            assert!(cause.contains("\"Fmt.json\""));
+            assert!(cause.contains("does not name a known lane"));
+        }
+        other => panic!("expected InputError, got {other:?}"),
+    }
+}
+
+#[test]
+fn enumeration_is_deterministic_with_sorted_extra_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+
+    // Write expected files in a deliberately non-sorted order, then add an
+    // extra file whose name sorts between two lane stems. The reader must
+    // reject the extra file deterministically by its actual name, regardless
+    // of the order in which the artifacts were created on disk.
+    let lane_order: Vec<Lane> = GateScope::Edit.lanes().iter().copied().rev().collect();
+    for lane in &lane_order {
+        fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
+            .unwrap();
+    }
+    // `extra.json` sorts after every Edit lane stem.
+    fs::write(dir.join("extra.json"), clean_artifact_json(Lane::Fmt)).unwrap();
+
+    let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
+    match result {
+        Err(ReaderError::InputError { cause, .. }) => {
+            assert!(cause.contains("\"extra.json\""), "cause was: {cause}");
+        }
+        other => panic!("expected InputError, got {other:?}"),
+    }
+}
+
+#[test]
+fn scoped_lane_set_excludes_out_of_scope_lane() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Prepush);
+
+    // Prepush scope does not include `Build`. A `build.json` placed in the
+    // Prepush artifact directory must be rejected.
+    for lane in GateScope::Prepush.lanes() {
+        fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
+            .unwrap();
+    }
+    fs::write(dir.join("build.json"), clean_artifact_json(Lane::Build)).unwrap();
+
+    let result = read_lane_artifacts(tmp.path(), GateScope::Prepush);
+    match result {
+        Err(ReaderError::InputError { lane, cause }) => {
+            assert_eq!(lane, Lane::Build);
+            assert!(cause.contains("prepush"));
+        }
+        other => panic!("expected InputError, got {other:?}"),
+    }
+}
+
 fn assert_missing_lane(records: &[(Lane, LaneOutcome)], expected: Lane) {
     let (_, outcome) = records.iter().find(|(lane, _)| *lane == expected).unwrap();
     match outcome {

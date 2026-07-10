@@ -1,0 +1,1 @@
+tn-jy4y: starting — preserve repair hint taxonomy in run_lane_outcome.rs

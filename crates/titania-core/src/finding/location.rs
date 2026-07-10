@@ -84,10 +84,15 @@ pub struct Location(LocationInner);
 impl Location {
     /// Construct a [`Location`] from a workspace root file path.
     ///
+    /// Cross-line spans (`line_end > line_start`) accept `col_end < col_start`
+    /// because the span traverses a line boundary. Same-line spans
+    /// (`line_end == line_start`) still require `col_end >= col_start`.
+    ///
     /// # Errors
     /// - [`LocationError::LineStartBeforeOne`] if `line_start < 1`.
     /// - [`LocationError::EndBeforeStart`] if `line_end < line_start`.
-    /// - [`LocationError::ColEndBeforeStart`] if `col_end < col_start`.
+    /// - [`LocationError::ColEndBeforeStart`] if `line_end == line_start`
+    ///   and `col_end < col_start`.
     ///
     /// Line numbers are 1-based; column numbers are 0-based Unicode scalar
     /// values.
@@ -155,10 +160,14 @@ enum LocationReadWire {
 
 /// Construct a [`Location::Span`].
 ///
+/// Cross-line spans (`line_end > line_start`) accept `col_end < col_start`;
+/// only same-line spans require `col_end >= col_start`.
+///
 /// # Errors
 /// - [`LocationError::LineStartBeforeOne`] if `line_start < 1`.
 /// - [`LocationError::EndBeforeStart`] if `line_end < line_start`.
-/// - [`LocationError::ColEndBeforeStart`] if `col_end < col_start`.
+/// - [`LocationError::ColEndBeforeStart`] if `line_end == line_start`
+///   and `col_end < col_start`.
 fn construct_span(
     file: WorkspacePath,
     line_start: u32,
@@ -193,8 +202,10 @@ const fn tool(name: String, version: String) -> Location {
 /// Convert deserialized location wire data into a validated domain location.
 ///
 /// # Errors
-/// - [`LocationError::LineStartBeforeOne`], [`LocationError::EndBeforeStart`],
-///   or [`LocationError::ColEndBeforeStart`] when span coordinates are invalid.
+/// - [`LocationError::LineStartBeforeOne`] or [`LocationError::EndBeforeStart`]
+///   when span coordinates are invalid, or
+/// - [`LocationError::ColEndBeforeStart`] when a same-line span has
+///   `col_end < col_start`. Cross-line spans permit descending columns.
 fn location_from_wire(wire: LocationReadWire) -> Result<Location, LocationError> {
     let location = match wire {
         LocationReadWire::Span { file, line_start, col_start, line_end, col_end } => {
@@ -232,7 +243,12 @@ impl<'de> Deserialize<'de> for Location {
 /// # Errors
 /// - [`LocationError::LineStartBeforeOne`] when `line_start < 1`.
 /// - [`LocationError::EndBeforeStart`] when `line_end < line_start`.
-/// - [`LocationError::ColEndBeforeStart`] when `col_end < col_start`.
+/// - [`LocationError::ColEndBeforeStart`] when `col_end < col_start` on the
+///   same line (`line_end == line_start` and `col_end < col_start`).
+///
+/// Cross-line spans (`line_end > line_start`) permit `col_end < col_start`
+/// because the span crosses a line boundary; only same-line spans must keep
+/// columns ordered.
 const fn validate_span_bounds(
     line_start: u32,
     col_start: u32,
@@ -245,7 +261,7 @@ const fn validate_span_bounds(
     if line_end < line_start {
         return Err(LocationError::EndBeforeStart { line_start, line_end });
     }
-    if col_end < col_start {
+    if line_end == line_start && col_end < col_start {
         return Err(LocationError::ColEndBeforeStart { col_start, col_end });
     }
     Ok(())

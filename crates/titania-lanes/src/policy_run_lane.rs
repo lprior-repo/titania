@@ -9,7 +9,7 @@ use std::{
 
 use thiserror::Error;
 
-use titania_core::TargetProject;
+use titania_core::{ManifestStatus, TargetProject, classify_manifest};
 
 use crate::{
     LaneReport, RuleIdError,
@@ -58,9 +58,15 @@ pub(super) fn policy_date(target: &TargetProject) -> Result<String, PolicyRunErr
 }
 
 /// Collect workspace `Cargo.toml` paths relative to the target root.
+/// Discovers only manifests that belong to the target workspace. A nested
+/// directory whose own `Cargo.toml` declares a `[workspace]` table is a
+/// separate workspace boundary (for example a fixture or template
+/// standalone workspace); its own manifest and any package manifests
+/// beneath it are excluded from the target's policy-scan.
 ///
 /// # Errors
-/// Returns [`PolicyRunError`] when manifest directory traversal fails.
+/// Returns [`PolicyRunError`] when manifest directory traversal or
+/// manifest read for boundary detection fails.
 fn collect_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, PolicyRunError> {
     let mut manifests = Vec::new();
     collect_manifest_paths_into(root, root, &mut manifests)?;
@@ -70,6 +76,10 @@ fn collect_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, PolicyRunError> {
 
 /// Recursively collect manifest paths under one directory.
 ///
+/// Stops descending when `dir` itself contains a `Cargo.toml` declaring
+/// a `[workspace]` table (a nested workspace boundary that is not the
+/// target root).
+///
 /// # Errors
 /// Returns [`PolicyRunError`] when directory traversal fails.
 fn collect_manifest_paths_into(
@@ -77,9 +87,12 @@ fn collect_manifest_paths_into(
     dir: &Path,
     manifests: &mut Vec<PathBuf>,
 ) -> Result<(), PolicyRunError> {
+    if dir != root && is_workspace_boundary(&dir.join(MANIFEST_NAME)) {
+        return Ok(());
+    }
     std::fs::read_dir(dir)
         .map_err(|source| PolicyRunError::ManifestWalk { path: dir.to_path_buf(), source })?
-        .try_for_each(|entry| visit_dir_entry(root, entry, manifests))
+        .try_for_each(|entry| visit_dir_entry(root, dir, entry, manifests))
 }
 
 /// Visit one directory entry during manifest discovery.
@@ -88,6 +101,7 @@ fn collect_manifest_paths_into(
 /// Returns [`PolicyRunError`] when entry metadata or recursive walking fails.
 fn visit_dir_entry(
     root: &Path,
+    parent: &Path,
     entry: io::Result<std::fs::DirEntry>,
     manifests: &mut Vec<PathBuf>,
 ) -> Result<(), PolicyRunError> {
@@ -101,13 +115,12 @@ fn visit_dir_entry(
         return collect_manifest_paths_into(root, &path, manifests);
     }
     if file_type.is_file() && entry.file_name() == OsStr::new(MANIFEST_NAME) {
+        if parent != root && is_workspace_boundary(&path) {
+            return Ok(());
+        }
         push_manifest_path(root, &path, manifests)?;
     }
     Ok(())
-}
-
-fn is_skipped_dir(path: &Path) -> bool {
-    path.file_name().and_then(OsStr::to_str).is_some_and(|name| SKIP_DIRS.contains(&name))
 }
 
 /// Append one manifest path relative to the target root.
@@ -124,6 +137,21 @@ fn push_manifest_path(
     })?;
     manifests.push(relative.to_path_buf());
     Ok(())
+}
+
+fn is_skipped_dir(path: &Path) -> bool {
+    path.file_name().and_then(OsStr::to_str).is_some_and(|name| SKIP_DIRS.contains(&name))
+}
+
+/// Detect whether a `Cargo.toml` declares its own `[workspace]` table.
+///
+/// A manifest that opens a workspace is its own workspace boundary; a
+/// consumer workspace should not classify it (or anything beneath it) as
+/// a member of the consumer's workspace. Missing or unreadable files do
+/// not count as a boundary, so member discovery still proceeds.
+fn is_workspace_boundary(manifest_path: &Path) -> bool {
+    std::fs::read_to_string(manifest_path)
+        .is_ok_and(|content| matches!(classify_manifest(&content), ManifestStatus::Workspace))
 }
 
 #[derive(Debug, Error)]

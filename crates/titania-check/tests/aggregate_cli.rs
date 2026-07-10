@@ -19,13 +19,16 @@ fn run_in(root: &Path, args: &[&str]) -> std::process::Output {
     // real moon binary (which would error on tempdirs without `.moon/`).
     // `/bin/true` exits 0 with any args, leaving the aggregate to classify the
     // pre-baked lane artifacts. Tests that exercise real Moon dispatch set
-    // their own stub or clear this variable.
-    Command::new(binary())
-        .args(args)
-        .current_dir(root)
-        .env("TITANIA_MOON_BIN", "/bin/true")
-        .output()
-        .expect("failed to spawn titania-check")
+    // their own stub or clear this variable. `/bin/true` is Unix-only, so the
+    // stub is set only on `cfg(unix)`; on Windows the production code falls
+    // back to PATH, and tests that go through Command::Check are themselves
+    // gated to Unix below.
+    let mut cmd = Command::new(binary());
+    let _ = cmd.args(args);
+    let _ = cmd.current_dir(root);
+    #[cfg(unix)]
+    let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
+    cmd.output().expect("failed to spawn titania-check")
 }
 
 fn clean_edit_workspace() -> TempDir {
@@ -114,6 +117,7 @@ fn aggregate_cli_reads_edit_lane_outputs_and_emits_report_json() {
     assert_pass_report(&report);
 }
 
+#[cfg(unix)]
 #[test]
 fn check_clears_stale_outputs_before_aggregating_moon_results() {
     let workspace = clean_edit_workspace();

@@ -1,3 +1,4 @@
+#![cfg(unix)]
 //! CommandIn public-API smoke tests.
 
 use std::{error::Error, io::ErrorKind, time::Duration};
@@ -16,7 +17,7 @@ fn test_error(message: impl Into<String>) -> Box<dyn Error> {
 fn fixture_target() -> Result<FixtureTarget, Box<dyn Error>> {
     let tmp = tempdir()?;
     std::fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"x\"\n")?;
-    let target = TargetProject::try_from_path(tmp.path())?;
+    let target = titania_lanes::try_from_path(tmp.path())?;
     Ok((tmp, target))
 }
 

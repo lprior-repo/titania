@@ -1,138 +1,80 @@
 //! Public API tests for target project discovery.
+//!
+//! These tests cover the pure core boundary: every constructor validates
+//! typed observations supplied by the caller. The shell layer (in
+//! `titania-lanes`) owns the filesystem reads and feeds observations into
+//! the same selectors these tests exercise directly.
 
 use std::path::{Path, PathBuf};
 
-use tempfile::tempdir;
-use titania_core::{TargetProject, TargetProjectError, discover_target};
+use camino::Utf8Path;
+use titania_core::{
+    ManifestKind, TargetObservation, TargetProject, TargetProjectError, select_target_root,
+};
 
 fn cargo_manifest(name: &str) -> String {
     format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n")
 }
 
+fn observed_dir(path: &Path, manifest: ManifestKind) -> TargetObservation {
+    let utf8 = Utf8Path::from_path(path).expect("test path must be UTF-8");
+    TargetObservation::new(utf8.to_path_buf(), true, manifest)
+}
+
 #[test]
 fn target_project_public_api_reports_exact_shape_errors() {
-    let empty = TargetProject::try_from_path(Path::new("")).unwrap_err();
+    let empty = TargetProject::try_from_path_string(Utf8Path::new("")).unwrap_err();
     assert_eq!(empty, TargetProjectError::Empty);
 
-    let relative = TargetProject::try_from_path(Path::new("relative/path")).unwrap_err();
+    let relative = TargetProject::try_from_path_string(Utf8Path::new("relative/path")).unwrap_err();
     assert_eq!(relative, TargetProjectError::NonAbsolute("relative/path".to_owned()));
 }
 
-#[cfg(unix)]
 #[test]
-fn target_project_public_api_rejects_non_utf8_paths() {
-    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
-
-    let path = PathBuf::from(OsString::from_vec(vec![b'/', b't', b'm', b'p', b'/', 0xff]));
-    let err = TargetProject::try_from_path(&path).unwrap_err();
-    assert_eq!(err, TargetProjectError::NotUtf8);
+fn target_project_public_api_rejects_relative_observation() {
+    let obs = TargetObservation::new(
+        Utf8Path::new("relative/path").to_path_buf(),
+        true,
+        ManifestKind::File,
+    );
+    let err = TargetProject::try_from_observation(&obs).unwrap_err();
+    assert_eq!(err, TargetProjectError::NonAbsolute("relative/path".to_owned()));
 }
 
 #[test]
-fn target_project_public_api_rejects_manifest_directory() {
-    let tmp = tempdir().unwrap();
-    std::fs::create_dir(tmp.path().join("Cargo.toml")).unwrap();
-
-    let err = TargetProject::try_from_path(tmp.path()).unwrap_err();
-    assert_eq!(err, TargetProjectError::CargoTomlNotFile);
-}
-
-#[test]
-fn discover_target_public_api_resolves_workspace_root_from_member_subdir() {
-    let tmp = tempdir().unwrap();
-    let workspace = tmp.path().join("workspace");
-    let member_src = workspace.join("crates").join("app").join("src");
-    std::fs::create_dir_all(&member_src).unwrap();
-    std::fs::write(workspace.join("Cargo.toml"), "[workspace]\nmembers = [\"crates/app\"]\n")
-        .unwrap();
-    std::fs::write(workspace.join("crates").join("app").join("Cargo.toml"), cargo_manifest("app"))
-        .unwrap();
-
-    let target = discover_target(&member_src).unwrap();
-    assert_eq!(target.as_std_path(), workspace.as_path());
-    assert_eq!(target.manifest_path().as_std_path(), workspace.join("Cargo.toml").as_path());
-}
-
-#[test]
-fn discover_target_public_api_resolves_nested_single_crate_root() {
-    let tmp = tempdir().unwrap();
-    let crate_root = tmp.path().join("single");
-    let nested = crate_root.join("src").join("bin");
-    std::fs::create_dir_all(&nested).unwrap();
-    std::fs::write(crate_root.join("Cargo.toml"), cargo_manifest("single")).unwrap();
-
-    let target = discover_target(&nested).unwrap();
-    assert_eq!(target.as_std_path(), crate_root.as_path());
-}
-
-#[test]
-fn discover_target_public_api_reports_exact_errors() {
-    let relative = discover_target(Path::new("relative")).unwrap_err();
-    assert_eq!(relative, TargetProjectError::NonAbsolute("relative".to_owned()));
-
-    let tmp = tempdir().unwrap();
-    let missing = tmp.path().join("missing");
-    std::fs::create_dir_all(&missing).unwrap();
-    let no_manifest = discover_target(&missing).unwrap_err();
-    assert_eq!(no_manifest, TargetProjectError::NoCargoToml);
-
-    let with_manifest_dir = tmp.path().join("manifest_dir");
-    std::fs::create_dir_all(with_manifest_dir.join("Cargo.toml")).unwrap();
-    let manifest_dir = discover_target(&with_manifest_dir).unwrap_err();
-    assert_eq!(manifest_dir, TargetProjectError::CargoTomlNotFile);
-}
-
-#[test]
-fn target_project_public_api_accepts_absolute_manifest_directory() {
-    let tmp = tempdir().unwrap();
-    let root = tmp.path().join("crate");
-    std::fs::create_dir_all(root.join("src")).unwrap();
-    std::fs::write(root.join("Cargo.toml"), cargo_manifest("crate")).unwrap();
-
-    let target = TargetProject::try_from_path(&root).unwrap();
-
-    assert_eq!(target.as_std_path(), root.as_path());
-    assert_eq!(target.manifest_path().as_std_path(), root.join("Cargo.toml").as_path());
-    assert_eq!(target.to_string(), root.display().to_string());
-}
-
-#[test]
-fn target_project_public_api_rejects_nonexistent_directory() {
-    let tmp = tempdir().unwrap();
-    let missing = tmp.path().join("missing");
-
-    let err = TargetProject::try_from_path(&missing).unwrap_err();
-
+fn target_project_public_api_rejects_non_existent_directory_observation() {
+    let obs = TargetObservation::new(
+        Utf8Path::new("/nonexistent/titania").to_path_buf(),
+        false,
+        ManifestKind::Missing,
+    );
+    let err = TargetProject::try_from_observation(&obs).unwrap_err();
     assert_eq!(err, TargetProjectError::NotFound);
 }
 
 #[test]
-fn target_project_public_api_rejects_file_as_root() {
-    let tmp = tempdir().unwrap();
-    let file = tmp.path().join("Cargo.toml");
-    std::fs::write(&file, cargo_manifest("not_root")).unwrap();
-
-    let err = TargetProject::try_from_path(&file).unwrap_err();
-
-    assert_eq!(err, TargetProjectError::NotADirectory);
+fn target_project_public_api_rejects_manifest_directory_observation() {
+    let obs = TargetObservation::new(
+        Utf8Path::new("/tmp/x").to_path_buf(),
+        true,
+        ManifestKind::Directory,
+    );
+    let err = TargetProject::try_from_observation(&obs).unwrap_err();
+    assert_eq!(err, TargetProjectError::CargoTomlNotFile);
 }
 
 #[test]
-fn target_project_public_api_rejects_missing_manifest() {
-    let tmp = tempdir().unwrap();
-
-    let err = TargetProject::try_from_path(tmp.path()).unwrap_err();
-
+fn target_project_public_api_rejects_missing_manifest_observation() {
+    let obs =
+        TargetObservation::new(Utf8Path::new("/tmp/x").to_path_buf(), true, ManifestKind::Missing);
+    let err = TargetProject::try_from_observation(&obs).unwrap_err();
     assert_eq!(err, TargetProjectError::NoCargoToml);
 }
 
 #[test]
 fn target_project_public_api_json_round_trips_absolute_root() {
-    let tmp = tempdir().unwrap();
-    let root = tmp.path().join("json_root");
-    std::fs::create_dir_all(root.join("src")).unwrap();
-    std::fs::write(root.join("Cargo.toml"), cargo_manifest("json_root")).unwrap();
-    let target = TargetProject::try_from_path(&root).unwrap();
+    let root = Utf8Path::new("/tmp/json_root").to_path_buf();
+    let target = TargetProject::try_from_path_string(&root).unwrap();
 
     let json = serde_json::to_string(&target).unwrap();
     let back: TargetProject = serde_json::from_str(&json).unwrap();
@@ -141,79 +83,137 @@ fn target_project_public_api_json_round_trips_absolute_root() {
 }
 
 #[test]
-fn target_project_public_api_json_rejects_invalid_root() {
+fn target_project_public_api_json_rejects_relative_root() {
     let relative = "\"src/foo\"";
     let err: Result<TargetProject, _> = serde_json::from_str(relative);
     assert!(err.is_err());
+}
 
-    let tmp = tempdir().unwrap();
-    let missing = tmp.path().join("missing");
-    let missing_json = serde_json::to_string(&missing.to_string_lossy()).unwrap();
-    let missing_err: Result<TargetProject, _> = serde_json::from_str(&missing_json);
-    assert!(missing_err.is_err());
+// ---------------------------------------------------------------------------
+// Pure selector tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn select_target_root_returns_workspace_when_present() {
+    let cwd = Utf8Path::new("/repo/sub");
+    let outer = Utf8Path::new("/repo").to_path_buf();
+    let inner = cwd.to_path_buf();
+    let observations = vec![
+        observed_dir(inner.as_std_path(), ManifestKind::File),
+        observed_dir(outer.as_std_path(), ManifestKind::File),
+    ];
+    let manifests = vec![
+        titania_core::ManifestObservation {
+            root: inner.clone(),
+            manifest_path: inner.join("Cargo.toml"),
+            status: titania_core::ManifestStatus::Package,
+        },
+        titania_core::ManifestObservation {
+            root: outer.clone(),
+            manifest_path: outer.join("Cargo.toml"),
+            status: titania_core::ManifestStatus::Workspace,
+        },
+    ];
+
+    let selected = select_target_root(&observations, &manifests).unwrap();
+    assert_eq!(selected, outer);
 }
 
 #[test]
-fn discover_target_public_api_ignores_non_workspace_tables() {
-    let tmp = tempdir().unwrap();
-    let outer = tmp.path().join("outer");
-    let inner = outer.join("inner");
-    std::fs::create_dir_all(&inner).unwrap();
-    std::fs::write(outer.join("Cargo.toml"), "[workspace.metadata]\nkind = \"not-root\"\n")
-        .unwrap();
-    std::fs::write(inner.join("Cargo.toml"), cargo_manifest("inner")).unwrap();
+fn select_target_root_falls_back_to_package_when_no_workspace() {
+    let cwd = Utf8Path::new("/repo/sub");
+    let inner = cwd.to_path_buf();
+    let observations = vec![observed_dir(inner.as_std_path(), ManifestKind::File)];
+    let manifests = vec![titania_core::ManifestObservation {
+        root: inner.clone(),
+        manifest_path: inner.join("Cargo.toml"),
+        status: titania_core::ManifestStatus::Package,
+    }];
 
-    let target = discover_target(&inner).unwrap();
-
-    assert_eq!(target.as_std_path(), inner.as_path());
+    let selected = select_target_root(&observations, &manifests).unwrap();
+    assert_eq!(selected, inner);
 }
 
 #[test]
-fn discover_target_public_api_ignores_workspace_text_outside_table_header() {
-    let tmp = tempdir().unwrap();
-    let outer = tmp.path().join("outer");
-    let inner = outer.join("inner");
-    std::fs::create_dir_all(&inner).unwrap();
-    std::fs::write(
-        outer.join("Cargo.toml"),
-        "# [workspace]\ndescription = '''\n[workspace]\n'''\n",
-    )
-    .unwrap();
-    std::fs::write(inner.join("Cargo.toml"), cargo_manifest("inner")).unwrap();
+fn select_target_root_ignores_non_workspace_tables() {
+    let outer = Utf8Path::new("/repo").to_path_buf();
+    let inner = Utf8Path::new("/repo/sub").to_path_buf();
+    let observations = vec![
+        observed_dir(inner.as_std_path(), ManifestKind::File),
+        observed_dir(outer.as_std_path(), ManifestKind::File),
+    ];
+    let manifests = vec![
+        titania_core::ManifestObservation {
+            root: inner.clone(),
+            manifest_path: inner.join("Cargo.toml"),
+            status: titania_core::ManifestStatus::Package,
+        },
+        titania_core::ManifestObservation {
+            root: outer.clone(),
+            manifest_path: outer.join("Cargo.toml"),
+            status: titania_core::ManifestStatus::Other,
+        },
+    ];
 
-    let target = discover_target(&inner).unwrap();
-
-    assert_eq!(target.as_std_path(), inner.as_path());
+    let selected = select_target_root(&observations, &manifests).unwrap();
+    assert_eq!(selected, inner);
 }
 
 #[test]
-fn discover_target_public_api_falls_back_after_invalid_toml() {
-    let tmp = tempdir().unwrap();
-    let outer = tmp.path().join("outer");
-    let inner = outer.join("inner");
-    std::fs::create_dir_all(&inner).unwrap();
-    std::fs::write(outer.join("Cargo.toml"), "[workspace\nmembers = [\"inner\"]\n").unwrap();
-    std::fs::write(inner.join("Cargo.toml"), cargo_manifest("inner")).unwrap();
+fn select_target_root_rejects_malformed_selected_manifest() {
+    let root = Utf8Path::new("/repo/broken").to_path_buf();
+    let observations = vec![observed_dir(root.as_std_path(), ManifestKind::File)];
+    let manifests = vec![titania_core::ManifestObservation {
+        root: root.clone(),
+        manifest_path: root.join("Cargo.toml"),
+        status: titania_core::ManifestStatus::Malformed,
+    }];
 
-    let target = discover_target(&inner).unwrap();
-
-    assert_eq!(target.as_std_path(), inner.as_path());
-}
-
-#[test]
-fn discover_target_public_api_rejects_malformed_selected_manifest() {
-    let tmp = tempdir().unwrap();
-    let crate_root = tmp.path().join("malformed");
-    let nested = crate_root.join("src");
-    std::fs::create_dir_all(&nested).unwrap();
-    std::fs::write(crate_root.join("Cargo.toml"), "[package\nname = \"broken\"\n").unwrap();
-
-    let err = discover_target(&nested).unwrap_err();
-
+    let err = select_target_root(&observations, &manifests).unwrap_err();
     assert_eq!(
         err,
-        TargetProjectError::MalformedCargoToml {
-            path: crate_root.join("Cargo.toml").display().to_string()
-        }
+        TargetProjectError::MalformedCargoToml { path: root.join("Cargo.toml").to_string() }
     );
+}
+
+#[test]
+fn select_target_root_returns_no_cargo_toml_when_no_manifest() {
+    let outer = Utf8Path::new("/repo").to_path_buf();
+    let observations = vec![observed_dir(outer.as_std_path(), ManifestKind::Missing)];
+    let manifests: Vec<titania_core::ManifestObservation> = vec![];
+
+    let err = select_target_root(&observations, &manifests).unwrap_err();
+    assert_eq!(err, TargetProjectError::NoCargoToml);
+}
+
+#[test]
+fn classify_manifest_detects_workspace_and_package() {
+    assert_eq!(
+        titania_core::classify_manifest("[workspace]\nmembers = [\"a\"]\n"),
+        titania_core::ManifestStatus::Workspace
+    );
+    assert_eq!(
+        titania_core::classify_manifest(cargo_manifest("crate").as_str()),
+        titania_core::ManifestStatus::Package
+    );
+    assert_eq!(
+        titania_core::classify_manifest("[workspace.metadata]\nkind = \"x\"\n"),
+        titania_core::ManifestStatus::Other
+    );
+    assert_eq!(
+        titania_core::classify_manifest("[workspace\nmembers = [\"a\"]"),
+        titania_core::ManifestStatus::Malformed
+    );
+}
+
+// Reference the unused `cargo_manifest` helper so unused-warnings stay quiet
+// when individual tests below are added.
+#[allow(dead_code)]
+fn _force_use_cargo_manifest() -> String {
+    cargo_manifest("noop")
+}
+
+#[allow(dead_code)]
+fn _force_use_pathbuf() -> PathBuf {
+    PathBuf::from("/tmp/noop")
 }

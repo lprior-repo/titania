@@ -231,6 +231,14 @@ pub(super) const RULES: &[RuleDef] = &[
         scope: RuleScope::ProductionRust,
     },
     RuleDef {
+        id: "BYPASS_GENERATED_INCLUDE",
+        message: "BYPASS_GENERATED_INCLUDE: do not include generated code through OUT_DIR",
+        effect: FindingEffect::Reject,
+        repair: RepairKind::RequiresHumanReview,
+        detect: Detector::Engine(AstEngine::detect_generated_include),
+        scope: RuleScope::ProductionRust,
+    },
+    RuleDef {
         id: "ARCHITECTURE_IMPORT_CORE_INFRA",
         message: "ARCHITECTURE_IMPORT_CORE_INFRA: core/domain code must not import infrastructure crates",
         effect: FindingEffect::Reject,

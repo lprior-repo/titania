@@ -3,12 +3,12 @@
 //! When a lane does not produce a clean or finding outcome, the failure is
 //! categorized so that the aggregator can decide how to report it.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::FailureError;
 
 /// Why a process terminated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum ProcessTermination {
     /// Process exited with a specific exit code.
     Exited {
@@ -17,7 +17,12 @@ pub enum ProcessTermination {
     },
     /// Process was terminated by a signal (Unix only).
     ///
-    /// Signal numbers are in the range 1–31 (SIGHUP through SIGSYS).
+    /// Signal numbers are positive integers. Values 1–31 are the standard
+    /// POSIX signals (SIGHUP through SIGSYS). Values >= 32 are real-time
+    /// signals (SIGRTMIN..SIGRTMAX on glibc, e.g. 34 = SIGRTMIN+2).
+    /// Non-positive values are rejected because no Unix signal has number
+    /// zero or negative — `0` is reserved for "no signal" in `waitpid(2)`
+    /// status words and negative values are kernel-internal sentinels.
     /// Windows processes killed via `TerminateProcess` appear as
     /// `Exited { code: 1 }` — there is no signal concept on Windows.
     Signaled {
@@ -32,16 +37,44 @@ pub enum ProcessTermination {
     SpawnFailed,
 }
 
+#[derive(Debug, Deserialize)]
+enum ProcessTerminationWire {
+    Exited { code: i32 },
+    Signaled { signal: i32 },
+    TimedOut,
+    MemoryLimitExceeded,
+    SpawnFailed,
+}
+
+impl<'de> Deserialize<'de> for ProcessTermination {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match ProcessTerminationWire::deserialize(deserializer)? {
+            ProcessTerminationWire::Exited { code } => Ok(Self::Exited { code }),
+            ProcessTerminationWire::Signaled { signal } => {
+                Self::signaled(signal).map_err(serde::de::Error::custom)
+            }
+            ProcessTerminationWire::TimedOut => Ok(Self::TimedOut),
+            ProcessTerminationWire::MemoryLimitExceeded => Ok(Self::MemoryLimitExceeded),
+            ProcessTerminationWire::SpawnFailed => Ok(Self::SpawnFailed),
+        }
+    }
+}
+
 impl ProcessTermination {
     /// Construct a signal-based termination.
     ///
+    /// Accepts any positive Unix signal number, including real-time signals
+    /// (>= 32 on glibc, e.g. 34 = SIGRTMIN+2). Non-positive values are
+    /// rejected — signal `0` is reserved and negative values are not
+    /// meaningful signal identifiers.
+    ///
     /// # Errors
-    /// - [`FailureError::InvalidSignal`] if the signal is outside 1–31.
+    /// - [`FailureError::InvalidSignal`] if the signal is not positive.
     pub fn signaled(signal: i32) -> Result<Self, FailureError> {
-        (1..=31)
-            .contains(&signal)
-            .then_some(Self::Signaled { signal })
-            .ok_or(FailureError::InvalidSignal(signal))
+        (signal > 0).then_some(Self::Signaled { signal }).ok_or(FailureError::InvalidSignal(signal))
     }
 
     /// Whether this represents a normal (non-error) exit.

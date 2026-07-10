@@ -23,71 +23,39 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
-use std::{env, io, path::Path};
-
-use thiserror::Error;
-use titania_core::{TargetProject, TargetProjectError, discover_target};
-
+use titania_core::TargetProject;
 pub mod artifact_writer;
 pub mod ast_grep_lane;
 pub mod clippy_normalizer;
 pub mod command;
 pub mod deny_normalizer;
+pub mod discover;
 pub mod dylint_lane;
 pub mod helpers;
 pub mod policy_scan;
+
 pub mod run_lane;
 pub mod source_line;
 
 pub use command::{CommandBudget, CommandIn, CommandOutput, EnvPolicy, LaneError, OutputStream};
+pub use discover::{CurrentTargetError, discover_target, target_project_from_path, try_from_path};
 pub use run_lane::run_lane_sources::{SourceWalkError, collect_rust_sources};
 pub use source_line::{SourceLine, SourceLineState};
 pub use titania_core::{RuleId, RuleIdError};
 
-/// Errors produced while resolving the target project from the process CWD.
-#[derive(Debug, Error)]
-pub enum CurrentTargetError {
-    /// The process current working directory could not be read.
-    #[error("cannot read current directory")]
-    CurrentDir(#[source] io::Error),
-    /// No valid Cargo target project could be resolved from the CWD.
-    #[error(transparent)]
-    Target(#[from] TargetProjectError),
-}
-
-/// Construct a [`TargetProject`] from an arbitrary filesystem path.
-///
-/// Walks ancestors from the given path, reads manifests, and selects the
-/// nearest workspace root (or single-package root). This is the pure core
-/// of target-project resolution — it accepts any `&Path` and returns a
-/// validated `TargetProject` or a typed error.
-///
-/// # Errors
-/// Returns a [`TargetProjectError`] when the path cannot be resolved to
-/// a valid Cargo target project.
-///
-/// # Pure core
-/// This function performs no I/O beyond filesystem reads for manifest
-/// discovery. It accepts `&Path` to allow callers to pass pre-validated
-/// paths from other layers without requiring CWD resolution.
-pub fn target_project_from_path(cwd: &Path) -> Result<TargetProject, TargetProjectError> {
-    discover_target(cwd)
-}
-
 /// Discover the target Rust project from the current working directory.
 ///
-/// Lanes are launched from the project they should judge; this helper is the
-/// single adapter that turns the ambient CWD into the typed `TargetProject`
-/// value used by subprocess code.
+/// Thin re-export over [`discover::current_target_project`] so existing
+/// `titania_lanes::current_target_project` callers compile unchanged.
 ///
 /// # Errors
 /// Returns [`CurrentTargetError::CurrentDir`] when CWD cannot be read and
-/// [`CurrentTargetError::Target`] when no valid Cargo target project can be
-/// discovered from that directory.
+/// [`CurrentTargetError::Target`] when no valid Cargo target project can
+/// be discovered from that directory.
 pub fn current_target_project() -> Result<TargetProject, CurrentTargetError> {
-    let cwd = env::current_dir().map_err(CurrentTargetError::CurrentDir)?;
-    target_project_from_path(&cwd).map_err(CurrentTargetError::Target)
+    crate::discover::current_target_project()
 }
+
 /// One typed finding produced by a lane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
@@ -100,7 +68,6 @@ pub struct Finding {
     /// Human-readable message.
     message: String,
 }
-
 impl Finding {
     /// Construct a finding from a validated rule id, a repository-relative
     /// path, a 1-indexed line number (`0` for file-level), and a message.

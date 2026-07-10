@@ -106,7 +106,12 @@ fn find_titania_dylint_library(root: &Path) -> Option<PathBuf> {
         }
         path.file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.starts_with("libtitania_dylint@") && name.ends_with(".so"))
+            .is_some_and(|name| {
+                name.strip_prefix(std::env::consts::DLL_PREFIX).is_some_and(|name| {
+                    name.starts_with("titania_dylint@")
+                        && name.ends_with(std::env::consts::DLL_SUFFIX)
+                })
+            })
             .then_some(path)
     })
 }

@@ -14,10 +14,11 @@ const REQUIRED: &[&str] = &[
     "FUNC_RECURSION_DIRECT",
     "BYPASS_PUB_ALLOW",
     "DYLINT_INFRA_FAILURE",
+    "BYPASS_GENERATED_INCLUDE",
     "BYPASS_CARGO_CONFIG_PARENT",
+    "BYPASS_CARGO_CONFIG_PARSE_ERROR",
+    "BYPASS_CARGO_CONFIG_READ_ERROR",
     "BYPASS_ENV_CARGO_ENCODED_RUSTFLAGS",
-    "BYPASS_ENV_RUSTC_WORKSPACE_WRAPPER",
-    "POLICY_EXCEPTION_READ_ERROR",
     "POLICY_EXCEPTION_EXPIRED",
     "POLICY_EXCEPTION_INVALID_FIELD",
     "POLICY_EXCEPTION_PARSE_ERROR",
@@ -79,6 +80,13 @@ fn dynamic_clippy_rule_covers_arbitrary_normalized_lint() {
 }
 
 #[test]
+fn explain_wildcard_import_has_neutral_repair() {
+    let entry = explain_rule("FUNC_WILDCARD_IMPORT").expect("wildcard rule exists");
+    assert_eq!(entry.effect, "Informational");
+    assert_eq!(entry.repair, "—");
+}
+
+#[test]
 fn required_ids_have_no_duplicates() {
     let mut seen = HashSet::new();
     REQUIRED.iter().for_each(|rule| assert!(seen.insert(rule), "duplicate {rule}"));
@@ -93,6 +101,21 @@ fn catalog_has_no_duplicate_rule_ids() {
 #[test]
 fn explain_unknown_rule_returns_unknown_rule() {
     assert!(matches!(explain_rule("DOES_NOT_EXIST"), Err(OutputError::UnknownRule { .. })));
+}
+#[test]
+fn explain_bypass_env_cargo_home_returns_policy_scan_row() {
+    let entry = explain_rule("BYPASS_ENV_CARGO_HOME").expect("BYPASS_ENV_CARGO_HOME exists");
+    assert_eq!(entry.rule_id, "BYPASS_ENV_CARGO_HOME");
+    assert_eq!(entry.source, "policy-scan");
+    assert_eq!(entry.effect, "Reject");
+}
+
+#[test]
+fn explain_bypass_env_rustup_home_returns_policy_scan_row() {
+    let entry = explain_rule("BYPASS_ENV_RUSTUP_HOME").expect("BYPASS_ENV_RUSTUP_HOME exists");
+    assert_eq!(entry.rule_id, "BYPASS_ENV_RUSTUP_HOME");
+    assert_eq!(entry.source, "policy-scan");
+    assert_eq!(entry.effect, "Reject");
 }
 
 fn catalog_rule_ids() -> impl Iterator<Item = &'static str> {
