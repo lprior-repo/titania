@@ -23,7 +23,7 @@
 #![deny(clippy::as_conversions)]
 #![forbid(unsafe_code)]
 
-use titania_core::TargetProject;
+use titania_core::{RepairHint, TargetProject};
 pub mod artifact_writer;
 pub mod ast_grep_lane;
 pub mod clippy_normalizer;
@@ -67,6 +67,12 @@ pub struct Finding {
     line: u32,
     /// Human-readable message.
     message: String,
+    /// Typed remediation hint. Auto-populated from the `rule_id` by the
+    /// single-source-of-truth catalog in [`titania_core::repair_hint`];
+    /// overridden via [`Finding::with_repair`] when a normalizer has
+    /// richer context (a precise `Patch` range, crate-name in `from`,
+    /// etc.) than the catalog row.
+    repair: RepairHint,
 }
 impl Finding {
     /// Construct a finding from a validated rule id, a repository-relative
@@ -78,7 +84,24 @@ impl Finding {
         line: u32,
         message: impl Into<String>,
     ) -> Self {
-        Self { rule, path: path.into(), line, message: message.into() }
+        let repair = titania_core::RepairHint::for_rule(rule.as_str());
+        Self { rule, path: path.into(), line, message: message.into(), repair }
+    }
+
+    /// Override the auto-populated remediation hint. Use this when a
+    /// normalizer has richer context than the catalog (e.g. a precise
+    /// `Patch` with a line-exact `TextRange`, or a `ReplaceDependency`
+    /// whose `from` carries the banned crate name).
+    #[must_use]
+    pub fn with_repair(mut self, repair: RepairHint) -> Self {
+        self.repair = repair;
+        self
+    }
+
+    /// Borrow the typed remediation hint.
+    #[must_use]
+    pub const fn repair(&self) -> &RepairHint {
+        &self.repair
     }
 
     /// Stable lane-internal rule id (validated [`RuleId`]).

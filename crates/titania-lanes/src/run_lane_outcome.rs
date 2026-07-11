@@ -6,8 +6,7 @@ use std::os::unix::process::ExitStatusExt;
 use thiserror::Error;
 use titania_core::{
     CommandEvidence, Digest, Finding as CoreFinding, GateScope, Lane, LaneEvidence, LaneFailure,
-    LaneOutcome, Location, OutcomeError, ProcessTermination, RepairHint, TargetProject,
-    WorkspacePath,
+    LaneOutcome, Location, OutcomeError, ProcessTermination, TargetProject, WorkspacePath,
 };
 
 use crate::{
@@ -97,12 +96,18 @@ fn termination_from_signal(_status: std::process::ExitStatus) -> ProcessTerminat
 }
 
 fn core_finding(lane: Lane, finding: &Finding) -> CoreFinding {
+    // Repair hint comes from the lane Finding, which is auto-populated
+    // by `RepairHint::for_rule(rule.as_str())` at construction time and
+    // optionally overridden by `Finding::with_repair` for normalizers
+    // with richer context. The legacy `requires_human_review` fallback
+    // path is preserved by that catalog lookup (empty / unknown /
+    // dynamic rule ids return that class).
     CoreFinding::reject(
         lane,
         finding.rule().clone(),
         legacy_location(finding),
         finding.message().to_owned(),
-        RepairHint::requires_human_review(finding_note(finding)),
+        finding.repair().clone(),
     )
 }
 
@@ -119,14 +124,6 @@ fn legacy_span(path: WorkspacePath, line: u32) -> Location {
         return Location::workspace();
     };
     location
-}
-
-fn finding_note(finding: &Finding) -> String {
-    if finding.path().is_empty() {
-        finding.message().to_owned()
-    } else {
-        format!("{}:{}: {}", finding.path(), finding.line(), finding.message())
-    }
 }
 
 /// Build clean lane evidence for a successful lane run.

@@ -225,3 +225,81 @@ impl<'de> Deserialize<'de> for RepairHint {
         deserialize_repair_hint(deserializer)
     }
 }
+
+// ── RepairHintClass ─────────────────────────────────────────────────────────
+
+/// Stable classification of a [`RepairHint`].
+///
+/// Seven-variant enum mirroring [`RepairHintInner`] so that [`RepairHint::class`]
+/// is exhaustive. The strings returned by [`RepairHintClass::as_str`] are the
+/// same literals used in `repair_catalog.tsv` column 4 (catalog rows use
+/// `RequiresHumanReview` for the informational `—` marker).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RepairHintClass {
+    /// Auto-applicable byte-range patch.
+    Patch,
+    /// Suggest an iterator-pipeline rewrite.
+    UseIteratorPipeline,
+    /// Suggest flattening nested control flow.
+    FlattenNesting,
+    /// Suggest checked arithmetic.
+    UseCheckedArithmetic,
+    /// Suggest removing a `#[allow(...)]` attribute.
+    RemoveAllowAttribute,
+    /// Suggest rotating one dependency for another.
+    ReplaceDependency,
+    /// Hand off to manual review.
+    RequiresHumanReview,
+}
+
+impl RepairHintClass {
+    /// Stable TSV-string equivalent. Used by parity tests in
+    /// `titania-output` and `titania-lanes` to compare catalog classes.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Patch => "Patch",
+            Self::UseIteratorPipeline => "UseIteratorPipeline",
+            Self::FlattenNesting => "FlattenNesting",
+            Self::UseCheckedArithmetic => "UseCheckedArithmetic",
+            Self::RemoveAllowAttribute => "RemoveAllowAttribute",
+            Self::ReplaceDependency => "ReplaceDependency",
+            Self::RequiresHumanReview => "RequiresHumanReview",
+        }
+    }
+}
+
+impl RepairHint {
+    /// Exhaustive class lookup. Adding a new [`RepairHintInner`] variant
+    /// will fail this match until a class arm is added.
+    #[must_use]
+    pub const fn class(&self) -> RepairHintClass {
+        match &self.0 {
+            RepairHintInner::Patch { .. } => RepairHintClass::Patch,
+            RepairHintInner::UseIteratorPipeline { .. } => RepairHintClass::UseIteratorPipeline,
+            RepairHintInner::FlattenNesting { .. } => RepairHintClass::FlattenNesting,
+            RepairHintInner::UseCheckedArithmetic { .. } => RepairHintClass::UseCheckedArithmetic,
+            RepairHintInner::RemoveAllowAttribute { .. } => RepairHintClass::RemoveAllowAttribute,
+            RepairHintInner::ReplaceDependency { .. } => RepairHintClass::ReplaceDependency,
+            RepairHintInner::RequiresHumanReview { .. } => RepairHintClass::RequiresHumanReview,
+        }
+    }
+
+    /// Look up the canonical [`RepairHint`] for a rule id via the catalog
+    /// in `repair_catalog.tsv`. Thin re-export of
+    /// [`super::repair_catalog::for_rule`] so callers can write
+    /// `RepairHint::for_rule(rule_id)` without importing the parser module.
+    ///
+    /// **Contract**:
+    /// - Empty `rule_id` → `requires_human_review("unmapped rule_id: ")`.
+    /// - Unknown / dynamic / out-of-catalog id →
+    ///   `requires_human_review("unmapped rule_id: <id>")`.
+    /// - Never panics.
+    /// - Never returns `RepairHint::Patch` (no range context available
+    ///   here — call sites that need a precise Patch must use
+    ///   `titania_lanes::Finding::with_repair`).
+    #[must_use]
+    pub fn for_rule(rule_id: &str) -> Self {
+        super::repair_catalog::for_rule(rule_id)
+    }
+}

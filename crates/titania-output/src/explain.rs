@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use crate::OutputError;
 
-const CATALOG: &str = include_str!("../rules/explain.tsv");
+const CATALOG: &str = include_str!("../../titania-core/src/finding/repair_catalog.tsv");
 
 /// A single catalog entry for a known rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,7 +70,9 @@ fn row_entry(row: Row) -> RuleExplanation {
         rule_id: Cow::Borrowed(row.rule_id),
         source: Cow::Borrowed(row.source),
         effect: Cow::Borrowed(row.effect),
-        repair: Cow::Borrowed(row.repair),
+        repair: Cow::Owned(
+            titania_core::RepairHint::for_rule(row.rule_id).class().as_str().to_owned(),
+        ),
         pattern: Cow::Borrowed(row.pattern),
         description: Cow::Borrowed(row.description),
         example_violation: example_violation(row.rule_id, row.pattern),

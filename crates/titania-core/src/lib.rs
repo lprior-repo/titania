@@ -53,7 +53,9 @@ pub use error::{
     TargetProjectError, TextRangeError, WorkspacePathError,
 };
 pub use failure::{LaneFailure, ProcessTermination};
-pub use finding::{Finding, FindingEffect, Location, RepairHint};
+pub use finding::{
+    CatalogRow, Finding, FindingEffect, Location, RepairHint, RepairHintClass, catalog_rows,
+};
 pub use gate_scope::GateScope;
 pub use lane::Lane;
 pub use outcome::{CommandEvidence, LaneEvidence, LaneOutcome, SkipReason};

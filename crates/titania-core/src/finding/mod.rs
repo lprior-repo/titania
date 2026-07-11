@@ -7,10 +7,12 @@
 use serde::{Deserialize, Serialize};
 
 mod location;
+mod repair_catalog;
 mod repair_hint;
 
 pub use location::Location;
-pub use repair_hint::RepairHint;
+pub use repair_catalog::{CatalogRow, catalog_rows};
+pub use repair_hint::{RepairHint, RepairHintClass};
 
 use crate::{lane::Lane, rule_id::RuleId};
 

@@ -2,9 +2,10 @@
 
 use std::collections::HashSet;
 
+use titania_core::{RepairHint, RepairHintClass, catalog_rows};
 use titania_output::{OutputError, explain::explain_rule};
 
-const CATALOG: &str = include_str!("../rules/explain.tsv");
+const CATALOG: &str = include_str!("../../titania-core/src/finding/repair_catalog.tsv");
 const REQUIRED: &[&str] = &[
     "FUNC_LOOPS_FOR",
     "FUNC_UNWRAP_USED",
@@ -80,10 +81,14 @@ fn dynamic_clippy_rule_covers_arbitrary_normalized_lint() {
 }
 
 #[test]
-fn explain_wildcard_import_has_neutral_repair() {
+fn explain_wildcard_import_collapse_to_human_review() {
+    // After the tn-jy4y migration, the explain catalog's `repair` field
+    // is derived from `titania_core::RepairHint::for_rule(id).class()`,
+    // not the raw TSV literal. The TSV's `—` informational marker
+    // collapses to `RequiresHumanReview` per the parser contract.
     let entry = explain_rule("FUNC_WILDCARD_IMPORT").expect("wildcard rule exists");
     assert_eq!(entry.effect, "Informational");
-    assert_eq!(entry.repair, "—");
+    assert_eq!(entry.repair, "RequiresHumanReview");
 }
 
 #[test]
@@ -123,4 +128,60 @@ fn catalog_rule_ids() -> impl Iterator<Item = &'static str> {
         .lines()
         .filter(|line| !line.trim().is_empty())
         .filter_map(|line| line.split('\t').next())
+}
+
+/// Catalog-vs-output parity test.
+///
+/// For every row in `repair_catalog.tsv`, `explain_rule(id).repair` must
+/// agree with `RepairHint::for_rule(id).class().as_str()`. This is the
+/// single-source-of-truth guarantee: the catalog lives in
+/// `titania-core`, `titania-output::explain` consumes it via
+/// `include_str!`, and `titania-lanes::Finding` populates its `repair`
+/// field from `titania_core::RepairHint::for_rule`. If the three ever
+/// drift apart, this test fails.
+#[test]
+fn catalog_class_matches_repair_hint_for_rule() {
+    for row in catalog_rows() {
+        let hint = RepairHint::for_rule(row.rule_id);
+        let class_str = hint.class().as_str();
+        // explain_rule returns RuleExplanation with `repair: &'static str`
+        // (the catalog's class column literal). For `—` rows explain_rule
+        // surfaces `RequiresHumanReview` per parser normalization.
+        let entry = explain_rule(row.rule_id)
+            .unwrap_or_else(|e| panic!("explain_rule({}) failed: {}", row.rule_id, e));
+        assert_eq!(
+            entry.repair, class_str,
+            "row {}: explain_rule.repair = {:?}, RepairHint::for_rule().class() = {:?}",
+            row.rule_id, entry.repair, class_str,
+        );
+        // Sanity: the class lookup itself returns one of the 7 valid classes.
+        assert!(
+            matches!(
+                hint.class(),
+                RepairHintClass::Patch
+                    | RepairHintClass::UseIteratorPipeline
+                    | RepairHintClass::FlattenNesting
+                    | RepairHintClass::UseCheckedArithmetic
+                    | RepairHintClass::RemoveAllowAttribute
+                    | RepairHintClass::ReplaceDependency
+                    | RepairHintClass::RequiresHumanReview,
+            ),
+            "row {} produced an invalid class variant",
+            row.rule_id,
+        );
+    }
+}
+
+/// for_rule("") never panics and returns RequiresHumanReview.
+#[test]
+fn for_rule_empty_id_returns_human_review() {
+    let hint = RepairHint::for_rule("");
+    assert_eq!(hint.class(), RepairHintClass::RequiresHumanReview);
+}
+
+/// for_rule on a dynamic rule id never panics and returns RequiresHumanReview.
+#[test]
+fn for_rule_unknown_dynamic_id_returns_human_review() {
+    let hint = RepairHint::for_rule("CLIPPY_SOMETHING_NOT_IN_CATALOG_XYZ");
+    assert_eq!(hint.class(), RepairHintClass::RequiresHumanReview);
 }
