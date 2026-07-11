@@ -23,6 +23,12 @@ pub(super) struct AstEngine {
     grep: AstGrep<StrDoc<Rust>>,
     /// Byte offset of the start of each source line (line 0 = offset 0).
     line_offsets: Vec<usize>,
+    /// `(start, end)` byte ranges of modules annotated `#[cfg(test)]` or
+    /// `#[cfg(all(test, …))]`. FUNC_* detectors skip matches inside these
+    /// ranges so inline test modules in `src/` files are not flagged
+    /// (v1-spec §9.10 source/test split). BYPASS_* detectors do NOT skip
+    /// these ranges — `#[allow]` inside a test module is still a bypass.
+    test_ranges: Vec<(usize, usize)>,
 }
 
 impl AstEngine {
@@ -31,65 +37,84 @@ impl AstEngine {
     /// engine detectors simply fail to matches against malformed subtrees.
     pub(super) fn new(source: &str) -> Self {
         let grep = AstGrep::new(source, Rust);
-        Self { grep, line_offsets: line_offsets(source) }
+        let test_ranges = collect_test_ranges(&grep.root());
+        Self { grep, line_offsets: line_offsets(source), test_ranges }
+    }
+
+    /// `true` when `byte_offset` falls inside any `#[cfg(test)]` module.
+    fn is_in_test_code(&self, byte_offset: usize) -> bool {
+        self.test_ranges.iter().any(|(start, end)| byte_offset >= *start && byte_offset < *end)
     }
 
     /// 0-based line index of the first pattern match, or `None`.
+    ///
+    /// Used by BYPASS_* detectors that scan the entire file including test
+    /// modules.
     fn first_match_line(&self, pattern: &Pattern) -> Option<usize> {
         let node_match = self.grep.root().find_all(pattern).next()?;
         Some(self.line_of_match(&node_match))
+    }
+
+    /// 0-based line index of the first pattern match outside `#[cfg(test)]`
+    /// modules, or `None`. Used by FUNC_* detectors.
+    fn first_match_line_skipping_tests(&self, pattern: &Pattern) -> Option<usize> {
+        self.grep
+            .root()
+            .find_all(pattern)
+            .find(|node_match| !self.is_in_test_code(node_match.range().start))
+            .map(|node_match| self.line_of_match(&node_match))
     }
 
     fn line_of_match(&self, node_match: &NodeMatch<'_, StrDoc<Rust>>) -> usize {
         line_at_byte(&self.line_offsets, node_match.range().start)
     }
 
-    /// 0-based line index of the first match across an iterator of patterns.
-    ///
-    /// Used for rules expressed as `any: [pattern, pattern, ...]` in YAML.
-    fn first_match_line_any<'p>(
+    /// 0-based line index of the first match across an iterator of patterns,
+    /// excluding `#[cfg(test)]` modules. Used by FUNC_* detectors expressed
+    /// as `any: [pattern, …]`.
+    fn first_match_line_any_skipping_tests<'p>(
         &self,
         patterns: impl IntoIterator<Item = &'p Pattern>,
     ) -> Option<usize> {
-        patterns.into_iter().filter_map(|pat| self.first_match_line(pat)).min()
+        patterns.into_iter().filter_map(|pat| self.first_match_line_skipping_tests(pat)).min()
     }
 
     /// Line of the first `for $LOOP in $ITER { $$$BODY }` match (`FUNC_LOOPS_FOR`).
     pub(super) fn detect_for_loop(&self) -> Option<usize> {
         let pat = Pattern::new("for $LOOP in $ITER { $$$BODY }", Rust);
-        self.first_match_line(&pat)
+        self.first_match_line_skipping_tests(&pat)
     }
 
     /// Line of the first `while $COND { $$$BODY }` match (`FUNC_LOOPS_WHILE`).
     pub(super) fn detect_while_loop(&self) -> Option<usize> {
         let pat = Pattern::new("while $COND { $$$BODY }", Rust);
-        self.first_match_line(&pat)
+        self.first_match_line_skipping_tests(&pat)
     }
 
     /// Line of the first `loop { $$$BODY }` match (`FUNC_LOOPS_LOOP`).
     pub(super) fn detect_loop_block(&self) -> Option<usize> {
         let pat = Pattern::new("loop { $$$BODY }", Rust);
-        self.first_match_line(&pat)
+        self.first_match_line_skipping_tests(&pat)
     }
 
     /// Line of the first `print!`/`println!` match (`FUNC_PRINT_STDOUT`).
     pub(super) fn detect_print_stdout(&self) -> Option<usize> {
         let print = Pattern::new("print!($$$ARGS)", Rust);
         let println = Pattern::new("println!($$$ARGS)", Rust);
-        self.first_match_line_any([&print, &println])
+        self.first_match_line_any_skipping_tests([&print, &println])
     }
 
     /// Line of the first `eprint!`/`eprintln!` match (`FUNC_PRINT_STDERR`).
     pub(super) fn detect_print_stderr(&self) -> Option<usize> {
         let eprint = Pattern::new("eprint!($$$ARGS)", Rust);
         let eprintln = Pattern::new("eprintln!($$$ARGS)", Rust);
-        self.first_match_line_any([&eprint, &eprintln])
+        self.first_match_line_any_skipping_tests([&eprint, &eprintln])
     }
 
     /// Line of the first `use $PATH::*;` match (`FUNC_WILDCARD_IMPORT`).
     pub(super) fn detect_wildcard_import(&self) -> Option<usize> {
         let pat = Pattern::new("use $PATH::*;", Rust);
-        self.first_match_line(&pat)
+        self.first_match_line_skipping_tests(&pat)
     }
 
     /// Line of the first `.unwrap_or(_)`, `.unwrap_or_else(_)`, or
@@ -98,28 +123,43 @@ impl AstEngine {
         let or = Pattern::new("$VALUE.unwrap_or($DEFAULT)", Rust);
         let or_else = Pattern::new("$VALUE.unwrap_or_else($DEFAULT)", Rust);
         let or_default = Pattern::new("$VALUE.unwrap_or_default()", Rust);
-        self.first_match_line_any([&or, &or_else, &or_default])
+        self.first_match_line_any_skipping_tests([&or, &or_else, &or_default])
     }
 
     /// Line of the first `Result<_, String>` `generic_type` node (`FUNC_RESULT_STRING`).
     ///
     /// ast-grep patterns cannot express a partial type-argument match
     /// cleanly across all grammars, so we walk `generic_type` nodes and
-    /// inspect the type arguments manually.
+    /// inspect the type arguments manually. Matches inside `#[cfg(test)]`
+    /// modules are skipped.
     pub(super) fn detect_result_string(&self) -> Option<usize> {
-        first_match_node_line(&self.grep.root(), is_result_with_string_error)
+        self.grep
+            .root()
+            .dfs()
+            .filter(|node| !self.is_in_test_code(node.range().start))
+            .find_map(|node| is_result_with_string_error(&node).map(|()| node.start_pos().line()))
     }
 
     /// Line of the first function whose body nests deeper than
     /// [`MAX_NESTING_DEPTH`] (`FUNC_NESTING_DEPTH`, new in §6).
     pub(super) fn detect_nesting_depth(&self) -> Option<usize> {
-        first_function_match(&self.grep.root(), function_has_excess_nesting)
+        self.grep
+            .root()
+            .dfs()
+            .filter(|node| node.kind() == "function_item")
+            .filter(|node| !self.is_in_test_code(node.range().start))
+            .find_map(|node| function_has_excess_nesting(&node).map(|_| node.start_pos().line()))
     }
 
     /// Line of the first function whose body calls itself by name
     /// (`FUNC_RECURSION_DIRECT`, new in §6).
     pub(super) fn detect_recursion_direct(&self) -> Option<usize> {
-        first_function_match(&self.grep.root(), function_calls_itself)
+        self.grep
+            .root()
+            .dfs()
+            .filter(|node| node.kind() == "function_item")
+            .filter(|node| !self.is_in_test_code(node.range().start))
+            .find_map(|node| function_calls_itself(&node).map(|()| node.start_pos().line()))
     }
 
     /// Line of the first `#[allow($$$LINTS)]` item attribute (`BYPASS_ALLOW_ATTR`).
@@ -453,26 +493,6 @@ fn line_at_byte(offsets: &[usize], byte: usize) -> usize {
     offsets.partition_point(|&offset| offset <= byte).saturating_sub(1)
 }
 
-/// Function pointer predicate over an ast-grep node.
-type NodePredicate<T> = fn(&Node<'_, StrDoc<Rust>>) -> Option<T>;
-
-/// Walk the tree depth-first; return the line of the first node where `pred`
-/// returns `Some(T)`.
-fn first_match_node_line<T>(
-    root: &Node<'_, StrDoc<Rust>>,
-    pred: NodePredicate<T>,
-) -> Option<usize> {
-    root.dfs().find_map(|node| pred(&node).map(|_| node.start_pos().line()))
-}
-
-/// Walk function items; return the line of the first function for which
-/// `pred` returns `Some(T)`.
-fn first_function_match<T>(root: &Node<'_, StrDoc<Rust>>, pred: NodePredicate<T>) -> Option<usize> {
-    root.dfs()
-        .filter(|node| node.kind() == "function_item")
-        .find_map(|node| pred(&node).map(|_| node.start_pos().line()))
-}
-
 /// `Some(())` when `node` is a `generic_type` whose head identifier is
 /// `Result` and whose second type argument is exactly the path `String`.
 fn is_result_with_string_error(node: &Node<'_, StrDoc<Rust>>) -> Option<()> {
@@ -568,4 +588,36 @@ fn is_call_to(node: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
 /// AST node kinds that may serve as the callee of a `call_expression`.
 fn is_callee_kind(kind: &str) -> bool {
     matches!(kind, "identifier" | "field_expression")
+}
+
+/// Collect `(start, end)` byte ranges of items decorated by `#[cfg(test)]`,
+/// `#[cfg(all(test, …))]`, or `#[cfg(any(test, …))]` attributes.
+///
+/// In tree-sitter-rust, `attribute_item` nodes are siblings of the items
+/// they decorate (both children of the enclosing `source_file` or
+/// `declaration_list`). Each `attribute_item` has `next_all()` yielding its
+/// following siblings; the first non-`attribute_item` sibling is the
+/// decorated item.
+fn collect_test_ranges(root: &Node<'_, StrDoc<Rust>>) -> Vec<(usize, usize)> {
+    root.dfs()
+        .filter(|node| is_cfg_test_attribute(node))
+        .filter_map(|attr| decorated_item_range(&attr))
+        .collect()
+}
+
+/// `true` when `node` is an `attribute_item` whose text is a `cfg(test)`,
+/// `cfg(all(test, …))`, or `cfg(any(test, …))` attribute.
+fn is_cfg_test_attribute(node: &Node<'_, StrDoc<Rust>>) -> bool {
+    if node.kind() != "attribute_item" {
+        return false;
+    }
+    let text = node.text();
+    text.contains("cfg(test)") || text.contains("cfg(all(test") || text.contains("cfg(any(test")
+}
+
+/// Byte range of the first non-attribute sibling following `attr`, or `None`.
+fn decorated_item_range(attr: &Node<'_, StrDoc<Rust>>) -> Option<(usize, usize)> {
+    attr.next_all()
+        .find(|sibling| sibling.kind() != "attribute_item")
+        .map(|item| (item.range().start, item.range().end))
 }
