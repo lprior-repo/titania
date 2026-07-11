@@ -478,9 +478,7 @@ fn template_policy_rust_configs() -> Result<()> {
         "template deny.toml must not carry repo-specific advisory ignores"
     );
     assert!(
-        deny_text.contains(
-            "allow = [\"MIT\", \"Apache-2.0\", \"BSD-3-Clause\", \"ISC\", \"Unicode-DFS-2016\"]"
-        ),
+        deny_text.contains("allow = [\"MIT\", \"Apache-2.0\"]"),
         "template deny.toml must carry the v1 starter license allowlist"
     );
 

@@ -35,6 +35,7 @@ pub(super) fn run(target: &TargetProject) -> Result<LaneReport, PolicyRunError> 
         root,
         manifests.iter().map(PathBuf::as_path),
         &exceptions,
+        &crate::policy_scan::env_vars::real_env,
         &mut report,
     )?;
     Ok(report)
@@ -58,6 +59,7 @@ pub(super) fn policy_date(target: &TargetProject) -> Result<String, PolicyRunErr
 }
 
 /// Collect workspace `Cargo.toml` paths relative to the target root.
+///
 /// Discovers only manifests that belong to the target workspace. A nested
 /// directory whose own `Cargo.toml` declares a `[workspace]` table is a
 /// separate workspace boundary (for example a fixture or template
@@ -114,10 +116,10 @@ fn visit_dir_entry(
     if file_type.is_dir() && !is_skipped_dir(&path) {
         return collect_manifest_paths_into(root, &path, manifests);
     }
-    if file_type.is_file() && entry.file_name() == OsStr::new(MANIFEST_NAME) {
-        if parent != root && is_workspace_boundary(&path) {
-            return Ok(());
-        }
+    if file_type.is_file()
+        && entry.file_name() == OsStr::new(MANIFEST_NAME)
+        && belongs_to_target_workspace(parent, root, &path)
+    {
         push_manifest_path(root, &path, manifests)?;
     }
     Ok(())
@@ -176,4 +178,11 @@ pub(super) enum PolicyRunError {
     },
     #[error("rule id configuration error: {0}")]
     RuleId(#[from] RuleIdError),
+}
+
+/// Return `true` when `path` belongs to the target workspace rooted at
+/// `root`. The target root always belongs; nested directories that declare
+/// their own `[workspace]` boundary are excluded.
+fn belongs_to_target_workspace(parent: &Path, root: &Path, path: &Path) -> bool {
+    parent == root || !is_workspace_boundary(path)
 }

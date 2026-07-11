@@ -27,7 +27,7 @@ pub fn scan_policy_inputs<'a>(
     manifest_paths: impl IntoIterator<Item = &'a Path>,
     report: &mut LaneReport,
 ) -> Result<(), RuleIdError> {
-    scan_policy_inputs_with_exceptions(root, manifest_paths, &[], report)
+    scan_policy_inputs_with_exceptions(root, manifest_paths, &[], &env_vars::real_env, report)
 }
 
 /// Scan policy-bypass inputs and suppress findings with valid strict-ai exceptions.
@@ -36,12 +36,18 @@ pub fn scan_policy_inputs<'a>(
 /// Expired or malformed exception files are handled by
 /// [`exceptions::load_exceptions`] before this function is called.
 ///
+/// The environment-variable scanner reads through the provided [`env_vars::EnvReader`]
+/// so callers can drive the scan under a controlled environment. Production callers
+/// pass [`env_vars::real_env`]; tests inject a `BTreeMap`-backed reader to avoid
+/// leaking host `CARGO_HOME` / `RUSTUP_HOME` into the result.
+///
 /// # Errors
 /// Returns [`RuleIdError`] if any embedded scanner rule identifier is invalid.
 pub fn scan_policy_inputs_with_exceptions<'a>(
     root: &Path,
     manifest_paths: impl IntoIterator<Item = &'a Path>,
     active_exceptions: &[Exception],
+    env: &env_vars::EnvReader,
     report: &mut LaneReport,
 ) -> Result<(), RuleIdError> {
     let mut raw_report = LaneReport::new();
@@ -53,7 +59,7 @@ pub fn scan_policy_inputs_with_exceptions<'a>(
     normalized_manifests.iter().try_for_each(|manifest_path| {
         cargo_lints::scan_cargo_lints_weakening(root, manifest_path, &mut raw_report).map(|_| ())
     })?;
-    env_vars::scan_env_vars_with_target(&mut raw_report, &env_vars::real_env, root)?;
+    env_vars::scan_env_vars_with_target(&mut raw_report, env, root)?;
     report.extend_finding(filtered_findings(&raw_report, active_exceptions));
     Ok(())
 }

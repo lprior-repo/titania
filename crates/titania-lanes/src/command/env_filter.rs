@@ -385,18 +385,8 @@ fn collect_pair_os(
 
 /// Apply the surviving pairs onto `cmd`.
 fn apply_pairs(cmd: &mut std::process::Command, pairs: &[(String, String)]) {
-    fn step(
-        cmd: &mut std::process::Command,
-        (key, value): &(String, String),
-    ) -> Result<(), std::convert::Infallible> {
+    for (key, value) in pairs {
         let _ = cmd.env(key, value);
-        Ok(())
-    }
-    let result: Result<(), std::convert::Infallible> =
-        pairs.iter().try_for_each(|pair| step(cmd, pair));
-    match result {
-        Ok(()) => {}
-        Err(unreachable) => match unreachable {},
     }
 }
 

@@ -44,18 +44,38 @@ fn checked_in_strict_ai_exceptions_parse_audit_exception() {
     let exceptions =
         parse_exceptions(&content, "2026-07-04").expect("checked-in exceptions must parse");
 
-    assert_eq!(exceptions.len(), 1, "expected exactly one audited exception");
-    let ex = &exceptions[0];
-    assert_eq!(ex.rule_id.as_str(), "BYPASS_EXPECT_ATTR");
-    assert_eq!(ex.path.as_str(), "crates/titania-dylint/src/lib.rs");
-    assert_eq!(ex.owner.as_ref(), "titania-maintainers");
-    assert!(
-        ex.reason.contains("Dylint ABI"),
-        "reason should cite Dylint ABI/no_mangle rationale, got: {}",
-        ex.reason
+    assert_eq!(
+        exceptions.len(),
+        2,
+        "expected exactly two audited exceptions (tn-dylint-abi-expect + tn-dylint-abi-lints)"
     );
-    assert_eq!(ex.expires_on.as_ref(), "2026-10-01");
-    assert_eq!(ex.review.as_ref(), "tn-dylint-abi-expect");
+
+    let by_rule: std::collections::BTreeMap<&str, &_> =
+        exceptions.iter().map(|ex| (ex.rule_id.as_str(), ex)).collect();
+    let expect_attr =
+        by_rule.get("BYPASS_EXPECT_ATTR").expect("BYPASS_EXPECT_ATTR exception must be present");
+    assert_eq!(expect_attr.path.as_str(), "crates/titania-dylint/src/lib.rs");
+    assert_eq!(expect_attr.owner.as_ref(), "titania-maintainers");
+    assert!(
+        expect_attr.reason.contains("Dylint ABI"),
+        "BYPASS_EXPECT_ATTR reason should cite Dylint ABI/no_mangle rationale, got: {}",
+        expect_attr.reason
+    );
+    assert_eq!(expect_attr.expires_on.as_ref(), "2026-10-01");
+    assert_eq!(expect_attr.review.as_ref(), "tn-dylint-abi-expect");
+
+    let cargo_lints = by_rule
+        .get("BYPASS_CARGO_LINTS_WEAKENING")
+        .expect("BYPASS_CARGO_LINTS_WEAKENING exception must be present");
+    assert_eq!(cargo_lints.path.as_str(), "crates/titania-dylint/Cargo.toml");
+    assert_eq!(cargo_lints.owner.as_ref(), "titania-maintainers");
+    assert!(
+        cargo_lints.reason.contains("Dylint"),
+        "BYPASS_CARGO_LINTS_WEAKENING reason should cite Dylint, got: {}",
+        cargo_lints.reason
+    );
+    assert_eq!(cargo_lints.expires_on.as_ref(), "2026-10-01");
+    assert_eq!(cargo_lints.review.as_ref(), "tn-dylint-abi-lints");
 }
 
 #[test]

@@ -7,7 +7,15 @@
 
 use tempfile::TempDir;
 use titania_core::{RuleId, WorkspacePath};
-use titania_lanes::{LaneReport, policy_scan::scan_policy_inputs_with_exceptions};
+use titania_lanes::{
+    LaneReport,
+    policy_scan::{
+        env_vars::{
+            CONTROLLED_CARGO_HOME_SUFFIX, CONTROLLED_RUSTUP_HOME_SUFFIX, controlled_home_path,
+        },
+        scan_policy_inputs_with_exceptions,
+    },
+};
 use titania_policy::{Exception, ExceptionError, parse_exceptions};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -32,6 +40,28 @@ fn make_exception(rule: &str, path: &str) -> Exception {
     }
 }
 
+/// Build a shared closure that points `CARGO_HOME` / `RUSTUP_HOME` at the
+/// hermetic path owned by `dir`, and reports every other variable as unset.
+/// Keeps host environment leaks (`/cache/cargo-shared`, the user's `~/.rustup`,
+/// ambient `RUSTFLAGS`, ...) out of the scan result.
+fn controlled_env(dir: &TempDir) -> std::sync::Arc<Box<dyn Fn(&str) -> Option<String>>> {
+    let cargo = controlled_home_path(dir.path(), CONTROLLED_CARGO_HOME_SUFFIX)
+        .into_os_string()
+        .into_string()
+        .expect("controlled cargo-home path is UTF-8");
+    let rustup = controlled_home_path(dir.path(), CONTROLLED_RUSTUP_HOME_SUFFIX)
+        .into_os_string()
+        .into_string()
+        .expect("controlled rustup-home path is UTF-8");
+    let map: std::collections::BTreeMap<String, String> =
+        [("CARGO_HOME".to_owned(), cargo), ("RUSTUP_HOME".to_owned(), rustup)]
+            .into_iter()
+            .collect();
+    let env: Box<dyn Fn(&str) -> Option<String>> =
+        Box::new(move |name: &str| map.get(name).cloned());
+    std::sync::Arc::new(env)
+}
+
 /// Run policy scan with exceptions and return findings that remain after suppression.
 fn scan_with_exceptions(
     dir: &TempDir,
@@ -40,10 +70,12 @@ fn scan_with_exceptions(
 ) -> Result<LaneReport, Box<dyn std::error::Error>> {
     let manifest_path = dir.path().join(manifest_name);
     let mut report = LaneReport::new();
+    let env = controlled_env(dir);
     scan_policy_inputs_with_exceptions(
         dir.path(),
         std::iter::once(manifest_path.as_path()),
         exceptions,
+        env.as_ref(),
         &mut report,
     )?;
     Ok(report)
@@ -68,7 +100,11 @@ fn matching_exception_suppresses_lint_weakening() -> TestResult {
 #[test]
 fn matching_exception_suppresses_config_flags_finding() -> TestResult {
     let dir = TempDir::new()?;
-    write_manifest(&dir, "Cargo.toml", "[workspace]\nmembers = [\"crates/example\"]\n")?;
+    write_manifest(
+        &dir,
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"crates/example\"]\n[workspace.lints.clippy]\npanic = \"deny\"\npedantic = \"deny\"\nunwrap_used = \"deny\"\nexpect_used = \"deny\"\ntodo = \"deny\"\nunimplemented = \"deny\"\nindexing_slicing = \"deny\"\nstring_slice = \"deny\"\ndbg_macro = \"deny\"\nas_conversions = \"deny\"\n[workspace.lints.rust]\nunsafe_code = \"deny\"\nunreachable_pub = \"deny\"\nmissing_debug_implementations = \"deny\"\nfuture_incompatible = \"deny\"\n[workspace.lints.rustdoc]\nbroken_intra_doc_links = \"deny\"\nprivate_intra_doc_links = \"deny\"\n",
+    )?;
     std::fs::create_dir_all(dir.path().join(".cargo"))?;
     write_manifest(&dir, ".cargo/config.toml", "[build]\nrustflags = [\"-Z\", \"some-flag\"]\n")?;
     let exception = make_exception("BYPASS_CARGO_CONFIG_FLAGS", ".cargo/config.toml");

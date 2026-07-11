@@ -152,10 +152,10 @@ fn controlled_home_message(name: &str, controlled: &Path, supplied: Option<&str>
     match supplied {
         None => format!("{name} must be set to controlled path {}", controlled.display()),
         Some("") => {
-            format!("{name} must be non-empty and equal controlled path {}", controlled.display(),)
+            format!("{name} must be non-empty and equal controlled path {}", controlled.display())
         }
         Some(value) => {
-            format!("{name} must equal controlled path {} (got {value})", controlled.display(),)
+            format!("{name} must equal controlled path {} (got {value})", controlled.display())
         }
     }
 }

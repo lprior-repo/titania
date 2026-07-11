@@ -51,11 +51,11 @@ impl<'de> Deserialize<'de> for ProcessTermination {
     where
         D: Deserializer<'de>,
     {
-        match ProcessTerminationWire::deserialize(deserializer)? {
+        let wire = ProcessTerminationWire::deserialize(deserializer)?;
+        let parse_signal = |signal: i32| Self::signaled(signal).map_err(serde::de::Error::custom);
+        match wire {
             ProcessTerminationWire::Exited { code } => Ok(Self::Exited { code }),
-            ProcessTerminationWire::Signaled { signal } => {
-                Self::signaled(signal).map_err(serde::de::Error::custom)
-            }
+            ProcessTerminationWire::Signaled { signal } => parse_signal(signal),
             ProcessTerminationWire::TimedOut => Ok(Self::TimedOut),
             ProcessTerminationWire::MemoryLimitExceeded => Ok(Self::MemoryLimitExceeded),
             ProcessTerminationWire::SpawnFailed => Ok(Self::SpawnFailed),

@@ -422,6 +422,10 @@ fn parse_emit(value: &str) -> Result<EmitFormat, CliError> {
 ///
 /// `check` and `aggregate` are JSON-only under v1 §12; `doctor` is the only
 /// command that retains the human renderer.
+///
+/// # Errors
+/// Returns [`CliError::UnknownEmit`] when `value` is not a recognized emit
+/// format (only `"json"` is accepted for the primary report commands).
 fn parse_primary_emit(value: &str) -> Result<EmitFormat, CliError> {
     match value {
         "json" => Ok(EmitFormat::Json),

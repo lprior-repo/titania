@@ -140,15 +140,14 @@ fn build_item(document: &DocumentMut) -> Option<&Item> {
 }
 fn target_findings(document: &DocumentMut, path: &str, rules: &CargoConfigRules) -> Vec<Finding> {
     document.get("target").and_then(Item::as_table_like).map_or_else(Vec::new, |target| {
-        target
-            .iter()
-            .flat_map(|(_, item)| {
-                rustflags_values(item).into_iter().map(|flag| rustflag_finding(&flag, path, rules))
-            })
-            .collect()
+        target.iter().flat_map(|(_, item)| collect_inline_rustflags(item, path, rules)).collect()
     })
 }
 
+/// Flatten every `[target.*]` table's rustflag values into [`Finding`]s.
+fn collect_inline_rustflags(item: &Item, path: &str, rules: &CargoConfigRules) -> Vec<Finding> {
+    rustflags_values(item).into_iter().map(|flag| rustflag_finding(&flag, path, rules)).collect()
+}
 fn build_findings(build: &Item, path: &str, rules: &CargoConfigRules) -> Vec<Finding> {
     let wrappers = [
         wrapper_finding(wrapper_value(build, "rustc-wrapper"), path, rules),

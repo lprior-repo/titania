@@ -291,8 +291,8 @@ fn decode_literal(literal: &str, raw: bool) -> Option<String> {
 /// short-circuiting on the first malformed sequence. The final state is
 /// returned so the caller can reject dangling escape runs.
 fn fold_escape_sequence(literal: &str) -> Option<(String, EscapeMode)> {
-    literal.chars().fold(Some((String::new(), EscapeMode::Plain)), |state, character| {
-        state.and_then(|current| advance_escape(current, character))
+    literal.chars().try_fold((String::new(), EscapeMode::Plain), |current, character| {
+        advance_escape(current, character)
     })
 }
 
