@@ -385,9 +385,10 @@ fn collect_pair_os(
 
 /// Apply the surviving pairs onto `cmd`.
 fn apply_pairs(cmd: &mut std::process::Command, pairs: &[(String, String)]) {
-    for (key, value) in pairs {
+    let _ = pairs.iter().fold(&mut *cmd, |cmd, (key, value)| {
         let _ = cmd.env(key, value);
-    }
+        cmd
+    });
 }
 
 #[cfg(test)]

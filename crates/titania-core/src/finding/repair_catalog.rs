@@ -25,18 +25,6 @@
 //!   the `UseIteratorPipeline` and `UseCheckedArithmetic` arms; the
 //!   class names distinguish them.
 
-#![allow(
-    clippy::panic,
-    reason = "LazyLock init panics on malformed catalog rows; TSV is include_str!-frozen"
-)]
-#![allow(clippy::disallowed_macros, reason = "LazyLock init panic is the contract checkpoint")]
-#![allow(clippy::disallowed_methods, reason = "unwrap_or_else uses a pure allocation-free closure")]
-#![allow(clippy::excessive_nesting, reason = "catalog translation is exhaustive by class")]
-#![allow(
-    clippy::match_same_arms,
-    reason = "UseIteratorPipeline and UseCheckedArithmetic share description-as-note shape"
-)]
-
 use std::sync::LazyLock;
 
 use super::repair_hint::RepairHint;
@@ -81,16 +69,13 @@ fn parse_row(line: &'static str) -> Option<CatalogRow> {
     fields.next().is_none().then_some(row)
 }
 
+/// All catalog rows, parsed once at first access.
+///
+/// Malformed rows are silently skipped; a dedicated test verifies that all
+/// TSV rows produce a `CatalogRow` so a frozen-TSV regression is caught at
+/// test time, not at runtime.
 static CATALOG_ROWS: LazyLock<Vec<CatalogRow>> = LazyLock::new(|| {
-    CATALOG_TSV
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .enumerate()
-        .map(|(idx, line)| {
-            parse_row(line)
-                .unwrap_or_else(|| panic!("malformed catalog row at index {idx}: {line:?}"))
-        })
-        .collect()
+    CATALOG_TSV.lines().filter(|line| !line.trim().is_empty()).filter_map(parse_row).collect()
 });
 /// Return the parsed catalog rows (singleton access).
 #[must_use]
@@ -98,46 +83,45 @@ pub fn catalog_rows() -> &'static [CatalogRow] {
     &CATALOG_ROWS
 }
 
+/// Resolve a `ReplaceDependency` catalog row into a [`RepairHint`].
+///
+/// Extracted from `row_to_repair_hint` to keep nesting under the clippy
+/// `excessive_nesting` threshold. The single `ReplaceDependency` row today
+/// is `ARCHITECTURE_IMPORT_CORE_INFRA`; if a future row adds a second, the
+/// catalog should grow a 7th column and this function should switch on it.
+fn replace_dependency_hint(row: &CatalogRow) -> RepairHint {
+    match (row.rule_id, row.pattern) {
+        ("ARCHITECTURE_IMPORT_CORE_INFRA", "core/domain imports infrastructure") => {
+            RepairHint::replace_dependency("infrastructure".to_owned(), "typed port".to_owned())
+        }
+        _ => RepairHint::requires_human_review(format!(
+            "ReplaceDependency: unknown pattern {:?} for {}",
+            row.pattern, row.rule_id
+        )),
+    }
+}
+
 /// Translate one catalog row into a [`RepairHint`].
 ///
-/// Returns `None` when the row's `repair_class` is unrecognized (contract
-/// violation — should never happen because the static assert in
-/// `lib::every_row_has_a_recognized_repair_class` enforces the 6-class set).
-pub(super) fn row_to_repair_hint(row: &CatalogRow) -> Option<RepairHint> {
-    Some(match row.repair_class {
+/// Every recognized `repair_class` produces a concrete `RepairHint`;
+/// unrecognized classes fall back to `requires_human_review`.
+pub(super) fn row_to_repair_hint(row: &CatalogRow) -> RepairHint {
+    match row.repair_class {
         "UseIteratorPipeline" => RepairHint::use_iterator_pipeline(row.description.to_owned()),
         "FlattenNesting" => RepairHint::flatten_nesting(row.description.to_owned()),
         "UseCheckedArithmetic" => RepairHint::use_checked_arithmetic(row.description.to_owned()),
         "RemoveAllowAttribute" => RepairHint::remove_allow_attribute(row.description.to_owned()),
-        "ReplaceDependency" => {
-            // Single ReplaceDependency row today: `ARCHITECTURE_IMPORT_CORE_INFRA`.
-            // `from`/`to` are derived from the rule_id + pattern. If a future
-            // row adds a second ReplaceDependency the catalog should grow a
-            // 7th column; this arm will then need to switch on the rule_id.
-            return match (row.rule_id, row.pattern) {
-                ("ARCHITECTURE_IMPORT_CORE_INFRA", "core/domain imports infrastructure") => {
-                    Some(RepairHint::replace_dependency(
-                        "infrastructure".to_owned(),
-                        "typed port".to_owned(),
-                    ))
-                }
-                _ => Some(RepairHint::requires_human_review(format!(
-                    "ReplaceDependency: unknown pattern {:?} for {}",
-                    row.pattern, row.rule_id
-                ))),
-            };
+        "ReplaceDependency" => replace_dependency_hint(row),
+        "RequiresHumanReview" | "—" => {
+            // `—` is the informational marker in the TSV; both map to
+            // `requires_human_review` with the description as the note.
+            RepairHint::requires_human_review(row.description.to_owned())
         }
-        "RequiresHumanReview" => RepairHint::requires_human_review(row.description.to_owned()),
-        // Informational marker (`—` in the TSV) → RequiresHumanReview with
-        // the description as the note. Not an error; not Patch.
-        "—" => RepairHint::requires_human_review(row.description.to_owned()),
-        unknown => {
-            return Some(RepairHint::requires_human_review(format!(
-                "unknown repair class {unknown:?} for {}",
-                row.rule_id
-            )));
-        }
-    })
+        unknown => RepairHint::requires_human_review(format!(
+            "unknown repair class {unknown:?} for {}",
+            row.rule_id
+        )),
+    }
 }
 
 /// Look up a rule's [`RepairHint`] via the catalog.
@@ -155,13 +139,10 @@ pub(super) fn for_rule(rule_id: &str) -> RepairHint {
     if rule_id.is_empty() {
         return RepairHint::requires_human_review("unmapped rule_id: ".to_owned());
     }
-    catalog_rows()
-        .iter()
-        .find(|row| row.rule_id == rule_id)
-        .and_then(row_to_repair_hint)
-        .unwrap_or_else(|| {
-            RepairHint::requires_human_review(format!("unmapped rule_id: {rule_id}"))
-        })
+    catalog_rows().iter().find(|row| row.rule_id == rule_id).map_or_else(
+        || RepairHint::requires_human_review(format!("unmapped rule_id: {rule_id}")),
+        row_to_repair_hint,
+    )
 }
 
 #[cfg(test)]
@@ -253,5 +234,21 @@ mod tests {
         // per the parser contract.
         let hint = for_rule("FUNC_WILDCARD_IMPORT");
         assert_eq!(hint.class(), RepairHintClass::RequiresHumanReview);
+    }
+
+    #[test]
+    fn every_tsv_line_parses_to_a_catalog_row() {
+        // Replaces the former runtime panic: since `CATALOG_ROWS` now
+        // silently skips malformed rows via `filter_map`, this test is
+        // the contract checkpoint that catches a frozen-TSV regression.
+        let non_empty = CATALOG_TSV.lines().filter(|line| !line.trim().is_empty()).count();
+        assert_eq!(
+            catalog_rows().len(),
+            non_empty,
+            "every non-empty TSV line must parse to a CatalogRow; \
+             {} non-empty lines but only {} rows parsed",
+            non_empty,
+            catalog_rows().len(),
+        );
     }
 }
