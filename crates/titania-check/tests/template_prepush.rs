@@ -19,6 +19,32 @@ use std::{
 };
 
 use wait_timeout::ChildExt;
+/// Return the root directory used by `generate_workspace` to host the
+/// cargo-generate scaffold output.
+///
+/// Honors `TITANIA_TEST_TMPDIR` (CI / restricted environments) and defaults
+/// to `$XDG_CACHE_HOME/titania-check-tests`, then `$HOME/.cache/titania-check-tests`,
+/// then `std::env::temp_dir()`.
+///
+/// **Why not `/tmp`?** This machine's `/tmp` is a 62G tmpfs with both block
+/// and inode quotas. `cargo generate` writes the generated workspace + lock
+/// files + inner `cargo metadata` cache there; with the tmpfs at 80% use
+/// the next allocation trips `os error 122 (EDQUOT)`. The home filesystem
+/// is btrfs with no inode cap and 990G free, so test artifacts land cleanly.
+fn test_workspace_dir() -> PathBuf {
+    if let Ok(p) = std::env::var("TITANIA_TEST_TMPDIR") {
+        if !p.is_empty() {
+            return PathBuf::from(p);
+        }
+    }
+    if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME") {
+        return PathBuf::from(xdg).join("titania-check-tests");
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".cache").join("titania-check-tests");
+    }
+    std::env::temp_dir()
+}
 
 /// Run a single external command, capturing stdout / stderr / exit code.
 fn run_cmd<C, A, I>(cmd: C, args: I, cwd: Option<&std::path::Path>) -> CmdResult
@@ -244,6 +270,7 @@ fn configure_clean_child_env(
         "APPDATA",
         "LOCALAPPDATA",
         "CARGO_HOME",
+        "CARGO_TARGET_DIR",
         "RUSTUP_HOME",
         "SCCACHE_DIR",
         "SSL_CERT_FILE",
@@ -272,14 +299,53 @@ fn generate_workspace(name: &str) -> PathBuf {
     // Unique name using nanosecond timestamp to avoid collision across runs.
     let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
     let unique_name = format!("{name}-{ns}");
-    let tmp_dir = std::env::temp_dir();
+    let tmp_dir = {
+        let parent = test_workspace_dir();
+        std::fs::create_dir_all(&parent).expect("create test workspace dir");
+        tempfile::Builder::new()
+            .prefix("titania-prepush-")
+            .tempdir_in(&parent)
+            .expect("create tempdir")
+            .keep()
+    };
     let dest = tmp_dir.join(&unique_name);
 
-    let result = run_cmd(
-        "cargo",
-        ["generate", "--path", template_root.to_string_lossy().as_ref(), "--name", &unique_name],
-        Some(&tmp_dir),
-    );
+    // Forward TMPDIR to the cargo-generate child so its inner
+    // `cargo metadata` invocation also routes through the redirected
+    // tmp_dir and avoids the /tmp tmpfs EDQUOT.
+    // Use a builder chain so the unused-result lint from -D unused-results
+    // (workspace AGENTS deny list) doesn't fire on `Command::env`'s
+    // `&mut Self` return type. Store the eventual error via let _ = ...
+    // just to thread the compiler; the methods return &mut Self which the
+    // ignore pattern satisfies.
+    let mut cmd = std::process::Command::new("cargo");
+    let _ = cmd
+        .arg("generate")
+        .arg("--path")
+        .arg(template_root.to_string_lossy().as_ref())
+        .arg("--name")
+        .arg(&unique_name);
+    // Forward TMPDIR + CARGO_TARGET_DIR so the cargo-generate subprocess
+    // AND its inner cargo (which writes build artifacts and `.fingerprint/`
+    // files to TMPDIR by default) both route through the redirected tmpdir
+    // instead of /tmp, where the 62G tmpfs keeps tripping EDQUOT (os 122).
+    // cargo's default tmpdir lives at ${TMPDIR}/cargo-installXXXXXX/, so
+    // moving TMPDIR alone wasn't enough — the spawned cargo also needs
+    // its own target dir pinned off /tmp.
+    let cargo_target = tmp_dir.join("cargo-target");
+    std::fs::create_dir_all(&cargo_target).expect("create cargo target dir");
+    // TMPDIR redirects cargo's `std::env::temp_dir()` for build artifacts;
+    // CARGO_TARGET_DIR redirects the entire target dir; both are needed
+    // because the /tmp tmpfs on this machine hits EDQUOT.
+    let _ = cmd.env("TMPDIR", &tmp_dir);
+    let _ = cmd.env("CARGO_TARGET_DIR", &cargo_target);
+    let _ = cmd.env("CARGO_BUILD_JOBS", "1");
+    let _ = cmd.current_dir(&tmp_dir);
+    // CARGO_TARGET_DIR is preserved through the keep-list in
+    // configure_clean_child_env, so the moon→cargo chain inherits it.
+    // No unsafe block needed in this workspace; we add it to the
+    // keep-list at module load order below.
+    let result = run_command_with_timeout(&mut cmd, Duration::from_secs(120));
 
     assert!(
         result.succeeded(),
