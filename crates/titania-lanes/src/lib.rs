@@ -198,32 +198,38 @@ impl LaneReport {
 /// `LaneExit::Clean` and `LaneExit::NotApplicable` both map to process exit
 /// code `0`, but they remain distinct lane/report dispositions: CI process
 /// success differs from the receipt/report meaning that a lane had no valid
-/// subject to judge. Other codes are `1` = violations, `2` = usage/config
-/// error, `3` = upstream dependency missing or fixture self-test failure.
+/// subject to judge. Per v1-spec §12: exit `1` is Reject (violations and/or
+/// gate failures), `2` is `PolicyError`, `3` is `InputError` (usage/config),
+/// `4`+ is Internal error (infrastructure or internal failure).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneExit {
     /// Lane ran and reported no violations.
     Clean,
     /// Lane had no valid subject to judge; maps to process exit code `0`.
     NotApplicable,
-    /// Lane ran and reported one or more violations.
+    /// Lane ran and reported one or more violations, or the lane's tool
+    /// terminated abnormally (gate failure). Per v1-spec §12, both are
+    /// Reject (exit 1).
     Violations,
-    /// Lane exited with a usage/argument/config error.
+    /// Lane exited with a usage/argument/config error. Per v1-spec §12,
+    /// this is `InputError` (exit `3`).
     Usage,
-    /// Lane failed to run (infrastructure or internal error).
+    /// Lane failed to run (infrastructure or internal error). Per v1-spec
+    /// §12, this is Internal error (exit `>=4`).
     Failure,
 }
 
 impl LaneExit {
-    /// Stable process exit code. [`LaneExit::NotApplicable`] returns `0`
-    /// because a non-applicable lane is a successful process completion.
+    /// Stable process exit code per v1-spec §12. [`LaneExit::NotApplicable`]
+    /// returns `0` because a non-applicable lane is a successful process
+    /// completion.
     #[must_use]
     pub const fn as_u8(self) -> u8 {
         match self {
             Self::Clean | Self::NotApplicable => 0,
             Self::Violations => 1,
-            Self::Usage => 2,
-            Self::Failure => 3,
+            Self::Usage => 3,
+            Self::Failure => 4,
         }
     }
 }
@@ -243,5 +249,16 @@ mod tests {
     fn not_applicable_is_successful_process_exit_with_distinct_disposition() {
         assert_eq!(LaneExit::NotApplicable.as_u8(), 0);
         assert_ne!(LaneExit::NotApplicable, LaneExit::Clean);
+    }
+
+    /// Per v1-spec §12: 0 = Pass, 1 = Reject, 2 = PolicyError,
+    /// 3 = InputError, >=4 = Internal error.
+    #[test]
+    fn as_u8_matches_v1_spec_section_12_exit_codes() {
+        assert_eq!(LaneExit::Clean.as_u8(), 0);
+        assert_eq!(LaneExit::NotApplicable.as_u8(), 0);
+        assert_eq!(LaneExit::Violations.as_u8(), 1);
+        assert_eq!(LaneExit::Usage.as_u8(), 3);
+        assert_eq!(LaneExit::Failure.as_u8(), 4);
     }
 }

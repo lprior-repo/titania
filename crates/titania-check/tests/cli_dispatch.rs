@@ -351,7 +351,7 @@ mod tests {
 }
 
 #[test]
-fn dispatch_run_lane_test_nonzero_cargo_output_writes_findings_artifact() {
+fn dispatch_run_lane_test_nonzero_cargo_output_writes_tool_failure_artifact() {
     let lib_rs = r#"
 #[cfg(test)]
 mod tests {
@@ -367,9 +367,9 @@ mod tests {
 
     let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "test"]);
 
+    // Per v1-spec §12, a gate failure (LaneFailure::Tool) is a Reject (exit 1).
     assert_eq!(code, 1, "run-lane test with failing cargo test must reject, stderr: {stderr}");
     assert!(stdout.is_empty(), "run-lane test must not write stdout, got: {stdout}");
-    assert_stderr_contains(&stderr, "1 finding(s)");
 
     let artifact = prepush_test_artifact_path(temp.path());
     assert!(artifact.exists(), "test artifact must exist at .titania/out/prepush/test.json");
@@ -378,16 +378,20 @@ mod tests {
 
     assert_eq!(json["lane"].as_str(), Some("Test"), "lane must be Test");
     assert!(json["outcome"].get("Clean").is_none(), "nonzero cargo test must not be Clean");
-    let findings = json["outcome"]["Findings"].as_array().expect("findings must be an array");
-    assert_eq!(findings.len(), 1, "failing cargo test must emit exactly one finding");
-    assert_eq!(findings[0]["rule_id"].as_str(), Some("CARGO_TEST_001"));
-    assert_eq!(findings[0]["lane"].as_str(), Some("Test"));
-    assert_eq!(findings[0]["effect"].as_str(), Some("Reject"));
     assert!(
-        findings[0]["message"].as_str().is_some_and(|message| !message.trim().is_empty()),
-        "finding message must retain cargo output evidence: {:#}",
-        findings[0]
+        json["outcome"].get("Findings").is_none(),
+        "nonzero cargo test must not produce Findings per v1-spec §5"
     );
+    // Per v1-spec §11.2 example: Test failures emit Failed { ToolFailure { tool, termination } }.
+    let failed = &json["outcome"]["Failed"];
+    assert!(failed.get("ToolFailure").is_some(), "must be ToolFailure, got: {failed:#}");
+    let tool = failed["ToolFailure"]["tool"].as_str().expect("tool must be a string");
+    assert_eq!(tool, "cargo-test", "tool must be cargo-test per v1-spec §11.2");
+    let exit_code = failed["ToolFailure"]["termination"]["Exited"]["code"]
+        .as_u64()
+        .expect("termination must be Exited with code");
+    // cargo test exits 101 when the test harness reports failures.
+    assert_eq!(exit_code, 101, "cargo test exit code must be 101 (test failure)");
 }
 
 #[test]
@@ -992,4 +996,78 @@ fn write_recording_stub(dir: &Path, marker: &Path) -> String {
         std::fs::set_permissions(&stub_path, perms).expect("stub must be made executable");
     }
     stub_path.to_str().expect("stub path must be valid UTF-8").to_owned()
+}
+
+// ---------------------------------------------------------------------------
+// setup-hermetic subcommand tests
+// ---------------------------------------------------------------------------
+
+/// `setup-hermetic` on a fresh temp dir must:
+/// - exit 0
+/// - print eval-able export lines on stdout
+/// - create both symlinks that resolve to real directories
+#[cfg(unix)]
+#[test]
+fn setup_hermetic_creates_symlinks_and_prints_exports() {
+    let temp = TempDir::new().expect("temp dir must be created");
+    let hermetic_dir = temp.path().join(".titania").join("hermetic");
+
+    let (code, stdout, stderr) = run_in(temp.path(), &["setup-hermetic"]);
+    assert_eq!(code, 0, "setup-hermetic must exit 0, stderr: {stderr}");
+
+    assert!(
+        stdout.contains("export CARGO_HOME="),
+        "stdout must contain CARGO_HOME export: {stdout}"
+    );
+    assert!(
+        stdout.contains("export RUSTUP_HOME="),
+        "stdout must contain RUSTUP_HOME export: {stdout}"
+    );
+
+    let cargo_link = hermetic_dir.join("cargo-home");
+    let rustup_link = hermetic_dir.join("rustup-home");
+    assert!(cargo_link.is_symlink(), "cargo-home must be a symlink");
+    assert!(rustup_link.is_symlink(), "rustup-home must be a symlink");
+    assert!(cargo_link.exists(), "cargo-home symlink must resolve");
+    assert!(rustup_link.exists(), "rustup-home symlink must resolve");
+}
+
+/// Re-running `setup-hermetic` must be idempotent — existing correct symlinks
+/// are left as-is, and the command still exits 0.
+#[cfg(unix)]
+#[test]
+fn setup_hermetic_is_idempotent() {
+    let temp = TempDir::new().expect("temp dir must be created");
+
+    let (code1, _, stderr1) = run_in(temp.path(), &["setup-hermetic"]);
+    assert_eq!(code1, 0, "first run must exit 0, stderr: {stderr1}");
+
+    let (code2, _, stderr2) = run_in(temp.path(), &["setup-hermetic"]);
+    assert_eq!(code2, 0, "second run must exit 0, stderr: {stderr2}");
+}
+
+/// `setup-hermetic extra-arg` must reject with InputError (exit 3).
+#[test]
+fn setup_hermetic_rejects_extra_arguments() {
+    let (code, _, stderr) = run(&["setup-hermetic", "unexpected-arg"]);
+    assert_eq!(code, 3, "extra arg must exit 3 (InputError), stderr: {stderr}");
+    assert!(
+        stderr.contains("unexpected") || stderr.contains("ExtraArgument"),
+        "stderr must mention the unexpected argument: {stderr}"
+    );
+}
+
+/// `link_if_needed` must refuse to overwrite a real (non-symlink) directory.
+#[cfg(unix)]
+#[test]
+fn setup_hermetic_refuses_real_directory_at_link_path() {
+    let temp = TempDir::new().expect("temp dir must be created");
+    let hermetic_dir = temp.path().join(".titania").join("hermetic");
+    std::fs::create_dir_all(hermetic_dir.join("cargo-home")).expect("create real dir");
+
+    let (code, _, stderr) = run_in(temp.path(), &["setup-hermetic"]);
+    assert!(
+        code >= 4,
+        "must exit >=4 (InternalError) when real dir blocks link path, got {code}, stderr: {stderr}"
+    );
 }

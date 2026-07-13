@@ -63,11 +63,6 @@ DENY_UNKNOWN_GIT	deny	Reject	RequiresHumanReview	unknown git source	Rejects depe
 DENY_UNKNOWN	deny	Reject	RequiresHumanReview	unmapped cargo-deny code	Reports unmapped cargo-deny diagnostics.
 DENY_INFRA_FAILURE	deny	Reject	RequiresHumanReview	cargo-deny infrastructure failure	Reports cargo-deny infrastructure failures.
 FORBIDDEN_001	forbidden-scan	Reject	RequiresHumanReview	panic/unwrap/expect/todo/unimplemented/dbg	Rejects configured forbidden source tokens.
-CARGO_FMT_001	cargo	Reject	RequiresHumanReview	cargo fmt failure	Reports cargo fmt lane failures.
-CARGO_COMPILE_001	cargo	Reject	RequiresHumanReview	cargo check failure	Reports cargo check lane failures.
-CARGO_CLIPPY_001	cargo	Reject	RequiresHumanReview	cargo clippy failure	Reports cargo clippy lane failures.
-CARGO_TEST_001	cargo	Reject	RequiresHumanReview	cargo test failure	Reports cargo test lane failures.
-CARGO_BUILD_001	cargo	Reject	RequiresHumanReview	cargo build failure	Reports cargo build lane failures.
 CLIPPY_UNKNOWN	clippy	Reject	RequiresHumanReview	unknown clippy diagnostic	Fallback for unknown clippy diagnostics.
 COMPILE_SPLIT	source-length	Reject	RequiresHumanReview	legacy compile split layout	Reports missing legacy compile-split source layout when applicable.
 FN_LINE_LIMIT	source-length	Reject	RequiresHumanReview	function logical line limit	Rejects functions over the configured logical line limit.

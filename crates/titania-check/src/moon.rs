@@ -148,8 +148,13 @@ pub(crate) fn spawn(binary: &str, tasks: &[&str]) -> Result<(), MoonSpawnError> 
     }
 }
 
-/// Spawn each Moon task independently so one rejecting lane cannot prevent the
-/// remaining independent lanes from writing their artifacts.
+/// Run each Moon task sequentially via separate `moon run` invocations.
+///
+/// Moon's `run` command accepts a single target per invocation. Each lane
+/// task runs independently so one rejecting lane cannot prevent the remaining
+/// lanes from writing their artifacts. The exit status is intentionally
+/// ignored — lanes that fail write `Failed`/missing artifacts, which the
+/// in-process aggregate classifies.
 ///
 /// # Errors
 /// Returns [`MoonSpawnError`] when any Moon subprocess cannot be spawned or

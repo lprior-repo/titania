@@ -34,6 +34,9 @@
 # input hashing.
 /.titania/cache/
 /.titania/out/
+# Hermetic CARGO_HOME / RUSTUP_HOME are machine-specific local state for the
+# v1-spec §9.5 hermeticity posture; operators symlink or populate them.
+/.titania/hermetic/
 /crates/titania-lanes/.titania/
 /crates/titania-check/.titania/
 
@@ -43,6 +46,8 @@
 /*.db
 /.beads-credential-key
 /.beads/proxieddb/
+# Beads agent scratch / progress notes (local, non-canonical).
+/.bead-progress/
 
 # ----- IDE / Editor ---------------------------------------------
 # IntelliJ / JetBrains

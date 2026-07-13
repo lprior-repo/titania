@@ -155,6 +155,16 @@ tasks:
 
   # ---------- titania-lanes: 28 cargo bin targets ----------
 
+  setup-hermetic:
+    # Create hermetic CARGO_HOME / RUSTUP_HOME symlinks (v1-spec §9.5).
+    # The policy-scan lane requires these to point at controlled dirs.
+    script: 'cargo run --frozen --quiet -p titania-check -- setup-hermetic > /dev/null'
+    toolchains: [rust]
+    options:
+      runInCI: true
+    inputs:
+      - '@globs(sources)'
+
   titania-fmt:
     command: 'cargo run --frozen --quiet -p titania-check -- run-lane fmt'
     toolchains: [rust]
@@ -249,6 +259,10 @@ tasks:
 
   titania-policy-scan:
     command: 'cargo run --frozen --quiet -p titania-check -- run-lane policy-scan'
+    deps: ['~:setup-hermetic']
+    env:
+      CARGO_HOME: '${workspace.root}/.titania/hermetic/cargo-home'
+      RUSTUP_HOME: '${workspace.root}/.titania/hermetic/rustup-home'
     options:
       runInCI: true
     inputs:

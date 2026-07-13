@@ -70,6 +70,7 @@ fn parse_subcommand(head: &str, tail: &[String], full_args: &[String]) -> Result
         "aggregate" => parse_aggregate(tail),
         "doctor" => parse_doctor(tail),
         "explain" => parse_explain(tail),
+        "setup-hermetic" => parse_setup_hermetic(tail),
         candidate if candidate.starts_with('-') => parse_check(full_args),
         _ => Err(CliError::UnknownSubcommand(head.to_owned())),
     }
@@ -360,6 +361,21 @@ fn parse_explain(args: &[String]) -> Result<Cli, CliError> {
         return extra_arg("explain", rest);
     }
     Ok(Cli { command: Command::Explain { rule_id: first.to_owned() } })
+}
+
+/// Parse one CLI argument stage.
+///
+/// # Errors
+///
+/// Returns [`CliError`] when this stage receives extra arguments.
+fn parse_setup_hermetic(args: &[String]) -> Result<Cli, CliError> {
+    match args.split_first() {
+        None => Ok(Cli { command: Command::SetupHermetic }),
+        Some((flag, _)) if is_help_flag(flag) => help_request(),
+        Some((value, _)) => {
+            Err(CliError::ExtraArgument { command: "setup-hermetic", value: value.clone() })
+        }
+    }
 }
 
 /// Parse one CLI argument stage.

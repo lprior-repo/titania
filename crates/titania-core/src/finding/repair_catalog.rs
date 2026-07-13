@@ -163,8 +163,8 @@ mod tests {
         // so reviewers notice the catalog drift.
         assert_eq!(
             catalog_rows().len(),
-            76,
-            "catalog row count drifted from 76; update catalog_parses_to_expected_row_count"
+            71,
+            "catalog row count drifted from 71; update catalog_parses_to_expected_row_count"
         );
     }
 

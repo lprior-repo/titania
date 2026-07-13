@@ -252,7 +252,24 @@ fn execution_from_outcome(outcome: &LaneOutcome) -> LaneExecution {
         LaneOutcome::Findings { findings } => {
             LaneExecution::new(LaneExit::Violations, format!("{} finding(s)\n", findings.len()))
         }
-        LaneOutcome::Failed { failure } => {
+        LaneOutcome::Failed { failure } => execution_from_failure(failure),
+    }
+}
+
+/// Classify a lane failure per v1-spec §12 exit codes.
+///
+/// `LaneFailure::Tool` is a gate failure (Reject, exit 1) — the tool ran and
+/// returned an abnormal termination. `Infra`/`Suspicious`/`Resource` are
+/// internal errors (exit ≥4).
+fn execution_from_failure(failure: &LaneFailure) -> LaneExecution {
+    match failure {
+        LaneFailure::Tool { tool, termination } => LaneExecution::new(
+            LaneExit::Violations,
+            format!("gate failure: {tool} exited {termination:?}\n"),
+        ),
+        LaneFailure::Infra { .. }
+        | LaneFailure::Suspicious { .. }
+        | LaneFailure::Resource { .. } => {
             LaneExecution::new(LaneExit::Failure, format!("lane failed: {failure:?}\n"))
         }
     }
