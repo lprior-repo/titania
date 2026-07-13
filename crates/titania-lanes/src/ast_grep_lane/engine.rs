@@ -11,8 +11,10 @@
 //! comment/string stripping in `rules/detectors/code_scan` is no longer
 //! consulted for rules ported here.
 
-use ast_grep_core::{AstGrep, Node, NodeMatch, Pattern, tree_sitter::StrDoc};
+use ast_grep_core::{AstGrep, Node, Pattern, tree_sitter::StrDoc};
 use ast_grep_language::Rust;
+
+use super::span::{MatchSite, line_offsets};
 
 /// Maximum block nesting depth permitted inside a function body before
 /// `FUNC_NESTING_DEPTH` fires (depth > 2 is rejected). See v1-spec §6.
@@ -41,159 +43,179 @@ impl AstEngine {
         Self { grep, line_offsets: line_offsets(source), test_ranges }
     }
 
+    /// Line-start byte offsets (`[len(source) + 1]`-shape table produced by
+    /// [`super::span::line_offsets`]). Exposed so the lane can translate a
+    /// match's byte range into a v1-spec §10 `Location::Span` without
+    /// re-parsing the source.
+    pub(super) fn line_offsets(&self) -> &[usize] {
+        &self.line_offsets
+    }
+
     /// `true` when `byte_offset` falls inside any `#[cfg(test)]` module.
     fn is_in_test_code(&self, byte_offset: usize) -> bool {
         self.test_ranges.iter().any(|(start, end)| byte_offset >= *start && byte_offset < *end)
     }
 
-    /// 0-based line index of the first pattern match, or `None`.
+    /// First pattern match site (byte range), or `None`.
     ///
     /// Used by BYPASS_* detectors that scan the entire file including test
     /// modules.
-    fn first_match_line(&self, pattern: &Pattern) -> Option<usize> {
+    fn first_match_site(&self, pattern: &Pattern) -> Option<MatchSite> {
         let node_match = self.grep.root().find_all(pattern).next()?;
-        Some(self.line_of_match(&node_match))
+        Some(MatchSite::from_range(node_match.range()))
     }
 
-    /// 0-based line index of the first pattern match outside `#[cfg(test)]`
-    /// modules, or `None`. Used by FUNC_* detectors.
-    fn first_match_line_skipping_tests(&self, pattern: &Pattern) -> Option<usize> {
+    /// First pattern match site (byte range) outside `#[cfg(test)]` modules,
+    /// or `None`. Used by FUNC_* detectors.
+    fn first_match_site_skipping_tests(&self, pattern: &Pattern) -> Option<MatchSite> {
         self.grep
             .root()
             .find_all(pattern)
             .find(|node_match| !self.is_in_test_code(node_match.range().start))
-            .map(|node_match| self.line_of_match(&node_match))
+            .map(|node_match| MatchSite::from_range(node_match.range()))
     }
 
-    fn line_of_match(&self, node_match: &NodeMatch<'_, StrDoc<Rust>>) -> usize {
-        line_at_byte(&self.line_offsets, node_match.range().start)
-    }
-
-    /// 0-based line index of the first match across an iterator of patterns,
-    /// excluding `#[cfg(test)]` modules. Used by FUNC_* detectors expressed
-    /// as `any: [pattern, …]`.
-    fn first_match_line_any_skipping_tests<'p>(
+    /// First match site across an iterator of patterns, excluding `#[cfg(test)]`
+    /// modules. Used by FUNC_* detectors expressed as `any: [pattern, …]`.
+    /// The earliest match (by start byte, which corresponds to the earliest
+    /// line) wins, preserving the previous `.min()`-over-lines semantics.
+    fn first_match_site_any_skipping_tests<'p>(
         &self,
         patterns: impl IntoIterator<Item = &'p Pattern>,
-    ) -> Option<usize> {
-        patterns.into_iter().filter_map(|pat| self.first_match_line_skipping_tests(pat)).min()
+    ) -> Option<MatchSite> {
+        patterns
+            .into_iter()
+            .filter_map(|pat| self.first_match_site_skipping_tests(pat))
+            .min_by_key(|site| site.start_byte)
     }
 
-    /// Line of the first `for $LOOP in $ITER { $$$BODY }` match (`FUNC_LOOPS_FOR`).
-    pub(super) fn detect_for_loop(&self) -> Option<usize> {
+    /// Byte-range site of the first `for $LOOP in $ITER { $$$BODY }` match
+    /// (`FUNC_LOOPS_FOR`).
+    pub(super) fn detect_for_loop(&self) -> Option<MatchSite> {
         let pat = Pattern::new("for $LOOP in $ITER { $$$BODY }", Rust);
-        self.first_match_line_skipping_tests(&pat)
+        self.first_match_site_skipping_tests(&pat)
     }
 
-    /// Line of the first `while $COND { $$$BODY }` match (`FUNC_LOOPS_WHILE`).
-    pub(super) fn detect_while_loop(&self) -> Option<usize> {
+    /// Byte-range site of the first `while $COND { $$$BODY }` match
+    /// (`FUNC_LOOPS_WHILE`).
+    pub(super) fn detect_while_loop(&self) -> Option<MatchSite> {
         let pat = Pattern::new("while $COND { $$$BODY }", Rust);
-        self.first_match_line_skipping_tests(&pat)
+        self.first_match_site_skipping_tests(&pat)
     }
 
-    /// Line of the first `loop { $$$BODY }` match (`FUNC_LOOPS_LOOP`).
-    pub(super) fn detect_loop_block(&self) -> Option<usize> {
+    /// Byte-range site of the first `loop { $$$BODY }` match
+    /// (`FUNC_LOOPS_LOOP`).
+    pub(super) fn detect_loop_block(&self) -> Option<MatchSite> {
         let pat = Pattern::new("loop { $$$BODY }", Rust);
-        self.first_match_line_skipping_tests(&pat)
+        self.first_match_site_skipping_tests(&pat)
     }
 
-    /// Line of the first `print!`/`println!` match (`FUNC_PRINT_STDOUT`).
-    pub(super) fn detect_print_stdout(&self) -> Option<usize> {
+    /// Byte-range site of the first `print!`/`println!` match
+    /// (`FUNC_PRINT_STDOUT`).
+    pub(super) fn detect_print_stdout(&self) -> Option<MatchSite> {
         let print = Pattern::new("print!($$$ARGS)", Rust);
         let println = Pattern::new("println!($$$ARGS)", Rust);
-        self.first_match_line_any_skipping_tests([&print, &println])
+        self.first_match_site_any_skipping_tests([&print, &println])
     }
 
-    /// Line of the first `eprint!`/`eprintln!` match (`FUNC_PRINT_STDERR`).
-    pub(super) fn detect_print_stderr(&self) -> Option<usize> {
+    /// Byte-range site of the first `eprint!`/`eprintln!` match
+    /// (`FUNC_PRINT_STDERR`).
+    pub(super) fn detect_print_stderr(&self) -> Option<MatchSite> {
         let eprint = Pattern::new("eprint!($$$ARGS)", Rust);
         let eprintln = Pattern::new("eprintln!($$$ARGS)", Rust);
-        self.first_match_line_any_skipping_tests([&eprint, &eprintln])
+        self.first_match_site_any_skipping_tests([&eprint, &eprintln])
     }
 
-    /// Line of the first `use $PATH::*;` match (`FUNC_WILDCARD_IMPORT`).
-    pub(super) fn detect_wildcard_import(&self) -> Option<usize> {
+    /// Byte-range site of the first `use $PATH::*;` match
+    /// (`FUNC_WILDCARD_IMPORT`).
+    pub(super) fn detect_wildcard_import(&self) -> Option<MatchSite> {
         let pat = Pattern::new("use $PATH::*;", Rust);
-        self.first_match_line_skipping_tests(&pat)
+        self.first_match_site_skipping_tests(&pat)
     }
 
-    /// Line of the first `.unwrap_or(_)`, `.unwrap_or_else(_)`, or
-    /// `.unwrap_or_default()` match (`FUNC_UNWRAP_OR`).
-    pub(super) fn detect_unwrap_or(&self) -> Option<usize> {
+    /// Byte-range site of the first `.unwrap_or(_)`, `.unwrap_or_else(_)`,
+    /// or `.unwrap_or_default()` match (`FUNC_UNWRAP_OR`).
+    pub(super) fn detect_unwrap_or(&self) -> Option<MatchSite> {
         let or = Pattern::new("$VALUE.unwrap_or($DEFAULT)", Rust);
         let or_else = Pattern::new("$VALUE.unwrap_or_else($DEFAULT)", Rust);
         let or_default = Pattern::new("$VALUE.unwrap_or_default()", Rust);
-        self.first_match_line_any_skipping_tests([&or, &or_else, &or_default])
+        self.first_match_site_any_skipping_tests([&or, &or_else, &or_default])
     }
 
-    /// Line of the first `Result<_, String>` `generic_type` node (`FUNC_RESULT_STRING`).
+    /// Byte-range site of the first `Result<_, String>` `generic_type` node
+    /// (`FUNC_RESULT_STRING`).
     ///
     /// ast-grep patterns cannot express a partial type-argument match
     /// cleanly across all grammars, so we walk `generic_type` nodes and
     /// inspect the type arguments manually. Matches inside `#[cfg(test)]`
     /// modules are skipped.
-    pub(super) fn detect_result_string(&self) -> Option<usize> {
-        self.grep
-            .root()
-            .dfs()
-            .filter(|node| !self.is_in_test_code(node.range().start))
-            .find_map(|node| is_result_with_string_error(&node).map(|()| node.start_pos().line()))
+    pub(super) fn detect_result_string(&self) -> Option<MatchSite> {
+        self.grep.root().dfs().filter(|node| !self.is_in_test_code(node.range().start)).find_map(
+            |node| is_result_with_string_error(&node).map(|()| MatchSite::from_range(node.range())),
+        )
     }
 
-    /// Line of the first function whose body nests deeper than
-    /// [`MAX_NESTING_DEPTH`] (`FUNC_NESTING_DEPTH`, new in §6).
-    pub(super) fn detect_nesting_depth(&self) -> Option<usize> {
-        self.grep
-            .root()
-            .dfs()
-            .filter(|node| node.kind() == "function_item")
-            .filter(|node| !self.is_in_test_code(node.range().start))
-            .find_map(|node| function_has_excess_nesting(&node).map(|_| node.start_pos().line()))
-    }
-
-    /// Line of the first function whose body calls itself by name
-    /// (`FUNC_RECURSION_DIRECT`, new in §6).
-    pub(super) fn detect_recursion_direct(&self) -> Option<usize> {
+    /// Byte-range site of the first function whose body nests deeper than
+    /// [`MAX_NESTING_DEPTH`] (`FUNC_NESTING_DEPTH`, new in §6). The span
+    /// covers the whole offending `function_item`.
+    pub(super) fn detect_nesting_depth(&self) -> Option<MatchSite> {
         self.grep
             .root()
             .dfs()
             .filter(|node| node.kind() == "function_item")
             .filter(|node| !self.is_in_test_code(node.range().start))
-            .find_map(|node| function_calls_itself(&node).map(|()| node.start_pos().line()))
+            .find_map(|node| function_excess_nesting_site(&node))
     }
 
-    /// Line of the first `#[allow($$$LINTS)]` item attribute (`BYPASS_ALLOW_ATTR`).
-    pub(super) fn detect_allow_attr(&self) -> Option<usize> {
+    /// Byte-range site of the first function whose body calls itself by name
+    /// (`FUNC_RECURSION_DIRECT`, new in §6). The span covers the whole
+    /// recursive `function_item`.
+    pub(super) fn detect_recursion_direct(&self) -> Option<MatchSite> {
+        self.grep
+            .root()
+            .dfs()
+            .filter(|node| node.kind() == "function_item")
+            .filter(|node| !self.is_in_test_code(node.range().start))
+            .find_map(|node| function_recursion_site(&node))
+    }
+
+    /// Byte-range site of the first `#[allow($$$LINTS)]` item attribute
+    /// (`BYPASS_ALLOW_ATTR`).
+    pub(super) fn detect_allow_attr(&self) -> Option<MatchSite> {
         let pat = Pattern::new("#[allow($$$LINTS)]", Rust);
-        self.first_match_line(&pat)
+        self.first_match_site(&pat)
     }
 
-    /// Line of the first `#[expect($$$LINTS)]` item attribute (`BYPASS_EXPECT_ATTR`).
-    pub(super) fn detect_expect_attr(&self) -> Option<usize> {
+    /// Byte-range site of the first `#[expect($$$LINTS)]` item attribute
+    /// (`BYPASS_EXPECT_ATTR`).
+    pub(super) fn detect_expect_attr(&self) -> Option<MatchSite> {
         let pat = Pattern::new("#[expect($$$LINTS)]", Rust);
-        self.first_match_line(&pat)
+        self.first_match_site(&pat)
     }
 
-    /// Line of the first `#[cfg_attr($COND, allow($$$LINTS))]` (`BYPASS_CFG_ATTR_ALLOW`).
-    pub(super) fn detect_cfg_attr_allow(&self) -> Option<usize> {
+    /// Byte-range site of the first `#[cfg_attr($COND, allow($$$LINTS))]`
+    /// (`BYPASS_CFG_ATTR_ALLOW`).
+    pub(super) fn detect_cfg_attr_allow(&self) -> Option<MatchSite> {
         let pat = Pattern::new("#[cfg_attr($COND, allow($$$LINTS))]", Rust);
-        self.first_match_line(&pat)
+        self.first_match_site(&pat)
     }
 
-    /// Line of the first `#![allow($$$LINTS)]` crate attribute (`BYPASS_CRATE_ALLOW`).
-    pub(super) fn detect_crate_allow(&self) -> Option<usize> {
+    /// Byte-range site of the first `#![allow($$$LINTS)]` crate attribute
+    /// (`BYPASS_CRATE_ALLOW`).
+    pub(super) fn detect_crate_allow(&self) -> Option<MatchSite> {
         let pat = Pattern::new("#![allow($$$LINTS)]", Rust);
-        self.first_match_line(&pat)
+        self.first_match_site(&pat)
     }
 
-    /// Line of the first `#![expect($$$LINTS)]` crate attribute (`BYPASS_CRATE_EXPECT`).
-    pub(super) fn detect_crate_expect(&self) -> Option<usize> {
+    /// Byte-range site of the first `#![expect($$$LINTS)]` crate attribute
+    /// (`BYPASS_CRATE_EXPECT`).
+    pub(super) fn detect_crate_expect(&self) -> Option<MatchSite> {
         let pat = Pattern::new("#![expect($$$LINTS)]", Rust);
-        self.first_match_line(&pat)
+        self.first_match_site(&pat)
     }
 
-    /// Line of the first generated-code include using `OUT_DIR`.
-    pub(super) fn detect_generated_include(&self) -> Option<usize> {
+    /// Byte-range site of the first generated-code include using `OUT_DIR`.
+    pub(super) fn detect_generated_include(&self) -> Option<MatchSite> {
         let concat_pattern = Pattern::new("concat!($$$PARTS)", Rust);
         let direct_pattern = Pattern::new("include!(concat!(env!($ENV), $PATH))", Rust);
         let message_pattern =
@@ -202,14 +224,14 @@ impl AstEngine {
         let many_message_pattern =
             Pattern::new("include!(concat!(env!($ENV, $$$MESSAGE), $$$PATHS))", Rust);
         [
-            single_include_line(&self.grep, &direct_pattern, &concat_pattern),
-            single_include_line(&self.grep, &message_pattern, &concat_pattern),
-            many_include_line(&self.grep, &many_pattern, &concat_pattern),
-            many_include_line(&self.grep, &many_message_pattern, &concat_pattern),
+            single_include_site(&self.grep, &direct_pattern, &concat_pattern),
+            single_include_site(&self.grep, &message_pattern, &concat_pattern),
+            many_include_site(&self.grep, &many_pattern, &concat_pattern),
+            many_include_site(&self.grep, &many_message_pattern, &concat_pattern),
         ]
         .into_iter()
         .flatten()
-        .min()
+        .min_by_key(|site| site.start_byte)
     }
 }
 
@@ -248,36 +270,36 @@ fn append_decoded_part(mut output: String, part: &Node<'_, StrDoc<Rust>>) -> Opt
     Some(output)
 }
 
-/// Line of the first `include!(concat!(env!($ENV), $PATH))` match where
-/// `env!` resolves to `OUT_DIR` and `$PATH` is non-empty.
-fn single_include_line(
+/// Byte-range site of the first `include!(concat!(env!($ENV), $PATH))` match
+/// where `env!` resolves to `OUT_DIR` and `$PATH` is non-empty.
+fn single_include_site(
     grep: &AstGrep<StrDoc<Rust>>,
     pattern: &Pattern,
     concat_pattern: &Pattern,
-) -> Option<usize> {
+) -> Option<MatchSite> {
     grep.root().find_all(pattern).find_map(|node_match| {
         let environment = node_match.get_env().get_match("ENV")?;
         let path = node_match.get_env().get_match("PATH")?;
         (is_out_dir_expression(environment, concat_pattern) && path_non_empty(path))
-            .then_some(node_match.start_pos().line())
+            .then(|| MatchSite::from_range(node_match.range()))
     })
 }
 
-/// Line of the first `include!(concat!(env!($ENV), $$$PATHS))` match where
-/// `env!` resolves to `OUT_DIR` and at least one of the `$$$PATHS` is
-/// non-empty.
-fn many_include_line(
+/// Byte-range site of the first `include!(concat!(env!($ENV), $$$PATHS))`
+/// match where `env!` resolves to `OUT_DIR` and at least one of the
+/// `$$$PATHS` is non-empty.
+fn many_include_site(
     grep: &AstGrep<StrDoc<Rust>>,
     pattern: &Pattern,
     concat_pattern: &Pattern,
-) -> Option<usize> {
+) -> Option<MatchSite> {
     grep.root().find_all(pattern).find_map(|node_match| {
         let environment = node_match.get_env().get_match("ENV")?;
         let paths = node_match.get_env().get_multiple_matches("PATHS");
         (!paths.is_empty()
             && is_out_dir_expression(environment, concat_pattern)
             && paths.iter().any(path_non_empty))
-        .then_some(node_match.start_pos().line())
+        .then(|| MatchSite::from_range(node_match.range()))
     })
 }
 
@@ -481,18 +503,6 @@ fn parse_literal(source: &str) -> Option<LiteralParts<'_>> {
     Some((content, tail, true))
 }
 
-/// Compute byte offsets for the start of every source line.
-fn line_offsets(source: &str) -> Vec<usize> {
-    let mut offsets: Vec<usize> = vec![0];
-    offsets.extend(source.match_indices('\n').map(|(i, _)| i.saturating_add(1)));
-    offsets
-}
-
-/// 0-based line index containing `byte`, using a binary search over offsets.
-fn line_at_byte(offsets: &[usize], byte: usize) -> usize {
-    offsets.partition_point(|&offset| offset <= byte).saturating_sub(1)
-}
-
 /// `Some(())` when `node` is a `generic_type` whose head identifier is
 /// `Result` and whose second type argument is exactly the path `String`.
 fn is_result_with_string_error(node: &Node<'_, StrDoc<Rust>>) -> Option<()> {
@@ -516,6 +526,14 @@ fn type_text_is(node: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
 /// `Some(depth)` only when the function body's deepest nesting exceeds the limit.
 fn function_has_excess_nesting(func: &Node<'_, StrDoc<Rust>>) -> Option<usize> {
     function_nesting_depth(func).filter(|&depth| depth > MAX_NESTING_DEPTH)
+}
+
+/// Byte-range site of `node` when its body nests deeper than the limit.
+///
+/// Lifted to a free function so `detect_nesting_depth` can keep its
+/// detector chain below the nesting-depth lint threshold.
+fn function_excess_nesting_site(node: &Node<'_, StrDoc<Rust>>) -> Option<MatchSite> {
+    function_has_excess_nesting(node).map(|_| MatchSite::from_range(node.range()))
 }
 
 /// Compute the deepest control-flow nesting inside a function body.
@@ -568,6 +586,14 @@ fn is_nesting_node(kind: &str) -> bool {
 fn function_calls_itself(func: &Node<'_, StrDoc<Rust>>) -> Option<()> {
     let name = function_name(func)?;
     func.dfs().any(|node| is_call_to(&node, &name)).then_some(())
+}
+
+/// Byte-range site of `node` when it is a directly recursive function.
+///
+/// Lifted to a free function so `detect_recursion_direct` can keep its
+/// detector chain below the nesting-depth lint threshold.
+fn function_recursion_site(node: &Node<'_, StrDoc<Rust>>) -> Option<MatchSite> {
+    function_calls_itself(node).map(|()| MatchSite::from_range(node.range()))
 }
 
 /// Extract a function's identifier from its `function_item` node.
