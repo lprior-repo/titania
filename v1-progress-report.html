@@ -223,8 +223,7 @@
     <div class="eyebrow">Titania-check v1 · progress + hammer list</div>
     <h1>What works, what was tested, what is left.</h1>
     <p class="subtitle">
-      Generated from the current <code>v1-combined-dispatch</code> worktree after the pushed Moon/template repair.
-      The report is intentionally blunt: Moon is green, core lane infrastructure is real, and the remaining work is concentrated in dogfood proof, doctor/thin CLI UX, template smoke evidence, and strict-lint cleanup/review closure.
+      Refreshed against <code>wip/v1-release-fixes</code> after the black-hat review. Every green claim below was re-run first-hand in an isolated worktree on this branch (fmt, strict source-only clippy, <code>cargo test</code>, <code>cargo deny</code>, <code>cargo audit</code>, <code>cargo machete</code>, and the <code>titania-check --scope edit/prepush/release</code> binary path). Items whose truth depends on sibling agents still in flight are marked as such rather than asserted.
     </p>
   </header>
 
@@ -243,20 +242,24 @@
   </nav>
 
   <main>
+    <div class="callout" style="margin-top: 1rem;">
+      <strong>Status as of <code>wip/v1-release-fixes</code> (2026-07-12):</strong> updated post-black-hat-review. Distribution scaffolding, <code>publish=false</code> removal, <code>titania-dylint 0.1.0</code>, <code>setup-hermetic</code>, and the user-facing <code>--scope edit/prepush/release</code> binary path are landed and re-verified first-hand. The <code>doctor</code> command runs and reports tools. Some items (killer demo, cargo-generate smoke, dylint lint-firing positives, TextRange accuracy, formal dogfood packaging) remain in flight on sibling agent branches and are marked below rather than asserted.
+    </div>
+
     <section id="snapshot">
       <h2>Current snapshot</h2>
       <div class="grid cards">
-        <div class="card"><div class="metric ok">Green</div><div class="metric-label">Latest <code>moon ci</code> status in <code>.moon/cache/ciReport.json</code>: <strong>completed</strong>.</div></div>
-        <div class="card"><div class="metric ok">53 / 53</div><div class="metric-label">Moon target states reported <strong>passed</strong>.</div></div>
-        <div class="card"><div class="metric info">13.520s</div><div class="metric-label">Latest Moon CI duration; most work was cache-hydrated after input repair.</div></div>
-        <div class="card"><div class="metric ok">clean</div><div class="metric-label"><code>git status --short --branch</code>: no staged, unstaged, or untracked files.</div></div>
-        <div class="card"><div class="metric ok">e04740a</div><div class="metric-label">Local HEAD and <code>origin/v1-combined-dispatch</code> both point at this commit.</div></div>
-        <div class="card"><div class="metric ok">pushed</div><div class="metric-label"><code>git push</code>: up-to-date. <code>bd dolt push</code>: Push complete.</div></div>
+        <div class="card"><div class="metric ok">748 / 748</div><div class="metric-label"><code>cargo test --workspace --all-features</code> passed first-hand (65 suites, 68.25s) on <code>wip/v1-release-fixes</code>.</div></div>
+        <div class="card"><div class="metric ok">green</div><div class="metric-label"><code>cargo fmt --check</code>, strict source-only clippy (<code>-D warnings -D clippy::pedantic -D clippy::unwrap_used</code>&hellip;), <code>cargo deny check</code>, <code>cargo machete</code>, and <code>cargo audit</code> all exit 0 first-hand.</div></div>
+        <div class="card"><div class="metric ok">edit&middot;prepush&middot;release</div><div class="metric-label"><code>titania-check --scope edit/prepush/release</code> each emit a typed <strong>Pass</strong> receipt first-hand (7 / 9 / 10 lanes, all clean) under the hermetic env.</div></div>
+        <div class="card"><div class="metric ok">0.1.0</div><div class="metric-label"><code>titania-dylint</code> at <strong>0.1.0</strong> (was 0.0.0); <code>publish=false</code> removed from all 7 titania crates (only the cargo-generate template retains it, intentionally).</div></div>
+        <div class="card"><div class="metric ok">landed</div><div class="metric-label">binstall metadata, <code>CHANGELOG.md</code>, <code>.github/workflows/release.yml</code>, and <code>setup-hermetic</code> (&sect;9.5) are all present on this branch.</div></div>
+        <div class="card"><div class="metric info">worktree</div><div class="metric-label">Report generated in isolated worktree <code>fix/hygiene-docs</code> off <code>wip/v1-release-fixes</code> (HEAD <code>f2a0de3</code> at refresh time). Not a pushed-to-main claim.</div></div>
       </div>
       <div class="panel" style="margin-top: 1rem;">
         <h3>Tracker shape</h3>
-        <p><span class="badge ok">50 closed</span> <span class="badge warn">9 in progress</span> <span class="badge info">12 open</span> <span class="badge bad">1 blocked</span></p>
-        <p class="small">Current ready work with no active blockers: <code>tn-pdn</code> killer demo, <code>tn-d3s.1</code> dogfood finding manifest, <code>tn-rld.4</code> generated workspace prepush smoke evidence.</p>
+        <p><span class="badge ok">~50 closed</span> <span class="badge warn">several in progress</span> <span class="badge info">several open</span></p>
+        <p class="small">Bead counts below are carried from the prior report snapshot and were <strong>not</strong> re-queried in this isolated worktree (focus was first-hand gate/binary evidence). Re-run <code>bd list</code> / <code>bd ready</code> for live counts; sibling agents (B/C/D) may have moved bead state since.</p>
       </div>
     </section>
 
@@ -267,7 +270,7 @@
           <h3>Moon-orchestrated lane DAG</h3>
           <ul>
             <li><code>.moon/tasks/all.yml</code> defines v1 lane tasks plus <code>gate-edit</code>, <code>gate-prepush</code>, and <code>gate-release</code>.</li>
-            <li><code>moon ci</code> completes with all 53 target states passed.</li>
+            <li>Prior <code>moon ci</code> runs completed all target states; not re-executed in this worktree (avoid cache contention with sibling agents). The underlying cargo/titania-check gates were re-run green first-hand.</li>
             <li>Cache/output churn was fixed by keeping broad <code>.titania/**</code> task inputs while negating generated <code>.titania/cache/**</code> and <code>.titania/out/**</code> trees.</li>
             <li>The generated template Moon config now mirrors the root task input policy.</li>
           </ul>
@@ -298,6 +301,17 @@
             <li>Template metadata and template Moon config tests pass.</li>
           </ul>
         </div>
+        <div class="panel">
+          <h3>User-facing binary path (re-verified first-hand)</h3>
+          <ul>
+            <li><code>titania-check setup-hermetic</code> creates the controlled <code>CARGO_HOME</code>/<code>RUSTUP_HOME</code> symlinks (&sect;9.5) and prints the required exports.</li>
+            <li><code>titania-check --scope edit</code> &rarr; typed <strong>Pass</strong>, 7 lanes clean (Fmt, Compile, Clippy, AstGrep, Dylint, PanicScan, PolicyScan).</li>
+            <li><code>titania-check --scope prepush</code> &rarr; typed <strong>Pass</strong>, 9 lanes (adds Test, Deny).</li>
+            <li><code>titania-check --scope release</code> &rarr; typed <strong>Pass</strong>, 10 lanes (adds Build).</li>
+            <li><code>titania-check doctor --scope edit</code> runs and reports 9 tools with versions (moon, cargo, rustfmt, clippy, ast-grep embedded, dylint 6.0.1 abi:verified, cargo-deny, sccache&hellip;), <code>Status: OK</code>, exit 0.</li>
+            <li>Note: against a non-hermetic <code>CARGO_HOME</code> the policy-scan lane correctly emits a typed <code>BYPASS_ENV_CARGO_HOME</code> Reject &mdash; enforcement is real, run <code>setup-hermetic</code> first.</li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -306,11 +320,13 @@
       <table>
         <thead><tr><th>Evidence</th><th>Status</th><th>What it proves</th><th>Limit</th></tr></thead>
         <tbody>
-          <tr><td><code>moon ci</code></td><td><span class="badge ok">pass</span></td><td>Moon can orchestrate the current task graph through release gates; latest report status is <code>completed</code>.</td><td>Many actions are cache-hydrated; this proves current hash inputs are stable and green, not that every external tool was cold-run in this invocation.</td></tr>
+          <tr><td><code>moon ci</code></td><td><span class="badge warn">not re-run</span></td><td>Prior runs completed all Moon target states; not re-executed in this isolated worktree to avoid cache contention with sibling agents.</td><td>Treat the Moon-gate claim as stale pending a fresh <code>moon ci</code> on the merged branch.</td></tr>
           <tr><td><code>cargo test -p titania-lanes v1_moon_tasks</code></td><td><span class="badge ok">pass</span></td><td>The root Moon v1 task graph contract is checked, including lane inputs/output/cache exclusions.</td><td>Task-graph contract only; does not validate every lane's semantic correctness.</td></tr>
           <tr><td><code>cargo test -p titania-lanes template_moon_configs</code></td><td><span class="badge ok">pass</span></td><td>The generated template Moon config matches the v1 task/input contract.</td><td>Does not itself run a generated workspace smoke test.</td></tr>
           <tr><td><code>cargo test -p titania-lanes template_metadata</code></td><td><span class="badge ok">pass</span></td><td><code>cargo-generate.toml</code> includes the required files for adoption.</td><td>Metadata coverage only; generated workspace proof remains <code>tn-rld.4</code>.</td></tr>
-          <tr><td><code>cargo test --workspace --all-features</code></td><td><span class="badge ok">pass</span></td><td>Workspace tests compile/run under current Moon state; CI report records exit 0 for the test task.</td><td>Does not replace the pending killer demo and dogfood release beads.</td></tr>
+          <tr><td><code>cargo test --workspace --all-features</code></td><td><span class="badge ok">pass</span></td><td><strong>748 passed (65 suites, 68.25s)</strong> first-hand on <code>wip/v1-release-fixes</code>.</td><td>Does not replace the pending killer demo and dogfood release beads.</td></tr>
+          <tr><td>Strict source-only clippy + fmt + deny + machete + audit</td><td><span class="badge ok">pass</span></td><td><code>cargo fmt --check</code>, <code>cargo clippy --lib --bins --examples -D warnings -D clippy::pedantic/nursery/unwrap_used&hellip;</code>, <code>cargo deny check</code>, <code>cargo machete</code> (canonical, no <code>--workspace</code>), and <code>cargo audit</code> all exit 0 first-hand.</td><td>Source-only; test-target lint style is out of scope by project convention.</td></tr>
+          <tr><td><code>titania-check --scope edit/prepush/release</code></td><td><span class="badge ok">pass</span></td><td>Each scope emits a typed <strong>Pass</strong> receipt (7 / 9 / 10 lanes, all clean) first-hand under the hermetic env.</td><td>Requires <code>setup-hermetic</code>; a non-hermetic <code>CARGO_HOME</code> correctly yields a typed Reject.</td></tr>
           <tr><td>Direct <code>run-lane</code> smokes</td><td><span class="badge ok">pass</span></td><td><code>fmt</code>, <code>compile</code>, <code>clippy</code>, <code>ast-grep</code>, <code>policy-scan</code>, <code>panic-scan</code>, <code>test</code>, <code>deny</code>, and <code>build</code> lane commands are wired in Moon and report exit 0 in the latest CI report.</td><td>Some lane semantics still have open beads for richer typed-rule coverage and review.</td></tr>
         </tbody>
       </table>
@@ -372,11 +388,13 @@
       <h2>Reviewed / verified status</h2>
       <div class="grid two">
         <div class="panel">
-          <h3>Verified by commands</h3>
+          <h3>Verified by commands (first-hand this refresh)</h3>
           <ul>
-            <li>Moon CI is the strongest current review signal: all current release-gate targets pass.</li>
-            <li>Targeted task-graph and template tests protect the repair that was just pushed.</li>
-            <li>The branch and Beads state were pushed after the report generation request: Git remote is at <code>e04740a</code>, Dolt push completed.</li>
+            <li><code>cargo test --workspace --all-features</code>: 748 passed / 0 failed (65 suites).</li>
+            <li><code>cargo fmt --all -- --check</code>, strict source-only <code>cargo clippy</code>, <code>cargo deny check</code>, <code>cargo machete</code>, <code>cargo audit</code>: all exit 0.</li>
+            <li><code>titania-check --scope edit | prepush | release</code>: three typed Pass receipts (7 / 9 / 10 lanes clean).</li>
+            <li><code>titania-check doctor --scope edit</code>: exit 0, <code>Status: OK</code>, 9 tools reported with versions.</li>
+            <li>Report generated in worktree <code>fix/hygiene-docs</code> off <code>wip/v1-release-fixes</code> (HEAD <code>f2a0de3</code>); not a pushed-to-main claim.</li>
           </ul>
         </div>
         <div class="panel">
@@ -393,27 +411,27 @@
     <section id="gaps">
       <h2>Gaps left to hammer on</h2>
       <div class="callout">
-        <strong>Bottom line:</strong> the platform is buildable and Moon-green; v1 is not fully done until the user-facing scope command/doctor path, killer demo, template smoke, dogfood release proof, and open strict-rule cleanup/review beads close.
+        <strong>Bottom line:</strong> the platform is buildable and gate-green; the user-facing <code>--scope edit/prepush/release</code> path and the <code>doctor</code> command now work first-hand. v1 is not fully done until the killer demo, template smoke, dogfood release packaging, and the remaining strict-rule/review beads close.
       </div>
       <div class="grid two" style="margin-top: 1rem;">
         <div class="panel">
           <h3>P0 gaps</h3>
           <ul>
-            <li><code>tn-pdn</code> — prove the killer demo: a Rust <code>for</code> loop plus <code>.unwrap()</code> must reject with typed <code>FUNC_LOOPS_FOR</code> and <code>CLIPPY_UNWRAP_USED</code> findings, then pass after repair.</li>
-            <li><code>tn-d3s</code> / <code>tn-d3s.1</code> / <code>tn-d3s.2</code> / <code>tn-d3s.3</code> — make Titania dogfood its own release scope with a captured finding manifest, reviewed self-exceptions, and final release pass evidence.</li>
+            <li><code>tn-pdn</code> — prove the killer demo: a Rust <code>for</code> loop plus <code>.unwrap()</code> must reject with typed <code>FUNC_LOOPS_FOR</code> and <code>CLIPPY_UNWRAP_USED</code> findings, then pass after repair. <span class="badge info">in-flight &mdash; sibling agent</span></li>
+            <li><code>tn-d3s</code> / <code>tn-d3s.1</code> / <code>tn-d3s.2</code> / <code>tn-d3s.3</code> — make Titania dogfood its own release scope with a captured finding manifest, reviewed self-exceptions, and final release pass evidence. (The release scope itself passes first-hand; this bead is the formal capture/packaging.)</li>
             <li><code>tn-ed4</code> — package final v1 Definition-of-Done evidence after the functional gaps close.</li>
-            <li><code>tn-4rq.2</code> — blocked subtask for doctor/version output plus embedded ast-grep row; blocks the doctor command path.</li>
+            <li><code>tn-4rq.2</code> — residual doctor detail: exact missing-tool exit semantics and the embedded ast-grep row. Doctor core already runs and reports tools (verified).</li>
           </ul>
         </div>
         <div class="panel">
           <h3>P1/P2 gaps</h3>
           <ul>
-            <li><code>tn-fqd</code> — thin executor binary: user-facing <code>titania-check --scope edit/prepush/release</code> path remains open even though Moon tasks and <code>run-lane</code> work.</li>
-            <li><code>tn-4rq</code> — doctor tool/version report is open; v1 DoD item 9 depends on it.</li>
-            <li><code>tn-rld</code> / <code>tn-rld.4</code> — cargo-generate template exists, but generated workspace prepush smoke evidence is still open.</li>
-            <li><code>tn-5c2</code> — ast-grep catalog with hand-written repair hints remains in progress.</li>
-            <li><code>tn-d2h</code> — titania-lints dylint library with all six type-aware rules remains in progress.</li>
-            <li><code>tn-kpm</code>, <code>tn-tyo</code>, <code>tn-bdl</code>, <code>tn-i0j</code>, <code>tn-q9a</code> — strict clippy/source-length/serde/public API/Kani assertion repair cleanup remains active.</li>
+            <li><span class="badge ok">closed</span> <code>tn-fqd</code> &mdash; the thin executor / user-facing <code>titania-check --scope edit/prepush/release</code> path now emits typed Pass receipts first-hand. (Kept here only as a closure note.)</li>
+            <li><code>tn-4rq</code> &mdash; doctor core is functional (exit 0, <code>Status: OK</code>, 9 tools reported). Residual exit-semantics/ast-grep-row detail = <code>tn-4rq.2</code>.</li>
+            <li><code>tn-rld</code> / <code>tn-rld.4</code> — cargo-generate template exists, but generated workspace prepush smoke evidence is still open. <span class="badge info">in-flight &mdash; sibling agent</span></li>
+            <li><code>tn-5c2</code> — ast-grep catalog with hand-written repair hints remains in progress. <span class="badge info">in-flight &mdash; sibling agent</span></li>
+            <li><code>tn-d2h</code> — titania-lints dylint library with all six type-aware rules remains in progress. <span class="badge info">in-flight &mdash; sibling agent</span></li>
+            <li><code>tn-tyo</code>, <code>tn-bdl</code>, <code>tn-i0j</code>, <code>tn-q9a</code> — source-length / serde / public-API / Kani-assertion cleanup. Note: strict source-only clippy is currently green first-hand, so remaining cleanup is narrowly scoped.</li>
             <li><code>tn-30e</code> — public docs alignment waits until implementation shape stops moving.</li>
           </ul>
         </div>
@@ -425,18 +443,18 @@
       <table>
         <thead><tr><th>#</th><th>Spec clause</th><th>Status</th><th>Evidence / blocker</th></tr></thead>
         <tbody>
-          <tr><td>1</td><td><code>--scope edit</code> runs fmt, compile, clippy, ast-grep, dylint, panic-scan, policy-scan via Moon.</td><td><span class="badge warn">partial</span></td><td>Moon <code>gate-edit</code> passes and lane tasks are wired. User-facing thin <code>--scope</code> executor remains <code>tn-fqd</code>.</td></tr>
-          <tr><td>2</td><td><code>--scope prepush</code> adds test and cargo-deny lanes.</td><td><span class="badge warn">partial</span></td><td>Moon <code>gate-prepush</code> passes. Thin executor UX remains open.</td></tr>
-          <tr><td>3</td><td><code>--scope release</code> adds release build.</td><td><span class="badge warn">partial</span></td><td>Moon <code>gate-release</code> passes. Dogfood release proof remains <code>tn-d3s</code>.</td></tr>
+          <tr><td>1</td><td><code>--scope edit</code> runs fmt, compile, clippy, ast-grep, dylint, panic-scan, policy-scan via Moon.</td><td><span class="badge ok">done &middot; verified</span></td><td>First-hand: <code>titania-check --scope edit</code> &rarr; typed Pass, 7 lanes clean (hermetic env).</td></tr>
+          <tr><td>2</td><td><code>--scope prepush</code> adds test and cargo-deny lanes.</td><td><span class="badge ok">done &middot; verified</span></td><td>First-hand: typed Pass, 9 lanes clean (adds Test, Deny).</td></tr>
+          <tr><td>3</td><td><code>--scope release</code> adds release build.</td><td><span class="badge ok">done &middot; verified</span></td><td>First-hand: typed Pass, 10 lanes clean (adds Build). Formal dogfood packaging remains <code>tn-d3s</code>.</td></tr>
           <tr><td>4</td><td>Each lane writes typed findings to <code>.titania/out/&lt;scope&gt;/&lt;lane&gt;.json</code>.</td><td><span class="badge ok">mostly done</span></td><td>Typed artifact writer and lane outcomes are landed; current Moon gate aggregation passes.</td></tr>
           <tr><td>5</td><td><code>aggregate --scope</code> reads lane outputs and produces typed <code>Report</code>.</td><td><span class="badge ok">done</span></td><td><code>tn-cgk.2</code>, <code>tn-d7l.2</code>; Moon aggregate tasks pass for edit/prepush/release.</td></tr>
           <tr><td>6</td><td>Report schema stable, versioned, machine-readable, separating findings from tool failures.</td><td><span class="badge ok">done</span></td><td>Core report/outcome types and aggregate tests landed; current report generation passes.</td></tr>
           <tr><td>7</td><td><code>strict-ai</code> forbids unsafe, unwrap/expect, panic macros, unchecked indexing/arithmetic, lint suppressions, loops, excessive nesting, architecture violations, core <code>Result&lt;T, String&gt;</code>.</td><td><span class="badge warn">partial</span></td><td>Many rule families landed. Remaining active work: <code>tn-5c2</code>, <code>tn-d2h</code>, <code>tn-kpm</code>, <code>tn-tyo</code>, dogfood/review beads.</td></tr>
           <tr><td>8</td><td>All policy exceptions live in <code>.titania/profiles/strict-ai/exceptions.toml</code> with owner/reason/expiry/review.</td><td><span class="badge warn">partial</span></td><td>Parser/tests exist; reviewed self-exception closure remains <code>tn-d3s.2</code>.</td></tr>
-          <tr><td>9</td><td><code>doctor --scope</code> reports tools and versions.</td><td><span class="badge bad">open</span></td><td><code>tn-4rq</code> open; <code>tn-4rq.2</code> blocked.</td></tr>
+          <tr><td>9</td><td><code>doctor --scope</code> reports tools and versions.</td><td><span class="badge warn">mostly done</span></td><td>First-hand: <code>doctor --scope edit</code> exit 0, <code>Status: OK</code>, 9 tools with versions (dylint 6.0.1 abi:verified). Residual: missing-tool exit semantics + embedded ast-grep row = <code>tn-4rq.2</code>.</td></tr>
           <tr><td>10</td><td><code>cargo generate titania/template</code> produces a workspace passing prepush out of the box.</td><td><span class="badge warn">partial</span></td><td>Template files/config/tests landed; generated workspace prepush smoke evidence remains <code>tn-rld.4</code>.</td></tr>
-          <tr><td>11</td><td>Titania-check's own repository passes release scope.</td><td><span class="badge warn">partial</span></td><td>Moon <code>gate-release</code> passes now. Formal self-dogfood release bead remains <code>tn-d3s</code>.</td></tr>
-          <tr><td>12</td><td>Dylint library loads correctly via workspace metadata.</td><td><span class="badge warn">partial</span></td><td>Dylint crate/loader and lane pass in current CI. Full six-rule library bead remains <code>tn-d2h</code>.</td></tr>
+          <tr><td>11</td><td>Titania-check's own repository passes release scope.</td><td><span class="badge ok">done &middot; verified</span></td><td>First-hand: <code>titania-check --scope release</code> on this repo &rarr; typed Pass, 10 lanes clean. Formal self-dogfood packaging remains <code>tn-d3s</code> / <code>tn-ed4</code>.</td></tr>
+          <tr><td>12</td><td>Dylint library loads correctly via workspace metadata.</td><td><span class="badge warn">mostly done</span></td><td>Loader verified first-hand: Dylint lane clean across edit/prepush/release; <code>doctor</code> reports <code>dylint-lib abi:verified</code>. Full six-rule library remains <code>tn-d2h</code> (in-flight, sibling agent).</td></tr>
           <tr><td>13</td><td>Clippy findings normalize to <code>CLIPPY_*</code> rule IDs.</td><td><span class="badge ok">done</span></td><td><code>tn-d2l.2</code> closed; clippy lane exits 0 in current Moon report.</td></tr>
           <tr><td>14</td><td>Cargo-deny findings normalize to <code>DENY_*</code> rule IDs.</td><td><span class="badge ok">done</span></td><td><code>tn-8xw.1</code> closed; deny lane exits 0 in current Moon report.</td></tr>
           <tr><td>Demo</td><td>Killer demo rejects <code>for</code> loop plus <code>.unwrap()</code> with two typed findings.</td><td><span class="badge bad">open</span></td><td><code>tn-pdn</code> ready and unblocked.</td></tr>
@@ -499,8 +517,8 @@
         <li><strong>Close <code>tn-pdn</code> first.</strong> It is P0, ready, visible, and proves the headline killer demo with typed findings.</li>
         <li><strong>Run <code>tn-d3s.1 → tn-d3s.2 → tn-d3s.3</code>.</strong> Capture current self-dogfood findings, repair/exception them honestly, then prove own-repo release scope.</li>
         <li><strong>Close <code>tn-rld.4</code>.</strong> Generate a fresh workspace and prove prepush passes; this converts the template from configured to adoption-proven.</li>
-        <li><strong>Unblock <code>tn-4rq.2</code> and close <code>tn-4rq</code>.</strong> Doctor/version reporting is a hard v1 DoD clause and will make failure diagnosis tolerable.</li>
-        <li><strong>Finish <code>tn-fqd</code>.</strong> Thin scope executor bridges the gap between Moon internals that work and the public <code>titania-check --scope ...</code> UX promised by the spec.</li>
+        <li><strong>Close the residual doctor detail <code>tn-4rq.2</code>.</strong> Doctor core already runs and reports tools (verified); remaining work is missing-tool exit semantics and the embedded ast-grep row.</li>
+        <li><strong><code>tn-fqd</code> (thin scope executor) is effectively closed.</strong> <code>titania-check --scope edit/prepush/release</code> emits typed Pass receipts first-hand; no longer a blocker.</li>
         <li><strong>Drain active cleanup beads.</strong> <code>tn-kpm</code>, <code>tn-tyo</code>, <code>tn-bdl</code>, <code>tn-i0j</code>, <code>tn-q9a</code>, <code>tn-5c2</code>, and <code>tn-d2h</code> are the remaining rule-quality/review hardening work.</li>
         <li><strong>Package <code>tn-ed4</code> last.</strong> Evidence bundle only matters after the open acceptance gaps are actually closed.</li>
       </ol>
@@ -511,16 +529,16 @@
       <table>
         <thead><tr><th>Check</th><th>Observed result</th></tr></thead>
         <tbody>
-          <tr><td><code>git push</code></td><td><span class="badge ok">ok</span> Remote was already up to date after the pushed repair.</td></tr>
-          <tr><td><code>bd dolt push</code></td><td><span class="badge ok">ok</span> Dolt remote push completed after the tracker state was corrected.</td></tr>
-          <tr><td><code>git status --short --branch</code></td><td><span class="badge ok">clean</span> <code>v1-combined-dispatch...origin/v1-combined-dispatch</code>, zero staged/unstaged/untracked files before this report file was created.</td></tr>
+          <tr><td>Branch</td><td>Generated in worktree <code>fix/hygiene-docs</code> off <code>origin/wip/v1-release-fixes</code> (HEAD <code>f2a0de3</code> at refresh time). <strong>Not</strong> a pushed-to-main claim.</td></tr>
+          <tr><td><code>git status --short --branch</code></td><td><span class="badge ok">clean</span> Only intended doc/config changes (<code>v1-progress-report.html</code>, <code>.cargo/audit.toml</code>); all scope-run scratch under <code>.titania/</code> and <code>target/</code> is gitignored.</td></tr>
+          <tr><td><code>git push</code> / <code>bd dolt push</code></td><td><span class="badge warn">not run at report-write time</span> Conservative profile: push of <code>fix/hygiene-docs</code> happens with the delivery commit; Dolt sync not performed.</td></tr>
           <tr><td>Report file</td><td>This single-page report is <code>v1-progress-report.html</code>.</td></tr>
         </tbody>
       </table>
     </section>
 
     <div class="footer">
-      Generated 2026-07-05 from <code>v1-spec.md</code>, <code>bd list --json</code>, <code>bd ready</code>, <code>.moon/cache/ciReport.json</code>, <code>git status</code>, <code>git rev-parse</code>, <code>git push</code>, and <code>bd dolt push</code>. No success claim here is based on invented output.
+      Refreshed 2026-07-12 from first-hand runs in worktree <code>fix/hygiene-docs</code> off <code>wip/v1-release-fixes</code>: <code>cargo test</code> (748/65), <code>cargo fmt --check</code>, strict source-only <code>cargo clippy</code>, <code>cargo deny check</code>, <code>cargo machete</code>, <code>cargo audit</code>, <code>titania-check --scope edit/prepush/release</code>, <code>titania-check doctor</code>, <code>titania-check setup-hermetic</code>, <code>git status</code>, and <code>git rev-parse</code>. Bead-board counts were not re-queried in this worktree; verify with <code>bd list</code>. No success claim here is based on invented output.
     </div>
   </main>
 </body>
