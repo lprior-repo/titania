@@ -16,16 +16,28 @@ fn run(args: &[&str]) -> (i32, String, String) {
 }
 
 fn run_with_path(args: &[&str], path: Option<&str>) -> (i32, String, String) {
-    let output = match path {
-        Some(path) => Command::new(binary())
-            .args(args)
-            .env("PATH", path)
-            .env("LD_LIBRARY_PATH", "")
-            .env("DYLD_LIBRARY_PATH", "")
-            .output(),
-        None => Command::new(binary()).args(args).output(),
+    run_with_path_and_cwd(args, path, None)
+}
+
+/// Run the doctor binary with an optional override `PATH` and working dir.
+fn run_with_path_and_cwd(
+    args: &[&str],
+    path: Option<&str>,
+    cwd: Option<&std::path::Path>,
+) -> (i32, String, String) {
+    let mut command = Command::new(binary());
+    let _ = command.args(args);
+    if let Some(path) = path {
+        let _ = command.env("PATH", path);
     }
-    .expect("failed to execute titania-check");
+    if let Some(cwd) = cwd {
+        let _ = command.current_dir(cwd);
+    }
+    let output = command
+        .env("LD_LIBRARY_PATH", "")
+        .env("DYLD_LIBRARY_PATH", "")
+        .output()
+        .expect("failed to execute titania-check");
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     (output.status.code().unwrap_or(-1), stdout, stderr)
@@ -376,4 +388,120 @@ fn doctor_unknown_scope_remains_input_error() {
     assert!(stdout.is_empty(), "unknown scope must not write stdout: {stdout}");
     assert!(stderr.contains("unknown scope"), "stderr must name unknown scope: {stderr}");
     assert!(stderr.contains("full"), "stderr must include rejected scope: {stderr}");
+}
+
+/// H1 reconciliation: when `cargo-dylint` is installed but no pre-built
+/// `.so`/`.dylib` exists on disk, the doctor must recognize workspace
+/// metadata mode (`[workspace.metadata.dylint]` naming titania) and report the
+/// library as `metadata/built-on-demand` (installed=true) — NOT `abi:unknown`.
+///
+/// This proves doctor and the lane now AGREE: `cargo dylint` builds+loads the
+/// cdylib on demand, so the library is genuinely available.
+#[cfg(unix)]
+#[test]
+fn doctor_metadata_mode_reports_library_built_on_demand() {
+    let tmp = tempfile::tempdir().expect("must create temp dir");
+    let bin_dir = tmp.path();
+
+    // Fake cargo-dylint so the subcommand probe reports it as installed.
+    let dylint_bin = bin_dir.join("cargo-dylint");
+    std::fs::write(&dylint_bin, "#!/bin/sh\necho \"cargo-dylint 0.0.0\"\n")
+        .expect("must write fake cargo-dylint");
+    std::fs::set_permissions(&dylint_bin, std::fs::Permissions::from_mode(0o755))
+        .expect("must chmod fake cargo-dylint");
+
+    // A workspace root whose Cargo.toml configures the titania dylint library
+    // via `[workspace.metadata.dylint]`, mirroring titania's own manifest.
+    let ws_dir = bin_dir.join("workspace");
+    std::fs::create_dir_all(ws_dir.join("src")).expect("must create workspace src");
+    std::fs::write(
+        ws_dir.join("Cargo.toml"),
+        "[package]\n\
+         name = \"ws\"\n\
+         version = \"0.1.0\"\n\
+         edition = \"2021\"\n\
+         \n\
+         [lib]\n\
+         path = \"src/lib.rs\"\n\
+         \n\
+         [workspace]\n\
+         [workspace.metadata.dylint]\n\
+         libraries = [{ path = \"crates/titania-dylint\" }]\n",
+    )
+    .expect("must write workspace Cargo.toml");
+    std::fs::write(ws_dir.join("src").join("lib.rs"), "").expect("must write empty lib.rs");
+
+    let path = bin_dir.to_string_lossy();
+    let (_code, stdout, stderr) = run_with_path_and_cwd(
+        &["doctor", "--scope", "edit", "--emit", "json"],
+        Some(&path),
+        Some(&ws_dir),
+    );
+    assert!(stderr.is_empty(), "doctor must not write stderr: {stderr}");
+
+    let report: Value =
+        serde_json::from_str(&stdout).expect("doctor JSON must be parseable: {stdout}");
+    let lib_row = tool(&report, "libtitania_dylint");
+    assert_eq!(
+        lib_row["installed"], true,
+        "metadata mode must report dylint-lib as installed: {lib_row:#}"
+    );
+    assert_eq!(
+        lib_row["version"].as_str(),
+        Some("metadata/built-on-demand"),
+        "metadata mode version must be 'metadata/built-on-demand': {lib_row:#}"
+    );
+    // The library must NOT appear in missing_required.
+    let missing = report["missing_required"].as_array().expect("missing_required must be an array");
+    assert!(
+        !missing.iter().any(|n| n == "libtitania_dylint"),
+        "metadata-mode dylint-lib must not be in missing_required: {report:#}"
+    );
+}
+
+/// H1 negative case: when `cargo-dylint` is installed but the workspace has NO
+/// dylint metadata and no pre-built library, the doctor must still report
+/// `abi:unknown` (installed=false) — the metadata fix must not over-report.
+#[cfg(unix)]
+#[test]
+fn doctor_no_metadata_and_no_lib_reports_abi_unknown() {
+    let tmp = tempfile::tempdir().expect("must create temp dir");
+    let bin_dir = tmp.path();
+
+    let dylint_bin = bin_dir.join("cargo-dylint");
+    std::fs::write(&dylint_bin, "#!/bin/sh\necho \"cargo-dylint 0.0.0\"\n")
+        .expect("must write fake cargo-dylint");
+    std::fs::set_permissions(&dylint_bin, std::fs::Permissions::from_mode(0o755))
+        .expect("must chmod fake cargo-dylint");
+
+    // Workspace WITHOUT dylint metadata.
+    let ws_dir = bin_dir.join("workspace");
+    std::fs::create_dir_all(ws_dir.join("src")).expect("must create workspace src");
+    std::fs::write(
+        ws_dir.join("Cargo.toml"),
+        "[package]\nname = \"ws\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[workspace]\n",
+    )
+    .expect("must write workspace Cargo.toml");
+    std::fs::write(ws_dir.join("src").join("lib.rs"), "").expect("must write empty lib.rs");
+
+    let path = bin_dir.to_string_lossy();
+    let (_code, stdout, stderr) = run_with_path_and_cwd(
+        &["doctor", "--scope", "edit", "--emit", "json"],
+        Some(&path),
+        Some(&ws_dir),
+    );
+    assert!(stderr.is_empty(), "doctor must not write stderr: {stderr}");
+
+    let report: Value =
+        serde_json::from_str(&stdout).expect("doctor JSON must be parseable: {stdout}");
+    let lib_row = tool(&report, "libtitania_dylint");
+    assert_eq!(
+        lib_row["installed"], false,
+        "no metadata + no lib must report installed=false: {lib_row:#}"
+    );
+    assert_eq!(
+        lib_row["version"].as_str(),
+        Some("abi:unknown"),
+        "no metadata + no lib version must be abi:unknown: {lib_row:#}"
+    );
 }
