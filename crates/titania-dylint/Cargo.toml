@@ -1,6 +1,6 @@
 [package]
 name = "titania-dylint"
-version = "0.0.0"
+version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -10,7 +10,6 @@ repository = "https://github.com/lprior-repo/titania"
 readme = "../../README.md"
 keywords = ["dylint", "lint", "rust", "quality"]
 categories = ["development-tools"]
-publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]

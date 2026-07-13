@@ -6,7 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Pure domain types for titania-check: typed Findings, Reports, Receipts."
-publish = false
+repository = "https://github.com/lprior-repo/titania"
+readme = "../../README.md"
+keywords = ["quality", "domain-types", "receipt", "findings", "qa"]
+categories = ["development-tools"]
 
 [lib]
 path = "src/lib.rs"

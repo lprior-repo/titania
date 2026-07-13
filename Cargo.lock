@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "titania-dylint"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "dylint_linting",
 ]

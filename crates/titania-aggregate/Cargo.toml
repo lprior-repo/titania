@@ -6,7 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "v1 lane-artifact reader: reads expected outputs in GateScope order."
-publish = false
+repository = "https://github.com/lprior-repo/titania"
+readme = "../../README.md"
+keywords = ["quality", "aggregator", "lane", "receipt", "qa"]
+categories = ["development-tools"]
 
 [lib]
 path = "src/lib.rs"

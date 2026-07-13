@@ -6,7 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Shared typed output contracts for titania doctor and explain commands."
-publish = false
+repository = "https://github.com/lprior-repo/titania"
+readme = "../../README.md"
+keywords = ["quality", "output", "doctor", "explain", "qa"]
+categories = ["development-tools"]
 
 [lib]
 path = "src/lib.rs"
