@@ -300,7 +300,67 @@ fn env_dylint_library() -> Option<PathBuf> {
 fn probe_dylint_library(required: bool, cargo_dylint_path: Option<&Path>) -> ToolRow {
     let path = cargo_dylint_path.and_then(sibling_dylint_library).or_else(env_dylint_library);
 
-    path.map_or_else(|| missing_dylint_library(required), |path| dylint_library_row(required, path))
+    path.map_or_else(
+        || fallback_dylint_library(required, cargo_dylint_path),
+        |resolved| dylint_library_row(required, resolved),
+    )
+}
+
+/// Decide the dylint-lib row when no pre-built `.so`/`.dylib`/`.dll` was found.
+///
+/// When `cargo-dylint` is installed **and** the current workspace's
+/// `[workspace.metadata.dylint]` names the titania library, `cargo dylint`
+/// builds and loads the cdylib on demand (v1-spec §7). In that mode the library
+/// is genuinely available even though no standalone artifact exists on disk, so
+/// the doctor must NOT report a false negative. Otherwise the library is truly
+/// absent and the row reports `abi:unknown`.
+fn fallback_dylint_library(required: bool, cargo_dylint_path: Option<&Path>) -> ToolRow {
+    match cargo_dylint_path {
+        Some(_) if workspace_dylint_metadata_available() => metadata_dylint_library_row(required),
+        _ => missing_dylint_library(required),
+    }
+}
+
+/// Build the dylint-lib row for metadata "built-on-demand" mode.
+fn metadata_dylint_library_row(required: bool) -> ToolRow {
+    ToolRow::external(
+        "libtitania_dylint",
+        ToolPresence { required, installed: true },
+        Some("metadata/built-on-demand".to_owned()),
+        None,
+    )
+}
+
+/// Read the current workspace's `Cargo.toml` and test whether its
+/// `[workspace.metadata.dylint]` section names the titania library.
+fn workspace_dylint_metadata_available() -> bool {
+    let manifest = match std::env::current_dir() {
+        Ok(dir) => dir.join("Cargo.toml"),
+        Err(_) => return false,
+    };
+    std::fs::read_to_string(&manifest).is_ok_and(|content| manifest_names_titania_dylint(&content))
+}
+
+/// Pure heuristic: does a raw `Cargo.toml` text configure the titania dylint
+/// library under `[workspace.metadata.dylint]`?
+///
+/// This mirrors the lane's authoritative `toml_edit`-based check
+/// (`dylint_lane::cargo_manifest_names_titania_dylint`) using a lightweight
+/// text scan so the doctor crate stays free of a TOML dependency. The doctor
+/// is informational; the lane performs the precise parse. A false positive
+/// would require both the metadata header and a titania reference to appear in
+/// the same manifest without actually configuring the titania library — an
+/// extremely unlikely real-world state.
+fn manifest_names_titania_dylint(content: &str) -> bool {
+    const METADATA_HEADER: &str = "[workspace.metadata.dylint]";
+    const TITANIA_DYLINT_HYPHEN: &str = "titania-dylint";
+    const TITANIA_DYLINT_UNDERSCORE: &str = "titania_dylint";
+    const LIB_TITANIA_DYLINT: &str = "libtitania_dylint";
+
+    content.contains(METADATA_HEADER)
+        && (content.contains(TITANIA_DYLINT_HYPHEN)
+            || content.contains(TITANIA_DYLINT_UNDERSCORE)
+            || content.contains(LIB_TITANIA_DYLINT))
 }
 
 fn missing_dylint_library(required: bool) -> ToolRow {
@@ -381,5 +441,59 @@ pub fn doctor_report(scope: GateScope) -> Result<DoctorReport, OutputError> {
         Err(OutputError::component_unavailable(OutputComponent::Doctor))
     } else {
         Ok(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::manifest_names_titania_dylint;
+
+    #[test]
+    fn metadata_manifest_naming_titania_hyphen_is_detected() {
+        let manifest = r#"
+[workspace.metadata.dylint]
+libraries = [{ path = "crates/titania-dylint" }]
+"#;
+        assert!(manifest_names_titania_dylint(manifest));
+    }
+
+    #[test]
+    fn metadata_manifest_naming_titania_underscore_is_detected() {
+        let manifest = r#"
+[workspace.metadata.dylint]
+libraries = [{ path = "crates/titania_dylint" }]
+"#;
+        assert!(manifest_names_titania_dylint(manifest));
+    }
+
+    #[test]
+    fn metadata_manifest_naming_unrelated_library_is_rejected() {
+        let manifest = r#"
+[workspace.metadata.dylint]
+libraries = [{ path = "crates/unrelated-lint" }]
+"#;
+        assert!(!manifest_names_titania_dylint(manifest));
+    }
+
+    #[test]
+    fn manifest_without_dylint_metadata_is_rejected() {
+        let manifest = r#"
+[package]
+name = "foo"
+
+[workspace]
+members = ["crates/foo"]
+"#;
+        assert!(!manifest_names_titania_dylint(manifest));
+    }
+
+    #[test]
+    fn titania_reference_without_metadata_header_is_rejected() {
+        // The path appears in a normal dependency, not dylint metadata.
+        let manifest = r#"
+[dependencies]
+titania-dylint = { path = "crates/titania-dylint" }
+"#;
+        assert!(!manifest_names_titania_dylint(manifest));
     }
 }
