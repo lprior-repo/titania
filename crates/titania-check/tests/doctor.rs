@@ -390,13 +390,14 @@ fn doctor_unknown_scope_remains_input_error() {
     assert!(stderr.contains("full"), "stderr must include rejected scope: {stderr}");
 }
 
-/// H1 reconciliation: when `cargo-dylint` is installed but no pre-built
-/// `.so`/`.dylib` exists on disk, the doctor must recognize workspace
-/// metadata mode (`[workspace.metadata.dylint]` naming titania) and report the
-/// library as `metadata/built-on-demand` (installed=true) — NOT `abi:unknown`.
+/// H1 reconciliation: when `cargo-dylint` and `dylint-link` are installed and
+/// the workspace has dylint metadata naming titania, but no pre-built
+/// `.so`/`.dylib` exists on disk, the doctor must report the library as
+/// `metadata/built-on-demand` (installed=true).
 ///
-/// This proves doctor and the lane now AGREE: `cargo dylint` builds+loads the
-/// cdylib on demand, so the library is genuinely available.
+/// `dylint-link` is required because cargo-dylint 6.0.1 uses it to link the
+/// cdylib during a metadata-mode build. Without it, the "built-on-demand"
+/// claim would be dishonest.
 #[cfg(unix)]
 #[test]
 fn doctor_metadata_mode_reports_library_built_on_demand() {
@@ -409,6 +410,13 @@ fn doctor_metadata_mode_reports_library_built_on_demand() {
         .expect("must write fake cargo-dylint");
     std::fs::set_permissions(&dylint_bin, std::fs::Permissions::from_mode(0o755))
         .expect("must chmod fake cargo-dylint");
+
+    // Fake dylint-link so metadata mode can honestly report built-on-demand.
+    let dylint_link_bin = bin_dir.join("dylint-link");
+    std::fs::write(&dylint_link_bin, "#!/bin/sh\necho \"dylint-link 0.0.0\"\n")
+        .expect("must write fake dylint-link");
+    std::fs::set_permissions(&dylint_link_bin, std::fs::Permissions::from_mode(0o755))
+        .expect("must chmod fake dylint-link");
 
     // A workspace root whose Cargo.toml configures the titania dylint library
     // via `[workspace.metadata.dylint]`, mirroring titania's own manifest.
@@ -459,9 +467,10 @@ fn doctor_metadata_mode_reports_library_built_on_demand() {
     );
 }
 
-/// H1 negative case: when `cargo-dylint` is installed but the workspace has NO
-/// dylint metadata and no pre-built library, the doctor must still report
-/// `abi:unknown` (installed=false) — the metadata fix must not over-report.
+/// H1 negative case: when `cargo-dylint` and `dylint-link` are installed but
+/// the workspace has NO dylint metadata and no pre-built library, the doctor
+/// must report `abi:unknown` (installed=false) — the metadata fix must not
+/// over-report.
 #[cfg(unix)]
 #[test]
 fn doctor_no_metadata_and_no_lib_reports_abi_unknown() {
@@ -473,6 +482,14 @@ fn doctor_no_metadata_and_no_lib_reports_abi_unknown() {
         .expect("must write fake cargo-dylint");
     std::fs::set_permissions(&dylint_bin, std::fs::Permissions::from_mode(0o755))
         .expect("must chmod fake cargo-dylint");
+
+    // Fake dylint-link so the probe reaches the metadata check (rather than
+    // the dylint-link-missing branch) and correctly reports abi:unknown.
+    let dylint_link_bin = bin_dir.join("dylint-link");
+    std::fs::write(&dylint_link_bin, "#!/bin/sh\necho \"dylint-link 0.0.0\"\n")
+        .expect("must write fake dylint-link");
+    std::fs::set_permissions(&dylint_link_bin, std::fs::Permissions::from_mode(0o755))
+        .expect("must chmod fake dylint-link");
 
     // Workspace WITHOUT dylint metadata.
     let ws_dir = bin_dir.join("workspace");
@@ -503,5 +520,126 @@ fn doctor_no_metadata_and_no_lib_reports_abi_unknown() {
         lib_row["version"].as_str(),
         Some("abi:unknown"),
         "no metadata + no lib version must be abi:unknown: {lib_row:#}"
+    );
+}
+
+/// dylint-link absent + no prebuilt lib → library missing, dylint-link in
+/// missing_required, exit 3. This is the core H1 fix: the doctor must NOT
+/// overclaim "metadata/built-on-demand" when dylint-link is absent, because
+/// cargo-dylint 6.0.1 genuinely cannot build the cdylib without it.
+#[cfg(unix)]
+#[test]
+fn doctor_dylint_link_absent_no_prebuilt_lib_reports_missing() {
+    let tmp = tempfile::tempdir().expect("must create temp dir");
+    let bin_dir = tmp.path();
+
+    // Fake cargo-dylint (present).
+    let dylint_bin = bin_dir.join("cargo-dylint");
+    std::fs::write(&dylint_bin, "#!/bin/sh\necho \"cargo-dylint 0.0.0\"\n")
+        .expect("must write fake cargo-dylint");
+    std::fs::set_permissions(&dylint_bin, std::fs::Permissions::from_mode(0o755))
+        .expect("must chmod fake cargo-dylint");
+
+    // No dylint-link created — it is intentionally absent.
+    // No prebuilt lib created.
+
+    // Workspace WITH dylint metadata (to prove metadata alone is insufficient).
+    let ws_dir = bin_dir.join("workspace");
+    std::fs::create_dir_all(ws_dir.join("src")).expect("must create workspace src");
+    std::fs::write(
+        ws_dir.join("Cargo.toml"),
+        "[package]\nname = \"ws\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n\
+         [lib]\npath = \"src/lib.rs\"\n\n\
+         [workspace]\n[workspace.metadata.dylint]\n\
+         libraries = [{ path = \"crates/titania-dylint\" }]\n",
+    )
+    .expect("must write workspace Cargo.toml");
+    std::fs::write(ws_dir.join("src").join("lib.rs"), "").expect("must write empty lib.rs");
+
+    let path = bin_dir.to_string_lossy();
+    let (code, stdout, stderr) = run_with_path_and_cwd(
+        &["doctor", "--scope", "edit", "--emit", "json"],
+        Some(&path),
+        Some(&ws_dir),
+    );
+    assert!(stderr.is_empty(), "doctor must not write stderr: {stderr}");
+    assert_eq!(code, 3, "dylint-link missing must trigger MissingRequiredTools (exit 3)");
+
+    let report: Value =
+        serde_json::from_str(&stdout).expect("doctor JSON must be parseable: {stdout}");
+    assert_eq!(report["status"], "MissingRequiredTools");
+
+    let missing = report["missing_required"].as_array().expect("missing_required array");
+    assert!(
+        missing.iter().any(|n| n == "dylint-link"),
+        "dylint-link must be in missing_required: {report:#}"
+    );
+
+    let lib_row = tool(&report, "libtitania_dylint");
+    assert_eq!(
+        lib_row["installed"], false,
+        "lib must be installed=false when dylint-link is absent: {lib_row:#}"
+    );
+    assert_eq!(
+        lib_row["version"].as_str(),
+        Some("dylint-link missing (required to build libtitania_dylint from source)"),
+        "lib version must name dylint-link as the blocker: {lib_row:#}"
+    );
+}
+
+/// Prebuilt sibling lib present → library available regardless of dylint-link.
+/// A consumer that ships `libtitania_dylint.so` via binstall does not need
+/// `dylint-link` because the cdylib is already built.
+#[cfg(unix)]
+#[test]
+fn doctor_prebuilt_lib_available_regardless_of_dylint_link() {
+    let tmp = tempfile::tempdir().expect("must create temp dir");
+    let bin_dir = tmp.path();
+
+    // Fake cargo-dylint (present).
+    let dylint_bin = bin_dir.join("cargo-dylint");
+    std::fs::write(&dylint_bin, "#!/bin/sh\necho \"cargo-dylint 0.0.0\"\n")
+        .expect("must write fake cargo-dylint");
+    std::fs::set_permissions(&dylint_bin, std::fs::Permissions::from_mode(0o755))
+        .expect("must chmod fake cargo-dylint");
+
+    // No dylint-link created — intentionally absent.
+
+    // Prebuilt sibling lib with valid ELF header + ABI markers.
+    let lib = bin_dir.join("libtitania_dylint.so");
+    std::fs::write(&lib, b"\x7fELFsynthetic-dylint-fixture\0dylint_version\0register_lints\0")
+        .expect("must write fake lib");
+
+    let path = bin_dir.to_string_lossy();
+    let (_code, stdout, stderr) =
+        run_with_path(&["doctor", "--scope", "edit", "--emit", "json"], Some(&path));
+    assert!(stderr.is_empty(), "doctor must not write stderr: {stderr}");
+
+    let report: Value =
+        serde_json::from_str(&stdout).expect("doctor JSON must be parseable: {stdout}");
+
+    let lib_row = tool(&report, "libtitania_dylint");
+    assert_eq!(
+        lib_row["installed"], true,
+        "prebuilt lib must report installed=true regardless of dylint-link: {lib_row:#}"
+    );
+    assert_eq!(
+        lib_row["version"].as_str(),
+        Some("abi:verified"),
+        "prebuilt lib version must be abi:verified: {lib_row:#}"
+    );
+
+    // dylint-link must NOT be in missing_required (not needed when prebuilt lib exists).
+    let missing = report["missing_required"].as_array().expect("missing_required array");
+    assert!(
+        !missing.iter().any(|n| n == "dylint-link"),
+        "dylint-link must not be required when prebuilt lib exists: {report:#}"
+    );
+
+    // dylint-link must not be required when prebuilt lib exists.
+    let dylint_link_row = tool(&report, "dylint-link");
+    assert_eq!(
+        dylint_link_row["required"], false,
+        "dylint-link must not be required when prebuilt lib exists: {dylint_link_row:#}"
     );
 }

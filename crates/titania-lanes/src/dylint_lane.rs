@@ -6,6 +6,16 @@
 //! 2. Is the `libtitania_dylint` cdylib available and ABI-compatible? If not,
 //!    return [`LaneFailure::Infra`] with `tool = "libtitania_dylint"`.
 //!
+//! ## Consumer library-load path (§7)
+//!
+//! cargo-dylint 6.0.1 requires `--lib-path` filenames to match
+//! `DLL_PREFIX <name> '@' <toolchain> DLL_SUFFIX` (e.g.
+//! `libtitania_dylint@nightly-2026-04-27-x86_64-unknown-linux-gnu.so`).
+//! Sibling and env-supplied libraries use the plain name
+//! `libtitania_dylint.so`, so [`DylintLibStaging`] copies the file into a
+//! temp directory with the toolchain-suffixed name before passing it to
+//! `cargo dylint --lib-path`.
+//!
 //! No lint logic lives here — only the load / wiring contract.
 
 use std::path::{Path, PathBuf};
@@ -341,6 +351,115 @@ const fn is_dynamic_library_magic(head: [u8; 4]) -> bool {
         return true;
     }
     false
+}
+
+/// Whether a resolved library path already has the toolchain-suffixed name
+/// that cargo-dylint 6.0.1 requires (i.e. the filename contains `@`).
+///
+/// When this returns `false`, the caller must stage the file via
+/// [`DylintLibStaging::stage`] before passing it to `--lib-path`.
+#[must_use]
+pub(crate) fn path_needs_staging(path: &Path) -> bool {
+    path.file_name().and_then(|name| name.to_str()).is_none_or(|name| !name.contains('@'))
+}
+
+/// Determine the active rust toolchain string (e.g.
+/// `nightly-2026-04-27-x86_64-unknown-linux-gnu`).
+///
+/// Runs `rustup show active-toolchain` and parses the first
+/// whitespace-delimited token — mirroring cargo-dylint's own
+/// `parse_active_toolchain` logic.
+fn active_toolchain_string(target: &TargetProject) -> Option<String> {
+    let output = crate::command::CommandIn::new(target, "rustup")
+        .and_then(|mut cmd| cmd.inherit_env().args(&["show", "active-toolchain"]).run_capture_raw())
+        .ok()?;
+    if !output.success() {
+        return None;
+    }
+    let stdout = output.stdout_str().ok()?;
+    stdout.split_ascii_whitespace().next().map(str::to_owned)
+}
+
+/// Construct the cargo-dylint-required library filename for a toolchain.
+///
+/// Matches `dylint_internal::library_filename`:
+/// `DLL_PREFIX <name> '@' <toolchain> DLL_SUFFIX`.
+fn toolchain_library_filename(toolchain: &str) -> String {
+    format!(
+        "{}{TITANIA_DYLINT_CRATE}@{toolchain}{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX,
+    )
+}
+
+/// Create a unique staging directory under the system temp dir.
+///
+/// Uses the process ID for uniqueness; falls back to numeric suffixes if a
+/// stale directory from a crashed prior run happens to exist.
+fn create_staging_dir() -> Option<PathBuf> {
+    let base = std::env::temp_dir();
+    let pid = std::process::id();
+    let primary = base.join(format!("titania-dylint-{pid}"));
+    if std::fs::create_dir(&primary).is_ok() {
+        return Some(primary);
+    }
+    (1u32..=100).find_map(|suffix| {
+        let path = base.join(format!("titania-dylint-{pid}-{suffix}"));
+        std::fs::create_dir(&path).is_ok().then_some(path)
+    })
+}
+
+/// Owns a temporary directory containing a toolchain-suffixed copy of the
+/// `libtitania_dylint` cdylib so that `cargo dylint --lib-path` accepts it.
+///
+/// The temp directory and its contents are removed when this guard is
+/// dropped. The caller must keep it alive for the duration of the
+/// `cargo dylint` invocation.
+pub(crate) struct DylintLibStaging {
+    /// The temp directory containing the staged library copy.
+    dir: PathBuf,
+    /// The staged library path inside `dir`.
+    lib_path: PathBuf,
+}
+
+impl DylintLibStaging {
+    /// Borrow the staged library path.
+    #[must_use]
+    pub(crate) fn lib_path(&self) -> &Path {
+        &self.lib_path
+    }
+
+    /// Create a temp directory, copy `source` into it with the
+    /// toolchain-suffixed name, and return the staging guard.
+    ///
+    /// # Errors
+    /// Returns [`LaneFailure::Infra`] when the toolchain string cannot be
+    /// determined, the temp directory cannot be created, or the copy fails.
+    pub(crate) fn stage(source: &Path, target: &TargetProject) -> Result<Self, LaneFailure> {
+        let toolchain = active_toolchain_string(target).ok_or_else(|| LaneFailure::Infra {
+            tool: String::from(LIB_TITANIA_DYLINT),
+            reason: String::from(
+                "cannot determine active rust toolchain (rustup show active-toolchain failed) \
+                 for dylint library staging",
+            ),
+        })?;
+        let dir = create_staging_dir().ok_or_else(|| LaneFailure::Infra {
+            tool: String::from(LIB_TITANIA_DYLINT),
+            reason: String::from("cannot create temp directory for dylint library staging"),
+        })?;
+        let lib_path = dir.join(toolchain_library_filename(&toolchain));
+        let _copied = std::fs::copy(source, &lib_path).map_err(|err| LaneFailure::Infra {
+            tool: String::from(LIB_TITANIA_DYLINT),
+            reason: format!("cannot stage dylint library to {}: {err}", lib_path.display()),
+        })?;
+        Ok(Self { dir, lib_path })
+    }
+}
+
+impl Drop for DylintLibStaging {
+    fn drop(&mut self) {
+        drop(std::fs::remove_dir_all(&self.dir));
+    }
 }
 
 fn unavailable_probe(tool: &str, reason: String) -> DylintProbe {

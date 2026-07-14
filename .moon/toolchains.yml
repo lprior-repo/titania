@@ -1,7 +1,9 @@
 # MOON CI/CD IS THE ABSOLUTE FOUNDATION FOR ALL OF THIS WORK.
 # Rust toolchain pinned to a dated nightly. Moon installs the v1 lane
-# toolchain extensions so cargo-deny, cargo-binstall, and cargo-dylint are
-# available wherever the Moon graph runs.
+# toolchain extensions so cargo-deny, cargo-binstall, cargo-dylint, and
+# dylint-link are available wherever the Moon graph runs. dylint-link is
+# required by cargo-dylint 6.0.1 to link cdylib lint libraries when
+# building from source (metadata mode).
 
 rust:
   version: 'nightly-2026-04-27'
@@ -9,4 +11,5 @@ rust:
     - 'cargo-deny'
     - 'cargo-binstall'
     - 'cargo-dylint'
+    - 'dylint-link'
   syncToolchainConfig: true

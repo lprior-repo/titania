@@ -232,14 +232,30 @@ fn extract_version(raw: &str) -> Option<String> {
 
 fn probe_dylint(required: bool) -> Vec<ToolRow> {
     let cargo_dylint_path = find_on_path("cargo-dylint");
+    let dylint_link_path = find_on_path("dylint-link");
     let cargo_dylint_row = cargo_dylint_path.as_ref().map_or_else(
         || missing_cargo_dylint_row(required),
         |path| installed_cargo_dylint_row(required, path),
     );
-    let library_row =
-        probe_dylint_library(cargo_dylint_path.is_some(), cargo_dylint_path.as_deref());
 
-    vec![cargo_dylint_row, library_row]
+    // The library is only required when cargo-dylint itself is available —
+    // without cargo-dylint the entire Dylint lane is non-functional, so the
+    // library row becomes informational rather than required.
+    let lib_required = required && cargo_dylint_path.is_some();
+
+    // Probe the prebuilt sibling/env library first. Its installed status
+    // determines whether dylint-link is required (needed only when no valid
+    // prebuilt library exists and the lib must be built from source).
+    let library_row = probe_dylint_library_with_link(
+        lib_required,
+        cargo_dylint_path.as_deref(),
+        dylint_link_path.as_deref(),
+    );
+
+    let dylint_link_required = lib_required && !library_row.installed;
+    let dylint_link_row = probe_dylint_link(dylint_link_required, dylint_link_path);
+
+    vec![cargo_dylint_row, dylint_link_row, library_row]
 }
 
 const fn missing_cargo_dylint_row(required: bool) -> ToolRow {
@@ -297,28 +313,40 @@ fn env_dylint_library() -> Option<PathBuf> {
     })
 }
 
-fn probe_dylint_library(required: bool, cargo_dylint_path: Option<&Path>) -> ToolRow {
-    let path = cargo_dylint_path.and_then(sibling_dylint_library).or_else(env_dylint_library);
+fn probe_dylint_library_with_link(
+    required: bool,
+    cargo_dylint_path: Option<&Path>,
+    dylint_link_path: Option<&Path>,
+) -> ToolRow {
+    // Check for a prebuilt sibling/env library first.
+    let prebuilt = cargo_dylint_path.and_then(sibling_dylint_library).or_else(env_dylint_library);
 
-    path.map_or_else(
-        || fallback_dylint_library(required, cargo_dylint_path),
-        |resolved| dylint_library_row(required, resolved),
-    )
+    if let Some(path) = prebuilt {
+        return dylint_library_row(required, path);
+    }
+
+    // No prebuilt library. Can we build from source via metadata?
+    match cargo_dylint_path {
+        None => missing_dylint_library(required),
+        Some(_) => resolve_built_on_demand(required, dylint_link_path),
+    }
 }
 
-/// Decide the dylint-lib row when no pre-built `.so`/`.dylib`/`.dll` was found.
+/// Decide the dylint-lib row when no prebuilt library exists on disk.
 ///
-/// When `cargo-dylint` is installed **and** the current workspace's
-/// `[workspace.metadata.dylint]` names the titania library, `cargo dylint`
-/// builds and loads the cdylib on demand (v1-spec §7). In that mode the library
-/// is genuinely available even though no standalone artifact exists on disk, so
-/// the doctor must NOT report a false negative. Otherwise the library is truly
-/// absent and the row reports `abi:unknown`.
-fn fallback_dylint_library(required: bool, cargo_dylint_path: Option<&Path>) -> ToolRow {
-    match cargo_dylint_path {
-        Some(_) if workspace_dylint_metadata_available() => metadata_dylint_library_row(required),
-        _ => missing_dylint_library(required),
+/// Metadata "built-on-demand" mode is only honest when `dylint-link` is
+/// installed (cargo-dylint 6.0.1 needs `dylint-link` to link cdylib
+/// artifacts during a metadata-mode build). Without `dylint-link` the
+/// library cannot be built, so the doctor must report it as missing with
+/// an actionable reason rather than overclaiming availability.
+fn resolve_built_on_demand(required: bool, dylint_link_path: Option<&Path>) -> ToolRow {
+    if dylint_link_path.is_none() {
+        return dylint_link_missing_library(required);
     }
+    if workspace_dylint_metadata_available() {
+        return metadata_dylint_library_row(required);
+    }
+    missing_dylint_library(required)
 }
 
 /// Build the dylint-lib row for metadata "built-on-demand" mode.
@@ -369,6 +397,39 @@ fn missing_dylint_library(required: bool) -> ToolRow {
         ToolPresence { required, installed: false },
         Some("abi:unknown".to_owned()),
         None,
+    )
+}
+
+/// Build the dylint-lib row when `dylint-link` is missing but needed to
+/// build `libtitania_dylint` from source.
+fn dylint_link_missing_library(required: bool) -> ToolRow {
+    ToolRow::external(
+        "libtitania_dylint",
+        ToolPresence { required, installed: false },
+        Some("dylint-link missing (required to build libtitania_dylint from source)".to_owned()),
+        None,
+    )
+}
+
+/// Probe `dylint-link` on PATH and build its tool row.
+fn probe_dylint_link(required: bool, path: Option<PathBuf>) -> ToolRow {
+    path.map_or_else(
+        || {
+            ToolRow::external(
+                "dylint-link",
+                ToolPresence { required, installed: false },
+                None,
+                None,
+            )
+        },
+        |path| {
+            ToolRow::external(
+                "dylint-link",
+                ToolPresence { required, installed: true },
+                probe_version(&path),
+                Some(path),
+            )
+        },
     )
 }
 
