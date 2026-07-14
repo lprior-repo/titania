@@ -458,7 +458,11 @@ impl DylintLibStaging {
 
 impl Drop for DylintLibStaging {
     fn drop(&mut self) {
-        drop(std::fs::remove_dir_all(&self.dir));
+        // Best-effort cleanup of the temp staging dir. The Result is
+        // acknowledged by binding (not `drop()`, which collides with this
+        // method's name and trips the FUNC_RECURSION_DIRECT self-dogfood
+        // rule; not `let _ =`, which trips clippy::let_underscore_must_use).
+        let _cleanup_result = std::fs::remove_dir_all(&self.dir);
     }
 }
 
