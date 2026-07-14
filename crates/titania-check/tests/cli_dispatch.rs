@@ -1071,3 +1071,204 @@ fn setup_hermetic_refuses_real_directory_at_link_path() {
         "must exit >=4 (InternalError) when real dir blocks link path, got {code}, stderr: {stderr}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Standalone --scope hermetic env injection tests (v1-spec §9.5)
+// ---------------------------------------------------------------------------
+
+/// Write a stub `moon` script that records `CARGO_HOME` and `RUSTUP_HOME` to
+/// `env_file`, then exits 0. Used to prove the env injection reaches the Moon
+/// subprocess without running real Moon tasks.
+#[cfg(unix)]
+fn write_stub_moon(dir: &Path, env_file: &Path) -> std::path::PathBuf {
+    let script = format!(
+        "#!/bin/sh\n\
+         printf '%s\\n' \"CARGO_HOME=$CARGO_HOME\" > {env_file}\n\
+         printf '%s\\n' \"RUSTUP_HOME=$RUSTUP_HOME\" >> {env_file}\n\
+         exit 0\n",
+        env_file = env_file.display(),
+    );
+    let stub = dir.join("stub-moon.sh");
+    fs::write(&stub, script).expect("stub moon script must be written");
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = fs::metadata(&stub).expect("stub metadata").permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&stub, perms).expect("stub chmod");
+    stub
+}
+
+/// Create hermetic symlinks under `<root>/.titania/hermetic/` pointing at the
+/// real Cargo and Rustup homes resolved from the test environment.
+#[cfg(unix)]
+fn create_hermetic_symlinks(root: &Path) {
+    let hermetic_dir = root.join(".titania").join("hermetic");
+    fs::create_dir_all(&hermetic_dir).expect("hermetic dir must be created");
+    let real_cargo = env::var("CARGO_HOME").unwrap_or_else(|_| "/tmp".to_owned());
+    let real_rustup = env::var("RUSTUP_HOME").unwrap_or_else(|_| {
+        env::var("HOME").map(|h| format!("{h}/.rustup")).unwrap_or_else(|_| "/tmp".to_owned())
+    });
+    std::os::unix::fs::symlink(&real_cargo, hermetic_dir.join("cargo-home"))
+        .expect("cargo-home symlink must be created");
+    std::os::unix::fs::symlink(&real_rustup, hermetic_dir.join("rustup-home"))
+        .expect("rustup-home symlink must be created");
+}
+
+/// Run `titania-check --scope edit --emit json` in `cwd` with `TITANIA_MOON_BIN`
+/// set to `stub`, returning `(exit_code, stdout, stderr, recorded_env)`.
+#[cfg(unix)]
+fn run_check_with_stub_moon(
+    cwd: &Path,
+    stub: &Path,
+    env_file: &Path,
+) -> (i32, String, String, String) {
+    let mut cmd = Command::new(binary());
+    let _ = cmd.current_dir(cwd);
+    let _ = cmd.args(&["--scope", "edit", "--emit", "json"]);
+    let _ = cmd.env("TITANIA_MOON_BIN", stub);
+    let _ = cmd.env("CARGO_HOME", "/wrong/cargo-home-for-test");
+    let _ = cmd.env_remove("RUSTUP_HOME");
+    let _ = cmd.stdout(Stdio::piped());
+    let _ = cmd.stderr(Stdio::piped());
+    let output = cmd.output().expect("failed to spawn titania-check");
+    let code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let recorded_env = fs::read_to_string(env_file).unwrap_or_default();
+    (code, stdout, stderr, recorded_env)
+}
+
+/// Standalone `--scope edit` with hermetic symlinks present must inject
+/// `CARGO_HOME` / `RUSTUP_HOME` to the hermetic paths on the Moon subprocess,
+/// even when the parent process env holds wrong values (v1-spec §9.5).
+#[cfg(unix)]
+#[test]
+fn check_scope_edit_injects_hermetic_env_to_moon_subprocess() {
+    let temp = TempDir::new().expect("temp dir must be created");
+    fs::write(
+        temp.path().join("Cargo.toml"),
+        "[package]\nname = \"hermetic-inject\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("Cargo.toml must be written");
+    create_hermetic_symlinks(temp.path());
+
+    let env_file = temp.path().join("moon-env.txt");
+    let stub = write_stub_moon(temp.path(), &env_file);
+    let (_code, _stdout, stderr, recorded_env) =
+        run_check_with_stub_moon(temp.path(), &stub, &env_file);
+
+    let expected_cargo = temp.path().join(".titania").join("hermetic").join("cargo-home");
+    let expected_rustup = temp.path().join(".titania").join("hermetic").join("rustup-home");
+    assert!(
+        recorded_env.contains(&format!("CARGO_HOME={}", expected_cargo.display())),
+        "moon subprocess must receive hermetic CARGO_HOME, got: {recorded_env}"
+    );
+    assert!(
+        recorded_env.contains(&format!("RUSTUP_HOME={}", expected_rustup.display())),
+        "moon subprocess must receive hermetic RUSTUP_HOME, got: {recorded_env}"
+    );
+    assert!(
+        !stderr.contains("hint:"),
+        "no setup-hermetic hint when hermetic dirs exist, got stderr: {stderr}"
+    );
+}
+
+/// Standalone `--scope edit` WITHOUT hermetic dirs must NOT override the
+/// parent env vars on the Moon subprocess. The hint is gated on the
+/// policy-scan artifact containing `BYPASS_ENV_*` findings; since the stub
+/// moon writes no artifact, no hint appears.
+#[cfg(unix)]
+#[test]
+fn check_scope_edit_does_not_inject_env_without_hermetic_dirs() {
+    let temp = TempDir::new().expect("temp dir must be created");
+    fs::write(
+        temp.path().join("Cargo.toml"),
+        "[package]\nname = \"no-hermetic\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("Cargo.toml must be written");
+
+    let env_file = temp.path().join("moon-env.txt");
+    let stub = write_stub_moon(temp.path(), &env_file);
+    let (_code, _stdout, _stderr, recorded_env) =
+        run_check_with_stub_moon(temp.path(), &stub, &env_file);
+
+    assert!(
+        recorded_env.contains("CARGO_HOME=/wrong/cargo-home-for-test"),
+        "moon subprocess must inherit the parent CARGO_HOME unchanged, got: {recorded_env}"
+    );
+    assert!(
+        recorded_env.contains("RUSTUP_HOME="),
+        "moon subprocess must not have RUSTUP_HOME set, got: {recorded_env}"
+    );
+}
+
+/// Standalone `--scope edit` when the process env already points at the
+/// hermetic path must inherit the value as-is (not override). This proves the
+/// Moon-CI path is not broken when the `env:` task block already sets the
+/// correct values.
+#[cfg(unix)]
+#[test]
+fn check_scope_edit_preserves_already_correct_env() {
+    let temp = TempDir::new().expect("temp dir must be created");
+    fs::write(
+        temp.path().join("Cargo.toml"),
+        "[package]\nname = \"env-correct\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("Cargo.toml must be written");
+    create_hermetic_symlinks(temp.path());
+
+    let env_file = temp.path().join("moon-env.txt");
+    let stub = write_stub_moon(temp.path(), &env_file);
+
+    let hermetic_cargo = temp.path().join(".titania").join("hermetic").join("cargo-home");
+    let hermetic_rustup = temp.path().join(".titania").join("hermetic").join("rustup-home");
+
+    let mut cmd = Command::new(binary());
+    let _ = cmd.current_dir(temp.path());
+    let _ = cmd.args(&["--scope", "edit", "--emit", "json"]);
+    let _ = cmd.env("TITANIA_MOON_BIN", &stub);
+    let _ = cmd.env("CARGO_HOME", &hermetic_cargo);
+    let _ = cmd.env("RUSTUP_HOME", &hermetic_rustup);
+    let _ = cmd.stdout(Stdio::piped());
+    let _ = cmd.stderr(Stdio::piped());
+    let output = cmd.output().expect("failed to spawn titania-check");
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let recorded_env = fs::read_to_string(&env_file).unwrap_or_default();
+
+    assert!(
+        recorded_env.contains(&format!("CARGO_HOME={}", hermetic_cargo.display())),
+        "moon subprocess must inherit the already-correct CARGO_HOME, got: {recorded_env}"
+    );
+    assert!(
+        recorded_env.contains(&format!("RUSTUP_HOME={}", hermetic_rustup.display())),
+        "moon subprocess must inherit the already-correct RUSTUP_HOME, got: {recorded_env}"
+    );
+    assert!(!stderr.contains("hint:"), "no hint when hermetic dirs exist, got stderr: {stderr}");
+}
+
+/// `run-lane policy-scan` with hermetic env vars set to the controlled paths
+/// must produce a Clean artifact with zero `BYPASS_ENV_*` findings. This proves
+/// the policy-scan lane is Clean when the env injection has been applied.
+#[test]
+fn run_lane_policy_scan_clean_with_hermetic_env() {
+    let temp = package(
+        "policy_clean_hermetic",
+        "#[must_use]\npub const fn value() -> u8 {\n    1\n}\n",
+        "",
+    )
+    .expect("temp package must be created");
+    let (code, stdout, stderr) =
+        run_in_without_policy_env(temp.path(), &["run-lane", "policy-scan"]);
+    assert_eq!(code, 0, "policy-scan with hermetic env must exit 0 (Clean), stderr: {stderr}");
+    assert!(stdout.is_empty(), "run-lane policy-scan must not write stdout, got: {stdout}");
+    assert!(stderr.is_empty(), "Clean policy-scan must not write stderr, got: {stderr}");
+    let artifact = release_policy_artifact_path(temp.path());
+    assert!(artifact.exists(), "policy-scan release artifact must exist");
+    let payload = fs::read_to_string(&artifact).expect("must read policy-scan artifact");
+    let json: Value = serde_json::from_str(&payload).expect("artifact must be valid JSON");
+    assert_eq!(json["lane"].as_str(), Some("PolicyScan"), "lane must be PolicyScan");
+    assert!(
+        json["outcome"].get("Clean").is_some(),
+        "outcome must be Clean, got: {:#}",
+        json["outcome"]
+    );
+}

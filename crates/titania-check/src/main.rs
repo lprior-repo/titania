@@ -86,8 +86,9 @@ fn check_with_moon(options: &args::CheckOptions) -> CliDisposition {
     }
     let moon_bin = moon::binary_path();
     let tasks = moon::tasks_for_scope(scope);
-    match moon::spawn_all(&moon_bin, &tasks) {
-        Ok(()) => aggregate_from_root(&target_root, scope, emit, out),
+    let hermetic = moon::HermeticEnv::detect(&target_root);
+    match moon::spawn_all(&moon_bin, &tasks, &hermetic) {
+        Ok(()) => aggregate_after_moon(&target_root, scope, emit, out, &hermetic),
         Err(moon::MoonSpawnError::NotFound) => {
             CliDisposition::input_error(format!("InputError: {}", moon::MISSING_INSTALL_HINT))
         }
@@ -296,6 +297,47 @@ fn aggregate_with_opts(
 
 fn current_dir_error(error: &io::Error) -> CliDisposition {
     CliDisposition::internal_error(format!("InternalError: current directory unavailable: {error}"))
+}
+
+/// Run the in-process aggregate after Moon finishes, emitting the hermetic
+/// hint when the policy-scan artifact contains `BYPASS_ENV_*` findings and the
+/// hermetic dirs were not detected.
+fn aggregate_after_moon(
+    target_root: &std::path::Path,
+    scope: GateScope,
+    emit: args::EmitFormat,
+    out: Option<&PathBuf>,
+    hermetic: &moon::HermeticEnv,
+) -> CliDisposition {
+    if !hermetic.is_complete() && policy_scan_has_env_bypass(target_root, scope) {
+        emit_hermetic_hint();
+    }
+    aggregate_from_root(target_root, scope, emit, out)
+}
+
+/// Emit a one-line stderr hint suggesting `setup-hermetic` when the hermetic
+/// dirs are absent (v1-spec §9.5).
+///
+/// Non-intrusive: emitted only after Moon finishes AND the policy-scan
+/// artifact actually contains `BYPASS_ENV_*` findings, so Clean runs and
+/// pre-baked test artifacts never trigger the hint.
+fn emit_hermetic_hint() {
+    let hint = "hint: run `titania-check setup-hermetic` to create hermetic CARGO_HOME/RUSTUP_HOME for PolicyScan";
+    drop(write_stderr_line(hint));
+}
+
+/// Return `true` when the policy-scan artifact for `scope` contains a
+/// `BYPASS_ENV_CARGO_HOME` or `BYPASS_ENV_RUSTUP_HOME` finding.
+///
+/// Used to gate the `setup-hermetic` hint so it only appears when `PolicyScan`
+/// actually rejected on env, not on every run missing the hermetic dirs.
+fn policy_scan_has_env_bypass(target_root: &std::path::Path, scope: GateScope) -> bool {
+    let artifact =
+        target_root.join(".titania").join("out").join(scope_dir(scope)).join("policy-scan.json");
+    let Ok(content) = std::fs::read_to_string(&artifact) else {
+        return false;
+    };
+    content.contains("BYPASS_ENV_CARGO_HOME") || content.contains("BYPASS_ENV_RUSTUP_HOME")
 }
 fn aggregate_from_root(
     target_root: &std::path::Path,
