@@ -63,6 +63,9 @@ jobs:
           toolchain: ${{ env.TITANIA_TOOLCHAIN }}
           components: ${{ env.TITANIA_COMPONENTS }}
 
+      - name: Install dylint-link
+        run: cargo install dylint-link --locked
+
       - name: Add build target
         run: rustup target add ${{ matrix.target }}
 

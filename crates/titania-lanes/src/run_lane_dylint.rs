@@ -1,10 +1,12 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use titania_core::{Lane, LaneFailure, LaneOutcome, TargetProject};
 
 use crate::{
     CommandIn, CommandOutput, Finding, LaneError, LaneReport, RuleId,
-    dylint_lane::{DylintLoad, DylintProbe, probe_dylint_toolchain},
+    dylint_lane::{
+        DylintLibStaging, DylintLoad, DylintProbe, path_needs_staging, probe_dylint_toolchain,
+    },
 };
 
 const CARGO_DYLINT_TOOL: &str = "cargo-dylint";
@@ -41,7 +43,12 @@ pub(super) fn outcome(target: &TargetProject) -> LaneOutcome {
         DylintProbe::Ready(load) => load,
     };
 
-    let args = match cargo_dylint_args(&load) {
+    let (effective_path, _staging) = match resolve_effective_lib_path(&load, target) {
+        Ok(pair) => pair,
+        Err(failure) => return LaneOutcome::Failed { failure },
+    };
+
+    let args = match cargo_dylint_args(effective_path.as_deref()) {
         Ok(args) => args,
         Err(failure) => return LaneOutcome::Failed { failure },
     };
@@ -61,15 +68,53 @@ pub(super) fn outcome(target: &TargetProject) -> LaneOutcome {
     nonzero_outcome(target, &output)
 }
 
+/// Effective `--lib-path` plus an optional staging guard that owns a temp
+/// directory containing the toolchain-suffixed library copy.
+type StagedLibPath = (Option<PathBuf>, Option<DylintLibStaging>);
+
+/// Resolve the effective `--lib-path` for cargo-dylint.
+///
+/// When the resolved library path uses a plain name (no `@<toolchain>`
+/// suffix), the file is copied into a temp directory with the
+/// cargo-dylint-required filename so that `--lib-path` accepts it.
+///
+/// # Errors
+///
+/// Returns [`LaneFailure::Infra`] when staging is needed but the toolchain
+/// string cannot be determined or the temp copy fails.
+fn resolve_effective_lib_path(
+    load: &DylintLoad,
+    target: &TargetProject,
+) -> Result<StagedLibPath, LaneFailure> {
+    match load {
+        DylintLoad::Metadata => Ok((None, None)),
+        DylintLoad::LibraryPath { path, .. } => Ok(stage_if_needed(path, target)?),
+    }
+}
+
+/// Stage a plain-named library path if it lacks the `@<toolchain>` suffix.
+///
+/// # Errors
+///
+/// Returns [`LaneFailure::Infra`] when staging is needed but the toolchain
+/// string cannot be determined or the temp copy fails.
+fn stage_if_needed(path: &Path, target: &TargetProject) -> Result<StagedLibPath, LaneFailure> {
+    let staging =
+        if path_needs_staging(path) { Some(DylintLibStaging::stage(path, target)?) } else { None };
+    let effective_path =
+        staging.as_ref().map_or_else(|| path.to_owned(), |s| s.lib_path().to_owned());
+    Ok((Some(effective_path), staging))
+}
+
 /// Build cargo-dylint arguments for the resolved library load strategy.
 ///
 /// # Errors
 /// Returns [`LaneFailure::Infra`] when a concrete library path cannot be represented as UTF-8.
-fn cargo_dylint_args(load: &DylintLoad) -> Result<Vec<String>, LaneFailure> {
+fn cargo_dylint_args(effective_path: Option<&Path>) -> Result<Vec<String>, LaneFailure> {
     let args = base_dylint_args();
-    match load {
-        DylintLoad::Metadata => Ok(args),
-        DylintLoad::LibraryPath { path, .. } => args_with_library_path(args, path),
+    match effective_path {
+        None => Ok(args),
+        Some(path) => args_with_library_path(args, path),
     }
 }
 
@@ -323,17 +368,14 @@ mod tests {
 
     use titania_core::LaneOutcome;
 
-    use super::{CARGO_DYLINT_TOOL, DylintLoad, cargo_dylint_args, nonzero_outcome};
-    use crate::{command::mock_output, current_target_project, dylint_lane::DylintLibrarySource};
+    use super::{CARGO_DYLINT_TOOL, cargo_dylint_args, nonzero_outcome};
+    use crate::{command::mock_output, current_target_project};
 
     #[test]
     fn env_library_load_uses_lib_path_args() {
         let path = PathBuf::from("/tmp/libtitania_dylint.so");
-        let args = cargo_dylint_args(&DylintLoad::LibraryPath {
-            source: DylintLibrarySource::Env,
-            path: path.clone(),
-        })
-        .expect("valid UTF-8 path must produce args");
+        let args =
+            cargo_dylint_args(Some(path.as_path())).expect("valid UTF-8 path must produce args");
 
         assert_eq!(
             args,
@@ -353,8 +395,7 @@ mod tests {
 
     #[test]
     fn metadata_load_does_not_use_lib_path_args() {
-        let args =
-            cargo_dylint_args(&DylintLoad::Metadata).expect("metadata load must produce base args");
+        let args = cargo_dylint_args(None).expect("metadata load must produce base args");
 
         assert_eq!(
             args,
