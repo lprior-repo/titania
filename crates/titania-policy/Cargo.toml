@@ -6,7 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Strict-ai policy defaults for titania-check. Embedded, no filesystem I/O required."
-publish = false
+repository = "https://github.com/lprior-repo/titania"
+readme = "../../README.md"
+keywords = ["quality", "policy", "strict-ai", "linting", "config"]
+categories = ["development-tools"]
 
 [lib]
 path = "src/lib.rs"

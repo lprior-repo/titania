@@ -229,10 +229,10 @@ binary, the same policy, the same receipts.
 
 ```bash
 # Coming with v1.0 release.
-cargo install titania
+cargo install titania-check
 
 # Or with cargo-binstall (faster, prebuilt binaries).
-cargo binstall titania
+cargo binstall titania-check
 ```
 
 For pre-v1 development, see [`v1-spec.md`](./v1-spec.md) for the buildable

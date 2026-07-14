@@ -6,7 +6,8 @@ use std::{
 };
 
 const PINNED_NIGHTLY: &str = "nightly-2026-04-27";
-const REQUIRED_COMPONENTS: &[&str] = &["rustfmt", "clippy", "rust-src", "llvm-tools-preview"];
+const REQUIRED_COMPONENTS: &[&str] =
+    &["rustfmt", "clippy", "rust-src", "llvm-tools-preview", "rustc-dev"];
 const REQUIRED_TARGET: &str = "x86_64-unknown-linux-gnu";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,6 +148,26 @@ fn toolchain_configs_are_pinned_nightly_and_in_sync() -> Result<(), String> {
 }
 
 #[test]
+fn toolchain_root_matches_template() -> Result<(), String> {
+    let root = workspace_root()?;
+    let root_text = std::fs::read_to_string(root.join("rust-toolchain.toml"))
+        .map_err(|e| format!("read rust-toolchain.toml: {e}"))?;
+    let template_text =
+        std::fs::read_to_string(root.join("titania").join("template").join("rust-toolchain.toml"))
+            .map_err(|e| format!("read template rust-toolchain.toml: {e}"))?;
+
+    let root_cfg = parse_rust_toolchain(&root_text)?;
+    let template_cfg = parse_rust_toolchain(&template_text)?;
+
+    if root_cfg != template_cfg {
+        return Err(format!(
+            "rust-toolchain.toml drift: root {root_cfg:?} != template {template_cfg:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn toolchain_config_validator_reports_mismatch_fixture() {
     let rust = parse_rust_toolchain(
         "[toolchain]\nchannel = \"stable\"\ncomponents = [\"rustfmt\", \"clippy\"]\ntargets = [\"x86_64-unknown-linux-gnu\"]\n",
@@ -163,7 +184,7 @@ fn toolchain_config_validator_reports_mismatch_fixture() {
 #[test]
 fn toolchain_config_validator_reports_missing_sync_fixture() {
     let rust = parse_rust_toolchain(
-        "[toolchain]\nchannel = \"nightly-2026-04-27\"\ncomponents = [\"rustfmt\", \"clippy\", \"rust-src\", \"llvm-tools-preview\"]\ntargets = [\"x86_64-unknown-linux-gnu\"]\n",
+        "[toolchain]\nchannel = \"nightly-2026-04-27\"\ncomponents = [\"rustfmt\", \"clippy\", \"rust-src\", \"llvm-tools-preview\", \"rustc-dev\"]\ntargets = [\"x86_64-unknown-linux-gnu\"]\n",
     )
     .unwrap();
     let moon =

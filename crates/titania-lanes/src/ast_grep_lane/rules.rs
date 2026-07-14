@@ -13,10 +13,13 @@ mod filters;
 
 use titania_core::{FindingEffect, RepairHint, WorkspacePath};
 
-use super::engine::AstEngine;
+use super::{
+    engine::AstEngine,
+    span::{FILE_LEVEL_SITE, MatchSite},
+};
 
 /// Detector function pointer over the parsed ast-grep engine.
-type EngineDetector = fn(&AstEngine) -> Option<usize>;
+type EngineDetector = fn(&AstEngine) -> Option<MatchSite>;
 
 /// Runtime rule definition corresponding to one embedded YAML document.
 #[derive(Debug, Clone, Copy)]
@@ -51,13 +54,15 @@ pub(super) enum Detector {
 impl Detector {
     /// Run the detector against the parsed engine and the raw source.
     ///
-    /// Engine detectors delegate to ast-grep; string detectors ignore the
-    /// engine and report line 0 on a successful text match (preserving the
-    /// legacy "file-level finding" semantics of the hand-rolled scanners).
-    pub(super) fn run(self, engine: &AstEngine, source: &str) -> Option<usize> {
+    /// Engine detectors delegate to ast-grep and return the byte range of the
+    /// first match (translated to a v1-spec §10 `Location::Span` by the lane).
+    /// String detectors cannot pin a precise AST token — they report a
+    /// file-level site anchored at the first byte, preserving the pre-H3
+    /// `line 1, col 0..1` wire output for any non-empty source.
+    pub(super) fn run(self, engine: &AstEngine, source: &str) -> Option<MatchSite> {
         match self {
             Self::Engine(detect) => detect(engine),
-            Self::String(detect) => detect(source).then_some(0),
+            Self::String(detect) => detect(source).then_some(FILE_LEVEL_SITE),
         }
     }
 }

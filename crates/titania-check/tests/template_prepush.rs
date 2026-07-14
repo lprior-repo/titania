@@ -15,10 +15,37 @@ use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::{Mutex, OnceLock},
     time::Duration,
 };
 
 use wait_timeout::ChildExt;
+
+/// Wallclock timeout for `titania-check --scope prepush` on a generated
+/// template workspace. The prepush gate compiles the full workspace, runs
+/// clippy, tests, deny, and dylint — 300 s is the same budget used by the
+/// Moon gate-prepush test.
+const PREPUSH_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Serializes the two template smoke tests so they never contend on the
+/// shared `CARGO_HOME` package-cache lock. Without this, parallel execution
+/// produces "Blocking waiting for file lock on package cache" stalls that
+/// intermittently fail the suite (exit 101 under the Test lane).
+///
+/// Uses `unwrap_or_else(|e| e.into_inner())` so a panic in one test does not
+/// poison the lock for the other — the surviving test still acquires the guard
+/// and runs to completion, producing its own pass/fail evidence.
+static TEMPLATE_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn template_test_lock() -> &'static Mutex<()> {
+    TEMPLATE_TEST_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Acquire the serialization guard, recovering from a poisoned lock so a
+/// panic in one test does not prevent the other from running.
+fn acquire_template_guard() -> std::sync::MutexGuard<'static, ()> {
+    template_test_lock().lock().unwrap_or_else(|e| e.into_inner())
+}
 /// Return the root directory used by `generate_workspace` to host the
 /// cargo-generate scaffold output.
 ///
@@ -249,6 +276,46 @@ fn preserve_env(command: &mut Command, key: &str) {
     }
 }
 
+/// Run `titania-check setup-hermetic` in `workspace_dir` to create the
+/// `.titania/hermetic/{cargo-home,rustup-home}` symlinks (v1-spec §9.5).
+///
+/// The generated template's Moon tasks do not include a `setup-hermetic`
+/// dependency or `env:` block for `CARGO_HOME` / `RUSTUP_HOME`. Without these
+/// symlinks, PolicyScan emits `BYPASS_ENV_*` findings and the smoke test
+/// cannot pass. This function bridges the gap by creating the symlinks before
+/// the prepush gate runs.
+fn setup_hermetic_in_workspace(check_bin: &std::path::Path, workspace_dir: &std::path::Path) {
+    let result = run_cmd(check_bin, ["setup-hermetic"], Some(workspace_dir));
+    assert!(
+        result.succeeded(),
+        "titania-check setup-hermetic failed in {}:\nstderr: {}\nstdout: {}",
+        workspace_dir.display(),
+        result.stderr,
+        result.stdout,
+    );
+    let hermetic_dir = workspace_dir.join(".titania").join("hermetic");
+    assert!(
+        hermetic_dir.join("cargo-home").exists(),
+        "setup-hermetic must create cargo-home symlink at {}",
+        hermetic_dir.join("cargo-home").display(),
+    );
+    assert!(
+        hermetic_dir.join("rustup-home").exists(),
+        "setup-hermetic must create rustup-home symlink at {}",
+        hermetic_dir.join("rustup-home").display(),
+    );
+}
+
+/// Override `CARGO_HOME` / `RUSTUP_HOME` on `command` with the hermetic paths
+/// for `workspace_dir`, so PolicyScan sees the controlled paths (v1-spec §8,
+/// §9.5). Called after `configure_clean_child_env` to replace the preserved
+/// host values.
+fn set_hermetic_env(command: &mut Command, workspace_dir: &std::path::Path) {
+    let hermetic = workspace_dir.join(".titania").join("hermetic");
+    let _ = command.env("CARGO_HOME", hermetic.join("cargo-home"));
+    let _ = command.env("RUSTUP_HOME", hermetic.join("rustup-home"));
+}
+
 /// Build a minimal environment for nested generated-workspace Moon execution.
 fn configure_clean_child_env(
     command: &mut Command,
@@ -371,30 +438,19 @@ fn generate_workspace(name: &str) -> PathBuf {
 fn run_prepush_check(workspace_dir: &std::path::Path) -> String {
     let check_bin = ensure_titania_check_binary();
     let dylint_lib = ensure_dylint_library(&check_bin);
+    setup_hermetic_in_workspace(&check_bin, workspace_dir);
 
     let mut command = Command::new(&check_bin);
     let _ = command.args(["--scope", "prepush", "--emit", "json"]).current_dir(workspace_dir);
     configure_clean_child_env(&mut command, &check_bin, &dylint_lib);
+    set_hermetic_env(&mut command, workspace_dir);
 
-    let output = command
-        .output()
-        .map(|out| CmdResult {
-            exit_code: out.status.code(),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-            timed_out: false,
-        })
-        .unwrap_or_else(|e| CmdResult {
-            exit_code: None,
-            stdout: String::new(),
-            stderr: e.to_string(),
-            timed_out: false,
-        });
-    let result = output;
+    let result = run_command_with_timeout(&mut command, PREPUSH_TIMEOUT);
 
     assert!(
         result.succeeded(),
-        "titania-check prepush on generated template must pass:\nstderr: {}\nstdout: {}",
+        "titania-check prepush on generated template must pass (timed_out={}):\nstderr: {}\nstdout: {}",
+        result.timed_out,
         result.stderr,
         result.stdout,
     );
@@ -422,10 +478,12 @@ fn run_prepush_check(workspace_dir: &std::path::Path) -> String {
 fn run_moon_prepush_gate(workspace_dir: &std::path::Path) -> CmdResult {
     let check_bin = ensure_titania_check_binary();
     let dylint_lib = ensure_dylint_library(&check_bin);
+    setup_hermetic_in_workspace(&check_bin, workspace_dir);
 
     let mut command = Command::new("moon");
     let _ = command.args(["run", "titania:gate-prepush"]).current_dir(workspace_dir);
     configure_clean_child_env(&mut command, &check_bin, &dylint_lib);
+    set_hermetic_env(&mut command, workspace_dir);
 
     run_command_with_timeout(&mut command, Duration::from_secs(300))
 }
@@ -479,6 +537,7 @@ fn assert_expected_prepush_artifacts(workspace_dir: &std::path::Path) {
 
 #[test]
 fn template_prepush_generated_workspace_smoke() {
+    let _guard = acquire_template_guard();
     let workspace = generate_workspace("tn-rld-4-smoke");
     let json_report = run_prepush_check(&workspace);
 
@@ -509,6 +568,7 @@ fn template_prepush_generated_workspace_smoke() {
 
 #[test]
 fn template_moon_gate_prepush_generated_workspace_smoke() {
+    let _guard = acquire_template_guard();
     let workspace = generate_workspace("tn-rld-4-moon-smoke");
 
     let result = run_moon_prepush_gate(&workspace);

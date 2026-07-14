@@ -22,7 +22,7 @@ pub mod explain;
 pub mod moon;
 pub mod version;
 
-use std::{env, io, io::Write, process::ExitCode};
+use std::{env, io, io::Write, path::PathBuf, process::ExitCode};
 
 use args::{Cli, Command};
 use titania_core::{GateScope, Lane};
@@ -59,6 +59,7 @@ fn dispatch(cli: Cli) -> CliDisposition {
         Command::RunLane { lane } => run_lane(lane),
         Command::Doctor(options) => doctor_scope(options.scope, options.emit()),
         Command::Explain { rule_id } => explain_rule(&rule_id),
+        Command::SetupHermetic => setup_hermetic(),
     }
 }
 
@@ -85,8 +86,9 @@ fn check_with_moon(options: &args::CheckOptions) -> CliDisposition {
     }
     let moon_bin = moon::binary_path();
     let tasks = moon::tasks_for_scope(scope);
-    match moon::spawn_all(&moon_bin, &tasks) {
-        Ok(()) => aggregate_from_root(&target_root, scope, emit, out),
+    let hermetic = moon::HermeticEnv::detect(&target_root);
+    match moon::spawn_all(&moon_bin, &tasks, &hermetic) {
+        Ok(()) => aggregate_after_moon(&target_root, scope, emit, out, &hermetic),
         Err(moon::MoonSpawnError::NotFound) => {
             CliDisposition::input_error(format!("InputError: {}", moon::MISSING_INSTALL_HINT))
         }
@@ -96,6 +98,143 @@ fn check_with_moon(options: &args::CheckOptions) -> CliDisposition {
         Err(moon::MoonSpawnError::Failed(error)) => {
             CliDisposition::internal_error(format!("InternalError: moon spawn failed: {error}"))
         }
+    }
+}
+
+/// Create hermetic `CARGO_HOME` / `RUSTUP_HOME` symlinks (v1-spec §9.5).
+///
+/// Creates `<root>/.titania/hermetic/cargo-home` and `rustup-home` as
+/// symlinks to the real homes (resolved from `CARGO_HOME` / `RUSTUP_HOME` or
+/// their defaults). Prints the export lines on stdout so the caller can
+/// `eval "$(titania-check setup-hermetic)"`.
+fn setup_hermetic() -> CliDisposition {
+    let root = match env::current_dir() {
+        Ok(path) => path,
+        Err(error) => {
+            return CliDisposition::internal_error(format!(
+                "InternalError: cannot read current directory: {error}"
+            ));
+        }
+    };
+
+    let hermetic_dir = root.join(".titania").join("hermetic");
+    if let Err(error) = std::fs::create_dir_all(&hermetic_dir) {
+        return CliDisposition::internal_error(format!(
+            "InternalError: cannot create hermetic dir: {error}"
+        ));
+    }
+    let cargo_link = hermetic_dir.join("cargo-home");
+    let rustup_link = hermetic_dir.join("rustup-home");
+
+    let real_cargo_home = match resolve_real_home("CARGO_HOME", ".cargo") {
+        Ok(path) => path,
+        Err(error) => {
+            return CliDisposition::internal_error(format!(
+                "InternalError: cannot resolve CARGO_HOME: {error}"
+            ));
+        }
+    };
+    let real_rustup_home = match resolve_real_home("RUSTUP_HOME", ".rustup") {
+        Ok(path) => path,
+        Err(error) => {
+            return CliDisposition::internal_error(format!(
+                "InternalError: cannot resolve RUSTUP_HOME: {error}"
+            ));
+        }
+    };
+
+    if let Err(error) = link_if_needed(&real_cargo_home, &cargo_link) {
+        return CliDisposition::internal_error(format!(
+            "InternalError: cannot link cargo-home: {error}"
+        ));
+    }
+    if let Err(error) = link_if_needed(&real_rustup_home, &rustup_link) {
+        return CliDisposition::internal_error(format!(
+            "InternalError: cannot link rustup-home: {error}"
+        ));
+    }
+
+    let output = format!(
+        "export CARGO_HOME=\"{}\"\nexport RUSTUP_HOME=\"{}\"",
+        cargo_link.display(),
+        rustup_link.display()
+    );
+    CliDisposition::report(output, EXIT_PASS)
+}
+
+/// Resolve the real home directory for a tool by following symlinks.
+///
+/// Uses `std::fs::canonicalize` to follow the entire symlink chain to the
+/// real directory. This handles all cases: env var pointing at a hermetic
+/// symlink, env var pointing at a real path, or env var unset (falls back
+/// to `$HOME/<suffix>`).
+///
+/// # Errors
+/// Returns [`io::Error`] when the resolved path does not exist or is a
+/// broken/circular symlink. The caller surfaces this to the user.
+fn resolve_real_home(var: &str, suffix: &str) -> Result<PathBuf, io::Error> {
+    let raw = match env::var(var) {
+        Ok(value) => PathBuf::from(value),
+        Err(_) => home_from_env()?.join(suffix),
+    };
+    std::fs::canonicalize(&raw)
+}
+
+/// Resolve `HOME` from the environment, returning a typed error if unset.
+///
+/// # Errors
+/// Returns [`io::Error`] with [`io::ErrorKind::NotFound`] when `HOME` is not
+/// set in the environment.
+fn home_from_env() -> Result<PathBuf, io::Error> {
+    match env::var("HOME") {
+        Ok(value) => Ok(PathBuf::from(value)),
+        Err(error) => {
+            Err(io::Error::new(io::ErrorKind::NotFound, format!("HOME is not set: {error}")))
+        }
+    }
+}
+
+/// Create or refresh a symlink at `link` pointing to `target`.
+///
+/// If `link` already points at `target`, this is a no-op. If `link` exists
+/// as a real directory (not a symlink), returns an error to avoid clobbering
+/// user data.
+///
+/// # Errors
+/// Returns [`io::Error`] when the symlink cannot be created or a real
+/// directory blocks the link path.
+fn link_if_needed(target: &std::path::Path, link: &std::path::Path) -> Result<(), io::Error> {
+    use std::fs;
+
+    let already_correct = fs::read_link(link).is_ok_and(|existing| existing == target);
+    if already_correct {
+        return Ok(());
+    }
+
+    if link.exists() && !link.is_symlink() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("{} exists as a real directory; refusing to overwrite", link.display()),
+        ));
+    }
+
+    // Remove an existing symlink (or stale link); ignore NotFound.
+    match fs::remove_file(link) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = target;
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "symlinks are not supported on this platform",
+        ))
     }
 }
 
@@ -158,6 +297,47 @@ fn aggregate_with_opts(
 
 fn current_dir_error(error: &io::Error) -> CliDisposition {
     CliDisposition::internal_error(format!("InternalError: current directory unavailable: {error}"))
+}
+
+/// Run the in-process aggregate after Moon finishes, emitting the hermetic
+/// hint when the policy-scan artifact contains `BYPASS_ENV_*` findings and the
+/// hermetic dirs were not detected.
+fn aggregate_after_moon(
+    target_root: &std::path::Path,
+    scope: GateScope,
+    emit: args::EmitFormat,
+    out: Option<&PathBuf>,
+    hermetic: &moon::HermeticEnv,
+) -> CliDisposition {
+    if !hermetic.is_complete() && policy_scan_has_env_bypass(target_root, scope) {
+        emit_hermetic_hint();
+    }
+    aggregate_from_root(target_root, scope, emit, out)
+}
+
+/// Emit a one-line stderr hint suggesting `setup-hermetic` when the hermetic
+/// dirs are absent (v1-spec §9.5).
+///
+/// Non-intrusive: emitted only after Moon finishes AND the policy-scan
+/// artifact actually contains `BYPASS_ENV_*` findings, so Clean runs and
+/// pre-baked test artifacts never trigger the hint.
+fn emit_hermetic_hint() {
+    let hint = "hint: run `titania-check setup-hermetic` to create hermetic CARGO_HOME/RUSTUP_HOME for PolicyScan";
+    drop(write_stderr_line(hint));
+}
+
+/// Return `true` when the policy-scan artifact for `scope` contains a
+/// `BYPASS_ENV_CARGO_HOME` or `BYPASS_ENV_RUSTUP_HOME` finding.
+///
+/// Used to gate the `setup-hermetic` hint so it only appears when `PolicyScan`
+/// actually rejected on env, not on every run missing the hermetic dirs.
+fn policy_scan_has_env_bypass(target_root: &std::path::Path, scope: GateScope) -> bool {
+    let artifact =
+        target_root.join(".titania").join("out").join(scope_dir(scope)).join("policy-scan.json");
+    let Ok(content) = std::fs::read_to_string(&artifact) else {
+        return false;
+    };
+    content.contains("BYPASS_ENV_CARGO_HOME") || content.contains("BYPASS_ENV_RUSTUP_HOME")
 }
 fn aggregate_from_root(
     target_root: &std::path::Path,

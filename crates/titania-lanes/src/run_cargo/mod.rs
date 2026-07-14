@@ -41,25 +41,14 @@ impl CargoLane {
         }
     }
 
-    /// Stable rule identifier for the lane.
-    pub(super) const fn rule(self) -> &'static str {
+    /// Lane-specific tool name for `LaneFailure::Tool` per v1-spec §11.2.
+    pub(super) const fn tool_name(self) -> &'static str {
         match self {
-            Self::Fmt => "CARGO_FMT_001",
-            Self::Compile => "CARGO_COMPILE_001",
-            Self::Clippy => "CARGO_CLIPPY_001",
-            Self::Test => "CARGO_TEST_001",
-            Self::Build => "CARGO_BUILD_001",
-        }
-    }
-
-    /// Human-readable command path for findings.
-    pub(super) const fn path(self) -> &'static str {
-        match self {
-            Self::Fmt => "cargo fmt",
-            Self::Compile => "cargo check",
-            Self::Clippy => "cargo clippy",
-            Self::Test => "cargo test",
-            Self::Build => "cargo build",
+            Self::Fmt => "cargo-fmt",
+            Self::Compile => "cargo-check",
+            Self::Clippy => "cargo-clippy",
+            Self::Test => "cargo-test",
+            Self::Build => "cargo-build",
         }
     }
 }
@@ -82,8 +71,6 @@ pub(super) enum RunCargoError {
     Command(crate::LaneError),
     /// Process current directory could not be read.
     CurrentDir(std::io::Error),
-    /// Rule identifier construction failed.
-    RuleId(crate::RuleIdError),
     /// Typed outcome construction failed.
     Outcome(OutcomeError),
     /// Cargo version probe produced invalid evidence.

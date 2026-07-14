@@ -1,0 +1,125 @@
+# Titania release workflow.
+#
+# Triggered by a `v*` tag. Builds the `titania-check` release binary and the
+# co-located `titania-dylint` cdylib across a Linux/macOS/Windows ×
+# x86_64/aarch64 matrix, packages both into a single per-target .tar.gz
+# archive, and attaches every archive to the GitHub Release for the tag.
+#
+# Asset naming matches `[package.metadata.binstall]` in
+# crates/titania-check/Cargo.toml:
+#   titania-check-<target>-v<version>.tar.gz   (every target)
+# cargo-binstall extracts .tar.gz on all hosts (including windows), so a
+# uniform format keeps binstall asset resolution identical to pkg-url.
+#
+# The pinned toolchain (nightly-2026-04-27 + components) is taken from
+# rust-toolchain.toml and mirrored into dtolnay/rust-toolchain so the runner
+# installs the exact channel.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # cargo-binstall extracts .tar.gz on every host (it bundles a tar
+          # reader), so all targets ship a uniform .tar.gz to keep asset names
+          # identical to the `[package.metadata.binstall]` pkg-url.
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: x86_64-apple-darwin
+            runner: macos-13
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - target: aarch64-pc-windows-msvc
+            runner: windows-latest
+    env:
+      # Mirrors rust-toolchain.toml so dtolnay/rust-toolchain installs the
+      # exact pinned channel and components.
+      TITANIA_TOOLCHAIN: nightly-2026-04-27
+      TITANIA_COMPONENTS: rustfmt,clippy,rust-src,llvm-tools-preview,rustc-dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.TITANIA_TOOLCHAIN }}
+          components: ${{ env.TITANIA_COMPONENTS }}
+
+      - name: Install dylint-link
+        run: cargo install dylint-link --locked
+
+      - name: Add build target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install cross linker (aarch64-linux)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          mkdir -p "${HOME}/.cargo"
+          {
+            printf '[target.aarch64-unknown-linux-gnu]\n'
+            printf 'linker = "aarch64-linux-gnu-gcc"\n'
+          } >> "${HOME}/.cargo/config.toml"
+
+      - name: Build binary and dylint cdylib
+        run: cargo build --release --locked -p titania-check -p titania-dylint --target ${{ matrix.target }}
+
+      - name: Stage and package release assets
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          REFNAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          stage="${RUNNER_TEMP}/stage"
+          mkdir -p "${stage}"
+          # Binary: `titania-check` (unix) or `titania-check.exe` (windows).
+          bin=""
+          for candidate in \
+              "target/${TARGET}/release/titania-check" \
+              "target/${TARGET}/release/titania-check.exe"; do
+            if [ -f "${candidate}" ]; then bin="${candidate}"; break; fi
+          done
+          cp "${bin}" "${stage}/"
+          # Co-located dylint cdylib (host-target only; absent on cross builds).
+          for lib in libtitania_dylint.so libtitania_dylint.dylib titania_dylint.dll; do
+            if [ -f "target/${TARGET}/release/${lib}" ]; then
+              cp "target/${TARGET}/release/${lib}" "${stage}/"
+            fi
+          done
+          archive="titania-check-${TARGET}-${REFNAME}.tar.gz"
+          tar -C "${stage}" -czf "${archive}" .
+          echo "asset=${archive}" >> "${GITHUB_ENV}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.asset }}
+          path: ${{ env.asset }}
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.asset }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true

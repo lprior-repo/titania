@@ -6,7 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Typed Rust lanes behind `.moon/tasks/all.yml`. Each bin target implements a v1-spec lane outcome (Cargo-native or specialized verification), tracked by P0 beads (`tn-2cn.*`, `tn-37r.*`, `tn-8ab.*`, `tn-cgk.*`, `tn-d2l.*`)."
-publish = false
+repository = "https://github.com/lprior-repo/titania"
+readme = "../../README.md"
+keywords = ["quality", "lane", "fmt", "clippy", "ci"]
+categories = ["development-tools", "development-tools::testing"]
 
 [lib]
 path = "src/lib.rs"

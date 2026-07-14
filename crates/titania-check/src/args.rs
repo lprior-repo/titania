@@ -35,6 +35,8 @@ pub enum Command {
         /// validation is intentionally skipped per spec §12.
         rule_id: String,
     },
+    /// Create hermetic `CARGO_HOME` / `RUSTUP_HOME` symlinks (v1-spec §9.5).
+    SetupHermetic,
 }
 
 /// Parsed default-check options.
@@ -293,6 +295,7 @@ USAGE:
                                             Read existing lane artifacts and emit a report.
     titania-check doctor [OPTIONS]          Report required tools and versions for a scope.
     titania-check explain <rule-id>         Print rule description and metadata.
+    titania-check setup-hermetic            Create hermetic CARGO_HOME / RUSTUP_HOME symlinks.
 
 OPTIONS:
     --scope <edit|prepush|release>          Gate scope (default: edit).

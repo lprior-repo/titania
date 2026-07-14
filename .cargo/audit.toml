@@ -1,0 +1,25 @@
+# cargo-audit advisory triage for titania-check.
+#
+# Why this lives in `.cargo/` (not the repo root):
+#   cargo-audit 0.22.1 resolves its config from `.cargo/audit.toml` (repo-local)
+#   and `$CARGO_HOME/audit.toml` (global). It does NOT read a repo-root
+#   `./audit.toml` in this version (verified: `cargo audit --deny unmaintained`
+#   exits non-zero with a repo-root file, exit zero with this `.cargo/` file).
+#   `.cargo/audit.toml` is version-controlled, repo-local, and functionally
+#   honored, so it is the correct home for this triage.
+#
+# Accepted `[advisories]` keys in 0.22.1: ignore, informational_warnings,
+# severity_threshold (there is no per-item `note` field; the justification is
+# recorded in this comment block).
+#
+# RUSTSEC-2024-0436 -- paste 1.0.15 ("unmaintained"):
+#   Reaches this workspace ONLY via dylint_linting 6.0.1 -> titania-dylint.
+#   `paste` is a build-time procedural-macro helper; it has NO runtime presence
+#   in titania-check's shipped binary. dylint_linting 6.0.1 (the version pulled
+#   by our pinned toolchain nightly-2026-04-27) exposes no maintained
+#   alternative, and this transitive dependency cannot be removed without
+#   dropping the dylint lane. This is a WARNING (unmaintained), NOT a
+#   vulnerability. Ignored intentionally and recorded here for audit
+#   traceability; revisit when dylint_linting drops its `paste` dependency.
+[advisories]
+ignore = ["RUSTSEC-2024-0436"]

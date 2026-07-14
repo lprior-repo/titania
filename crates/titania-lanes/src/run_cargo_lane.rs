@@ -6,7 +6,7 @@
 use super::run_cargo::{
     CargoLane, RunCargoError, args_for_lane, clean_outcome, findings_outcome, process_termination,
 };
-use crate::{LaneExit, LaneReport, discover::discover_target};
+use crate::{LaneExit, discover::discover_target};
 use titania_core::{Lane, LaneFailure, LaneOutcome, TargetProject};
 
 /// Cargo-backed lane dispatch result.
@@ -52,7 +52,6 @@ fn error_message(error: RunCargoError) -> String {
         RunCargoError::Target(error) => format!("target discovery failed: {error}"),
         RunCargoError::Command(error) => format!("cargo execution failed: {error}"),
         RunCargoError::CurrentDir(error) => format!("cannot read current directory: {error}"),
-        RunCargoError::RuleId(error) => format!("rule id configuration error: {error}"),
         RunCargoError::Outcome(error) => format!("lane outcome construction failed: {error}"),
     }
 }
@@ -65,18 +64,22 @@ fn usage_message() -> String {
 ///
 /// # Errors
 /// Returns [`RunCargoError`] when the sub-command is unrecognised, the CWD
-/// cannot be read, no Cargo target project is discoverable, the rule ID is
-/// invalid, or the lane execution fails.
+/// cannot be read, no Cargo target project is discoverable, or the lane
+/// execution fails.
 fn run_checked(lane_name: &str) -> Result<LaneOutcome, RunCargoError> {
     let cargo_lane = CargoLane::parse(lane_name)
         .map_err(|_parse_error| RunCargoError::Usage(usage_message()))?;
     let cwd = std::env::current_dir().map_err(RunCargoError::CurrentDir)?;
     let target = discover_target(&cwd).map_err(RunCargoError::Target)?;
-    let rule = crate::RuleId::new(cargo_lane.rule()).map_err(RunCargoError::RuleId)?;
-    run_lane(&target, cargo_lane, &rule, &[])
+    run_lane(&target, cargo_lane, &[])
 }
 
 /// Execute a single cargo lane and build its [`LaneOutcome`].
+///
+/// Per v1-spec §5, the Fmt/Compile/Test/Build lanes do not produce typed
+/// `Finding` values — a nonzero exit is a gate failure
+/// (`LaneOutcome::Failed { LaneFailure::Tool }`), not a code finding. Only
+/// Clippy normalizes its JSON output into `CLIPPY_*` findings.
 ///
 /// # Errors
 /// Returns [`RunCargoError::Command`] on cargo execution failure, or any
@@ -84,55 +87,19 @@ fn run_checked(lane_name: &str) -> Result<LaneOutcome, RunCargoError> {
 fn run_lane(
     target: &TargetProject,
     lane: CargoLane,
-    rule: &crate::RuleId,
     extra_args: &[String],
 ) -> Result<LaneOutcome, RunCargoError> {
     let output = cargo_output(target, lane, extra_args).map_err(RunCargoError::Command)?;
     if lane == CargoLane::Clippy {
         return normalize_clippy_output(target, lane, extra_args, &output);
     }
-    let mut report = LaneReport::new();
-    report.record_scan();
-    record_command_result(&output, lane, rule, &mut report);
-    lane_outcome(target, lane, extra_args, &output, &report)
+    lane_outcome(target, lane, extra_args, &output)
 }
 
-fn record_command_result(
-    output: &crate::CommandOutput,
-    lane: CargoLane,
-    rule: &crate::RuleId,
-    report: &mut LaneReport,
-) {
-    if !output.success() {
-        report.push(crate::Finding::new(rule.clone(), lane.path(), 0, output_message(output)));
-        return;
-    }
-    if report.is_clean() {
-        report.record_pass();
-    }
-}
-
-fn output_message(output: &crate::CommandOutput) -> String {
-    let stdout_result = output.stdout_str();
-    let stderr_result = output.stderr_str();
-    let stdout = output_text(&stdout_result);
-    let stderr = output_text(&stderr_result);
-    stderr
-        .lines()
-        .chain(stdout.lines())
-        .find(|line| !line.trim().is_empty())
-        .map_or("cargo command failed without output", |line| line)
-        .to_owned()
-}
-
-const fn output_text<'a>(result: &'a Result<&'a str, crate::LaneError>) -> &'a str {
-    match result {
-        Ok(text) => text,
-        Err(_) => "<non-UTF-8>",
-    }
-}
-
-/// Dispatch to clean / failure / findings path based on output status.
+/// Dispatch to clean / failure path based on output status.
+///
+/// Per v1-spec §5, non-clippy cargo lanes produce `Clean` on exit 0 and
+/// `Failed { LaneFailure::Tool }` on nonzero exit — never `Findings`.
 ///
 /// # Errors
 /// Returns [`RunCargoError::Outcome`] when clean-outcome construction fails.
@@ -141,20 +108,18 @@ fn lane_outcome(
     lane: CargoLane,
     extra_args: &[String],
     output: &crate::CommandOutput,
-    report: &LaneReport,
 ) -> Result<LaneOutcome, RunCargoError> {
-    if output.success() && report.is_clean() {
+    if output.success() {
         return clean_outcome(target, lane, extra_args, output);
     }
-    if report.is_clean() {
-        return Ok(LaneOutcome::Failed { failure: tool_failure(output) });
-    }
-    Ok(findings_outcome(lane, report))
+    Ok(LaneOutcome::Failed { failure: tool_failure(lane, output) })
 }
 
-fn tool_failure(output: &crate::CommandOutput) -> LaneFailure {
+/// Construct a `LaneFailure::Tool` with the lane-specific tool name
+/// per v1-spec §11.2.
+fn tool_failure(lane: CargoLane, output: &crate::CommandOutput) -> LaneFailure {
     LaneFailure::Tool {
-        tool: String::from("cargo"),
+        tool: String::from(lane.tool_name()),
         termination: process_termination(output.status()),
     }
 }
@@ -195,7 +160,7 @@ fn normalize_clippy_output(
             Ok(findings_outcome(lane, &report))
         }
         crate::clippy_normalizer::ClippyNormalization::Findings(_) if !output.success() => {
-            Ok(LaneOutcome::Failed { failure: tool_failure(output) })
+            Ok(LaneOutcome::Failed { failure: tool_failure(lane, output) })
         }
         crate::clippy_normalizer::ClippyNormalization::Findings(_) => {
             clean_outcome(target, lane, extra_args, output)

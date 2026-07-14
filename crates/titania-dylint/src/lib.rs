@@ -4,6 +4,42 @@
 //! detection. The only unsafe surface is Dylint's required ABI export
 //! attribute on `dylint_version` and `register_lints`; both exports carry
 //! local `#[expect(unsafe_code)]` reasons while the crate lint remains denied.
+//!
+//! # `unsafe` posture (intentional deviation from workspace `forbid`)
+//!
+//! The Titania workspace enforces `#![forbid(unsafe_code)]` everywhere.
+//! This cdylib is the single, audited exception: it is compiled down to
+//! `#![deny(unsafe_code)]` (not `forbid`) because a Dylint lint library must
+//! export two `extern "C"` ABI symbols — `dylint_version` and
+//! `register_lints` — that the clippy driver loads into its own process.
+//! Those exports are `#[unsafe(no_mangle)]`, which is orthogonal to the
+//! `unsafe_code` lint but requires the crate to tolerate the `unsafe`
+//! attribute on the two symbol declarations.
+//!
+//! The deviation is intentional, scoped, and contained:
+//!
+//! 1. **Why `unsafe` is required.** Dylint's documented plugin contract
+//!    mandates a `no_mangle` `extern "C"` version probe so `cargo-dylint` can
+//!    discover and load the cdylib via the dynamic linker before any Rust
+//!    code runs. There is no safe alternative for this ABI boundary.
+//! 2. **Why `deny` instead of `forbid`.** `forbid` would reject the
+//!    `#[expect(unsafe_code, reason = ...)]` annotations on the two exports,
+//!    making it impossible to scope the allowance to exactly those symbols.
+//!    `deny` plus per-site `#[expect(unsafe_code, reason = ...)]` keeps every
+//!    other line of this crate under the strict policy while making the two
+//!    audited exceptions explicit and grep-able.
+//! 3. **Containment.** All `unsafe` is confined to the two ABI-export
+//!    attributes (`dylint_version`, `register_lints`). No raw-pointer
+//!    dereferences, transmutes, or unchecked arithmetic live in this crate.
+//!    The lint logic itself (rule matching, span emission) operates entirely
+//!    through safe rustc HIR/lint APIs. Downstream consumers never touch the
+//!    `unsafe` surface: the cdylib is loaded by the clippy driver, and the
+//!    lane invokes it through `cargo dylint`, never directly.
+//!
+//! This crate also requires `#![feature(rustc_private)]` and a nightly
+//! toolchain with the `rustc-dev` component, because the lint passes
+//! interface with rustc's internal HIR and lint-store APIs. This is inherent
+//! to the Dylint plugin model and documented in v1-spec §7.
 
 #![feature(rustc_private)]
 

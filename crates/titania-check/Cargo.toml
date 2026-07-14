@@ -6,7 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "CLI front-end for Titania quality gates."
-publish = false
+repository = "https://github.com/lprior-repo/titania"
+readme = "../../README.md"
+keywords = ["quality-gate", "ci", "lint", "moon", "cli"]
+categories = ["development-tools", "command-line-utilities"]
 
 [[bin]]
 name = "titania-check"
@@ -30,3 +33,12 @@ tempfile = "3.27.0"
 
 [lints]
 workspace = true
+
+# cargo-binstall: `cargo binstall titania-check` fetches the prebuilt
+# binary produced by .github/workflows/release.yml on tag `v*`. The binary
+# name is `titania-check` (== package name). Assets are named
+# `titania-check-<target>-v<version>.tar.gz`.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }-v{ version }.{ archive-suffix }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"

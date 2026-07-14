@@ -7,6 +7,7 @@
 
 mod engine;
 mod rules;
+mod span;
 
 use std::{
     fs, io,
@@ -41,6 +42,12 @@ pub enum AstGrepLaneError {
     LineNumberOverflow {
         /// Zero-based line index that could not be represented.
         index: usize,
+    },
+    /// A source column (0-based codepoint offset) exceeded the u32 range.
+    #[error("source column does not fit in u32: {column}")]
+    ColumnOverflow {
+        /// Zero-based codepoint column that could not be represented.
+        column: usize,
     },
     /// A source file could not be read.
     #[error("failed to read {path}: {source}")]
@@ -124,13 +131,14 @@ fn scan_path(
     let source = read_source(path)?;
     let workspace_path = workspace_path(path)?;
     let engine = engine::AstEngine::new(&source);
+    let offsets = engine.line_offsets();
     RULES
         .iter()
         .copied()
         .filter(|rule| rule_enabled(catalog, rule.id))
         .filter(|rule| rule_applies(rule, &workspace_path))
-        .filter_map(|rule| detect_line(rule, &engine, &source).map(|line| (rule, line)))
-        .map(|(rule, line)| finding(rule, line, &workspace_path))
+        .filter_map(|rule| detect_match(rule, &engine, &source).map(|site| (rule, site)))
+        .map(|(rule, site)| finding(rule, site, &source, offsets, &workspace_path))
         .collect::<Result<Vec<_>, _>>()
         .map(|findings| suppress_exceptions(findings, exceptions))
 }
@@ -183,18 +191,33 @@ fn path_to_str(path: &Path) -> Result<String, AstGrepLaneError> {
         .ok_or_else(|| AstGrepLaneError::NonUtf8Path { path: path_display(path) })
 }
 
-/// Build a typed finding for a matching rule at the given 0-based line.
+/// Build a typed finding for a matching rule at the given byte-range site.
+///
+/// The site's `[start_byte, end_byte)` is translated into a v1-spec §10
+/// `Location::Span` whose line/column fields are computed from the raw
+/// source via [`span::line_col`]: 1-based lines, 0-based Unicode-scalar
+/// columns. This replaces the pre-H3 placeholder span `(line, 0, line, 1)`
+/// that reported a fixed column 0 for every finding.
 ///
 /// # Errors
-/// Returns [`AstGrepLaneError`] when rule id or source span validation fails.
+/// Returns [`AstGrepLaneError`] when rule id, line/column, or source span
+/// validation fails.
 fn finding(
     rule: RuleDef,
-    line_index: usize,
+    site: span::MatchSite,
+    source: &str,
+    offsets: &[usize],
     workspace_path: &WorkspacePath,
 ) -> Result<Finding, AstGrepLaneError> {
     let rule_id = RuleId::new(rule.id)?;
-    let line = checked_line_number(line_index)?;
-    let location = Location::span(workspace_path.clone(), line, 0, line, 1)?;
+    let (start_line, start_col) = span::line_col(source, offsets, site.start_byte);
+    let (end_line, end_col) = span::line_col(source, offsets, site.end_byte);
+    let line_start = checked_line_number(start_line)?;
+    let line_end = checked_line_number(end_line)?;
+    let col_start = checked_column(start_col)?;
+    let col_end = checked_column(end_col)?;
+    let location =
+        Location::span(workspace_path.clone(), line_start, col_start, line_end, col_end)?;
     let repair = repair_hint(rule.repair);
     Ok(match rule.effect {
         FindingEffect::Reject => {
@@ -210,14 +233,18 @@ fn finding(
     })
 }
 
-/// Run a rule's detector and return the 0-based line of its first match.
+/// Run a rule's detector and return the byte-range site of its first match.
 ///
 /// `None` when the rule does not apply. Engine-aware: the ast-grep parse
 /// always succeeds (syntax errors surface as error nodes inside the tree),
 /// so engine detectors run unconditionally and string detectors fall back
 /// only for the few rules ast-grep cannot express (inline-suppression
 /// comments, path-filtered architecture imports).
-fn detect_line(rule: RuleDef, engine: &engine::AstEngine, source: &str) -> Option<usize> {
+fn detect_match(
+    rule: RuleDef,
+    engine: &engine::AstEngine,
+    source: &str,
+) -> Option<span::MatchSite> {
     rule.detect.run(engine, source)
 }
 
@@ -231,6 +258,16 @@ fn checked_line_number(index: usize) -> Result<u32, AstGrepLaneError> {
         .ok()
         .and_then(|line| line.checked_add(1))
         .ok_or(AstGrepLaneError::LineNumberOverflow { index })
+}
+
+/// Convert a zero-based codepoint column into a `u32`.
+///
+/// # Errors
+/// Returns [`AstGrepLaneError::ColumnOverflow`] when the column cannot be
+/// represented as `u32` (only possible for a single source line with more
+/// than `u32::MAX` Unicode scalar values — far beyond any realistic file).
+fn checked_column(column: usize) -> Result<u32, AstGrepLaneError> {
+    u32::try_from(column).ok().ok_or(AstGrepLaneError::ColumnOverflow { column })
 }
 
 fn suppress_exceptions(findings: Vec<Finding>, exceptions: &[(RuleId, String)]) -> Vec<Finding> {

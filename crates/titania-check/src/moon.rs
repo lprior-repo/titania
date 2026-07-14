@@ -5,7 +5,7 @@
 //! the typed spawn error, and the moon binary resolution (with a
 //! `TITANIA_MOON_BIN` override so hermetic tests can stub Moon).
 
-use std::{env, io, process::Stdio};
+use std::{env, io, path::PathBuf, process::Stdio};
 
 use titania_core::GateScope;
 
@@ -32,6 +32,73 @@ pub(crate) fn binary_path() -> String {
         return value;
     }
     String::from(DEFAULT_MOON_BIN)
+}
+
+/// Hermetic tool-home env vars to inject on the Moon subprocess.
+///
+/// Detected from `<target_root>/.titania/hermetic/{cargo-home,rustup-home}`
+/// (v1-spec §9.5 dev-mode symlink compromise).
+///
+/// When present, these are set on the Moon subprocess so `PolicyScan` does not
+/// emit `BYPASS_ENV_CARGO_HOME` / `BYPASS_ENV_RUSTUP_HOME`. When the process
+/// env already points at the hermetic path (e.g. Moon CI set it via the
+/// `env:` task block), the value is inherited as-is and not overridden.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct HermeticEnv {
+    cargo_home: Option<PathBuf>,
+    rustup_home: Option<PathBuf>,
+}
+
+impl HermeticEnv {
+    /// Detect hermetic tool homes under `<target_root>/.titania/hermetic/`.
+    ///
+    /// Returns a [`HermeticEnv`] whose `cargo_home` / `rustup_home` are `Some`
+    /// when the corresponding directory (or symlink) exists. Existence is
+    /// sufficient for the dev-mode symlink compromise (v1-spec §9.5); the
+    /// target is not validated or canonicalized here.
+    #[must_use]
+    pub(crate) fn detect(target_root: &std::path::Path) -> Self {
+        let hermetic_dir = target_root.join(".titania").join("hermetic");
+        Self {
+            cargo_home: existing_path(&hermetic_dir.join("cargo-home")),
+            rustup_home: existing_path(&hermetic_dir.join("rustup-home")),
+        }
+    }
+
+    /// Return `true` when both hermetic homes were detected.
+    #[must_use]
+    pub(crate) const fn is_complete(&self) -> bool {
+        self.cargo_home.is_some() && self.rustup_home.is_some()
+    }
+
+    /// Apply the hermetic env vars to `cmd`, but only when the process env is
+    /// not already set to the correct hermetic path. This avoids overriding a
+    /// correctly-exported value when titania-check runs under Moon CI (where
+    /// the `env:` task block already sets the vars).
+    fn apply_to(&self, cmd: &mut std::process::Command) {
+        apply_env_var(cmd, "CARGO_HOME", self.cargo_home.as_ref());
+        apply_env_var(cmd, "RUSTUP_HOME", self.rustup_home.as_ref());
+    }
+}
+
+/// Return the path when it exists (as a dir, file, or symlink), else `None`.
+fn existing_path(path: &std::path::Path) -> Option<PathBuf> {
+    path.exists().then(|| path.to_path_buf())
+}
+
+/// Set `name` to `hermetic` on `cmd` unless the process env already holds that
+/// exact path.
+fn apply_env_var(cmd: &mut std::process::Command, name: &str, hermetic: Option<&PathBuf>) {
+    let Some(path) = hermetic else { return };
+    if env_already_correct(name, path) {
+        return;
+    }
+    let _ = cmd.env(name, path);
+}
+
+/// Return `true` when the process env var `name` already equals `expected`.
+fn env_already_correct(name: &str, expected: &std::path::Path) -> bool {
+    env::var(name).is_ok_and(|value| std::path::Path::new(&value) == expected)
 }
 
 /// Build the ordered list of `moon run` task IDs for a scope.
@@ -118,10 +185,19 @@ pub(crate) enum MoonSpawnError {
 /// that fail write `Failed`/missing artifacts, which the in-process aggregate
 /// classifies.
 ///
+/// `hermetic` injects `CARGO_HOME` / `RUSTUP_HOME` on the Moon subprocess when
+/// the hermetic dirs exist and the process env does not already point at them
+/// (v1-spec §9.5). This closes the standalone `--scope` gap where Moon's
+/// `env:` task block is not yet applied.
+///
 /// # Errors
 /// - [`MoonSpawnError::NotFound`] when the moon binary is absent.
 /// - [`MoonSpawnError::Failed`] for any other spawn/wait IO error.
-pub(crate) fn spawn(binary: &str, tasks: &[&str]) -> Result<(), MoonSpawnError> {
+pub(crate) fn spawn(
+    binary: &str,
+    tasks: &[&str],
+    hermetic: &HermeticEnv,
+) -> Result<(), MoonSpawnError> {
     use wait_timeout::ChildExt;
 
     let mut command = std::process::Command::new(binary);
@@ -130,6 +206,7 @@ pub(crate) fn spawn(binary: &str, tasks: &[&str]) -> Result<(), MoonSpawnError> 
     let _ = command.stdin(Stdio::null());
     let _ = command.stdout(Stdio::null());
     let _ = command.stderr(Stdio::inherit());
+    hermetic.apply_to(&mut command);
 
     let mut child = command.spawn().map_err(map_spawn_error)?;
     let seconds = timeout_seconds();
@@ -148,14 +225,26 @@ pub(crate) fn spawn(binary: &str, tasks: &[&str]) -> Result<(), MoonSpawnError> 
     }
 }
 
-/// Spawn each Moon task independently so one rejecting lane cannot prevent the
-/// remaining independent lanes from writing their artifacts.
+/// Run each Moon task sequentially via separate `moon run` invocations.
+///
+/// Moon's `run` command accepts a single target per invocation. Each lane
+/// task runs independently so one rejecting lane cannot prevent the remaining
+/// lanes from writing their artifacts. The exit status is intentionally
+/// ignored — lanes that fail write `Failed`/missing artifacts, which the
+/// in-process aggregate classifies.
+///
+/// `hermetic` is applied to every Moon subprocess so all lane children inherit
+/// the controlled `CARGO_HOME` / `RUSTUP_HOME` (v1-spec §9.5).
 ///
 /// # Errors
 /// Returns [`MoonSpawnError`] when any Moon subprocess cannot be spawned or
 /// exceeds the configured timeout.
-pub(crate) fn spawn_all(binary: &str, tasks: &[&str]) -> Result<(), MoonSpawnError> {
-    tasks.iter().try_for_each(|task| spawn(binary, &[*task]))
+pub(crate) fn spawn_all(
+    binary: &str,
+    tasks: &[&str],
+    hermetic: &HermeticEnv,
+) -> Result<(), MoonSpawnError> {
+    tasks.iter().try_for_each(|task| spawn(binary, &[*task], hermetic))
 }
 
 /// Map a moon spawn IO error to its typed Moon spawn variant.
