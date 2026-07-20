@@ -337,7 +337,13 @@ fn report_pass_constructor_rejects_empty_lane_outcomes() {
 fn report_reject_code_only() {
     let finding = make_valid_finding();
     let per_lane = make_edit_per_lane_skipped();
-    let report = Report::reject(Box::new([finding]), Box::new([]), per_lane).unwrap();
+    let report = Report::reject(
+        titania_core::GateScope::Release,
+        Box::new([finding]),
+        Box::new([]),
+        per_lane,
+    )
+    .unwrap();
     assert_eq!(report.reject_kind(), Some(RejectKind::CodeOnly));
     assert_eq!(report.code_findings().unwrap().len(), 1);
     assert!(report.gate_failures().unwrap().is_empty());
@@ -348,7 +354,13 @@ fn report_reject_gate_only() {
     let failure =
         LaneFailure::Infra { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
     let per_lane = make_edit_per_lane_skipped();
-    let report = Report::reject(Box::new([]), Box::new([failure]), per_lane).unwrap();
+    let report = Report::reject(
+        titania_core::GateScope::Release,
+        Box::new([]),
+        Box::new([failure]),
+        per_lane,
+    )
+    .unwrap();
     assert_eq!(report.reject_kind(), Some(RejectKind::GateOnly));
 }
 
@@ -358,13 +370,20 @@ fn report_reject_mixed() {
     let failure =
         LaneFailure::Infra { tool: "cargo-fmt".to_string(), reason: "missing".to_string() };
     let per_lane = make_edit_per_lane_skipped();
-    let report = Report::reject(Box::new([finding]), Box::new([failure]), per_lane).unwrap();
+    let report = Report::reject(
+        titania_core::GateScope::Release,
+        Box::new([finding]),
+        Box::new([failure]),
+        per_lane,
+    )
+    .unwrap();
     assert_eq!(report.reject_kind(), Some(RejectKind::Mixed));
 }
 
 #[test]
 fn report_reject_rejects_empty_collections() {
-    let result = Report::reject(Box::new([]), Box::new([]), Box::new([]));
+    let result =
+        Report::reject(titania_core::GateScope::Release, Box::new([]), Box::new([]), Box::new([]));
     assert!(matches!(result, Err(titania_core::ReportError::EmptyReject)));
 }
 
@@ -386,7 +405,13 @@ fn report_reject_kind_none_on_non_reject() {
 fn report_serde_round_trip() {
     let finding = make_valid_finding();
     let per_lane = make_edit_per_lane_skipped();
-    let report = Report::reject(Box::new([finding]), Box::new([]), per_lane).unwrap();
+    let report = Report::reject(
+        titania_core::GateScope::Release,
+        Box::new([finding]),
+        Box::new([]),
+        per_lane,
+    )
+    .unwrap();
     let json = serde_json::to_string(&report).unwrap();
     let back: Report = serde_json::from_str(&json).unwrap();
     assert_eq!(report, back);

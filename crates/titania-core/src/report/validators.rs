@@ -150,9 +150,11 @@ pub(super) fn validate_per_lane_pass_scope(
 ///
 /// Returns [`ReportError::PerLaneScopeMismatch`] for an unknown, duplicate, or
 /// out-of-order lane.
-pub(super) fn validate_per_lane_reject(per_lane: &[PerLaneEntry]) -> Result<(), ReportError> {
-    let canonical = crate::GateScope::Release.lanes();
-    let scope = crate::GateScope::Release;
+pub(super) fn validate_per_lane_reject(
+    scope: crate::GateScope,
+    per_lane: &[PerLaneEntry],
+) -> Result<(), ReportError> {
+    let canonical = scope.lanes();
     per_lane
         .iter()
         .try_fold(None, |last_pos, entry| {

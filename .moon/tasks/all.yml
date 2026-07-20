@@ -181,6 +181,7 @@ tasks:
       - '.titania/out/edit/fmt.json'
       - '.titania/out/prepush/fmt.json'
       - '.titania/out/release/fmt.json'
+      - '.titania/out/full/fmt.json'
 
   titania-compile:
     command: 'CARGO_TARGET_DIR=".titania/cache/compile" cargo run --frozen --quiet -p titania-check -- run-lane compile'
@@ -198,6 +199,7 @@ tasks:
       - '.titania/out/edit/compile.json'
       - '.titania/out/prepush/compile.json'
       - '.titania/out/release/compile.json'
+      - '.titania/out/full/compile.json'
 
   titania-clippy:
     command: 'CARGO_TARGET_DIR=".titania/cache/clippy" cargo run --frozen --quiet -p titania-check -- run-lane clippy'
@@ -217,6 +219,7 @@ tasks:
       - '.titania/out/edit/clippy.json'
       - '.titania/out/prepush/clippy.json'
       - '.titania/out/release/clippy.json'
+      - '.titania/out/full/clippy.json'
 
   titania-ast-grep:
     command: 'cargo run --frozen --quiet -p titania-check -- run-lane ast-grep'
@@ -229,9 +232,10 @@ tasks:
       - '.titania/out/edit/ast-grep.json'
       - '.titania/out/prepush/ast-grep.json'
       - '.titania/out/release/ast-grep.json'
+      - '.titania/out/full/ast-grep.json'
 
   titania-dylint:
-    command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH" cargo run --frozen --quiet -p titania-check -- run-lane dylint'
+    command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH" CARGO_TARGET_DIR=".titania/cache/dylint" cargo run --frozen --quiet -p titania-check -- run-lane dylint'
     toolchains: [rust]
     options:
       runInCI: true
@@ -242,6 +246,7 @@ tasks:
       - '.titania/out/edit/dylint.json'
       - '.titania/out/prepush/dylint.json'
       - '.titania/out/release/dylint.json'
+      - '.titania/out/full/dylint.json'
 
   titania-panic-scan:
     # Compatibility artifact only. Rust panic-surface policy moved to Dylint
@@ -256,13 +261,14 @@ tasks:
       - '.titania/out/edit/panic-scan.json'
       - '.titania/out/prepush/panic-scan.json'
       - '.titania/out/release/panic-scan.json'
+      - '.titania/out/full/panic-scan.json'
 
   titania-policy-scan:
     command: 'cargo run --frozen --quiet -p titania-check -- run-lane policy-scan'
     deps: ['~:setup-hermetic']
     env:
-      CARGO_HOME: '${workspace.root}/.titania/hermetic/cargo-home'
-      RUSTUP_HOME: '${workspace.root}/.titania/hermetic/rustup-home'
+      CARGO_HOME: '$workspaceRoot/.titania/hermetic/cargo-home'
+      RUSTUP_HOME: '$workspaceRoot/.titania/hermetic/rustup-home'
     options:
       runInCI: true
     inputs:
@@ -278,6 +284,7 @@ tasks:
       - '.titania/out/edit/policy-scan.json'
       - '.titania/out/prepush/policy-scan.json'
       - '.titania/out/release/policy-scan.json'
+      - '.titania/out/full/policy-scan.json'
 
   titania-test:
     command: 'PATH="$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH" CARGO_TARGET_DIR=".titania/cache/test" cargo run --frozen --quiet -p titania-check -- run-lane test'
@@ -292,6 +299,7 @@ tasks:
     outputs:
       - '.titania/out/prepush/test.json'
       - '.titania/out/release/test.json'
+      - '.titania/out/full/test.json'
 
   titania-deny:
     command: 'cargo run --frozen --quiet -p titania-check -- run-lane deny'
@@ -305,9 +313,10 @@ tasks:
     outputs:
       - '.titania/out/prepush/deny.json'
       - '.titania/out/release/deny.json'
+      - '.titania/out/full/deny.json'
 
   titania-build:
-    command: 'CARGO_TARGET_DIR=".titania/cache/release" cargo run --frozen --quiet -p titania-check -- run-lane build'
+    command: 'CARGO_TARGET_DIR=".titania/cache/build" cargo run --frozen --quiet -p titania-check -- run-lane build'
     deps: ['~:titania-compile']
     toolchains: [rust]
     options:
@@ -316,6 +325,45 @@ tasks:
       - '@globs(sources)'
     outputs:
       - '.titania/out/release/build.json'
+      - '.titania/out/full/build.json'
+
+  titania-kani:
+    # v1.5 bounded model-check lane (GateScope::Full only). Per-package
+    # `cargo kani -p <pkg>` runs are issued inside a cgroup cap so
+    # one failing harness cannot OOM the whole workspace. Lane artifact
+    # under .titania/out/full/kani.json contains per-harness PROOF_KANI_*
+    # findings.
+    script: >-
+      CARGO_TARGET_DIR=".titania/cache/kani" cargo run --frozen --quiet -p titania-check -- run-lane kani
+    toolchains: [rust]
+    options:
+      runInCI: true
+    inputs:
+      - '@globs(sources)'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.titania/profiles/strict-ai/mutants.baseline.json'
+    outputs:
+      - '.titania/out/full/kani.json'
+
+  titania-mutants:
+    # v1.5 cargo-mutants test-survivor lane (GateScope::Full only).
+    # Compares the current `cargo mutants --list` discovery against the
+    # checked-in baseline at .titania/profiles/strict-ai/mutants.baseline.json.
+    # New survivors emit MUTANT_SURVIVED findings. A missing baseline
+    # emits MUTANT_BASELINE_MISSING.
+    script: >-
+      CARGO_TARGET_DIR=".titania/cache/mutants" cargo run --frozen --quiet -p titania-check -- run-lane mutants
+    toolchains: [rust]
+    options:
+      runInCI: true
+    inputs:
+      - '@globs(sources)'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.titania/profiles/strict-ai/mutants.baseline.json'
+    outputs:
+      - '.titania/out/full/mutants.json'
 
   gate-edit:
     command: 'cargo run --frozen --quiet -p titania-check -- aggregate --scope edit'
@@ -332,6 +380,14 @@ tasks:
   gate-release:
     command: 'cargo run --frozen --quiet -p titania-check -- aggregate --scope release'
     deps: ['~:gate-prepush', '~:titania-build']
+    options:
+      runInCI: true
+
+  gate-full:
+    # v1.5 Full gate — release + Kani + Mutants. PROOF_KANI_* and
+    # MUTANT_SURVIVED findings surface in the aggregate report.
+    command: 'cargo run --frozen --quiet -p titania-check -- aggregate --scope full'
+    deps: ['~:gate-release', '~:titania-kani', '~:titania-mutants']
     options:
       runInCI: true
 

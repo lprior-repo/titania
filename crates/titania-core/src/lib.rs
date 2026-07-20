@@ -30,8 +30,12 @@ mod finding;
 mod gate_scope;
 #[cfg(kani)]
 mod kani;
+mod kani_inventory;
 mod lane;
+mod mutants_baseline;
+mod mutants_outcomes;
 mod outcome;
+mod proof_id;
 mod receipt;
 mod report;
 mod rule_id;
@@ -48,8 +52,10 @@ pub use discover::{
     select_target_observation, select_target_root,
 };
 pub use error::{
-    ArtifactError, CoreError, DigestError, FailureError, FindingError, GateScopeError, LaneError,
-    LocationError, OutcomeError, PerLaneScopeError, ReceiptError, ReportError, RuleIdError,
+    ArtifactError, CoreError, DigestError, FailureError, FindingError, GateScopeError,
+    KaniHarnessIdError, KaniInventoryError, LaneError, LocationError, MutantIdError,
+    MutantOperatorError, MutantsBaselineError, MutantsOutcomesError, OutcomeError,
+    PathSegmentError, PerLaneScopeError, ReceiptError, ReportError, RuleIdError,
     TargetProjectError, TextRangeError, WorkspacePathError,
 };
 pub use failure::{LaneFailure, ProcessTermination};
@@ -57,8 +63,23 @@ pub use finding::{
     CatalogRow, Finding, FindingEffect, Location, RepairHint, RepairHintClass, catalog_rows,
 };
 pub use gate_scope::GateScope;
+pub use kani_inventory::{
+    KANI_INVENTORY_MAX_HARNESSES, KaniHarnessListing, KaniInventory, canonical_harness_id,
+};
 pub use lane::Lane;
+pub use mutants_baseline::{
+    ACCEPTED_BY_RULE_FAMILY, MUTANTS_BASELINE_SCHEMA_VERSION, MutantBaselineEntry, MutantsBaseline,
+};
+pub use mutants_outcomes::{
+    MUTANTS_OUTCOMES_MAX_ENTRIES, MUTANTS_RECORDS_MAX_ENTRIES, MutantOutcomeEntry, MutantRecord,
+    MutantScenarioData, MutantsOutcomes, MutantsRecords, OutcomeScenario, OutcomeSummary,
+    RawFunction, RawPoint, RawSpan, relative_mutant_path,
+};
 pub use outcome::{CommandEvidence, LaneEvidence, LaneOutcome, SkipReason};
+pub use proof_id::{
+    KANI_HARNESS_ID_MAX_LEN, KaniHarnessId, MUTANT_PATH_MAX_LEN, MUTANT_PKG_MAX_LEN, MutantId,
+    MutantOperator, ToolKind,
+};
 pub use receipt::{
     LaneDigest, LaneName, RECEIPT_ENVELOPE_SCHEMA_VERSION, ReceiptDigests, ReceiptEnvelope,
     ReceiptLaneExit, ReceiptPeriod, RecordedTargetRoot,

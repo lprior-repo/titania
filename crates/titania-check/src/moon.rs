@@ -104,7 +104,7 @@ fn env_already_correct(name: &str, expected: &std::path::Path) -> bool {
 /// Build the ordered list of `moon run` task IDs for a scope.
 ///
 /// Matches the spec §13 gate composition: edit is the seven-lane base; prepush
-/// adds test and deny; release adds build.
+/// adds test and deny; release adds build; full adds Kani and Mutants.
 #[must_use]
 pub(crate) fn tasks_for_scope(scope: GateScope) -> Vec<&'static str> {
     let mut tasks = Vec::new();
@@ -115,18 +115,27 @@ pub(crate) fn tasks_for_scope(scope: GateScope) -> Vec<&'static str> {
     if includes_release(scope) {
         tasks.extend_from_slice(RELEASE_TASKS);
     }
+    if includes_full(scope) {
+        tasks.extend_from_slice(FULL_TASKS);
+    }
     tasks
 }
 
-/// Return `true` when `scope` is prepush or release (scopes that include the
-/// prepush task set).
+/// Return `true` when `scope` is prepush, release, or full (scopes that
+/// include the prepush task set).
 const fn includes_prepush(scope: GateScope) -> bool {
-    matches!(scope, GateScope::Prepush | GateScope::Release)
+    matches!(scope, GateScope::Prepush | GateScope::Release | GateScope::Full)
 }
 
-/// Return `true` when `scope` is release (the only scope that adds build).
+/// Return `true` when `scope` is release or full (scopes that add build).
 const fn includes_release(scope: GateScope) -> bool {
-    matches!(scope, GateScope::Release)
+    matches!(scope, GateScope::Release | GateScope::Full)
+}
+
+/// Return `true` when `scope` is full (the only scope that adds Kani and
+/// Mutants).
+const fn includes_full(scope: GateScope) -> bool {
+    matches!(scope, GateScope::Full)
 }
 
 /// Edit-scope moon task IDs (spec §13 `gate-edit` deps).
@@ -145,6 +154,10 @@ const PREPUSH_TASKS: &[&str] = &[":titania-test", ":titania-deny"];
 
 /// Release-scope additional moon task IDs (spec §13 `gate-release` extra deps).
 const RELEASE_TASKS: &[&str] = &[":titania-build"];
+
+/// Full-scope additional moon task IDs (v1-spec §16 `gate-full` extra deps).
+/// Kani and Mutants are intentionally scoped to Full only.
+const FULL_TASKS: &[&str] = &[":titania-kani", ":titania-mutants"];
 
 const TIMEOUT_ENV: &str = "TITANIA_MOON_TIMEOUT_SECS";
 const DEFAULT_TIMEOUT_SECS: u64 = 600;

@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes. Future work is tracked in [`v1-spec.md`](./v1-spec.md)
-(verification batches v1.5–v2.5: panic-freedom, type invariants, functional
-correctness) and [`VISION.md`](./VISION.md).
+### Fixed
+
+- CLI help and input-error guidance now list the `full` scope and the `kani`
+  and `mutants` lane spellings accepted by the parser.
 
 ## [0.1.0] - 2026-07-12
 

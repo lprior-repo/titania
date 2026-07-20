@@ -106,7 +106,7 @@ pub fn assemble_report(
     let gate_failures = gate_failures(&outcomes);
 
     if has_rejection(&code_findings, &gate_failures) {
-        return Report::reject(code_findings, gate_failures, outcomes).map_err(Into::into);
+        return Report::reject(scope, code_findings, gate_failures, outcomes).map_err(Into::into);
     }
 
     validate_pass_candidate(scope, &pass_receipt)?;

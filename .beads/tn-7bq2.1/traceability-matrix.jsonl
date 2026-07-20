@@ -1,0 +1,17 @@
+{"seed_id":"v15.P1","spec_section":"3.1","spec_text":"Lane stays total; add Kani, Mutants","acceptance":"A5/A6: typed artifact, JSON round-trip preserved"}
+{"seed_id":"v15.P2","spec_section":"3.2","spec_text":"GateScope::Full added","acceptance":"A7/A8: gate-full wired, --scope full parser"}
+{"seed_id":"v15.P3","spec_section":"3.3","spec_text":"KaniHarnessId validation","acceptance":"A1: harness inventory"}
+{"seed_id":"v15.P4","spec_section":"3.3","spec_text":"KaniHarnessId serde","acceptance":"A5: artifact schema stable"}
+{"seed_id":"v15.P5","spec_section":"3.4","spec_text":"MutantId construction","acceptance":"A4: survivor findings"}
+{"seed_id":"v15.P6","spec_section":"5","spec_text":"MutantsBaseline load error taxonomy","acceptance":"A4: bootstrap recipe"}
+{"seed_id":"v15.P7","spec_section":"4.3","spec_text":"Diff against baseline is set difference","acceptance":"A4: gate rejects new survivors"}
+{"seed_id":"v15.P8","spec_section":"12-H3","spec_text":"Expired baseline entries do not suppress","acceptance":"A4: drift resistance"}
+{"seed_id":"v15.P9","spec_section":"7","spec_text":"SkipReason::ToolUnavailable serde","acceptance":"A6: typed artifact"}
+{"seed_id":"v15.P10","spec_section":"3.1","spec_text":"Lane::name uniqueness","acceptance":"A1/A3: harness inventory determinism"}
+{"seed_id":"v15.P11","spec_section":"11","spec_text":"Lane serde round-trip","acceptance":"A5/A6: typed artifact round-trip"}
+{"seed_id":"v15.K1","spec_section":"4.2","spec_text":"Kani harness naming","acceptance":"A1/A3: harness inventory"}
+{"seed_id":"v15.K2","spec_section":"4.3","spec_text":"MutantsBaseline::diff zero-negatives","acceptance":"A4: no false negative"}
+{"seed_id":"v15.V1","spec_section":"3.4","spec_text":"MutantId operator closed-set","acceptance":"A4: survivor type discriminator"}
+{"seed_id":"v15.L1","spec_section":"8","spec_text":"Baseline load atomicity","acceptance":"A6: artifact integrity"}
+{"seed_id":"v15.F1","spec_section":"12-H9","spec_text":"Inventory parse hostile input","acceptance":"A1/A3: never panic on malformed"}
+{"seed_id":"v15.F2","spec_section":"12-H2","spec_text":"Outcomes parse forward-compat","acceptance":"A4: forward-compat"}

@@ -1,7 +1,7 @@
 //! Execution lanes in the titania-check pipeline.
 //!
 //! Each lane corresponds to a single tool or analysis pass. The set of lanes
-//! is fixed for v1 and serialised to `PascalCase` JSON.
+//! is fixed for v1.5 and serialised to `PascalCase` JSON.
 //!
 //! Construction is total: [`Lane::from_str`] parses a `PascalCase` string into
 //! the matching variant, or returns a [`LaneError`].
@@ -39,6 +39,10 @@ pub enum Lane {
     Deny,
     /// Release build lane (`cargo build --workspace --release`).
     Build,
+    /// Kani bounded model-check lane (`cargo kani -p <pkg>`).
+    Kani,
+    /// Cargo mutants test-survivor lane (`cargo mutants -o mutants.out`).
+    Mutants,
 }
 
 impl Lane {
@@ -56,6 +60,28 @@ impl Lane {
             Self::Test => "Test",
             Self::Deny => "Deny",
             Self::Build => "Build",
+            Self::Kani => "Kani",
+            Self::Mutants => "Mutants",
+        }
+    }
+
+    /// Lowercase stem used for the lane artifact filename under
+    /// `.titania/out/<scope>/<stem>.json`.
+    #[must_use]
+    pub const fn file_stem(self) -> &'static str {
+        match self {
+            Self::Fmt => "fmt",
+            Self::Compile => "compile",
+            Self::Clippy => "clippy",
+            Self::AstGrep => "ast-grep",
+            Self::Dylint => "dylint",
+            Self::PanicScan => "panic-scan",
+            Self::PolicyScan => "policy-scan",
+            Self::Test => "test",
+            Self::Deny => "deny",
+            Self::Build => "build",
+            Self::Kani => "kani",
+            Self::Mutants => "mutants",
         }
     }
 }
@@ -81,6 +107,8 @@ impl FromStr for Lane {
             "Test" => Ok(Self::Test),
             "Deny" => Ok(Self::Deny),
             "Build" => Ok(Self::Build),
+            "Kani" => Ok(Self::Kani),
+            "Mutants" => Ok(Self::Mutants),
             _ => Err(LaneError::UnknownLane(s.to_owned())),
         }
     }

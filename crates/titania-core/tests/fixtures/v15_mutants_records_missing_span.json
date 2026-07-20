@@ -1,0 +1,8 @@
+[
+  {
+    "name": "crates/titania-core/src/lib.rs:99:9: replace == with !=",
+    "file": "crates/titania-core/src/lib.rs",
+    "package": "titania-core",
+    "genre": "BinaryOperator"
+  }
+]

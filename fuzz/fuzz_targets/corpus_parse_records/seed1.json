@@ -1,0 +1,24 @@
+[
+  {
+    "name": "crates/titania-core/src/artifact.rs:99:9: replace == with != in core::option::Option",
+    "package": "titania-core",
+    "file": "crates/titania-core/src/artifact.rs",
+    "span": {
+      "start": {"line": 99, "column": 9},
+      "end": {"line": 99, "column": 22}
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "name": "crates/titania-core/src/artifact.rs:200:9: remove negation in is_ok",
+    "package": "titania-core",
+    "file": "crates/titania-core/src/artifact.rs",
+    "span": {
+      "start": {"line": 200, "column": 9},
+      "end": {"line": 200, "column": 22}
+    },
+    "replacement": "is_ok",
+    "genre": "UnaryOperator"
+  }
+]

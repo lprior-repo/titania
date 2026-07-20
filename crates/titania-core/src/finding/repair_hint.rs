@@ -230,10 +230,11 @@ impl<'de> Deserialize<'de> for RepairHint {
 
 /// Stable classification of a [`RepairHint`].
 ///
-/// Seven-variant enum mirroring [`RepairHintInner`] so that [`RepairHint::class`]
-/// is exhaustive. The strings returned by [`RepairHintClass::as_str`] are the
-/// same literals used in `repair_catalog.tsv` column 4 (catalog rows use
-/// `RequiresHumanReview` for the informational `—` marker).
+/// Seven-variant enum mirroring the inner [`RepairHint`] so that
+/// [`RepairHint::class`] is exhaustive. The strings returned by
+/// [`RepairHintClass::as_str`] are the same literals used in
+/// `repair_catalog.tsv` column 4 (catalog rows use `RequiresHumanReview`
+/// for the informational `—` marker).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RepairHintClass {
     /// Auto-applicable byte-range patch.
@@ -270,8 +271,8 @@ impl RepairHintClass {
 }
 
 impl RepairHint {
-    /// Exhaustive class lookup. Adding a new [`RepairHintInner`] variant
-    /// will fail this match until a class arm is added.
+    /// Exhaustive class lookup. Adding a new [`RepairHint`] variant will
+    /// fail this match until a class arm is added.
     #[must_use]
     pub const fn class(&self) -> RepairHintClass {
         match &self.0 {
@@ -286,9 +287,9 @@ impl RepairHint {
     }
 
     /// Look up the canonical [`RepairHint`] for a rule id via the catalog
-    /// in `repair_catalog.tsv`. Thin re-export of
-    /// [`super::repair_catalog::for_rule`] so callers can write
-    /// `RepairHint::for_rule(rule_id)` without importing the parser module.
+    /// in `repair_catalog.tsv`. Thin convenience so callers can write
+    /// `RepairHint::for_rule(rule_id)` without importing the parser
+    /// module directly.
     ///
     /// **Contract**:
     /// - Empty `rule_id` → `requires_human_review("unmapped rule_id: ")`.

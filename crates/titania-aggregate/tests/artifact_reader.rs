@@ -374,5 +374,7 @@ fn lane_stem(lane: Lane) -> &'static str {
         Lane::Test => "test",
         Lane::Deny => "deny",
         Lane::Build => "build",
+        Lane::Kani => "kani",
+        Lane::Mutants => "mutants",
     }
 }

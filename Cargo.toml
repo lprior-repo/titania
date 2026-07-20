@@ -12,7 +12,7 @@ authors = ["Titania Contributors"]
 warnings = { level = "deny", priority = -1 }
 future_incompatible = { level = "deny", priority = -1 }
 rust_2018_idioms = { level = "deny", priority = -1 }
-unexpected_cfgs = { level = "deny", check-cfg = ['cfg(kani)'] }
+unexpected_cfgs = { level = "deny", check-cfg = ['cfg(kani)', 'cfg(loom)'] }
 
 unsafe_code = "forbid"
 unsafe_op_in_unsafe_fn = "deny"

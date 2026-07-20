@@ -118,3 +118,19 @@ logs/
 # ----- Tool caches (kept off the wire) -------------------------
 /.sccache/
 /.worktrees/
+
+# ----- cargo-fuzz scratch artifacts ----------------------------
+# cargo-fuzz writes coverage, corpus, and dictionary files under
+# fuzz/target/. The directory is regenerated on every fuzz run, so
+# it should never be committed. Per the fuzz package's stub-mode
+# design (libfuzzer-sys default-features = false), `cargo check`
+# also writes a target directory here on first build.
+fuzz/target/
+
+# ----- cargo-kani + cargo-mutants scratch artifacts ---------
+# cargo-kani writes its harness inventory to <crate>/kani-list.json
+# when invoked with `cargo kani list --format json`. cargo-mutants
+# writes scratch to mutants.out/. Both are regenerated on every lane
+# run, so they should never be committed.
+**/kani-list.json
+**/mutants.out/

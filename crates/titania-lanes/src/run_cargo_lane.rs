@@ -35,7 +35,13 @@ const fn cargo_lane_name(lane: Lane) -> Option<&'static str> {
         Lane::Clippy => Some("clippy"),
         Lane::Test => Some("test"),
         Lane::Build => Some("build"),
-        Lane::AstGrep | Lane::Dylint | Lane::PanicScan | Lane::PolicyScan | Lane::Deny => None,
+        Lane::AstGrep
+        | Lane::Dylint
+        | Lane::PanicScan
+        | Lane::PolicyScan
+        | Lane::Deny
+        | Lane::Kani
+        | Lane::Mutants => None,
     }
 }
 

@@ -12,7 +12,7 @@
 //! `DLL_PREFIX <name> '@' <toolchain> DLL_SUFFIX` (e.g.
 //! `libtitania_dylint@nightly-2026-04-27-x86_64-unknown-linux-gnu.so`).
 //! Sibling and env-supplied libraries use the plain name
-//! `libtitania_dylint.so`, so [`DylintLibStaging`] copies the file into a
+//! `libtitania_dylint.so`, so the staging helper copies the file into a
 //! temp directory with the toolchain-suffixed name before passing it to
 //! `cargo dylint --lib-path`.
 //!
@@ -356,8 +356,8 @@ const fn is_dynamic_library_magic(head: [u8; 4]) -> bool {
 /// Whether a resolved library path already has the toolchain-suffixed name
 /// that cargo-dylint 6.0.1 requires (i.e. the filename contains `@`).
 ///
-/// When this returns `false`, the caller must stage the file via
-/// [`DylintLibStaging::stage`] before passing it to `--lib-path`.
+/// When this returns `false`, the caller must stage the file through the
+/// internal staging helper before passing it to `--lib-path`.
 #[must_use]
 pub(crate) fn path_needs_staging(path: &Path) -> bool {
     path.file_name().and_then(|name| name.to_str()).is_none_or(|name| !name.contains('@'))

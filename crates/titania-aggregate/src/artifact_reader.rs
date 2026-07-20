@@ -73,11 +73,9 @@ pub type ReaderResult = Result<Vec<(Lane, LaneOutcome)>, ReaderError>;
 /// scope order. Returns [`ReaderError::InputError`] when an existing artifact
 /// cannot be read, parsed, or matched to its lane, when the directory contains
 /// a file whose stem does not name a scoped lane, or when the directory
-/// contains more than one artifact for the same lane. Returns
-/// [`ReaderError::UnsupportedScope`] for future gate-scope variants unknown to
-/// this v1 reader.
+/// contains more than one artifact for the same lane.
 pub fn read_lane_artifacts(target_root: &Path, scope: GateScope) -> ReaderResult {
-    let scope_dir = scope_dir(scope)?;
+    let scope_dir: &'static str = scope_dir(scope);
     let out_dir = artifact_dir(target_root, scope_dir);
     let expected: &[Lane] = scope.lanes();
     let scoped_lanes = scoped_lane_set(scope);
@@ -273,6 +271,8 @@ fn stem_to_lane(stem: &str) -> Option<Lane> {
         "test" => Some(Lane::Test),
         "deny" => Some(Lane::Deny),
         "build" => Some(Lane::Build),
+        "kani" => Some(Lane::Kani),
+        "mutants" => Some(Lane::Mutants),
         _ => None,
     }
 }
@@ -298,17 +298,12 @@ fn missing_lane_outcome(lane: Lane) -> LaneOutcome {
 }
 
 /// Return the output directory name for a gate scope.
-///
-/// # Errors
-///
-/// Returns [`ReaderError::UnsupportedScope`] for future gate-scope variants
-/// unknown to this v1 reader.
-fn scope_dir(scope: GateScope) -> Result<&'static str, ReaderError> {
+const fn scope_dir(scope: GateScope) -> &'static str {
     match scope {
-        GateScope::Edit => Ok("edit"),
-        GateScope::Prepush => Ok("prepush"),
-        GateScope::Release => Ok("release"),
-        _ => Err(ReaderError::UnsupportedScope { scope: format!("{scope:?}") }),
+        GateScope::Edit => "edit",
+        GateScope::Prepush => "prepush",
+        GateScope::Release => "release",
+        GateScope::Full => "full",
     }
 }
 

@@ -1,0 +1,27 @@
+{
+  "kani-version": "0.67.0",
+  "file-version": "0.1",
+  "standard-harnesses": {
+    "crates/titania-core/src/contracts.rs": [
+      "kani::contract_increment_preserves_invariant"
+    ]
+  },
+  "contract-harnesses": {
+    "crates/titania-core/src/contracts.rs": [
+      "kani::contract_increment_under_modulus"
+    ]
+  },
+  "contracts": [
+    {
+      "name": "increment_preserves_invariant",
+      "file": "crates/titania-core/src/contracts.rs"
+    }
+  ],
+  "totals": {
+    "standard-harnesses": 1,
+    "contract-harnesses": 1,
+    "functions-under-contract": 1
+  },
+  "checksum": "blake3:00000000",
+  "build-flags": ["-Zfunction-contracts"]
+}

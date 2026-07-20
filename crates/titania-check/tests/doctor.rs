@@ -383,11 +383,13 @@ fn doctor_abi_probe_no_nm_dependency() {
 
 #[test]
 fn doctor_unknown_scope_remains_input_error() {
-    let (code, stdout, stderr) = run(&["doctor", "--scope", "full"]);
+    let (code, stdout, stderr) = run(&["doctor", "--scope", "definitely-unknown-scope"]);
     assert_eq!(code, 3, "unknown scope must be InputError");
     assert!(stdout.is_empty(), "unknown scope must not write stdout: {stdout}");
-    assert!(stderr.contains("unknown scope"), "stderr must name unknown scope: {stderr}");
-    assert!(stderr.contains("full"), "stderr must include rejected scope: {stderr}");
+    assert_eq!(
+        stderr,
+        "InputError: unknown scope 'definitely-unknown-scope'; expected one of: edit, prepush, release, full\n"
+    );
 }
 
 /// H1 reconciliation: when `cargo-dylint` and `dylint-link` are installed and

@@ -15,6 +15,39 @@ use std::{
 };
 use tempfile::TempDir;
 
+const EXPECTED_HELP: &str = "\
+titania-check — Titania quality gate CLI
+
+USAGE:
+    titania-check [OPTIONS]                 Run scoped quality lanes via Moon (default: check).
+    titania-check check [OPTIONS]           Run scoped quality lanes via Moon.
+    titania-check run-lane <lane-name>      Run a single lane and write findings artifact.
+    titania-check aggregate --scope <s> [OPTIONS]
+                                            Read existing lane artifacts and emit a report.
+    titania-check doctor [OPTIONS]          Report required tools and versions for a scope.
+    titania-check explain <rule-id>         Print rule description and metadata.
+    titania-check setup-hermetic            Create hermetic CARGO_HOME / RUSTUP_HOME symlinks.
+
+OPTIONS:
+    --scope <edit|prepush|release|full>     Gate scope (default: edit).
+    --emit <json>                           Check/aggregate output (default: json); doctor accepts json|human (default: human).
+    --out <path>                            Write report to file instead of stdout.
+    --version, -V                           Print version and git SHA, then exit 0.
+
+LANES (run-lane):
+    fmt, compile, clippy, ast-grep, dylint, panic-scan, policy-scan,
+    test, deny, build, kani, mutants
+
+EXIT CODES:
+    0  Pass
+    1  Reject (code findings and/or gate failures)
+    2  PolicyError
+    3  InputError
+    >=4 Internal error
+
+See `titania-check explain <rule-id>` for rule details and v1-spec.md for the
+full specification.\n";
+
 fn binary() -> std::path::PathBuf {
     env::var("CARGO_BIN_EXE_titania-check")
         .expect("CARGO_BIN_EXE_titania-check not set — run via `cargo test`")
@@ -24,6 +57,14 @@ fn binary() -> std::path::PathBuf {
 fn run(args: &[&str]) -> (i32, String, String) {
     let cwd = env::current_dir().expect("test current directory must be available");
     run_in(&cwd, args)
+}
+
+fn assert_exact_help(args: &[&str]) {
+    let workspace = tempfile::tempdir().expect("tempdir must be created");
+    let (code, stdout, stderr) = run_in(workspace.path(), args);
+    assert_eq!(code, 0, "help request must exit 0, got {code}; stderr: {stderr}");
+    assert_eq!(stdout, EXPECTED_HELP, "help output must match the pinned contract");
+    assert!(stderr.is_empty(), "help request must not write stderr, got: {stderr}");
 }
 
 fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
@@ -230,10 +271,19 @@ fn cli_args_out_path() {
 }
 #[test]
 fn cli_args_unknown_scope_rejected() {
-    let (code, stdout, stderr) = run(&["--scope", "full"]);
+    let (code, stdout, stderr) = run(&["--scope", "definitely-unknown-scope"]);
     assert_input_error(code, &stdout, &stderr);
-    assert_stderr_contains(&stderr, "unknown scope");
-    assert_stderr_contains(&stderr, "full");
+    assert_eq!(
+        stderr,
+        "InputError: unknown scope 'definitely-unknown-scope'; expected one of: edit, prepush, release, full\n"
+    );
+}
+
+#[test]
+fn aggregate_missing_scope_lists_accepted_spellings() {
+    let (code, stdout, stderr) = run(&["aggregate"]);
+    assert_input_error(code, &stdout, &stderr);
+    assert_eq!(stderr, "InputError: aggregate requires --scope <edit|prepush|release|full>\n");
 }
 
 // Default `--emit json` dispatches to `Command::Check`; see rationale on
@@ -464,10 +514,13 @@ fn dispatch_explain_known_rule() {
 }
 
 #[test]
-fn dispatch_missing_implementation_unknown_lane() {
+fn dispatch_unknown_lane_lists_accepted_spellings() {
     let (code, stdout, stderr) = run(&["run-lane", "nonexistent-lane"]);
     assert_input_error(code, &stdout, &stderr);
-    assert_stderr_contains(&stderr, "unknown lane 'nonexistent-lane'");
+    assert_eq!(
+        stderr,
+        "InputError: unknown lane 'nonexistent-lane'; expected one of: fmt, compile, clippy, ast-grep, dylint, panic-scan, policy-scan, test, deny, build, kani, mutants\n"
+    );
 }
 
 // Default `--emit json` dispatches to `Command::Check`; see rationale on
@@ -837,66 +890,31 @@ fn make_read_only(_path: &Path) {}
 /// `--help` prints usage to stdout and exits 0.
 #[test]
 fn help_long_flag_prints_usage_and_exits_zero() {
-    let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (code, stdout, stderr) = run_in(workspace.path(), &["--help"]);
-    assert_eq!(code, 0, "--help must exit 0, got {code}; stderr: {stderr}");
-    assert!(stderr.is_empty(), "--help must not write stderr, got: {stderr}");
-    assert!(stdout.contains("titania-check"), "usage must mention binary name: {stdout}");
-    assert!(stdout.contains("check"), "usage must list check subcommand: {stdout}");
-    assert!(stdout.contains("run-lane"), "usage must list run-lane subcommand: {stdout}");
-    assert!(stdout.contains("aggregate"), "usage must list aggregate subcommand: {stdout}");
-    assert!(stdout.contains("doctor"), "usage must list doctor subcommand: {stdout}");
-    assert!(stdout.contains("explain"), "usage must list explain subcommand: {stdout}");
-    assert!(stdout.contains("--scope"), "usage must mention --scope flag: {stdout}");
-    assert!(stdout.contains("--emit"), "usage must mention --emit flag: {stdout}");
-    assert!(stdout.contains("--out"), "usage must mention --out flag: {stdout}");
-    assert!(
-        stdout.contains("Check/aggregate output"),
-        "usage must state check/aggregate output format: {stdout}",
-    );
+    assert_exact_help(&["--help"]);
 }
 
 /// `-h` is an alias for `--help`.
 #[test]
 fn help_short_flag_prints_usage_and_exits_zero() {
-    let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (code, stdout, stderr) = run_in(workspace.path(), &["-h"]);
-    assert_eq!(code, 0, "-h must exit 0, got {code}; stderr: {stderr}");
-    assert!(stderr.is_empty(), "-h must not write stderr, got: {stderr}");
-    assert!(stdout.contains("titania-check"), "-h usage must mention binary name: {stdout}");
+    assert_exact_help(&["-h"]);
 }
 
 /// `help` (bare subcommand) prints usage and exits 0.
 #[test]
 fn help_bare_subcommand_prints_usage_and_exits_zero() {
-    let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (code, stdout, stderr) = run_in(workspace.path(), &["help"]);
-    assert_eq!(code, 0, "help must exit 0, got {code}; stderr: {stderr}");
-    assert!(stderr.is_empty(), "help must not write stderr, got: {stderr}");
-    assert!(stdout.contains("titania-check"), "help usage must mention binary name: {stdout}");
+    assert_exact_help(&["help"]);
 }
 
-/// `<subcommand> --help` prints usage and exits 0 for each subcommand.
+/// `check --help` prints usage and exits 0.
 #[test]
 fn help_after_check_subcommand_prints_usage_and_exits_zero() {
-    let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (code, stdout, stderr) = run_in(workspace.path(), &["check", "--help"]);
-    assert_eq!(code, 0, "check --help must exit 0, got {code}; stderr: {stderr}");
-    assert!(stderr.is_empty(), "check --help must not write stderr, got: {stderr}");
-    assert!(stdout.contains("titania-check"), "check --help must print usage: {stdout}");
+    assert_exact_help(&["check", "--help"]);
 }
 
 /// `aggregate --help` prints usage and exits 0 (and does NOT require --scope).
 #[test]
 fn help_after_aggregate_subcommand_short_circuits_scope_requirement() {
-    let workspace = tempfile::tempdir().expect("tempdir must be created");
-    let (code, stdout, stderr) = run_in(workspace.path(), &["aggregate", "--help"]);
-    assert_eq!(code, 0, "aggregate --help must exit 0, got {code}; stderr: {stderr}");
-    assert!(
-        stderr.is_empty(),
-        "aggregate --help must not write stderr (no AggregateScopeRequired), got: {stderr}",
-    );
-    assert!(stdout.contains("titania-check"), "aggregate --help must print usage: {stdout}");
+    assert_exact_help(&["aggregate", "--help"]);
 }
 
 // ===== Check → Moon dispatch (spec §12, §13) =====

@@ -1,0 +1,17 @@
+{
+  "schema_version": "runtime-skill-provenance/v1",
+  "bead_id": "tn-7bq2.2",
+  "loaded_skill_name": "go-skill",
+  "loaded_skill_version": "10.1.0",
+  "state_range": [1, 16],
+  "skill_root_resolved": "/home/lewis/.agents/skills/go-skill",
+  "mirror_root_resolved": "/home/lewis/.opencode/skill/go-skill",
+  "validator_command": "$HOME/.agents/skills/go-skill/tools/go-skill-v9-validate --workspace /home/lewis/src/titania --bead tn-7bq2.2 --state N",
+  "isolated_workdir": "/home/lewis/src/titania",
+  "source_checkout": "/home/lewis/src/titania",
+  "bead_dir": "/home/lewis/src/titania/.beads/tn-7bq2.2",
+  "parent_bead": "tn-7bq2",
+  "scope": "v1.5 proof-planner work (State 4)",
+  "loaded_at_utc": "2026-07-15T11:10:00Z",
+  "status": "in_progress"
+}

@@ -36,10 +36,11 @@ pub fn scan_policy_inputs<'a>(
 /// Expired or malformed exception files are handled by
 /// [`exceptions::load_exceptions`] before this function is called.
 ///
-/// The environment-variable scanner reads through the provided [`env_vars::EnvReader`]
-/// so callers can drive the scan under a controlled environment. Production callers
-/// pass [`env_vars::real_env`]; tests inject a `BTreeMap`-backed reader to avoid
-/// leaking host `CARGO_HOME` / `RUSTUP_HOME` into the result.
+/// The environment-variable scanner reads through the provided
+/// environment reader so callers can drive the scan under a controlled
+/// environment. Production callers pass the process-wide reader; tests
+/// inject a `BTreeMap`-backed reader to avoid leaking host `CARGO_HOME`
+/// / `RUSTUP_HOME` into the result.
 ///
 /// # Errors
 /// Returns [`RuleIdError`] if any embedded scanner rule identifier is invalid.

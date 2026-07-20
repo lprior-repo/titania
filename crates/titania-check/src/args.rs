@@ -129,11 +129,11 @@ pub enum CliError {
     UnknownFlag(String),
     /// A flag that requires a value was missing that value.
     MissingValue(&'static str),
-    /// Scope value is not one of edit, prepush, or release.
+    /// Scope value is not one of edit, prepush, release, or full.
     UnknownScope(String),
     /// Emit value is not one of the supported renderers.
     UnknownEmit(String),
-    /// Lane name is not a v1 lane CLI name.
+    /// Lane name is not a known lane CLI name.
     UnknownLane(String),
     /// `run-lane` was invoked without a lane name.
     MissingLaneName,
@@ -183,9 +183,13 @@ impl CliError {
             Self::UnknownSubcommand(value) => format!("InputError: unknown subcommand '{value}'"),
             Self::UnknownFlag(value) => format!("InputError: unknown flag '{value}'"),
             Self::MissingValue(flag) => format!("InputError: missing value for {flag}"),
-            Self::UnknownScope(value) => format!("InputError: unknown scope '{value}'"),
+            Self::UnknownScope(value) => format!(
+                "InputError: unknown scope '{value}'; expected one of: edit, prepush, release, full"
+            ),
             Self::UnknownEmit(value) => format!("InputError: unknown emit format '{value}'"),
-            Self::UnknownLane(value) => format!("InputError: unknown lane '{value}'"),
+            Self::UnknownLane(value) => format!(
+                "InputError: unknown lane '{value}'; expected one of: fmt, compile, clippy, ast-grep, dylint, panic-scan, policy-scan, test, deny, build, kani, mutants"
+            ),
             Self::MissingLaneName => String::from("InputError: run-lane requires a lane name"),
             Self::ExtraArgument { command, value } => diagnostic_extra_arg(command, value),
             Self::MissingRuleId => String::from("InputError: explain requires a rule id"),
@@ -239,7 +243,7 @@ fn diagnostic_rule_id(value: &str, reason: &str) -> String {
 }
 
 fn diagnostic_aggregate_scope_required() -> String {
-    String::from("InputError: aggregate requires --scope <edit|prepush|release>")
+    String::from("InputError: aggregate requires --scope <edit|prepush|release|full>")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -281,7 +285,7 @@ pub fn version_string() -> String {
 
 /// Concise top-level usage summary printed for `--help`, `-h`, and `help`.
 ///
-/// Lists the five subcommands and the global flags (`--scope`, `--emit`, `--out`,
+/// Lists the six subcommands and the global flags (`--scope`, `--emit`, `--out`,
 /// `--version`). Kept as a single `&str` so the help path performs no formatting
 /// work and is trivially auditable.
 pub(crate) const USAGE: &str = "\
@@ -298,14 +302,14 @@ USAGE:
     titania-check setup-hermetic            Create hermetic CARGO_HOME / RUSTUP_HOME symlinks.
 
 OPTIONS:
-    --scope <edit|prepush|release>          Gate scope (default: edit).
+    --scope <edit|prepush|release|full>     Gate scope (default: edit).
     --emit <json>                           Check/aggregate output (default: json); doctor accepts json|human (default: human).
     --out <path>                            Write report to file instead of stdout.
     --version, -V                           Print version and git SHA, then exit 0.
 
 LANES (run-lane):
     fmt, compile, clippy, ast-grep, dylint, panic-scan, policy-scan,
-    test, deny, build
+    test, deny, build, kani, mutants
 
 EXIT CODES:
     0  Pass

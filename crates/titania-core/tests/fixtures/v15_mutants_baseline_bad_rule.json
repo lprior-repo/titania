@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "mutation_id": "pkg::src/foo.rs:1:1:equal_replace",
+      "accepted_by_rule": "mutant-accept//test-reason/never",
+      "reason": "test reason",
+      "expires_on_unix": null
+    }
+  ]
+}

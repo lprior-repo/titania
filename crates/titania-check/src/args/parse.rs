@@ -467,6 +467,8 @@ fn parse_lane(value: &str) -> Result<Lane, CliError> {
         "test" => Ok(Lane::Test),
         "deny" => Ok(Lane::Deny),
         "build" => Ok(Lane::Build),
+        "kani" => Ok(Lane::Kani),
+        "mutants" => Ok(Lane::Mutants),
         _ => Err(CliError::UnknownLane(value.to_owned())),
     }
 }

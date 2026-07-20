@@ -1,0 +1,55 @@
+[package]
+name        = "titania-fuzz"
+version     = "0.1.0"
+edition     = "2024"
+rust-version = "1.85"
+license     = "MIT OR Apache-2.0"
+authors     = ["Titania Contributors"]
+description = "cargo-fuzz harnesses for titania-check pure-core parsers."
+publish     = false
+
+# Fuzz harnesses are deliberately outside the workspace so the
+# nightly-only `cargo fuzz` entry point is never required to compile
+# or type-check the targets. Plain `cargo check --manifest-path
+# fuzz/Cargo.toml` must succeed on the stable toolchain.
+#
+# The empty [workspace] table stops cargo from walking up to the parent
+# titania workspace and complaining that this package is not a member.
+[workspace]
+
+# cargo-fuzz discovers targets by walking `fuzz_targets/*.rs` and reading
+# the [[bin]] entries below. Each bin's `name` is the target name passed
+# to `cargo fuzz run <name>`; `path` pins the source; `test = false`
+# keeps `cargo test` from trying to drive a #![no_main] binary as a test.
+[dependencies]
+titania-core = { path = "../crates/titania-core" }
+serde_json   = "1.0"
+# libfuzzer-sys with default-features = false skips the bundled
+# libFuzzer C runtime; the FFI declaration of LLVMFuzzerTestOneInput
+# remains available for type-checking without forcing a real fuzzer
+# link. Operators opt into a real libFuzzer link at run time by
+# enabling the default features.
+libfuzzer-sys = { version = "0.4", default-features = false }
+
+[[bin]]
+name = "fuzz_parse_inventory"
+path = "fuzz_targets/fuzz_parse_inventory.rs"
+test = false
+
+[[bin]]
+name = "fuzz_parse_outcomes"
+path = "fuzz_targets/fuzz_parse_outcomes.rs"
+test = false
+
+[[bin]]
+name = "fuzz_parse_records"
+path = "fuzz_targets/fuzz_parse_records.rs"
+test = false
+
+[profile.dev]
+opt-level = 0
+debug     = true
+
+[profile.release]
+opt-level = 3
+lto       = "thin"

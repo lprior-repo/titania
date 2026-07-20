@@ -1,0 +1,11 @@
+{
+  "outcomes": [],
+  "total_mutants": 0,
+  "missed": 0,
+  "caught": 0,
+  "timeout": 0,
+  "unviable": 0,
+  "success": 0,
+  "checksum": "blake3:deadbeef",
+  "build-flags": ["-Zno-validate"]
+}

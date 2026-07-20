@@ -1,0 +1,31 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success"
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/titania-core/src/artifact.rs:99:9: replace == with != in core::option::Option",
+          "package": "titania-core",
+          "file": "crates/titania-core/src/artifact.rs",
+          "span": {
+            "start": {"line": 99, "column": 9},
+            "end": {"line": 99, "column": 22}
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant"
+    }
+  ],
+  "total_mutants": 1,
+  "missed": 1,
+  "caught": 0,
+  "timeout": 0,
+  "unviable": 0,
+  "success": 1,
+  "cargo_mutants_version": "27.0.0"
+}

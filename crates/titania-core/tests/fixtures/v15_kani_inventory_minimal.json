@@ -1,0 +1,7 @@
+{
+  "standard-harnesses": {
+    "crates/titania-core/src/kani.rs": [
+      "kani::valid_harness_name"
+    ]
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Check",
+          "duration": 1.5,
+          "process_status": "Success",
+          "argv": ["cargo", "check", "--tests"]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/titania-core/src/artifact.rs:59:9: replace <impl Serialize for ArtifactOutcome>::serialize -> Result<S::Ok, S::Error> with Ok(Default::default())",
+          "package": "titania-core",
+          "file": "crates/titania-core/src/artifact.rs",
+          "function": {
+            "function_name": "<impl Serialize for ArtifactOutcome>::serialize",
+            "return_type": "-> Result<S::Ok, S::Error>",
+            "span": {
+              "start": {"line": 58, "column": 5},
+              "end": {"line": 61, "column": 6}
+            }
+          },
+          "span": {
+            "start": {"line": 59, "column": 9},
+            "end": {"line": 60, "column": 38}
+          },
+          "replacement": "Ok(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/artifact_59_9.log",
+      "diff_path": "diff/artifact_59_9.diff"
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/titania-core/src/artifact.rs:99:9: replace == with != in core::option::Option",
+          "package": "titania-core",
+          "file": "crates/titania-core/src/artifact.rs",
+          "span": {
+            "start": {"line": 99, "column": 9},
+            "end": {"line": 99, "column": 22}
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/artifact_99_9.log",
+      "diff_path": "diff/artifact_99_9.diff"
+    }
+  ],
+  "total_mutants": 2,
+  "missed": 1,
+  "caught": 0,
+  "timeout": 0,
+  "unviable": 1,
+  "success": 1,
+  "start_time": "2026-07-15T03:26:01.75966245Z",
+  "end_time": "2026-07-15T03:27:54.614166961Z",
+  "cargo_mutants_version": "27.0.0"
+}

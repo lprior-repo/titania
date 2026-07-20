@@ -143,6 +143,6 @@ const fn scope_name(scope: GateScope) -> &'static str {
         GateScope::Edit => "edit",
         GateScope::Prepush => "prepush",
         GateScope::Release => "release",
-        _ => "unknown",
+        GateScope::Full => "full",
     }
 }

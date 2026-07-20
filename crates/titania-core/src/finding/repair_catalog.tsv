@@ -69,3 +69,12 @@ FN_LINE_LIMIT	source-length	Reject	RequiresHumanReview	function logical line lim
 MUTANTS_RESIDUE	source-length	Reject	RequiresHumanReview	cargo-mutants residue	Rejects cargo-mutants residue markers in first-party source.
 SRC_LEN_LEDGER	source-length	Reject	RequiresHumanReview	source-length exception ledger	Rejects invalid source-length exception ledger entries.
 SRC_LINE_LIMIT	source-length	Reject	RequiresHumanReview	source physical line limit	Rejects source files over the configured physical line limit.
+PROOF_KANI_PASS	kani	Informational	—	VERIFICATION:- SUCCESSFUL	Reports per-harness Kani verification success.
+PROOF_KANI_FAIL	kani	Reject	RequiresHumanReview	VERIFICATION:- FAILED	Reports per-harness Kani verification failure.
+PROOF_KANI_BLOCKED	kani	Reject	RequiresHumanReview	cgroup OOM or timeout	Reports Kani harnesses blocked by cgroup OOM or timeout.
+PROOF_KANI_NOT_RUN	kani	Informational	—	cargo-kani missing	Reports Kani lane skipped because cargo-kani is missing.
+PROOF_KANI_UNSUPPORTED	kani	Informational	—	unsupported-feature warning	Reports Kani harnesses disabled by unsupported feature.
+PROOF_KANI_INFRA	kani	Reject	RequiresHumanReview	cargo-kani infrastructure failure	Reports Kani infrastructure failures (spawn, parse, or version drift).
+MUTANT_SURVIVED	mutants	Reject	RequiresHumanReview	cargo-mutants survivor	Reports a cargo-mutants survivor not covered by the baseline.
+MUTANT_SURVIVED_INFRA	mutants	Reject	RequiresHumanReview	cargo-mutants infrastructure failure	Reports cargo-mutants infrastructure failures.
+MUTANT_BASELINE_MISSING	mutants	Reject	RequiresHumanReview	mutants.baseline.json missing	Reports a missing mutants baseline; run scripts/dev/mutants-bootstrap.sh.

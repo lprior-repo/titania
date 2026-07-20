@@ -34,6 +34,208 @@ pub enum RuleIdError {
     TooLong(usize),
 }
 
+/// Errors produced by [`crate::proof_id::KaniHarnessId::new`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum KaniHarnessIdError {
+    /// Kani harness identifier was empty.
+    #[error("kani harness id must not be empty")]
+    Empty,
+    /// Kani harness identifier exceeded [`crate::proof_id::KANI_HARNESS_ID_MAX_LEN`].
+    #[error("kani harness id must not exceed {max} characters, got {0}",
+        max = crate::proof_id::KANI_HARNESS_ID_MAX_LEN)]
+    TooLong(usize),
+    /// Kani harness identifier's first byte was not an ASCII letter
+    /// (`[a-zA-Z]`). Covers leading digits, leading underscores, leading
+    /// non-ASCII bytes, and any other non-letter lead byte.
+    #[error("kani harness id must start with an ASCII letter; bad first byte 0x{byte:02x}")]
+    LeadingNonLetter {
+        /// First byte of the candidate id.
+        byte: u8,
+    },
+    /// Kani harness identifier at offset ≥ 1 contained a byte outside
+    /// `[A-Za-z0-9_]`.
+    #[error(
+        "kani harness id must contain only ASCII letters, digits, and underscores; bad byte 0x{byte:02x} at offset {offset}"
+    )]
+    NotAscii {
+        /// Offending byte.
+        byte: u8,
+        /// Byte offset within the input (always ≥ 1).
+        offset: usize,
+    },
+}
+
+/// Errors produced when parsing a [`crate::proof_id::MutantOperator`] from
+/// its wire-form literal via the `FromStr` implementation (i.e.
+/// `let op: MutantOperator = "...".parse()?`).
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum MutantOperatorError {
+    /// Operator literal was outside the recognised closed set.
+    #[error("mutant operator {0:?} is not in the recognised operator set")]
+    Unknown(String),
+}
+
+/// Single violation of the bounded package / path character policy used by
+/// [`crate::proof_id::MutantId`].
+///
+/// Both segments share the same hostile-input rejection rules: no NUL, no
+/// ASCII control, no backslash, no `:` (which is a positional separator in
+/// the wire form), no Windows drive prefix, no UNC prefix, no `..` traversal
+/// component, no leading `/` for path segments.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum PathSegmentError {
+    /// Segment carried an embedded NUL byte.
+    #[error("segment contains NUL byte")]
+    ContainsNull,
+    /// Segment carried an ASCII control byte (other than NUL).
+    #[error("segment contains control byte 0x{0:02x}")]
+    ControlByte(u8),
+    /// Segment carried a backslash (Windows separator / escape surface).
+    #[error("segment contains backslash")]
+    ContainsBackslash,
+    /// Segment carried a `:`. The canonical wire form fixes `:` as a
+    /// positional separator, so any embedded `:` creates ambiguous
+    /// path/line/col partitions.
+    #[error("segment contains ':' which is a positional separator")]
+    ContainsColon,
+    /// Segment started with `/`, making it absolute rather than
+    /// workspace-relative.
+    #[error("segment starts with '/' (absolute)")]
+    LeadingSlash,
+    /// Segment contained a `..` path-traversal component.
+    #[error("segment contains '..' component")]
+    ContainsDotDot,
+    /// Segment used a Windows drive-absolute prefix such as `C:`. The
+    /// `String` carries the original drive prefix as supplied.
+    #[error("segment uses Windows drive prefix {0:?}")]
+    DriveAbsolute(String),
+    /// Segment used a UNC prefix (`\\server\share\...` or its
+    /// forward-slash form `//server/share/...`).
+    #[error("segment uses UNC path")]
+    UncForm,
+}
+
+/// Errors produced by [`crate::proof_id::MutantId::new`] and
+/// [`crate::proof_id::MutantId::parse`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum MutantIdError {
+    /// Package name was empty.
+    #[error("mutant id package must not be empty")]
+    EmptyPackage,
+    /// Relative path was empty.
+    #[error("mutant id path must not be empty")]
+    EmptyPath,
+    /// Relative path started with `/`.
+    #[error("mutant id path must be workspace-relative, not absolute")]
+    PathAbsolute,
+    /// Line number was zero (must be 1-based).
+    #[error("mutant id line must be >= 1, got 0")]
+    LineNotPositive,
+    /// Column number was zero (must be 1-based).
+    #[error("mutant id column must be >= 1, got 0")]
+    ColNotPositive,
+    /// Line component of the parsed wire form was not a decimal integer.
+    #[error("mutant id wire line component is not a decimal integer")]
+    LineNotAnInteger,
+    /// Column component of the parsed wire form was not a decimal integer.
+    #[error("mutant id wire column component is not a decimal integer")]
+    ColNotAnInteger,
+    /// Wire form lacked the `::` package separator.
+    #[error("mutant id wire form {0:?} is missing the '::' separator")]
+    MissingSeparator(String),
+    /// Wire form lacked the trailing `:operator` suffix.
+    #[error("mutant id wire form {0:?} is missing the ':<operator>' suffix")]
+    MissingOperator(String),
+    /// Operator literal was outside the recognised closed set.
+    #[error("mutant id operator {0:?} is not in the recognised operator set")]
+    UnknownOperator(String),
+    /// Relative path component contained a `:`. The canonical wire form
+    /// disambiguates the four positional segments by counting `:` from
+    /// the right, so an embedded `:` creates ambiguous path/line/col
+    /// partitions; we reject those forms outright.
+    #[error(
+        "mutant id wire form {0:?} has ':' inside the path segment; the canonical form reserves ':' as a positional separator"
+    )]
+    PathContainsColon(String),
+    /// Package name exceeded the bounded character budget declared by
+    /// [`crate::proof_id::MUTANT_PKG_MAX_LEN`].
+    #[error("mutant id package must not exceed {max} characters, got {found}")]
+    PackageTooLong {
+        /// Length of the rejected package.
+        found: usize,
+        /// Static upper bound declared by the parser.
+        max: usize,
+    },
+    /// Relative path exceeded the bounded character budget declared by
+    /// [`crate::proof_id::MUTANT_PATH_MAX_LEN`].
+    #[error("mutant id path must not exceed {max} characters, got {found}")]
+    PathTooLong {
+        /// Length of the rejected path.
+        found: usize,
+        /// Static upper bound declared by the parser.
+        max: usize,
+    },
+    /// Package segment violated the bounded character policy.
+    #[error("mutant id package is invalid: {0}")]
+    PackageInvalid(#[source] PathSegmentError),
+    /// Relative path segment violated the bounded character policy.
+    #[error("mutant id path is invalid: {0}")]
+    PathInvalid(#[source] PathSegmentError),
+}
+
+/// Errors produced by [`crate::mutants_baseline::MutantsBaseline::parse_str`].
+///
+/// The core is filesystem-free — file existence and read errors are
+/// classified by the lane (`titania-lanes::MutantsLaneError`) before the
+/// lane hands the decoded `&str` to `parse_str`. The variants below are
+/// only ever constructed over validated UTF-8 input.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum MutantsBaselineError {
+    /// Baseline source contained malformed JSON.
+    #[error("mutants baseline JSON parse failed at {path}: {reason}")]
+    JsonParse {
+        /// Source label (typically the path) that failed to parse.
+        path: Box<str>,
+        /// Underlying `serde_json` error description.
+        reason: Box<str>,
+    },
+    /// Baseline source had an unsupported schema version.
+    #[error(
+        "mutants baseline schema version {found} at {path} is not supported (expected {expected})"
+    )]
+    UnsupportedSchemaVersion {
+        /// Source label (typically the path) that failed schema check.
+        path: Box<str>,
+        /// Version observed on disk.
+        found: u32,
+        /// Version this crate understands.
+        expected: u32,
+    },
+    /// Baseline entry's `accepted_by_rule` did not match the contract family
+    /// `mutant-accept/<owner>/<reason>/<expiry>`.
+    #[error(
+        "mutants baseline entry at {path} has invalid accepted_by_rule {accepted_by_rule:?}: {reason}"
+    )]
+    InvalidAcceptedByRule {
+        /// Source label (typically the path) that failed validation.
+        path: Box<str>,
+        /// Offending `accepted_by_rule` literal.
+        accepted_by_rule: Box<str>,
+        /// Reason the rule was rejected.
+        reason: Box<str>,
+    },
+    /// Baseline entry's human-readable `reason` field was empty or
+    /// whitespace-only. The `reason` is the audit trail for the bypass and
+    /// must carry meaningful content.
+    #[error("mutants baseline entry at {path} has invalid reason {reason:?}")]
+    InvalidReason {
+        /// Source label (typically the path) that failed validation.
+        path: Box<str>,
+        /// Offending `reason` literal.
+        reason: Box<str>,
+    },
+}
+
 /// Errors produced by [`crate::WorkspacePath::new`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum WorkspacePathError {
@@ -233,7 +435,8 @@ pub enum ArtifactError {
     },
 }
 
-/// Errors produced by [`crate::CommandEvidence::new`] and [`crate::LaneEvidence::new`].
+/// Errors produced by [`crate::CommandEvidence::new`], [`crate::LaneEvidence::new`],
+/// and the lane outcome wire deserializers.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum OutcomeError {
     /// Captured command argument vector was empty.
@@ -250,6 +453,14 @@ pub enum OutcomeError {
     /// Clean lane evidence carried a non-zero process exit.
     #[error("exit status must be Exited(0) for Clean lanes")]
     NonZeroExit,
+    /// A wire-form `LaneOutcome::Findings` payload carried zero findings.
+    ///
+    /// An empty findings list is not a valid findings outcome on the wire —
+    /// it would otherwise deserialize into a vacuous pass. The constructor
+    /// path is unchanged; this variant is only ever produced by
+    /// [`crate::LaneOutcome`]'s `Deserialize` implementation.
+    #[error("lane outcome Findings payload must contain at least one finding")]
+    EmptyFindings,
 }
 /// Errors produced by [`crate::Report::reject`] and [`crate::Report::pass`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -347,4 +558,134 @@ pub enum CoreError {
     /// Report construction failed.
     #[error(transparent)]
     Report(#[from] ReportError),
+    /// Kani harness identifier construction failed.
+    #[error(transparent)]
+    KaniHarnessId(#[from] KaniHarnessIdError),
+    /// Mutant identifier construction failed.
+    #[error(transparent)]
+    MutantId(#[from] MutantIdError),
+    /// Mutants baseline load failed.
+    #[error(transparent)]
+    MutantsBaseline(#[from] MutantsBaselineError),
+    /// Kani harness inventory load failed.
+    #[error(transparent)]
+    KaniInventory(#[from] KaniInventoryError),
+    /// Mutants outcomes / per-mutant records load failed.
+    #[error(transparent)]
+    MutantsOutcomes(#[from] MutantsOutcomesError),
+}
+
+/// Errors produced by [`crate::kani_inventory::KaniInventory::parse_str`].
+///
+/// The core is filesystem-free — file existence and read errors are
+/// classified by the lane (`titania-lanes::KaniLaneError`) before the
+/// lane hands the decoded `&str` to `parse_str`. The variants below are
+/// only ever constructed over validated UTF-8 input.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum KaniInventoryError {
+    /// Inventory source contained malformed JSON.
+    #[error("kani inventory JSON parse failed at {path}: {reason}")]
+    JsonParse {
+        /// Source label (typically the path) that failed to parse.
+        path: Box<str>,
+        /// Underlying `serde_json` error description.
+        reason: Box<str>,
+    },
+    /// Inventory contained more harnesses than the static upper bound.
+    ///
+    /// Bounded validation rejects pathologically large inputs before
+    /// they can exhaust the parser's allocation budget; the bound is
+    /// generous (one million) so a well-formed inventory never trips it.
+    #[error("kani inventory at {path} has {found} harnesses exceeding the static bound of {max}")]
+    TooManyHarnesses {
+        /// Source label (typically the path) that failed validation.
+        path: Box<str>,
+        /// Number of harnesses observed after deserialise.
+        found: usize,
+        /// Static per-file bound declared by the parser.
+        max: usize,
+    },
+}
+
+/// Errors produced by [`crate::mutants_outcomes::MutantsOutcomes::parse_str`]
+/// and [`crate::mutants_outcomes::MutantsRecords::parse_str`].
+///
+/// The core is filesystem-free — file existence and read errors are
+/// classified by the lane (`titania-lanes::MutantsLaneError`) before the
+/// lane hands the decoded `&str` to `parse_str`. The variants below are
+/// only ever constructed over validated UTF-8 input.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum MutantsOutcomesError {
+    /// Outcomes source contained malformed JSON.
+    #[error("mutants outcomes JSON parse failed at {path}: {reason}")]
+    OutcomesJsonParse {
+        /// Source label (typically the path) that failed to parse.
+        path: Box<str>,
+        /// Underlying `serde_json` error description.
+        reason: Box<str>,
+    },
+    /// Per-mutant records source contained malformed JSON.
+    #[error("mutants records JSON parse failed at {path}: {reason}")]
+    RecordsJsonParse {
+        /// Source label (typically the path) that failed to parse.
+        path: Box<str>,
+        /// Underlying `serde_json` error description.
+        reason: Box<str>,
+    },
+    /// Mutant record had no source span (line/column unavailable).
+    ///
+    /// `MutantId::new` requires positive 1-based line and column; a
+    /// record that omits the start point cannot be promoted to a typed
+    /// id and is rejected up front rather than coerced.
+    #[error("mutant record {mutation_name:?} at {path} has no source span start point")]
+    MissingSourceSpan {
+        /// Source label (typically the path) that failed validation.
+        path: Box<str>,
+        /// cargo-mutants record name for the offending entry.
+        mutation_name: Box<str>,
+    },
+    /// Mutant record's `file` did not match the expected
+    /// `crates/<package>/...` prefix and is therefore outside the
+    /// package directory.
+    #[error("mutant record {mutation_name:?} at {path} has file outside its declared package")]
+    PathOutsidePackage {
+        /// Source label (typically the path) that failed validation.
+        path: Box<str>,
+        /// cargo-mutants record name for the offending entry. The
+        /// `file` and `package` are encoded in the cargo-mutants
+        /// record name per the
+        /// `crates/<package>/<file>:<line>:<col>: ...` convention so
+        /// the diagnostic does not duplicate them.
+        mutation_name: Box<str>,
+    },
+    /// Mutant record's `MutantId::new` rejected the assembled fields.
+    #[error("mutant record {mutation_name:?} at {path} has invalid id: {reason}")]
+    InvalidMutantId {
+        /// Source label (typically the path) that failed validation.
+        path: Box<str>,
+        /// cargo-mutants record name for the offending entry.
+        mutation_name: Box<str>,
+        /// Underlying [`crate::MutantIdError`] description.
+        reason: Box<str>,
+    },
+    /// Outcomes document carried more entries than the static upper bound.
+    #[error("mutants outcomes at {path} has {found} entries exceeding the static bound of {max}")]
+    TooManyOutcomes {
+        /// Source label (typically the path) that failed validation.
+        path: Box<str>,
+        /// Number of outcome entries observed after deserialise.
+        found: usize,
+        /// Static per-file bound declared by the parser.
+        max: usize,
+    },
+    /// Per-mutant records list carried more entries than the static upper bound.
+    #[error("mutants records at {path} has {found} records exceeding the static bound of {max}")]
+    TooManyRecords {
+        /// Source label (typically the path) that failed validation.
+        path: Box<str>,
+        /// Number of records observed after deserialise.
+        found: usize,
+        /// Static per-file bound declared by the parser.
+        max: usize,
+    },
 }

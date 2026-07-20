@@ -2,14 +2,21 @@
 //!
 //! Each lane produces exactly one [`LaneOutcome`]: clean, findings, failure,
 //! or skipped. Findings with only informational effect are treated as pass-shaped.
+//!
+//! Wire-format invariants are enforced by hand-written `Deserialize` impls:
+//! [`CommandEvidence`] cannot bypass `argv[0] == executable`, [`LaneEvidence`]
+//! cannot promote a non-success termination into clean evidence, and
+//! [`LaneOutcome::Findings`] cannot deserialize an empty findings list into a
+//! vacuous pass. Constructors are unchanged.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
     digest::Digest,
     error::OutcomeError,
     failure::{LaneFailure, ProcessTermination},
     finding::Finding,
+    proof_id::ToolKind,
 };
 
 /// Why a lane was skipped.
@@ -23,10 +30,14 @@ pub enum SkipReason {
     NotApplicable,
     /// The lane is disabled in the policy configuration.
     PolicyDisabled,
+    /// The lane's required external tool is not installed on the host, or its
+    /// installed version is older than the contract floor. The payload names
+    /// which tool is unavailable (per v1.5 spec §7).
+    ToolUnavailable(ToolKind),
 }
 
 /// Evidence attached to a clean lane outcome.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LaneEvidence {
     command: CommandEvidence,
     tool_version: String,
@@ -77,6 +88,28 @@ impl LaneEvidence {
     }
 }
 
+/// Wire mirror for [`LaneEvidence`] used only by the `Deserialize` impl.
+///
+/// Mirrors the wire shape byte-for-byte so the deserializer can run the same
+/// constructor invariants as the public smart constructor
+/// ([`LaneEvidence::new`]). Keeping the mirror local avoids leaking private
+/// field visibility and lets the public API stay sealed behind `new`.
+#[derive(Deserialize)]
+struct LaneEvidenceWire {
+    command: CommandEvidence,
+    tool_version: String,
+    exit_status: ProcessTermination,
+    parsed_result_digest: Digest,
+}
+
+impl<'de> Deserialize<'de> for LaneEvidence {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = LaneEvidenceWire::deserialize(deserializer)?;
+        Self::new(wire.command, wire.tool_version, wire.exit_status, wire.parsed_result_digest)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 /// How a command's findings were produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandMode {
@@ -89,7 +122,7 @@ pub enum CommandMode {
 }
 
 /// Evidence of the command that was executed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommandEvidence {
     executable: String,
     argv: Box<[String]>,
@@ -157,6 +190,28 @@ impl CommandEvidence {
     }
 }
 
+/// Wire mirror for [`CommandEvidence`] used only by the `Deserialize` impl.
+///
+/// Mirrors the wire shape byte-for-byte so the deserializer can run the
+/// constructor invariant (argv non-empty, argv[0] == executable). The
+/// `mode` field is optional in the wire format and re-emitted by
+/// [`CommandEvidence::Serialize`] when present, so the mirror omits fields
+/// the deserializer does not need to enforce.
+#[derive(Deserialize)]
+struct CommandEvidenceWire {
+    executable: String,
+    argv: Box<[String]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<CommandMode>,
+}
+
+impl<'de> Deserialize<'de> for CommandEvidence {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = CommandEvidenceWire::deserialize(deserializer)?;
+        Self::with_mode(wire.executable, wire.argv, wire.mode).map_err(serde::de::Error::custom)
+    }
+}
+
 fn argv0_mismatch(expected: String, found: &str) -> OutcomeError {
     OutcomeError::Argv0Mismatch { expected, found: found.to_owned() }
 }
@@ -217,13 +272,29 @@ impl Serialize for LaneOutcome {
 impl<'de> Deserialize<'de> for LaneOutcome {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let wire = LaneOutcomeReadWire::deserialize(deserializer)?;
-        Ok(match wire {
-            LaneOutcomeReadWire::Clean { evidence } => Self::Clean { evidence },
-            LaneOutcomeReadWire::Findings(findings) => Self::Findings { findings },
-            LaneOutcomeReadWire::Failed(failure) => Self::Failed { failure },
-            LaneOutcomeReadWire::Skipped(reason) => Self::Skipped { reason },
-        })
+        // Reject empty findings lists on the wire so a crafted artifact
+        // cannot deserialize into a vacuous pass. The constructor path
+        // is unchanged: empty findings via in-process construction
+        // remains the caller's responsibility.
+        match wire {
+            LaneOutcomeReadWire::Clean { evidence } => Ok(Self::Clean { evidence }),
+            LaneOutcomeReadWire::Findings(findings) => findings_non_empty(findings)
+                .map(|findings| Self::Findings { findings })
+                .map_err(serde::de::Error::custom),
+            LaneOutcomeReadWire::Failed(failure) => Ok(Self::Failed { failure }),
+            LaneOutcomeReadWire::Skipped(reason) => Ok(Self::Skipped { reason }),
+        }
     }
+}
+
+/// Reject an empty wire-form findings list, mapping the typed
+/// [`OutcomeError::EmptyFindings`] into a `serde::de::Error` for the
+/// `Deserialize` impl. Extracted to keep the parent `Deserialize` flat.
+///
+/// # Errors
+/// - [`OutcomeError::EmptyFindings`] when `findings` is empty.
+fn findings_non_empty(findings: Box<[Finding]>) -> Result<Box<[Finding]>, OutcomeError> {
+    if findings.is_empty() { Err(OutcomeError::EmptyFindings) } else { Ok(findings) }
 }
 
 impl LaneOutcome {

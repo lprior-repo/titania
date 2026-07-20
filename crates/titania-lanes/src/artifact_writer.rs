@@ -56,9 +56,6 @@ pub enum ArtifactWriterError {
         /// Source I/O error.
         source: io::Error,
     },
-    /// The caller supplied a future scope variant this writer does not know.
-    #[error("unsupported gate scope for lane artifact output")]
-    UnsupportedScope,
 }
 
 /// Write one lane outcome to `.titania/out/<scope>/<lane>.json`.
@@ -79,7 +76,7 @@ pub fn write_lane_artifact(
 ) -> Result<PathBuf, ArtifactWriterError> {
     validate_target_root(target_root)?;
 
-    let artifact_dir = target_root.join(".titania").join("out").join(scope_dir(scope)?);
+    let artifact_dir = target_root.join(".titania").join("out").join(scope_dir(scope));
     fs::create_dir_all(&artifact_dir)
         .map_err(|source| ArtifactWriterError::CreateDir { path: artifact_dir.clone(), source })?;
 
@@ -120,17 +117,12 @@ fn validate_target_root(target_root: &Path) -> Result<(), ArtifactWriterError> {
 }
 
 /// Return the stable directory name for a v1 gate scope.
-///
-/// # Errors
-///
-/// Returns [`ArtifactWriterError::UnsupportedScope`] for a future `GateScope`
-/// variant this writer does not yet know how to place on disk.
-const fn scope_dir(scope: GateScope) -> Result<&'static str, ArtifactWriterError> {
+const fn scope_dir(scope: GateScope) -> &'static str {
     match scope {
-        GateScope::Edit => Ok("edit"),
-        GateScope::Prepush => Ok("prepush"),
-        GateScope::Release => Ok("release"),
-        _ => Err(ArtifactWriterError::UnsupportedScope),
+        GateScope::Edit => "edit",
+        GateScope::Prepush => "prepush",
+        GateScope::Release => "release",
+        GateScope::Full => "full",
     }
 }
 
@@ -146,6 +138,8 @@ const fn lane_stem(lane: Lane) -> &'static str {
         Lane::Test => "test",
         Lane::Deny => "deny",
         Lane::Build => "build",
+        Lane::Kani => "kani",
+        Lane::Mutants => "mutants",
     }
 }
 

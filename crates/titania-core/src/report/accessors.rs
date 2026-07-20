@@ -29,7 +29,7 @@ impl Report {
     ///   `gate_failures` are empty.
     /// - [`ReportError::PerLaneScopeMismatch`] if `per_lane`'s lane
     ///   identities contain a duplicate, appear out of v1 DAG order, or
-    ///   include a lane not in the v1 lane DAG.
+    ///   include a lane not in `scope`'s canonical lane DAG.
     ///
     /// # Notes
     /// Per v1 §10, a `Reject` is only required to have at least one of
@@ -37,12 +37,13 @@ impl Report {
     /// empty for CodeOnly/GateOnly rejects; the v1 constructor permits
     /// it. Pass reports still require non-empty `per_lane`.
     pub fn reject(
+        scope: crate::GateScope,
         code_findings: Box<[Finding]>,
         gate_failures: Box<[LaneFailure]>,
         per_lane: Box<[PerLaneEntry]>,
     ) -> Result<Self, ReportError> {
         check_reject_not_empty(&code_findings, &gate_failures)?;
-        validate_per_lane_reject(&per_lane)?;
+        validate_per_lane_reject(scope, &per_lane)?;
         Ok(Self(ReportInner::Reject { code_findings, gate_failures, per_lane }))
     }
 

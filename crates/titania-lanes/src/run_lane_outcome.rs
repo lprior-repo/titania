@@ -160,16 +160,18 @@ const fn containing_scopes(lane: Lane) -> &'static [GateScope] {
         | Lane::AstGrep
         | Lane::Dylint
         | Lane::PanicScan
-        | Lane::PolicyScan => EDIT_PREPUSH_RELEASE,
-        Lane::Test | Lane::Deny => PREPUSH_RELEASE,
-        Lane::Build => RELEASE_ONLY,
+        | Lane::PolicyScan => EDIT_PREPUSH_RELEASE_FULL,
+        Lane::Test | Lane::Deny => PREPUSH_RELEASE_FULL,
+        Lane::Build => RELEASE_FULL,
+        Lane::Kani | Lane::Mutants => FULL_ONLY,
     }
 }
-
-const EDIT_PREPUSH_RELEASE: &[GateScope] =
-    &[GateScope::Edit, GateScope::Prepush, GateScope::Release];
-const PREPUSH_RELEASE: &[GateScope] = &[GateScope::Prepush, GateScope::Release];
-const RELEASE_ONLY: &[GateScope] = &[GateScope::Release];
+const EDIT_PREPUSH_RELEASE_FULL: &[GateScope] =
+    &[GateScope::Edit, GateScope::Prepush, GateScope::Release, GateScope::Full];
+const PREPUSH_RELEASE_FULL: &[GateScope] =
+    &[GateScope::Prepush, GateScope::Release, GateScope::Full];
+const RELEASE_FULL: &[GateScope] = &[GateScope::Release, GateScope::Full];
+const FULL_ONLY: &[GateScope] = &[GateScope::Full];
 
 const fn lane_cli_name(lane: Lane) -> &'static str {
     match lane {
@@ -183,5 +185,28 @@ const fn lane_cli_name(lane: Lane) -> &'static str {
         Lane::Test => "test",
         Lane::Deny => "deny",
         Lane::Build => "build",
+        Lane::Kani => "kani",
+        Lane::Mutants => "mutants",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GateScope, containing_scopes};
+
+    const SCOPES: &[GateScope] =
+        &[GateScope::Edit, GateScope::Prepush, GateScope::Release, GateScope::Full];
+
+    #[test]
+    fn containing_scopes_exactly_match_gate_membership() {
+        GateScope::Full.lanes().iter().copied().for_each(|lane| {
+            let expected = SCOPES
+                .iter()
+                .copied()
+                .filter(|scope| scope.lanes().contains(&lane))
+                .collect::<Vec<_>>();
+
+            assert_eq!(containing_scopes(lane), expected.as_slice(), "lane {lane:?}");
+        });
     }
 }

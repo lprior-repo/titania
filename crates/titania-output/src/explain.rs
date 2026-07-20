@@ -41,7 +41,8 @@ struct Row {
 ///
 /// # Errors
 /// Returns [`OutputError::UnknownRule`] when `rule_id` is syntactically valid
-/// but absent from the finite catalog and not a dynamic `CLIPPY_*` rule.
+/// but absent from the finite catalog and not a dynamic `CLIPPY_*`,
+/// `PROOF_KANI_*`, or `MUTANT_*` rule.
 pub fn explain_rule(rule_id: &str) -> Result<RuleExplanation, OutputError> {
     CATALOG
         .lines()
@@ -49,6 +50,8 @@ pub fn explain_rule(rule_id: &str) -> Result<RuleExplanation, OutputError> {
         .find(|row| row.rule_id == rule_id)
         .map(row_entry)
         .or_else(|| dynamic_clippy_rule(rule_id))
+        .or_else(|| dynamic_proof_kani_rule(rule_id))
+        .or_else(|| dynamic_mutant_rule(rule_id))
         .ok_or_else(|| OutputError::unknown_rule(rule_id))
 }
 
@@ -106,5 +109,104 @@ fn dynamic_clippy_rule(rule_id: &str) -> Option<RuleExplanation> {
         repair: Cow::Borrowed("RequiresHumanReview"),
         example_violation: Cow::Owned(format!("code triggering `{pattern}`")),
         example_repair: Cow::Borrowed("change the code so Clippy no longer emits the lint"),
+    })
+}
+
+fn dynamic_proof_kani_rule(rule_id: &str) -> Option<RuleExplanation> {
+    let suffix = rule_id.strip_prefix("PROOF_KANI_").filter(|s| !s.is_empty())?;
+    let (effect, description) = match suffix {
+        "PASS" => ("Informational", "Per-harness Kani verification success."),
+        "FAIL" => ("Reject", "Per-harness Kani verification failure."),
+        "BLOCKED" => ("Reject", "Kani harness blocked by cgroup OOM or wallclock timeout."),
+        "NOT_RUN" => ("Informational", "Kani lane skipped because cargo-kani is missing."),
+        "UNSUPPORTED" => {
+            ("Informational", "Kani harness disabled by an unsupported-feature warning.")
+        }
+        "INFRA" => ("Reject", "Kani infrastructure failure (spawn, parse, or tool version drift)."),
+        _ => {
+            let lower = suffix.to_ascii_lowercase();
+            let pattern = format!("kani::{lower}");
+            return Some(RuleExplanation {
+                rule_id: Cow::Owned(rule_id.to_owned()),
+                description: Cow::Owned(format!(
+                    "Per-harness Kani verification verdict for `{lower}`."
+                )),
+                source: Cow::Borrowed("kani"),
+                pattern: Cow::Owned(pattern),
+                effect: Cow::Borrowed("Reject"),
+                repair: Cow::Borrowed("RequiresHumanReview"),
+                example_violation: Cow::Owned(format!(
+                    "Kani harness `{lower}` produced a failing verification verdict."
+                )),
+                example_repair: Cow::Borrowed(
+                    "add a regression test or fix the harness contract so the harness verifies",
+                ),
+            });
+        }
+    };
+    let pattern = format!("kani::{}", suffix.to_ascii_lowercase());
+    Some(RuleExplanation {
+        rule_id: Cow::Owned(rule_id.to_owned()),
+        description: Cow::Owned(description.to_owned()),
+        source: Cow::Borrowed("kani"),
+        pattern: Cow::Owned(pattern),
+        effect: Cow::Borrowed(effect),
+        repair: Cow::Borrowed("RequiresHumanReview"),
+        example_violation: Cow::Owned(format!(
+            "Kani harness `{suffix}` produced a non-SUCCESSFUL verdict."
+        )),
+        example_repair: Cow::Borrowed(
+            "add a regression test or fix the harness contract so the harness verifies",
+        ),
+    })
+}
+
+fn dynamic_mutant_rule(rule_id: &str) -> Option<RuleExplanation> {
+    if !rule_id.starts_with("MUTANT_") {
+        return None;
+    }
+    if let Some(suffix) = rule_id.strip_prefix("MUTANT_SURVIVED_").filter(|s| !s.is_empty()) {
+        let pattern = format!("cargo-mutants survivor {suffix}");
+        return Some(RuleExplanation {
+            rule_id: Cow::Owned(rule_id.to_owned()),
+            description: Cow::Owned(format!(
+                "cargo-mutants survivor `{suffix}` not covered by the mutants baseline."
+            )),
+            source: Cow::Borrowed("mutants"),
+            pattern: Cow::Owned(pattern),
+            effect: Cow::Borrowed("Reject"),
+            repair: Cow::Borrowed("RequiresHumanReview"),
+            example_violation: Cow::Owned(format!(
+                "mutation `{suffix}` survives cargo mutants without a baseline bypass"
+            )),
+            example_repair: Cow::Borrowed(
+                "add a regression test that kills the mutant, or add a mutant-accept/<owner>/<reason>/<expiry> entry to .titania/profiles/strict-ai/mutants.baseline.json",
+            ),
+        });
+    }
+    let (effect, description) = match rule_id {
+        "MUTANT_SURVIVED" => {
+            ("Reject", "cargo-mutants survivor not covered by the mutants baseline.")
+        }
+        "MUTANT_SURVIVED_INFRA" => (
+            "Reject",
+            "cargo-mutants infrastructure failure (spawn, list parse, or version drift).",
+        ),
+        "MUTANT_BASELINE_MISSING" => {
+            ("Reject", "mutants baseline is missing; run scripts/dev/mutants-bootstrap.sh.")
+        }
+        _ => return None,
+    };
+    Some(RuleExplanation {
+        rule_id: Cow::Owned(rule_id.to_owned()),
+        description: Cow::Owned(description.to_owned()),
+        source: Cow::Borrowed("mutants"),
+        pattern: Cow::Owned(rule_id.to_owned()),
+        effect: Cow::Borrowed(effect),
+        repair: Cow::Borrowed("RequiresHumanReview"),
+        example_violation: Cow::Owned(format!("mutant event {rule_id} observed")),
+        example_repair: Cow::Borrowed(
+            "add a regression test that kills the mutant, or bootstrap a baseline entry with owner/reason/expiry",
+        ),
     })
 }

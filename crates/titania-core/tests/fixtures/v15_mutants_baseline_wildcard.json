@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "mutation_id": "*",
+      "accepted_by_rule": "wildcard-bypass/test/never",
+      "reason": "wildcard bypass test",
+      "expires_on_unix": null
+    }
+  ]
+}

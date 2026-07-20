@@ -12,6 +12,11 @@ mod run_lane_outcome;
 #[path = "run_lane_sources.rs"]
 pub(super) mod run_lane_sources;
 
+#[path = "run_lane_kani.rs"]
+pub(super) mod run_lane_kani;
+#[path = "run_lane_mutants/mod.rs"]
+pub mod run_lane_mutants;
+
 use thiserror::Error;
 use titania_core::{Lane, LaneFailure, LaneOutcome, TargetProject};
 
@@ -77,6 +82,10 @@ enum RunLaneError {
     RuleId(#[from] RuleIdError),
     #[error(transparent)]
     SourceWalk(#[from] SourceWalkError),
+    #[error(transparent)]
+    Kani(#[from] run_lane_kani::KaniLaneError),
+    #[error(transparent)]
+    Mutants(#[from] run_lane_mutants::MutantsLaneError),
     #[error("{0}")]
     Internal(String),
 }
@@ -131,10 +140,30 @@ fn non_cargo_outcome(target: &TargetProject, lane: Lane) -> Result<LaneOutcome, 
         Lane::PanicScan => Ok(panic_scan_outcome(target)),
         Lane::PolicyScan => policy_scan_outcome(target),
         Lane::Deny => deny_outcome(target),
+        Lane::Kani => kani_outcome(target),
+        Lane::Mutants => mutants_outcome(target),
         Lane::Fmt | Lane::Compile | Lane::Clippy | Lane::Test | Lane::Build => {
             Err(RunLaneError::Internal(format!("cargo lane {} was not dispatched", lane.name())))
         }
     }
+}
+
+/// Run the Kani bounded model-check lane.
+///
+/// # Errors
+/// Returns [`RunLaneError`] when the cgroup-capped `cargo kani` invocation
+/// or the harness inventory parse fails.
+fn kani_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
+    run_lane_kani::outcome(target).map_err(Into::into)
+}
+
+/// Run the cargo-mutants test-survivor lane.
+///
+/// # Errors
+/// Returns [`RunLaneError`] when baseline loading, the cgroup-capped
+/// `cargo mutants` invocation, or the survivor-vs-baseline diff fails.
+fn mutants_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
+    run_lane_mutants::outcome(target).map_err(Into::into)
 }
 
 /// Run the embedded ast-grep lane.

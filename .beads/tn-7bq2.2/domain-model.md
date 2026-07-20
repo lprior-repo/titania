@@ -1,0 +1,1 @@
+../tn-7bq2.1/domain-model.md

@@ -1,15 +1,17 @@
-//! Integration test for `.moon/tasks/all.yml` — v1 §13 task DAG.
+//! Integration test for `.moon/tasks/all.yml` — v1/v1.5 task DAG.
 //!
-//! Asserts the exact v1-spec contract for all 13 required tasks (10 lane +
-//! 3 gate composites) co-exist with legacy cargo-native tasks. The test
+//! Asserts the exact task contract for all 16 required tasks (12 lane +
+//! 4 gate composites) co-exist with legacy cargo-native tasks. The test
 //! intentionally fails RED when v1 tasks are absent, proving the parser and
 //! assertion logic work (not a silent pass).
 //!
-//! Key contracts from §13:
+//! Key contracts:
 //!   • deps use `~:name` (Moon local task dep syntax)
 //!   • gate tasks have NO toolchains key
 //!   • compile fan-out: clippy, test, build depend on `~:titania-compile`
-//!   • env/inputs/outputs declared per §13 YAML
+//!   • every Full lane declares `.titania/out/full/<lane>.json`
+//!   • heavy build/dylint/Kani/mutants lanes use distinct target dirs
+//!   • env/inputs/outputs are declared exactly
 
 use std::collections::HashMap;
 
@@ -376,7 +378,7 @@ fn parse_bool(s: &str) -> bool {
 // v1 §13 task contract assertions.
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// All 13 required v1 tasks from §13 (10 lane + 3 gate composites).
+/// All required v1/v1.5 tasks (12 lane + 4 gate composites).
 const REQUIRED_TASKS: &[&str] = &[
     "titania-fmt",
     "titania-compile",
@@ -388,9 +390,12 @@ const REQUIRED_TASKS: &[&str] = &[
     "titania-test",
     "titania-deny",
     "titania-build",
+    "titania-kani",
+    "titania-mutants",
     "gate-edit",
     "gate-prepush",
     "gate-release",
+    "gate-full",
 ];
 
 const LANE_COMMANDS: &[(&str, &str)] = &[
@@ -406,7 +411,7 @@ const LANE_COMMANDS: &[(&str, &str)] = &[
     ("titania-ast-grep", "cargo run --frozen --quiet -p titania-check -- run-lane ast-grep"),
     (
         "titania-dylint",
-        "PATH=\"$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH\" cargo run --frozen --quiet -p titania-check -- run-lane dylint",
+        "PATH=\"$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH\" CARGO_TARGET_DIR=\".titania/cache/dylint\" cargo run --frozen --quiet -p titania-check -- run-lane dylint",
     ),
     ("titania-panic-scan", "cargo run --frozen --quiet -p titania-check -- run-lane panic-scan"),
     ("titania-policy-scan", "cargo run --frozen --quiet -p titania-check -- run-lane policy-scan"),
@@ -417,13 +422,35 @@ const LANE_COMMANDS: &[(&str, &str)] = &[
     ("titania-deny", "cargo run --frozen --quiet -p titania-check -- run-lane deny"),
     (
         "titania-build",
-        "CARGO_TARGET_DIR=\".titania/cache/release\" cargo run --frozen --quiet -p titania-check -- run-lane build",
+        "CARGO_TARGET_DIR=\".titania/cache/build\" cargo run --frozen --quiet -p titania-check -- run-lane build",
     ),
 ];
 
+const LANE_SCRIPTS: &[(&str, &str)] = &[
+    (
+        "titania-kani",
+        "CARGO_TARGET_DIR=\".titania/cache/kani\" cargo run --frozen --quiet -p titania-check -- run-lane kani",
+    ),
+    (
+        "titania-mutants",
+        "CARGO_TARGET_DIR=\".titania/cache/mutants\" cargo run --frozen --quiet -p titania-check -- run-lane mutants",
+    ),
+];
+
+const HEAVY_TARGET_DIRS: &[(&str, &str)] = &[
+    ("titania-build", ".titania/cache/build"),
+    ("titania-dylint", ".titania/cache/dylint"),
+    ("titania-kani", ".titania/cache/kani"),
+    ("titania-mutants", ".titania/cache/mutants"),
+];
+
 /// Expected commands for each gate composite.
-const GATE_COMMANDS: &[(&str, &str)] =
-    &[("gate-edit", "edit"), ("gate-prepush", "prepush"), ("gate-release", "release")];
+const GATE_COMMANDS: &[(&str, &str)] = &[
+    ("gate-edit", "edit"),
+    ("gate-prepush", "prepush"),
+    ("gate-release", "release"),
+    ("gate-full", "full"),
+];
 
 /// Lane tasks that MUST have `toolchains: [rust]` (§13).
 const RUST_TOOLCHAIN_TASKS: &[&str] = &[
@@ -433,14 +460,17 @@ const RUST_TOOLCHAIN_TASKS: &[&str] = &[
     "titania-dylint",
     "titania-test",
     "titania-build",
+    "titania-kani",
+    "titania-mutants",
 ];
 
 /// Lane tasks that MUST NOT have a `toolchains` key (§13).
 const NO_TOOLCHAIN_TASKS: &[&str] =
     &["titania-ast-grep", "titania-panic-scan", "titania-policy-scan", "titania-deny"];
 
-/// Gate tasks that MUST NOT have a `toolchains` key (§13).
-const GATE_NO_TOOLCHAIN_TASKS: &[&str] = &["gate-edit", "gate-prepush", "gate-release"];
+/// Gate tasks that MUST NOT have a `toolchains` key.
+const GATE_NO_TOOLCHAIN_TASKS: &[&str] =
+    &["gate-edit", "gate-prepush", "gate-release", "gate-full"];
 
 /// Tasks that depend on `~:titania-compile` (§13, compile fan-out).
 const COMPILE_DEPS: &[&str] = &["titania-clippy", "titania-test", "titania-build"];
@@ -461,6 +491,7 @@ const GATE_DEPS: &[(&str, &[&str])] = &[
     ),
     ("gate-prepush", &["gate-edit", "titania-test", "titania-deny"]),
     ("gate-release", &["gate-prepush", "titania-build"]),
+    ("gate-full", &["gate-release", "titania-kani", "titania-mutants"]),
 ];
 
 /// Expected inputs per v1 lane task (§13).
@@ -508,9 +539,27 @@ const LANE_INPUTS: &[(&str, &[&str])] = &[
     ("titania-test", &["@globs(sources)", "@globs(tests)"]),
     ("titania-deny", &["@globs(sources)", "Cargo.lock", "deny.toml"]),
     ("titania-build", &["@globs(sources)"]),
+    (
+        "titania-kani",
+        &[
+            "@globs(sources)",
+            "Cargo.toml",
+            "Cargo.lock",
+            ".titania/profiles/strict-ai/mutants.baseline.json",
+        ],
+    ),
+    (
+        "titania-mutants",
+        &[
+            "@globs(sources)",
+            "Cargo.toml",
+            "Cargo.lock",
+            ".titania/profiles/strict-ai/mutants.baseline.json",
+        ],
+    ),
 ];
 
-/// Expected outputs per v1 lane task (§13).
+/// Expected outputs per lane task.
 const LANE_OUTPUTS: &[(&str, &[&str])] = &[
     (
         "titania-fmt",
@@ -518,6 +567,7 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/fmt.json",
             ".titania/out/prepush/fmt.json",
             ".titania/out/release/fmt.json",
+            ".titania/out/full/fmt.json",
         ],
     ),
     (
@@ -526,6 +576,7 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/compile.json",
             ".titania/out/prepush/compile.json",
             ".titania/out/release/compile.json",
+            ".titania/out/full/compile.json",
         ],
     ),
     (
@@ -534,6 +585,7 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/clippy.json",
             ".titania/out/prepush/clippy.json",
             ".titania/out/release/clippy.json",
+            ".titania/out/full/clippy.json",
         ],
     ),
     (
@@ -542,6 +594,7 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/ast-grep.json",
             ".titania/out/prepush/ast-grep.json",
             ".titania/out/release/ast-grep.json",
+            ".titania/out/full/ast-grep.json",
         ],
     ),
     (
@@ -550,6 +603,7 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/dylint.json",
             ".titania/out/prepush/dylint.json",
             ".titania/out/release/dylint.json",
+            ".titania/out/full/dylint.json",
         ],
     ),
     (
@@ -558,6 +612,7 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/panic-scan.json",
             ".titania/out/prepush/panic-scan.json",
             ".titania/out/release/panic-scan.json",
+            ".titania/out/full/panic-scan.json",
         ],
     ),
     (
@@ -566,17 +621,41 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/policy-scan.json",
             ".titania/out/prepush/policy-scan.json",
             ".titania/out/release/policy-scan.json",
+            ".titania/out/full/policy-scan.json",
         ],
     ),
-    ("titania-test", &[".titania/out/prepush/test.json", ".titania/out/release/test.json"]),
-    ("titania-deny", &[".titania/out/prepush/deny.json", ".titania/out/release/deny.json"]),
-    ("titania-build", &[".titania/out/release/build.json"]),
+    (
+        "titania-test",
+        &[
+            ".titania/out/prepush/test.json",
+            ".titania/out/release/test.json",
+            ".titania/out/full/test.json",
+        ],
+    ),
+    (
+        "titania-deny",
+        &[
+            ".titania/out/prepush/deny.json",
+            ".titania/out/release/deny.json",
+            ".titania/out/full/deny.json",
+        ],
+    ),
+    ("titania-build", &[".titania/out/release/build.json", ".titania/out/full/build.json"]),
+    ("titania-kani", &[".titania/out/full/kani.json"]),
+    ("titania-mutants", &[".titania/out/full/mutants.json"]),
 ];
 
 /// Lane tasks keep cache/PATH exports inline so Moon shell expansion, not YAML
 /// env interpolation, controls target directories and rustup availability.
-const LANE_EMPTY_ENV: &[&str] =
-    &["titania-compile", "titania-clippy", "titania-dylint", "titania-test", "titania-build"];
+const LANE_EMPTY_ENV: &[&str] = &[
+    "titania-compile",
+    "titania-clippy",
+    "titania-dylint",
+    "titania-test",
+    "titania-build",
+    "titania-kani",
+    "titania-mutants",
+];
 
 const VET_INPUTS: &[&str] = &["Cargo.lock", "supply-chain/**"];
 
@@ -726,6 +805,63 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
+    for (task_name, expected_script) in LANE_SCRIPTS {
+        let task = task_map
+            .get(*task_name)
+            .with_context(|| format!("lane task '{task_name}' not found in parsed tasks"))?;
+        assert_eq!(
+            task.script.as_deref(),
+            Some(*expected_script),
+            "lane '{task_name}' must have script '{expected_script}' (got: {:?})",
+            task.script
+        );
+    }
+
+    for (task_name, target_dir) in HEAVY_TARGET_DIRS {
+        let task = task_map
+            .get(*task_name)
+            .with_context(|| format!("heavy lane task '{task_name}' not found"))?;
+        let execution = task
+            .command
+            .as_deref()
+            .or(task.script.as_deref())
+            .with_context(|| format!("heavy lane task '{task_name}' must be executable"))?;
+        let expected = format!("CARGO_TARGET_DIR=\"{target_dir}\"");
+        assert!(
+            execution.contains(&expected),
+            "heavy lane '{task_name}' must isolate Cargo output in {target_dir}; got: {execution}"
+        );
+        assert_eq!(
+            execution.matches("CARGO_TARGET_DIR=").count(),
+            1,
+            "heavy lane '{task_name}' must set exactly one target directory; got: {execution}"
+        );
+    }
+    assert_eq!(
+        HEAVY_TARGET_DIRS
+            .iter()
+            .map(|(_, target_dir)| *target_dir)
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        HEAVY_TARGET_DIRS.len(),
+        "build, dylint, Kani, and mutants target directories must be pairwise distinct"
+    );
+
+    let policy_scan =
+        task_map.get("titania-policy-scan").context("lane task 'titania-policy-scan' not found")?;
+    assert_eq!(
+        policy_scan.env.get("CARGO_HOME").map(String::as_str),
+        Some("$workspaceRoot/.titania/hermetic/cargo-home")
+    );
+    assert_eq!(
+        policy_scan.env.get("RUSTUP_HOME").map(String::as_str),
+        Some("$workspaceRoot/.titania/hermetic/rustup-home")
+    );
+    assert!(
+        !MOON_TASKS.contains("${workspace.root}"),
+        "unsupported workspace.root interpolation must not appear"
+    );
+
     // ── 5. Assert gate commands ────────────────────────────────────────────
     for (gate_name, scope) in GATE_COMMANDS {
         let task = task_map
@@ -837,14 +973,13 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 12. Assert ALL 13 v1 tasks have a command ─────────────────────────
+    // ── 12. Assert every required task has a command or script ─────────────
     for task_name in REQUIRED_TASKS {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;
         assert!(
-            task.command.is_some(),
-            "task '{task_name}' must have a `command:` field (got: {:?})",
-            task.command
+            task.command.is_some() || task.script.is_some(),
+            "task '{task_name}' must have a `command:` or `script:` field"
         );
     }
 
@@ -909,7 +1044,7 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 16. Assert runInCI: true for all 13 v1 tasks ──────────────────────
+    // ── 16. Assert runInCI: true for every required task ───────────────────
     for task_name in REQUIRED_TASKS {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;

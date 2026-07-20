@@ -492,7 +492,8 @@ fn report_reject_constructs_and_round_trips() -> std::result::Result<(), Box<dyn
         })
         .collect();
 
-    let report = Report::reject(code_findings, gate_failures, per_lane)?;
+    let report =
+        Report::reject(titania_core::GateScope::Release, code_findings, gate_failures, per_lane)?;
     assert!(report.is_reject());
     assert_eq!(report.reject_kind(), Some(titania_core::RejectKind::CodeOnly));
 
@@ -524,7 +525,8 @@ fn report_reject_code_only_with_empty_per_lane_round_trips()
     let gate_failures: Box<[titania_core::LaneFailure]> = Box::new([]);
     let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([]);
 
-    let report = Report::reject(code_findings, gate_failures, per_lane)?;
+    let report =
+        Report::reject(titania_core::GateScope::Release, code_findings, gate_failures, per_lane)?;
     assert!(report.is_reject());
     assert_eq!(report.reject_kind(), Some(titania_core::RejectKind::CodeOnly));
     assert!(report.per_lane().unwrap().is_empty());
@@ -547,7 +549,8 @@ fn report_reject_gate_only_with_empty_per_lane_round_trips()
     let gate_failures: Box<[titania_core::LaneFailure]> = Box::new([failure]);
     let per_lane: Box<[titania_core::PerLaneEntry]> = Box::new([]);
 
-    let report = Report::reject(code_findings, gate_failures, per_lane)?;
+    let report =
+        Report::reject(titania_core::GateScope::Release, code_findings, gate_failures, per_lane)?;
     assert!(report.is_reject());
     assert_eq!(report.reject_kind(), Some(titania_core::RejectKind::GateOnly));
     assert!(report.per_lane().unwrap().is_empty());
@@ -563,7 +566,8 @@ fn report_reject_gate_only_with_empty_per_lane_round_trips()
 /// and must be rejected by the constructor, regardless of `per_lane`.
 #[test]
 fn report_reject_still_rejects_empty_collections_with_empty_per_lane() {
-    let result = Report::reject(Box::new([]), Box::new([]), Box::new([]));
+    let result =
+        Report::reject(titania_core::GateScope::Release, Box::new([]), Box::new([]), Box::new([]));
     assert!(matches!(result, Err(titania_core::ReportError::EmptyReject)));
 }
 

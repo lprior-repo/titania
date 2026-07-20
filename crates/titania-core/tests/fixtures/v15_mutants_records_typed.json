@@ -1,0 +1,54 @@
+[
+  {
+    "name": "crates/titania-core/src/artifact.rs:99:9: replace == with != in core::option::Option",
+    "file": "crates/titania-core/src/artifact.rs",
+    "package": "titania-core",
+    "span": {
+      "start": {"line": 99, "column": 9},
+      "end": {"line": 99, "column": 22}
+    },
+    "genre": "BinaryOperator",
+    "replacement": "!=",
+    "function": {
+      "function_name": "core::option::Option::is_some",
+      "return_type": "bool",
+      "span": {
+        "start": {"line": 90, "column": 1},
+        "end": {"line": 110, "column": 2}
+      }
+    }
+  },
+  {
+    "name": "crates/titania-core/src/artifact.rs:175:13: replace && with || in core::result::Result",
+    "file": "crates/titania-core/src/artifact.rs",
+    "package": "titania-core",
+    "span": {
+      "start": {"line": 175, "column": 13},
+      "end": {"line": 175, "column": 26}
+    },
+    "genre": "BinaryOperator",
+    "replacement": "||"
+  },
+  {
+    "name": "crates/titania-core/src/artifact.rs:200:9: remove negation in is_ok",
+    "file": "crates/titania-core/src/artifact.rs",
+    "package": "titania-core",
+    "span": {
+      "start": {"line": 200, "column": 9},
+      "end": {"line": 200, "column": 22}
+    },
+    "genre": "UnaryOperator",
+    "replacement": "is_ok"
+  },
+  {
+    "name": "crates/titania-core/src/artifact.rs:210:9: replace ArtifactOutcome::default with Ok(Default::default())",
+    "file": "crates/titania-core/src/artifact.rs",
+    "package": "titania-core",
+    "span": {
+      "start": {"line": 210, "column": 9},
+      "end": {"line": 220, "column": 10}
+    },
+    "genre": "FnValue",
+    "replacement": "Ok(Default::default())"
+  }
+]
