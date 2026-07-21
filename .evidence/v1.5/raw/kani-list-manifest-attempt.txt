@@ -1,5 +1,0 @@
-error: unexpected argument '--manifest-path' found
-
-Usage: cargo-kani list --format <FORMAT>
-
-For more information, try '--help'.

@@ -1,2 +1,0 @@
-InputError: unknown lane 'mutants'
-MUTANTS_LANE_EXIT=3

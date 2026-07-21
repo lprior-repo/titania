@@ -1,5 +1,0 @@
-error: unexpected argument '-p' found
-
-Usage: cargo-kani list [OPTIONS]
-
-For more information, try '--help'.

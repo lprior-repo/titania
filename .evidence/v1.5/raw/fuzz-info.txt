@@ -1,5 +1,0 @@
-755  corpus_parse_inventory/
-755  corpus_parse_outcomes/
-644  /home/lewis/src/titania/fuzz/Cargo.toml  1.4K
-644  fuzz_parse_inventory.rs  2.0K
-644  fuzz_parse_outcomes.rs  3.5K

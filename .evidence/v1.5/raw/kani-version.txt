@@ -1,2 +1,0 @@
-cargo-kani 0.67.0
-EXIT_CODE=0

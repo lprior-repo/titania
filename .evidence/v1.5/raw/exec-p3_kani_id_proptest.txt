@@ -1,3 +1,0 @@
-# verification evidence for v15-OBL-P3-KANI-ID-PROPTEST
-verifier=proptest
-exit=0

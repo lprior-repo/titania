@@ -1,8 +1,0 @@
-Total mutations: 2827
-  titania-lanes: 1541
-  titania-core: 550
-  titania-check: 343
-  titania-output: 131
-  titania-policy: 96
-  titania-dylint: 87
-  titania-aggregate: 79

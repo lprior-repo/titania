@@ -1,8 +1,0 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
-     Running tests/template_prepush.rs (target/debug/deps/template_prepush-67e5e68d459d7abf)
-
-running 1 test
-test template_prepush_generated_workspace_smoke ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
-

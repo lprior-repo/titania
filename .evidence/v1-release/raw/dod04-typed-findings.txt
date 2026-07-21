@@ -1,8 +1,0 @@
-$ test -s .titania/out/edit/fmt.json && jq . .titania/out/edit/fmt.json > /dev/null
-PASS: .titania/out/edit/fmt.json exists, non-empty, valid JSON
-
-$ cargo test -p titania-lanes --test artifact_writer  (atomic-rename proof)
-test artifact_json_lane_matches_lane_enum_for_all_edit_lanes ... ok
-
-test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-

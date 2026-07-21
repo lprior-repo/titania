@@ -1,3 +1,0 @@
-# verification evidence for v15-OBL-P4-KANI-ID-SERDE
-verifier=proptest
-exit=0

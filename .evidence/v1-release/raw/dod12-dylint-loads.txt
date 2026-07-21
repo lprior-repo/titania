@@ -1,6 +1,0 @@
-$ cargo dylint --all
-Building workspace metadata entry `titania-dylint`
-    Finished `release` profile [optimized] target(s) in 0.01s
-Checking with toolchain `nightly-2026-04-27-x86_64-unknown-linux-gnu`
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
-EXIT=0

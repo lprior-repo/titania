@@ -1,3 +1,0 @@
-# verification evidence for v15-OBL-P6-MUTANTS-LOAD
-verifier=proptest
-exit=0

@@ -1,5 +1,0 @@
-error: unexpected argument '--output-format' found
-
-Usage: cargo-kani list --format <FORMAT>
-
-For more information, try '--help'.

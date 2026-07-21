@@ -1,5 +1,0 @@
-error: unexpected argument '--format' found
-
-Usage: cargo-kani --package <PACKAGE>...
-
-For more information, try '--help'.

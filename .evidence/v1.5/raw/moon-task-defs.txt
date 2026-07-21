@@ -1,9 +1,0 @@
-320:  titania-kani:
-321-    # v1.5 bounded model-check lane (GateScope::Full only). Per-package
-322-    # `cargo kani -p <pkg>` runs are issued inside a cgroup cap so
-339:  titania-mutants:
-340-    # v1.5 cargo-mutants test-survivor lane (GateScope::Full only).
-341-    # Compares the current `cargo mutants --list` discovery against the
-376:  gate-full:
-377-    # v1.5 Full gate — release + Kani + Mutants. PROOF_KANI_* and
-378-    # MUTANT_SURVIVED findings surface in the aggregate report.
