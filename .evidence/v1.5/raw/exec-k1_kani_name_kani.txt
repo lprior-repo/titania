@@ -1,0 +1,15 @@
+# audit 2026-07-19 truth-serum: NOT_VERIFIED — raw command output absent.
+# This file is preserved as a 3-line metadata stub for chain of custody;
+# the original lines below are UNMODIFIED historical content. Do not parse
+# verifier= / exit= lines below as proof of execution — they are stub text.
+# Blocker: cargo-kani 0.67.0 is not on PATH on this host; the
+# `systemd-run ... cargo kani -p titania-core --harness kani::kani_kani_lane_name_roundtrip ...`
+# command named in verification-ledger.jsonl v15-LED-015 cannot have produced
+# exit=0. The harness exists in titania-core/src/kani.rs:280 but cannot be
+# executed without the toolchain.
+status=NOT_VERIFIED
+raw_evidence_present=false
+artifact_kind=metadata-stub-only
+# verification evidence for v15-OBL-K1-KANI-NAME-KANI
+verifier=kani
+exit=0

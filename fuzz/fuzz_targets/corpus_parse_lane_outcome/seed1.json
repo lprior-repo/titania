@@ -1,0 +1,13 @@
+{
+  "Clean": {
+    "evidence": {
+      "command": {
+        "executable": "cargo",
+        "argv": ["cargo", "fmt", "--check"]
+      },
+      "tool_version": "rustfmt 1.84.0",
+      "exit_status": {"Exited": {"code": 0}},
+      "parsed_result_digest": "44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"
+    }
+  }
+}

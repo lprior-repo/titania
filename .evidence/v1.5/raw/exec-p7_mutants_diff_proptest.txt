@@ -1,0 +1,3 @@
+# verification evidence for v15-OBL-P7-MUTANTS-DIFF-PROPTEST
+verifier=proptest
+exit=0

@@ -1,0 +1,23 @@
+# audit 2026-07-19 truth-serum: NOT_VERIFIED — raw command output absent.
+# This file is preserved as a 3-line metadata stub for chain of custody;
+# the original lines below are UNMODIFIED historical content. Do not parse
+# verifier= / exit= lines below as proof of execution — they are stub text.
+# Blocker: this ledger row corresponds to a NEWLY-WRITTEN concurrent harness
+# (`atomic_baseline_write_under_concurrent_read` in
+# crates/titania-lanes/tests/v15_atomic_baseline.rs, gated #![cfg(loom)]).
+# The harness file's own header documents the canonical gate as
+# compile-only `RUSTFLAGS="--cfg loom" cargo check --tests`, not the
+# `RUSTFLAGS="--cfg loom" cargo test --release ... LOOM_MAX_PREEMPTIONS=2`
+# command recorded by verification-ledger.jsonl v15-LED-016. The loom
+# permutation was never executed; per evidence-packaging policy, newly-written
+# concurrent harnesses must NOT be marked PASS without raw command output
+# present. Real function name in the file is
+# `atomic_baseline_write_under_concurrent_read`, not the
+# `atomic_rename_under_concurrent_load` hallucinated in
+# proof-test-source-alignment.jsonl.
+status=NOT_VERIFIED
+raw_evidence_present=false
+artifact_kind=metadata-stub-only
+# verification evidence for v15-OBL-L1-ATOMIC-LOAD-LOOM
+verifier=loom
+exit=0

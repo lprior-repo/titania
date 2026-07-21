@@ -1,0 +1,9 @@
+cargo 1.97.0-nightly (eb9b60f1f 2026-04-24)
+cargo-kani 0.67.0
+rustc 1.97.0-nightly (ca9a134e0 2026-04-26)
+binary: rustc
+commit-hash: ca9a134e0985765ded9cfdde4030a5df4db7e2bd
+commit-date: 2026-04-26
+host: x86_64-unknown-linux-gnu
+release: 1.97.0-nightly
+LLVM version: 22.1.2

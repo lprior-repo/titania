@@ -1,0 +1,12 @@
+{
+  "kani-version": "0.67.0",
+  "file-version": "0.1",
+  "standard-harnesses": {},
+  "contract-harnesses": {},
+  "contracts": [],
+  "totals": {
+    "standard-harnesses": 0,
+    "contract-harnesses": 0,
+    "functions-under-contract": 0
+  }
+}

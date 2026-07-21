@@ -1,0 +1,19 @@
+# audit 2026-07-19 truth-serum: NOT_VERIFIED — raw command output absent.
+# This file is preserved as a 3-line metadata stub for chain of custody;
+# the original lines below are UNMODIFIED historical content. Do not parse
+# verifier= / exit= lines below as proof of execution — they are stub text.
+# Blocker: `cargo-fuzz` (cargo +nightly fuzz) is not installed on this host;
+# the `cargo +nightly fuzz run fuzz_parse_outcomes -j 1 -- -max_total_time=300`
+# command named in verification-ledger.jsonl v15-LED-018 cannot have produced
+# exit=0. The fuzz target exists as a v1.5 scaffolding stub at
+# fuzz/fuzz_targets/fuzz_parse_outcomes.rs (entry function LLVMFuzzerTestOneInput)
+# — see fuzz/Cargo.toml. proof-test-source-alignment.jsonl additionally
+# references the source `crates/titania-core/src/mutants_outcomes.rs` and the
+# target `fuzz/fuzz_targets/fuzz_f2_fuzz.rs`, both of which are HALLUCINATED
+# paths.
+status=NOT_VERIFIED
+raw_evidence_present=false
+artifact_kind=metadata-stub-only
+# verification evidence for v15-OBL-F2-FUZZ
+verifier=cargo-fuzz
+exit=0

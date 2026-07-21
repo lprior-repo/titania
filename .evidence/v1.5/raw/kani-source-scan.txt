@@ -1,0 +1,8 @@
+crates/titania-core/src/kani.rs:9:#[kani::proof]
+crates/titania-core/src/kani.rs:15:#[kani::proof]
+crates/titania-core/src/kani.rs:21:#[kani::proof]
+crates/titania-core/src/kani.rs:44:#[kani::proof]
+crates/titania-core/src/kani.rs:71:#[kani::proof]
+crates/titania-core/src/kani.rs:80:#[kani::proof]
+crates/titania-core/src/kani.rs:89:#[kani::proof]
+crates/titania-core/src/kani.rs:98:#[kani::proof]

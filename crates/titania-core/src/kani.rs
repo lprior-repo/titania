@@ -10,8 +10,8 @@ use core::str::FromStr;
 // and v15-OBL-K2-MUTANTS-DIFF-KANI bind these harnesses to production APIs.
 use crate::{
     GateScope, KANI_HARNESS_ID_MAX_LEN, KaniHarnessId, KaniHarnessIdError, Lane, LaneDigest,
-    LaneName, MutantBaselineEntry, MutantId, MutantOperator, MutantsBaseline, ReceiptError,
-    ReceiptLaneExit, RecordedTargetRoot,
+    LaneName, LaneOutcome, MutantBaselineEntry, MutantId, MutantOperator, MutantsBaseline,
+    ReceiptError, ReceiptLaneExit, RecordedTargetRoot,
 };
 
 #[kani::proof]
@@ -507,4 +507,29 @@ fn kani_mutants_baseline_diff_zero_neg() {
         "covered and uncovered selected survivors coexist"
     );
     kani::cover!(any_expired_entry, "expired baseline entry is reachable");
+}
+
+/// Wire-mirror invariant for [`LaneOutcome`]: any bounded symbolic
+/// byte sequence either deserialises to a value whose serialise/reparse
+/// round-trip is the identity, or surfaces an `Err` (the deserialiser
+/// maps every typed `OutcomeError` variant through
+/// `serde::de::Error::custom`). No panics, no process exit. Buffer is
+/// 8 bytes; `unwind(64)` covers serde_json's internal state-machine.
+#[kani::proof]
+#[kani::unwind(64)]
+fn outcome_wire_invariants() {
+    let bytes: [u8; 8] = kani::any();
+    let len: usize = kani::any();
+    kani::assume(len <= bytes.len());
+    let Ok(text) = core::str::from_utf8(&bytes[..len]) else { return };
+    let Ok(value) = serde_json::from_str::<LaneOutcome>(text) else { return };
+    let Ok(serialised) = serde_json::to_string(&value) else {
+        kani::assert(false, "serialise must succeed");
+        return;
+    };
+    let Ok(reparsed) = serde_json::from_str::<LaneOutcome>(&serialised) else {
+        kani::assert(false, "reparse must succeed");
+        return;
+    };
+    kani::assert(reparsed == value, "roundtrip preserves LaneOutcome");
 }

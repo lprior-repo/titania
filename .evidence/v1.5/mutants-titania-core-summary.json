@@ -1,0 +1,22 @@
+{
+  "package": "titania-core",
+  "cargo_mutants_version": "27.0.0",
+  "totals": {
+    "generated": 480,
+    "killed": 0,
+    "surviving": 236,
+    "unviable": 244
+  },
+  "toolchain_warnings": [],
+  "ran_at_utc": "2026-07-14T22:27:54Z",
+  "start_time_utc": "2026-07-15T03:26:01.75966245Z",
+  "end_time_utc": "2026-07-15T03:27:54.614166961Z",
+  "command": "cargo mutants --check --no-shuffle --package titania-core -o .evidence/v1.5/raw/mutants-titania-core-out",
+  "exit_code": 0,
+  "phase": "check (cargo check --tests, not cargo test)",
+  "notes": [
+    "cargo-mutants 27.0.0 has no --output json flag; --output/-o creates a mutants.out directory. The expected path mutants-titania-core.json was populated from the on-disk outcomes.json produced inside that directory.",
+    "--check runs `cargo check --tests --verbose`, not `cargo test`. killed (caught) = 0 and surviving = success = 236 reflect that the mutation broke the build for 244 mutants (unviable) and left the build green for 236 mutants. Survivors here are BUILD-survivors, not TEST-survivors; a follow-up `cargo mutants` (default, no --check) would need to be run to get test-based kill counts.",
+    "missed=0, caught=0, timeout=0 \u2014 no test failures were observed because cargo check does not run tests."
+  ]
+}

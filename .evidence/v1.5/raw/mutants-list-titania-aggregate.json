@@ -1,0 +1,2466 @@
+[
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace read_lane_artifacts -> ReaderResult with Default::default()\n@@ -72,35 +72,17 @@\n /// Returns one [`LaneOutcome::Failed { .. }`] per missing lane output, preserving\n /// scope order. Returns [`ReaderError::InputError`] when an existing artifact\n /// cannot be read, parsed, or matched to its lane, when the directory contains\n /// a file whose stem does not name a scoped lane, or when the directory\n /// contains more than one artifact for the same lane. Returns\n /// [`ReaderError::UnsupportedScope`] for future gate-scope variants unknown to\n /// this v1 reader.\n pub fn read_lane_artifacts(target_root: &Path, scope: GateScope) -> ReaderResult {\n-    let scope_dir = scope_dir(scope)?;\n-    let out_dir = artifact_dir(target_root, scope_dir);\n-    let expected: &[Lane] = scope.lanes();\n-    let scoped_lanes = scoped_lane_set(scope);\n-\n-    let mut by_lane: HashMap<Lane, String> = HashMap::new();\n-    enumerate_artifact_files(&out_dir, scope_dir, &mut |entry: &Path| {\n-        classify_and_record(entry, scope_dir, expected, &scoped_lanes, &mut by_lane)\n-    })?;\n-\n-    let parse = |contents: String, lane: Lane| parse_artifact(&contents, lane);\n-    expected\n-        .iter()\n-        .map(|lane| {\n-            by_lane\n-                .remove(lane)\n-                .map_or_else(|| Ok((*lane, missing_lane_outcome(*lane))), |c| parse(c, *lane))\n-        })\n-        .collect()\n+    Default::default() /* ~ changed by cargo-mutants ~ */\n }\n \n /// Map an enumerated artifact entry to a lane and record its content.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::InputError`] for unknown stems, lanes outside the\n /// scope, duplicate lane identities, or filesystem read failures.\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "read_lane_artifacts",
+      "return_type": "-> ReaderResult",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 99
+        },
+        "start": {
+          "column": 1,
+          "line": 63
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:80:5: replace read_lane_artifacts -> ReaderResult with Default::default()",
+    "package": "titania-aggregate",
+    "replacement": "Default::default()",
+    "span": {
+      "end": {
+        "column": 19,
+        "line": 98
+      },
+      "start": {
+        "column": 5,
+        "line": 80
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace classify_and_record -> Result<(), ReaderError> with Ok(())\n@@ -106,43 +106,17 @@\n /// scope, duplicate lane identities, or filesystem read failures.\n fn classify_and_record(\n     entry: &Path,\n     scope_dir: &'static str,\n     expected: &[Lane],\n     scoped_lanes: &HashSet<Lane>,\n     by_lane: &mut HashMap<Lane, String>,\n ) -> Result<(), ReaderError> {\n-    let stem = entry_stem(entry, expected, scope_dir)?;\n-    let lane = stem_to_lane(stem).ok_or_else(|| ReaderError::InputError {\n-        lane: first_scoped_lane(expected),\n-        cause: format!(\n-            \"unexpected artifact file {:?} in scope {scope_dir}: stem {stem:?} does not name a known lane\",\n-            entry.file_name(),\n-        ),\n-    })?;\n-    if !scoped_lanes.contains(&lane) {\n-        return Err(ReaderError::InputError {\n-            lane,\n-            cause: format!(\n-                \"unexpected artifact file {:?} for lane {lane} in scope {scope_dir} (not part of this gate)\",\n-                entry.file_name(),\n-            ),\n-        });\n-    }\n-    let Some(contents) = read_entry(entry, lane)? else {\n-        return Ok(());\n-    };\n-    if by_lane.insert(lane, contents).is_some() {\n-        return Err(ReaderError::InputError {\n-            lane,\n-            cause: format!(\"duplicate artifact files for lane {lane} in scope {scope_dir}\"),\n-        });\n-    }\n-    Ok(())\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n /// Extract the UTF-8 file stem from an enumerated entry, or return a typed error.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::InputError`] when the entry has no file name or\n /// the file name is not valid UTF-8.\n fn entry_stem<'a>(\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "classify_and_record",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 141
+        },
+        "start": {
+          "column": 1,
+          "line": 101
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:114:5: replace classify_and_record -> Result<(), ReaderError> with Ok(())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 11,
+        "line": 140
+      },
+      "start": {
+        "column": 5,
+        "line": 114
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete ! in classify_and_record\n@@ -114,17 +114,17 @@\n     let stem = entry_stem(entry, expected, scope_dir)?;\n     let lane = stem_to_lane(stem).ok_or_else(|| ReaderError::InputError {\n         lane: first_scoped_lane(expected),\n         cause: format!(\n             \"unexpected artifact file {:?} in scope {scope_dir}: stem {stem:?} does not name a known lane\",\n             entry.file_name(),\n         ),\n     })?;\n-    if !scoped_lanes.contains(&lane) {\n+    if  /* ~ changed by cargo-mutants ~ */scoped_lanes.contains(&lane) {\n         return Err(ReaderError::InputError {\n             lane,\n             cause: format!(\n                 \"unexpected artifact file {:?} for lane {lane} in scope {scope_dir} (not part of this gate)\",\n                 entry.file_name(),\n             ),\n         });\n     }\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "classify_and_record",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 141
+        },
+        "start": {
+          "column": 1,
+          "line": 101
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:122:8: delete ! in classify_and_record",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 9,
+        "line": 122
+      },
+      "start": {
+        "column": 8,
+        "line": 122
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace entry_stem -> Result<&'a str, ReaderError> with Ok(\"\")\n@@ -145,24 +145,17 @@\n ///\n /// Returns [`ReaderError::InputError`] when the entry has no file name or\n /// the file name is not valid UTF-8.\n fn entry_stem<'a>(\n     entry: &'a Path,\n     expected: &[Lane],\n     scope_dir: &'static str,\n ) -> Result<&'a str, ReaderError> {\n-    let invalid = || ReaderError::InputError {\n-        lane: first_scoped_lane(expected),\n-        cause: format!(\n-            \"unexpected artifact file {:?} in scope {scope_dir}: filename is not valid UTF-8\",\n-            entry.file_name(),\n-        ),\n-    };\n-    entry.file_stem().and_then(|name| name.to_str()).ok_or_else(invalid)\n+    Ok(\"\") /* ~ changed by cargo-mutants ~ */\n }\n \n /// Read the artifact file at `entry` and convert non-`NotFound` I/O errors.\n ///\n /// # Errors\n ///\n fn read_entry(entry: &Path, lane: Lane) -> Result<Option<String>, ReaderError> {\n     match std::fs::read_to_string(entry) {\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "entry_stem",
+      "return_type": "-> Result<&'a str, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 161
+        },
+        "start": {
+          "column": 1,
+          "line": 142
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:153:5: replace entry_stem -> Result<&'a str, ReaderError> with Ok(\"\")",
+    "package": "titania-aggregate",
+    "replacement": "Ok(\"\")",
+    "span": {
+      "end": {
+        "column": 73,
+        "line": 160
+      },
+      "start": {
+        "column": 5,
+        "line": 153
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace entry_stem -> Result<&'a str, ReaderError> with Ok(\"xyzzy\")\n@@ -145,24 +145,17 @@\n ///\n /// Returns [`ReaderError::InputError`] when the entry has no file name or\n /// the file name is not valid UTF-8.\n fn entry_stem<'a>(\n     entry: &'a Path,\n     expected: &[Lane],\n     scope_dir: &'static str,\n ) -> Result<&'a str, ReaderError> {\n-    let invalid = || ReaderError::InputError {\n-        lane: first_scoped_lane(expected),\n-        cause: format!(\n-            \"unexpected artifact file {:?} in scope {scope_dir}: filename is not valid UTF-8\",\n-            entry.file_name(),\n-        ),\n-    };\n-    entry.file_stem().and_then(|name| name.to_str()).ok_or_else(invalid)\n+    Ok(\"xyzzy\") /* ~ changed by cargo-mutants ~ */\n }\n \n /// Read the artifact file at `entry` and convert non-`NotFound` I/O errors.\n ///\n /// # Errors\n ///\n fn read_entry(entry: &Path, lane: Lane) -> Result<Option<String>, ReaderError> {\n     match std::fs::read_to_string(entry) {\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "entry_stem",
+      "return_type": "-> Result<&'a str, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 161
+        },
+        "start": {
+          "column": 1,
+          "line": 142
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:153:5: replace entry_stem -> Result<&'a str, ReaderError> with Ok(\"xyzzy\")",
+    "package": "titania-aggregate",
+    "replacement": "Ok(\"xyzzy\")",
+    "span": {
+      "end": {
+        "column": 73,
+        "line": 160
+      },
+      "start": {
+        "column": 5,
+        "line": 153
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace read_entry -> Result<Option<String>, ReaderError> with Ok(None)\n@@ -160,24 +160,17 @@\n     entry.file_stem().and_then(|name| name.to_str()).ok_or_else(invalid)\n }\n \n /// Read the artifact file at `entry` and convert non-`NotFound` I/O errors.\n ///\n /// # Errors\n ///\n fn read_entry(entry: &Path, lane: Lane) -> Result<Option<String>, ReaderError> {\n-    match std::fs::read_to_string(entry) {\n-        Ok(contents) => Ok(Some(contents)),\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),\n-        Err(error) => Err(ReaderError::InputError {\n-            lane,\n-            cause: format!(\"IO error reading artifact: {error}\"),\n-        }),\n-    }\n+    Ok(None) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Parse one artifact payload and reconcile its embedded lane identity.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::InputError`] when the file cannot be decoded as JSON,\n /// the deserialised [`LaneArtifact`] does not name `lane`, or the projected\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "read_entry",
+      "return_type": "-> Result<Option<String>, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 176
+        },
+        "start": {
+          "column": 1,
+          "line": 163
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:168:5: replace read_entry -> Result<Option<String>, ReaderError> with Ok(None)",
+    "package": "titania-aggregate",
+    "replacement": "Ok(None)",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 175
+      },
+      "start": {
+        "column": 5,
+        "line": 168
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace read_entry -> Result<Option<String>, ReaderError> with Ok(Some(String::new()))\n@@ -160,24 +160,17 @@\n     entry.file_stem().and_then(|name| name.to_str()).ok_or_else(invalid)\n }\n \n /// Read the artifact file at `entry` and convert non-`NotFound` I/O errors.\n ///\n /// # Errors\n ///\n fn read_entry(entry: &Path, lane: Lane) -> Result<Option<String>, ReaderError> {\n-    match std::fs::read_to_string(entry) {\n-        Ok(contents) => Ok(Some(contents)),\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),\n-        Err(error) => Err(ReaderError::InputError {\n-            lane,\n-            cause: format!(\"IO error reading artifact: {error}\"),\n-        }),\n-    }\n+    Ok(Some(String::new())) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Parse one artifact payload and reconcile its embedded lane identity.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::InputError`] when the file cannot be decoded as JSON,\n /// the deserialised [`LaneArtifact`] does not name `lane`, or the projected\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "read_entry",
+      "return_type": "-> Result<Option<String>, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 176
+        },
+        "start": {
+          "column": 1,
+          "line": 163
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:168:5: replace read_entry -> Result<Option<String>, ReaderError> with Ok(Some(String::new()))",
+    "package": "titania-aggregate",
+    "replacement": "Ok(Some(String::new()))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 175
+      },
+      "start": {
+        "column": 5,
+        "line": 168
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace read_entry -> Result<Option<String>, ReaderError> with Ok(Some(\"xyzzy\".into()))\n@@ -160,24 +160,17 @@\n     entry.file_stem().and_then(|name| name.to_str()).ok_or_else(invalid)\n }\n \n /// Read the artifact file at `entry` and convert non-`NotFound` I/O errors.\n ///\n /// # Errors\n ///\n fn read_entry(entry: &Path, lane: Lane) -> Result<Option<String>, ReaderError> {\n-    match std::fs::read_to_string(entry) {\n-        Ok(contents) => Ok(Some(contents)),\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),\n-        Err(error) => Err(ReaderError::InputError {\n-            lane,\n-            cause: format!(\"IO error reading artifact: {error}\"),\n-        }),\n-    }\n+    Ok(Some(\"xyzzy\".into())) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Parse one artifact payload and reconcile its embedded lane identity.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::InputError`] when the file cannot be decoded as JSON,\n /// the deserialised [`LaneArtifact`] does not name `lane`, or the projected\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "read_entry",
+      "return_type": "-> Result<Option<String>, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 176
+        },
+        "start": {
+          "column": 1,
+          "line": 163
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:168:5: replace read_entry -> Result<Option<String>, ReaderError> with Ok(Some(\"xyzzy\".into()))",
+    "package": "titania-aggregate",
+    "replacement": "Ok(Some(\"xyzzy\".into()))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 175
+      },
+      "start": {
+        "column": 5,
+        "line": 168
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace match guard error.kind() == std::io::ErrorKind::NotFound with true in read_entry\n@@ -162,17 +162,17 @@\n \n /// Read the artifact file at `entry` and convert non-`NotFound` I/O errors.\n ///\n /// # Errors\n ///\n fn read_entry(entry: &Path, lane: Lane) -> Result<Option<String>, ReaderError> {\n     match std::fs::read_to_string(entry) {\n         Ok(contents) => Ok(Some(contents)),\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),\n+        Err(error) if true /* ~ changed by cargo-mutants ~ */ => Ok(None),\n         Err(error) => Err(ReaderError::InputError {\n             lane,\n             cause: format!(\"IO error reading artifact: {error}\"),\n         }),\n     }\n }\n \n /// Parse one artifact payload and reconcile its embedded lane identity.\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "read_entry",
+      "return_type": "-> Result<Option<String>, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 176
+        },
+        "start": {
+          "column": 1,
+          "line": 163
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:170:23: replace match guard error.kind() == std::io::ErrorKind::NotFound with true in read_entry",
+    "package": "titania-aggregate",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 67,
+        "line": 170
+      },
+      "start": {
+        "column": 23,
+        "line": 170
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace match guard error.kind() == std::io::ErrorKind::NotFound with false in read_entry\n@@ -162,17 +162,17 @@\n \n /// Read the artifact file at `entry` and convert non-`NotFound` I/O errors.\n ///\n /// # Errors\n ///\n fn read_entry(entry: &Path, lane: Lane) -> Result<Option<String>, ReaderError> {\n     match std::fs::read_to_string(entry) {\n         Ok(contents) => Ok(Some(contents)),\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),\n+        Err(error) if false /* ~ changed by cargo-mutants ~ */ => Ok(None),\n         Err(error) => Err(ReaderError::InputError {\n             lane,\n             cause: format!(\"IO error reading artifact: {error}\"),\n         }),\n     }\n }\n \n /// Parse one artifact payload and reconcile its embedded lane identity.\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "read_entry",
+      "return_type": "-> Result<Option<String>, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 176
+        },
+        "start": {
+          "column": 1,
+          "line": 163
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:170:23: replace match guard error.kind() == std::io::ErrorKind::NotFound with false in read_entry",
+    "package": "titania-aggregate",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 67,
+        "line": 170
+      },
+      "start": {
+        "column": 23,
+        "line": 170
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace == with != in read_entry\n@@ -162,17 +162,17 @@\n \n /// Read the artifact file at `entry` and convert non-`NotFound` I/O errors.\n ///\n /// # Errors\n ///\n fn read_entry(entry: &Path, lane: Lane) -> Result<Option<String>, ReaderError> {\n     match std::fs::read_to_string(entry) {\n         Ok(contents) => Ok(Some(contents)),\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),\n+        Err(error) if error.kind() != /* ~ changed by cargo-mutants ~ */ std::io::ErrorKind::NotFound => Ok(None),\n         Err(error) => Err(ReaderError::InputError {\n             lane,\n             cause: format!(\"IO error reading artifact: {error}\"),\n         }),\n     }\n }\n \n /// Parse one artifact payload and reconcile its embedded lane identity.\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "read_entry",
+      "return_type": "-> Result<Option<String>, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 176
+        },
+        "start": {
+          "column": 1,
+          "line": 163
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:170:36: replace == with != in read_entry",
+    "package": "titania-aggregate",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 38,
+        "line": 170
+      },
+      "start": {
+        "column": 36,
+        "line": 170
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace parse_artifact -> Result<(Lane, LaneOutcome), ReaderError> with Ok((Default::default(), Default::default()))\n@@ -178,35 +178,17 @@\n /// Parse one artifact payload and reconcile its embedded lane identity.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::InputError`] when the file cannot be decoded as JSON,\n /// the deserialised [`LaneArtifact`] does not name `lane`, or the projected\n /// outcome is malformed.\n fn parse_artifact(contents: &str, lane: Lane) -> Result<(Lane, LaneOutcome), ReaderError> {\n-    let artifact: LaneArtifact = serde_json::from_str(contents).map_err(|err| {\n-        ReaderError::InputError { lane, cause: format!(\"malformed JSON for {lane}: {err}\") }\n-    })?;\n-\n-    let artifact_lane = artifact.lane();\n-    if artifact_lane != lane {\n-        return Err(ReaderError::InputError {\n-            lane,\n-            cause: format!(\"lane mismatch in artifact: expected {lane}, got {artifact_lane}\"),\n-        });\n-    }\n-\n-    let outcome: LaneOutcome =\n-        artifact.into_outcome().into_lane_outcome().map_err(|err| ReaderError::InputError {\n-            lane,\n-            cause: format!(\"failed to parse outcome for {lane}: {err}\"),\n-        })?;\n-\n-    Ok((artifact_lane, outcome))\n+    Ok((Default::default(), Default::default())) /* ~ changed by cargo-mutants ~ */\n }\n /// Enumerate the regular `*.json` files under `out_dir` in deterministic order\n /// and invoke `visit` on each entry.\n ///\n /// A missing directory is treated as zero artifacts so the caller can record\n /// each scoped lane as missing.\n ///\n /// # Errors\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "parse_artifact",
+      "return_type": "-> Result<(Lane, LaneOutcome), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 205
+        },
+        "start": {
+          "column": 1,
+          "line": 178
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:186:5: replace parse_artifact -> Result<(Lane, LaneOutcome), ReaderError> with Ok((Default::default(), Default::default()))",
+    "package": "titania-aggregate",
+    "replacement": "Ok((Default::default(), Default::default()))",
+    "span": {
+      "end": {
+        "column": 33,
+        "line": 204
+      },
+      "start": {
+        "column": 5,
+        "line": 186
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace != with == in parse_artifact\n@@ -183,17 +183,17 @@\n /// the deserialised [`LaneArtifact`] does not name `lane`, or the projected\n /// outcome is malformed.\n fn parse_artifact(contents: &str, lane: Lane) -> Result<(Lane, LaneOutcome), ReaderError> {\n     let artifact: LaneArtifact = serde_json::from_str(contents).map_err(|err| {\n         ReaderError::InputError { lane, cause: format!(\"malformed JSON for {lane}: {err}\") }\n     })?;\n \n     let artifact_lane = artifact.lane();\n-    if artifact_lane != lane {\n+    if artifact_lane == /* ~ changed by cargo-mutants ~ */ lane {\n         return Err(ReaderError::InputError {\n             lane,\n             cause: format!(\"lane mismatch in artifact: expected {lane}, got {artifact_lane}\"),\n         });\n     }\n \n     let outcome: LaneOutcome =\n         artifact.into_outcome().into_lane_outcome().map_err(|err| ReaderError::InputError {\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "parse_artifact",
+      "return_type": "-> Result<(Lane, LaneOutcome), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 205
+        },
+        "start": {
+          "column": 1,
+          "line": 178
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:191:22: replace != with == in parse_artifact",
+    "package": "titania-aggregate",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 24,
+        "line": 191
+      },
+      "start": {
+        "column": 22,
+        "line": 191
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace enumerate_artifact_files -> Result<(), ReaderError> with Ok(())\n@@ -213,52 +213,17 @@\n /// Returns [`ReaderError::InputError`] for non-`NotFound` directory read errors,\n /// any error encountered while enumerating a single directory entry, or any\n /// error produced by `visit`.\n fn enumerate_artifact_files(\n     out_dir: &Path,\n     scope_dir: &'static str,\n     visit: &mut ArtifactVisitor<'_>,\n ) -> Result<(), ReaderError> {\n-    let entries = match std::fs::read_dir(out_dir) {\n-        Ok(entries) => entries,\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),\n-        Err(error) => {\n-            return Err(ReaderError::InputError {\n-                lane: Lane::Fmt,\n-                cause: format!(\n-                    \"IO error reading artifact directory {} for scope {scope_dir}: {error}\",\n-                    out_dir.display(),\n-                ),\n-            });\n-        }\n-    };\n-    let mut paths: Vec<PathBuf> = entries\n-        .map(|entry| {\n-            entry.map(|e| e.path()).map_err(|error| ReaderError::InputError {\n-                lane: Lane::Fmt,\n-                cause: format!(\n-                    \"IO error enumerating artifact directory {} for scope {scope_dir}: {error}\",\n-                    out_dir.display(),\n-                ),\n-            })\n-        })\n-        .filter_map(|entry| match entry {\n-            Ok(path)\n-                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(\"json\") =>\n-            {\n-                Some(Ok(path))\n-            }\n-            Ok(_) => None,\n-            Err(error) => Some(Err(error)),\n-        })\n-        .collect::<Result<Vec<_>, ReaderError>>()?;\n-    paths.sort();\n-    paths.iter().try_fold((), |(), path| visit(path.as_path()))?;\n-    Ok(())\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n /// Build the set of lanes that participate in `scope`.\n fn scoped_lane_set(scope: GateScope) -> HashSet<Lane> {\n     scope.lanes().iter().copied().collect()\n }\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "enumerate_artifact_files",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 257
+        },
+        "start": {
+          "column": 1,
+          "line": 206
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:221:5: replace enumerate_artifact_files -> Result<(), ReaderError> with Ok(())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 11,
+        "line": 256
+      },
+      "start": {
+        "column": 5,
+        "line": 221
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace match guard error.kind() == std::io::ErrorKind::NotFound with true in enumerate_artifact_files\n@@ -215,17 +215,17 @@\n /// error produced by `visit`.\n fn enumerate_artifact_files(\n     out_dir: &Path,\n     scope_dir: &'static str,\n     visit: &mut ArtifactVisitor<'_>,\n ) -> Result<(), ReaderError> {\n     let entries = match std::fs::read_dir(out_dir) {\n         Ok(entries) => entries,\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),\n+        Err(error) if true /* ~ changed by cargo-mutants ~ */ => return Ok(()),\n         Err(error) => {\n             return Err(ReaderError::InputError {\n                 lane: Lane::Fmt,\n                 cause: format!(\n                     \"IO error reading artifact directory {} for scope {scope_dir}: {error}\",\n                     out_dir.display(),\n                 ),\n             });\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "enumerate_artifact_files",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 257
+        },
+        "start": {
+          "column": 1,
+          "line": 206
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:223:23: replace match guard error.kind() == std::io::ErrorKind::NotFound with true in enumerate_artifact_files",
+    "package": "titania-aggregate",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 67,
+        "line": 223
+      },
+      "start": {
+        "column": 23,
+        "line": 223
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace match guard error.kind() == std::io::ErrorKind::NotFound with false in enumerate_artifact_files\n@@ -215,17 +215,17 @@\n /// error produced by `visit`.\n fn enumerate_artifact_files(\n     out_dir: &Path,\n     scope_dir: &'static str,\n     visit: &mut ArtifactVisitor<'_>,\n ) -> Result<(), ReaderError> {\n     let entries = match std::fs::read_dir(out_dir) {\n         Ok(entries) => entries,\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),\n+        Err(error) if false /* ~ changed by cargo-mutants ~ */ => return Ok(()),\n         Err(error) => {\n             return Err(ReaderError::InputError {\n                 lane: Lane::Fmt,\n                 cause: format!(\n                     \"IO error reading artifact directory {} for scope {scope_dir}: {error}\",\n                     out_dir.display(),\n                 ),\n             });\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "enumerate_artifact_files",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 257
+        },
+        "start": {
+          "column": 1,
+          "line": 206
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:223:23: replace match guard error.kind() == std::io::ErrorKind::NotFound with false in enumerate_artifact_files",
+    "package": "titania-aggregate",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 67,
+        "line": 223
+      },
+      "start": {
+        "column": 23,
+        "line": 223
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace == with != in enumerate_artifact_files\n@@ -215,17 +215,17 @@\n /// error produced by `visit`.\n fn enumerate_artifact_files(\n     out_dir: &Path,\n     scope_dir: &'static str,\n     visit: &mut ArtifactVisitor<'_>,\n ) -> Result<(), ReaderError> {\n     let entries = match std::fs::read_dir(out_dir) {\n         Ok(entries) => entries,\n-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),\n+        Err(error) if error.kind() != /* ~ changed by cargo-mutants ~ */ std::io::ErrorKind::NotFound => return Ok(()),\n         Err(error) => {\n             return Err(ReaderError::InputError {\n                 lane: Lane::Fmt,\n                 cause: format!(\n                     \"IO error reading artifact directory {} for scope {scope_dir}: {error}\",\n                     out_dir.display(),\n                 ),\n             });\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "enumerate_artifact_files",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 257
+        },
+        "start": {
+          "column": 1,
+          "line": 206
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:223:36: replace == with != in enumerate_artifact_files",
+    "package": "titania-aggregate",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 38,
+        "line": 223
+      },
+      "start": {
+        "column": 36,
+        "line": 223
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace match guard path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(\"json\") with true in enumerate_artifact_files\n@@ -238,17 +238,17 @@\n                 cause: format!(\n                     \"IO error enumerating artifact directory {} for scope {scope_dir}: {error}\",\n                     out_dir.display(),\n                 ),\n             })\n         })\n         .filter_map(|entry| match entry {\n             Ok(path)\n-                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(\"json\") =>\n+                if true /* ~ changed by cargo-mutants ~ */ =>\n             {\n                 Some(Ok(path))\n             }\n             Ok(_) => None,\n             Err(error) => Some(Err(error)),\n         })\n         .collect::<Result<Vec<_>, ReaderError>>()?;\n     paths.sort();\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "enumerate_artifact_files",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 257
+        },
+        "start": {
+          "column": 1,
+          "line": 206
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:246:20: replace match guard path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(\"json\") with true in enumerate_artifact_files",
+    "package": "titania-aggregate",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 95,
+        "line": 246
+      },
+      "start": {
+        "column": 20,
+        "line": 246
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace match guard path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(\"json\") with false in enumerate_artifact_files\n@@ -238,17 +238,17 @@\n                 cause: format!(\n                     \"IO error enumerating artifact directory {} for scope {scope_dir}: {error}\",\n                     out_dir.display(),\n                 ),\n             })\n         })\n         .filter_map(|entry| match entry {\n             Ok(path)\n-                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(\"json\") =>\n+                if false /* ~ changed by cargo-mutants ~ */ =>\n             {\n                 Some(Ok(path))\n             }\n             Ok(_) => None,\n             Err(error) => Some(Err(error)),\n         })\n         .collect::<Result<Vec<_>, ReaderError>>()?;\n     paths.sort();\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "enumerate_artifact_files",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 257
+        },
+        "start": {
+          "column": 1,
+          "line": 206
+        }
+      }
+    },
+    "genre": "MatchArmGuard",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:246:20: replace match guard path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(\"json\") with false in enumerate_artifact_files",
+    "package": "titania-aggregate",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 95,
+        "line": 246
+      },
+      "start": {
+        "column": 20,
+        "line": 246
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace && with || in enumerate_artifact_files\n@@ -238,17 +238,17 @@\n                 cause: format!(\n                     \"IO error enumerating artifact directory {} for scope {scope_dir}: {error}\",\n                     out_dir.display(),\n                 ),\n             })\n         })\n         .filter_map(|entry| match entry {\n             Ok(path)\n-                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(\"json\") =>\n+                if path.is_file() || /* ~ changed by cargo-mutants ~ */ path.extension().and_then(|s| s.to_str()) == Some(\"json\") =>\n             {\n                 Some(Ok(path))\n             }\n             Ok(_) => None,\n             Err(error) => Some(Err(error)),\n         })\n         .collect::<Result<Vec<_>, ReaderError>>()?;\n     paths.sort();\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "enumerate_artifact_files",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 257
+        },
+        "start": {
+          "column": 1,
+          "line": 206
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:246:35: replace && with || in enumerate_artifact_files",
+    "package": "titania-aggregate",
+    "replacement": "||",
+    "span": {
+      "end": {
+        "column": 37,
+        "line": 246
+      },
+      "start": {
+        "column": 35,
+        "line": 246
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace == with != in enumerate_artifact_files\n@@ -238,17 +238,17 @@\n                 cause: format!(\n                     \"IO error enumerating artifact directory {} for scope {scope_dir}: {error}\",\n                     out_dir.display(),\n                 ),\n             })\n         })\n         .filter_map(|entry| match entry {\n             Ok(path)\n-                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(\"json\") =>\n+                if path.is_file() && path.extension().and_then(|s| s.to_str()) != /* ~ changed by cargo-mutants ~ */ Some(\"json\") =>\n             {\n                 Some(Ok(path))\n             }\n             Ok(_) => None,\n             Err(error) => Some(Err(error)),\n         })\n         .collect::<Result<Vec<_>, ReaderError>>()?;\n     paths.sort();\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "enumerate_artifact_files",
+      "return_type": "-> Result<(), ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 257
+        },
+        "start": {
+          "column": 1,
+          "line": 206
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:246:80: replace == with != in enumerate_artifact_files",
+    "package": "titania-aggregate",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 82,
+        "line": 246
+      },
+      "start": {
+        "column": 80,
+        "line": 246
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace scoped_lane_set -> HashSet<Lane> with HashSet::new()\n@@ -252,17 +252,17 @@\n         })\n         .collect::<Result<Vec<_>, ReaderError>>()?;\n     paths.sort();\n     paths.iter().try_fold((), |(), path| visit(path.as_path()))?;\n     Ok(())\n }\n /// Build the set of lanes that participate in `scope`.\n fn scoped_lane_set(scope: GateScope) -> HashSet<Lane> {\n-    scope.lanes().iter().copied().collect()\n+    HashSet::new() /* ~ changed by cargo-mutants ~ */\n }\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n     match stem {\n         \"fmt\" => Some(Lane::Fmt),\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "scoped_lane_set",
+      "return_type": "-> HashSet<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 261
+        },
+        "start": {
+          "column": 1,
+          "line": 258
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:260:5: replace scoped_lane_set -> HashSet<Lane> with HashSet::new()",
+    "package": "titania-aggregate",
+    "replacement": "HashSet::new()",
+    "span": {
+      "end": {
+        "column": 44,
+        "line": 260
+      },
+      "start": {
+        "column": 5,
+        "line": 260
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace scoped_lane_set -> HashSet<Lane> with HashSet::from_iter([Default::default()])\n@@ -252,17 +252,17 @@\n         })\n         .collect::<Result<Vec<_>, ReaderError>>()?;\n     paths.sort();\n     paths.iter().try_fold((), |(), path| visit(path.as_path()))?;\n     Ok(())\n }\n /// Build the set of lanes that participate in `scope`.\n fn scoped_lane_set(scope: GateScope) -> HashSet<Lane> {\n-    scope.lanes().iter().copied().collect()\n+    HashSet::from_iter([Default::default()]) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n     match stem {\n         \"fmt\" => Some(Lane::Fmt),\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "scoped_lane_set",
+      "return_type": "-> HashSet<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 261
+        },
+        "start": {
+          "column": 1,
+          "line": 258
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:260:5: replace scoped_lane_set -> HashSet<Lane> with HashSet::from_iter([Default::default()])",
+    "package": "titania-aggregate",
+    "replacement": "HashSet::from_iter([Default::default()])",
+    "span": {
+      "end": {
+        "column": 44,
+        "line": 260
+      },
+      "start": {
+        "column": 5,
+        "line": 260
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace stem_to_lane -> Option<Lane> with None\n@@ -257,29 +257,17 @@\n }\n /// Build the set of lanes that participate in `scope`.\n fn scoped_lane_set(scope: GateScope) -> HashSet<Lane> {\n     scope.lanes().iter().copied().collect()\n }\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n-    match stem {\n-        \"fmt\" => Some(Lane::Fmt),\n-        \"compile\" => Some(Lane::Compile),\n-        \"clippy\" => Some(Lane::Clippy),\n-        \"ast-grep\" => Some(Lane::AstGrep),\n-        \"dylint\" => Some(Lane::Dylint),\n-        \"panic-scan\" => Some(Lane::PanicScan),\n-        \"policy-scan\" => Some(Lane::PolicyScan),\n-        \"test\" => Some(Lane::Test),\n-        \"deny\" => Some(Lane::Deny),\n-        \"build\" => Some(Lane::Build),\n-        _ => None,\n-    }\n+    None /* ~ changed by cargo-mutants ~ */\n }\n \n /// Return the first lane in `expected`, or [`Lane::Fmt`] when none is given.\n ///\n /// Used to anchor directory-level errors to a concrete lane for the\n /// [`ReaderError::InputError`] payload.\n const fn first_scoped_lane(expected: &[Lane]) -> Lane {\n     match expected.first() {\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:265:5: replace stem_to_lane -> Option<Lane> with None",
+    "package": "titania-aggregate",
+    "replacement": "None",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 277
+      },
+      "start": {
+        "column": 5,
+        "line": 265
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace stem_to_lane -> Option<Lane> with Some(Default::default())\n@@ -257,29 +257,17 @@\n }\n /// Build the set of lanes that participate in `scope`.\n fn scoped_lane_set(scope: GateScope) -> HashSet<Lane> {\n     scope.lanes().iter().copied().collect()\n }\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n-    match stem {\n-        \"fmt\" => Some(Lane::Fmt),\n-        \"compile\" => Some(Lane::Compile),\n-        \"clippy\" => Some(Lane::Clippy),\n-        \"ast-grep\" => Some(Lane::AstGrep),\n-        \"dylint\" => Some(Lane::Dylint),\n-        \"panic-scan\" => Some(Lane::PanicScan),\n-        \"policy-scan\" => Some(Lane::PolicyScan),\n-        \"test\" => Some(Lane::Test),\n-        \"deny\" => Some(Lane::Deny),\n-        \"build\" => Some(Lane::Build),\n-        _ => None,\n-    }\n+    Some(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Return the first lane in `expected`, or [`Lane::Fmt`] when none is given.\n ///\n /// Used to anchor directory-level errors to a concrete lane for the\n /// [`ReaderError::InputError`] payload.\n const fn first_scoped_lane(expected: &[Lane]) -> Lane {\n     match expected.first() {\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:265:5: replace stem_to_lane -> Option<Lane> with Some(Default::default())",
+    "package": "titania-aggregate",
+    "replacement": "Some(Default::default())",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 277
+      },
+      "start": {
+        "column": 5,
+        "line": 265
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"fmt\" in stem_to_lane\n@@ -258,17 +258,17 @@\n /// Build the set of lanes that participate in `scope`.\n fn scoped_lane_set(scope: GateScope) -> HashSet<Lane> {\n     scope.lanes().iter().copied().collect()\n }\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n     match stem {\n-        \"fmt\" => Some(Lane::Fmt),\n+         /* ~ changed by cargo-mutants ~ */\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n         \"ast-grep\" => Some(Lane::AstGrep),\n         \"dylint\" => Some(Lane::Dylint),\n         \"panic-scan\" => Some(Lane::PanicScan),\n         \"policy-scan\" => Some(Lane::PolicyScan),\n         \"test\" => Some(Lane::Test),\n         \"deny\" => Some(Lane::Deny),\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:266:9: delete match arm \"fmt\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 34,
+        "line": 266
+      },
+      "start": {
+        "column": 9,
+        "line": 266
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"compile\" in stem_to_lane\n@@ -259,17 +259,17 @@\n fn scoped_lane_set(scope: GateScope) -> HashSet<Lane> {\n     scope.lanes().iter().copied().collect()\n }\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n     match stem {\n         \"fmt\" => Some(Lane::Fmt),\n-        \"compile\" => Some(Lane::Compile),\n+         /* ~ changed by cargo-mutants ~ */\n         \"clippy\" => Some(Lane::Clippy),\n         \"ast-grep\" => Some(Lane::AstGrep),\n         \"dylint\" => Some(Lane::Dylint),\n         \"panic-scan\" => Some(Lane::PanicScan),\n         \"policy-scan\" => Some(Lane::PolicyScan),\n         \"test\" => Some(Lane::Test),\n         \"deny\" => Some(Lane::Deny),\n         \"build\" => Some(Lane::Build),\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:267:9: delete match arm \"compile\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 42,
+        "line": 267
+      },
+      "start": {
+        "column": 9,
+        "line": 267
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"clippy\" in stem_to_lane\n@@ -260,17 +260,17 @@\n     scope.lanes().iter().copied().collect()\n }\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n     match stem {\n         \"fmt\" => Some(Lane::Fmt),\n         \"compile\" => Some(Lane::Compile),\n-        \"clippy\" => Some(Lane::Clippy),\n+         /* ~ changed by cargo-mutants ~ */\n         \"ast-grep\" => Some(Lane::AstGrep),\n         \"dylint\" => Some(Lane::Dylint),\n         \"panic-scan\" => Some(Lane::PanicScan),\n         \"policy-scan\" => Some(Lane::PolicyScan),\n         \"test\" => Some(Lane::Test),\n         \"deny\" => Some(Lane::Deny),\n         \"build\" => Some(Lane::Build),\n         _ => None,\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:268:9: delete match arm \"clippy\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 40,
+        "line": 268
+      },
+      "start": {
+        "column": 9,
+        "line": 268
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"ast-grep\" in stem_to_lane\n@@ -261,17 +261,17 @@\n }\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n     match stem {\n         \"fmt\" => Some(Lane::Fmt),\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n-        \"ast-grep\" => Some(Lane::AstGrep),\n+         /* ~ changed by cargo-mutants ~ */\n         \"dylint\" => Some(Lane::Dylint),\n         \"panic-scan\" => Some(Lane::PanicScan),\n         \"policy-scan\" => Some(Lane::PolicyScan),\n         \"test\" => Some(Lane::Test),\n         \"deny\" => Some(Lane::Deny),\n         \"build\" => Some(Lane::Build),\n         _ => None,\n     }\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:269:9: delete match arm \"ast-grep\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 43,
+        "line": 269
+      },
+      "start": {
+        "column": 9,
+        "line": 269
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"dylint\" in stem_to_lane\n@@ -262,17 +262,17 @@\n \n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n     match stem {\n         \"fmt\" => Some(Lane::Fmt),\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n         \"ast-grep\" => Some(Lane::AstGrep),\n-        \"dylint\" => Some(Lane::Dylint),\n+         /* ~ changed by cargo-mutants ~ */\n         \"panic-scan\" => Some(Lane::PanicScan),\n         \"policy-scan\" => Some(Lane::PolicyScan),\n         \"test\" => Some(Lane::Test),\n         \"deny\" => Some(Lane::Deny),\n         \"build\" => Some(Lane::Build),\n         _ => None,\n     }\n }\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:270:9: delete match arm \"dylint\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 40,
+        "line": 270
+      },
+      "start": {
+        "column": 9,
+        "line": 270
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"panic-scan\" in stem_to_lane\n@@ -263,17 +263,17 @@\n /// Resolve a filename stem to the [`Lane`] it names, if any.\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n     match stem {\n         \"fmt\" => Some(Lane::Fmt),\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n         \"ast-grep\" => Some(Lane::AstGrep),\n         \"dylint\" => Some(Lane::Dylint),\n-        \"panic-scan\" => Some(Lane::PanicScan),\n+         /* ~ changed by cargo-mutants ~ */\n         \"policy-scan\" => Some(Lane::PolicyScan),\n         \"test\" => Some(Lane::Test),\n         \"deny\" => Some(Lane::Deny),\n         \"build\" => Some(Lane::Build),\n         _ => None,\n     }\n }\n \n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:271:9: delete match arm \"panic-scan\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 47,
+        "line": 271
+      },
+      "start": {
+        "column": 9,
+        "line": 271
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"policy-scan\" in stem_to_lane\n@@ -264,17 +264,17 @@\n fn stem_to_lane(stem: &str) -> Option<Lane> {\n     match stem {\n         \"fmt\" => Some(Lane::Fmt),\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n         \"ast-grep\" => Some(Lane::AstGrep),\n         \"dylint\" => Some(Lane::Dylint),\n         \"panic-scan\" => Some(Lane::PanicScan),\n-        \"policy-scan\" => Some(Lane::PolicyScan),\n+         /* ~ changed by cargo-mutants ~ */\n         \"test\" => Some(Lane::Test),\n         \"deny\" => Some(Lane::Deny),\n         \"build\" => Some(Lane::Build),\n         _ => None,\n     }\n }\n \n /// Return the first lane in `expected`, or [`Lane::Fmt`] when none is given.\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:272:9: delete match arm \"policy-scan\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 49,
+        "line": 272
+      },
+      "start": {
+        "column": 9,
+        "line": 272
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"test\" in stem_to_lane\n@@ -265,17 +265,17 @@\n     match stem {\n         \"fmt\" => Some(Lane::Fmt),\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n         \"ast-grep\" => Some(Lane::AstGrep),\n         \"dylint\" => Some(Lane::Dylint),\n         \"panic-scan\" => Some(Lane::PanicScan),\n         \"policy-scan\" => Some(Lane::PolicyScan),\n-        \"test\" => Some(Lane::Test),\n+         /* ~ changed by cargo-mutants ~ */\n         \"deny\" => Some(Lane::Deny),\n         \"build\" => Some(Lane::Build),\n         _ => None,\n     }\n }\n \n /// Return the first lane in `expected`, or [`Lane::Fmt`] when none is given.\n ///\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:273:9: delete match arm \"test\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 36,
+        "line": 273
+      },
+      "start": {
+        "column": 9,
+        "line": 273
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"deny\" in stem_to_lane\n@@ -266,17 +266,17 @@\n         \"fmt\" => Some(Lane::Fmt),\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n         \"ast-grep\" => Some(Lane::AstGrep),\n         \"dylint\" => Some(Lane::Dylint),\n         \"panic-scan\" => Some(Lane::PanicScan),\n         \"policy-scan\" => Some(Lane::PolicyScan),\n         \"test\" => Some(Lane::Test),\n-        \"deny\" => Some(Lane::Deny),\n+         /* ~ changed by cargo-mutants ~ */\n         \"build\" => Some(Lane::Build),\n         _ => None,\n     }\n }\n \n /// Return the first lane in `expected`, or [`Lane::Fmt`] when none is given.\n ///\n /// Used to anchor directory-level errors to a concrete lane for the\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:274:9: delete match arm \"deny\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 36,
+        "line": 274
+      },
+      "start": {
+        "column": 9,
+        "line": 274
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm \"build\" in stem_to_lane\n@@ -267,17 +267,17 @@\n         \"compile\" => Some(Lane::Compile),\n         \"clippy\" => Some(Lane::Clippy),\n         \"ast-grep\" => Some(Lane::AstGrep),\n         \"dylint\" => Some(Lane::Dylint),\n         \"panic-scan\" => Some(Lane::PanicScan),\n         \"policy-scan\" => Some(Lane::PolicyScan),\n         \"test\" => Some(Lane::Test),\n         \"deny\" => Some(Lane::Deny),\n-        \"build\" => Some(Lane::Build),\n+         /* ~ changed by cargo-mutants ~ */\n         _ => None,\n     }\n }\n \n /// Return the first lane in `expected`, or [`Lane::Fmt`] when none is given.\n ///\n /// Used to anchor directory-level errors to a concrete lane for the\n /// [`ReaderError::InputError`] payload.\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "stem_to_lane",
+      "return_type": "-> Option<Lane>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 278
+        },
+        "start": {
+          "column": 1,
+          "line": 263
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:275:9: delete match arm \"build\" in stem_to_lane",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 38,
+        "line": 275
+      },
+      "start": {
+        "column": 9,
+        "line": 275
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace first_scoped_lane -> Lane with Default::default()\n@@ -277,20 +277,17 @@\n     }\n }\n \n /// Return the first lane in `expected`, or [`Lane::Fmt`] when none is given.\n ///\n /// Used to anchor directory-level errors to a concrete lane for the\n /// [`ReaderError::InputError`] payload.\n const fn first_scoped_lane(expected: &[Lane]) -> Lane {\n-    match expected.first() {\n-        Some(lane) => *lane,\n-        None => Lane::Fmt,\n-    }\n+    Default::default() /* ~ changed by cargo-mutants ~ */\n }\n \n fn missing_lane_outcome(lane: Lane) -> LaneOutcome {\n     LaneOutcome::Failed {\n         failure: LaneFailure::Infra {\n             tool: lane.name().to_owned(),\n             reason: \"output file missing\".to_owned(),\n         },\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "first_scoped_lane",
+      "return_type": "-> Lane",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 289
+        },
+        "start": {
+          "column": 1,
+          "line": 280
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:285:5: replace first_scoped_lane -> Lane with Default::default()",
+    "package": "titania-aggregate",
+    "replacement": "Default::default()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 288
+      },
+      "start": {
+        "column": 5,
+        "line": 285
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace missing_lane_outcome -> LaneOutcome with Default::default()\n@@ -284,22 +284,17 @@\n const fn first_scoped_lane(expected: &[Lane]) -> Lane {\n     match expected.first() {\n         Some(lane) => *lane,\n         None => Lane::Fmt,\n     }\n }\n \n fn missing_lane_outcome(lane: Lane) -> LaneOutcome {\n-    LaneOutcome::Failed {\n-        failure: LaneFailure::Infra {\n-            tool: lane.name().to_owned(),\n-            reason: \"output file missing\".to_owned(),\n-        },\n-    }\n+    Default::default() /* ~ changed by cargo-mutants ~ */\n }\n \n /// Return the output directory name for a gate scope.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::UnsupportedScope`] for future gate-scope variants\n /// unknown to this v1 reader.\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "missing_lane_outcome",
+      "return_type": "-> LaneOutcome",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 298
+        },
+        "start": {
+          "column": 1,
+          "line": 291
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:292:5: replace missing_lane_outcome -> LaneOutcome with Default::default()",
+    "package": "titania-aggregate",
+    "replacement": "Default::default()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 297
+      },
+      "start": {
+        "column": 5,
+        "line": 292
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace scope_dir -> Result<&'static str, ReaderError> with Ok(\"\")\n@@ -299,23 +299,17 @@\n \n /// Return the output directory name for a gate scope.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::UnsupportedScope`] for future gate-scope variants\n /// unknown to this v1 reader.\n fn scope_dir(scope: GateScope) -> Result<&'static str, ReaderError> {\n-    match scope {\n-        GateScope::Edit => Ok(\"edit\"),\n-        GateScope::Prepush => Ok(\"prepush\"),\n-        GateScope::Release => Ok(\"release\"),\n-        GateScope::Full => Ok(\"full\"),\n-        _ => Err(ReaderError::UnsupportedScope { scope: format!(\"{scope:?}\") }),\n-    }\n+    Ok(\"\") /* ~ changed by cargo-mutants ~ */\n }\n \n /// Build the artifact output directory path for a scope.\n fn artifact_dir(target_root: &Path, scope_dir: &str) -> PathBuf {\n     target_root.join(\".titania\").join(\"out\").join(scope_dir)\n }\n \n #[cfg(test)]\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "scope_dir",
+      "return_type": "-> Result<&'static str, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 314
+        },
+        "start": {
+          "column": 1,
+          "line": 300
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:307:5: replace scope_dir -> Result<&'static str, ReaderError> with Ok(\"\")",
+    "package": "titania-aggregate",
+    "replacement": "Ok(\"\")",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 313
+      },
+      "start": {
+        "column": 5,
+        "line": 307
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace scope_dir -> Result<&'static str, ReaderError> with Ok(\"xyzzy\")\n@@ -299,23 +299,17 @@\n \n /// Return the output directory name for a gate scope.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::UnsupportedScope`] for future gate-scope variants\n /// unknown to this v1 reader.\n fn scope_dir(scope: GateScope) -> Result<&'static str, ReaderError> {\n-    match scope {\n-        GateScope::Edit => Ok(\"edit\"),\n-        GateScope::Prepush => Ok(\"prepush\"),\n-        GateScope::Release => Ok(\"release\"),\n-        GateScope::Full => Ok(\"full\"),\n-        _ => Err(ReaderError::UnsupportedScope { scope: format!(\"{scope:?}\") }),\n-    }\n+    Ok(\"xyzzy\") /* ~ changed by cargo-mutants ~ */\n }\n \n /// Build the artifact output directory path for a scope.\n fn artifact_dir(target_root: &Path, scope_dir: &str) -> PathBuf {\n     target_root.join(\".titania\").join(\"out\").join(scope_dir)\n }\n \n #[cfg(test)]\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "scope_dir",
+      "return_type": "-> Result<&'static str, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 314
+        },
+        "start": {
+          "column": 1,
+          "line": 300
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:307:5: replace scope_dir -> Result<&'static str, ReaderError> with Ok(\"xyzzy\")",
+    "package": "titania-aggregate",
+    "replacement": "Ok(\"xyzzy\")",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 313
+      },
+      "start": {
+        "column": 5,
+        "line": 307
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm GateScope::Edit in scope_dir\n@@ -300,17 +300,17 @@\n /// Return the output directory name for a gate scope.\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::UnsupportedScope`] for future gate-scope variants\n /// unknown to this v1 reader.\n fn scope_dir(scope: GateScope) -> Result<&'static str, ReaderError> {\n     match scope {\n-        GateScope::Edit => Ok(\"edit\"),\n+         /* ~ changed by cargo-mutants ~ */\n         GateScope::Prepush => Ok(\"prepush\"),\n         GateScope::Release => Ok(\"release\"),\n         GateScope::Full => Ok(\"full\"),\n         _ => Err(ReaderError::UnsupportedScope { scope: format!(\"{scope:?}\") }),\n     }\n }\n \n /// Build the artifact output directory path for a scope.\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "scope_dir",
+      "return_type": "-> Result<&'static str, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 314
+        },
+        "start": {
+          "column": 1,
+          "line": 300
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:308:9: delete match arm GateScope::Edit in scope_dir",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 39,
+        "line": 308
+      },
+      "start": {
+        "column": 9,
+        "line": 308
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm GateScope::Prepush in scope_dir\n@@ -301,17 +301,17 @@\n ///\n /// # Errors\n ///\n /// Returns [`ReaderError::UnsupportedScope`] for future gate-scope variants\n /// unknown to this v1 reader.\n fn scope_dir(scope: GateScope) -> Result<&'static str, ReaderError> {\n     match scope {\n         GateScope::Edit => Ok(\"edit\"),\n-        GateScope::Prepush => Ok(\"prepush\"),\n+         /* ~ changed by cargo-mutants ~ */\n         GateScope::Release => Ok(\"release\"),\n         GateScope::Full => Ok(\"full\"),\n         _ => Err(ReaderError::UnsupportedScope { scope: format!(\"{scope:?}\") }),\n     }\n }\n \n /// Build the artifact output directory path for a scope.\n fn artifact_dir(target_root: &Path, scope_dir: &str) -> PathBuf {\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "scope_dir",
+      "return_type": "-> Result<&'static str, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 314
+        },
+        "start": {
+          "column": 1,
+          "line": 300
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:309:9: delete match arm GateScope::Prepush in scope_dir",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 45,
+        "line": 309
+      },
+      "start": {
+        "column": 9,
+        "line": 309
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm GateScope::Release in scope_dir\n@@ -302,17 +302,17 @@\n /// # Errors\n ///\n /// Returns [`ReaderError::UnsupportedScope`] for future gate-scope variants\n /// unknown to this v1 reader.\n fn scope_dir(scope: GateScope) -> Result<&'static str, ReaderError> {\n     match scope {\n         GateScope::Edit => Ok(\"edit\"),\n         GateScope::Prepush => Ok(\"prepush\"),\n-        GateScope::Release => Ok(\"release\"),\n+         /* ~ changed by cargo-mutants ~ */\n         GateScope::Full => Ok(\"full\"),\n         _ => Err(ReaderError::UnsupportedScope { scope: format!(\"{scope:?}\") }),\n     }\n }\n \n /// Build the artifact output directory path for a scope.\n fn artifact_dir(target_root: &Path, scope_dir: &str) -> PathBuf {\n     target_root.join(\".titania\").join(\"out\").join(scope_dir)\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "scope_dir",
+      "return_type": "-> Result<&'static str, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 314
+        },
+        "start": {
+          "column": 1,
+          "line": 300
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:310:9: delete match arm GateScope::Release in scope_dir",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 45,
+        "line": 310
+      },
+      "start": {
+        "column": 9,
+        "line": 310
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ delete match arm GateScope::Full in scope_dir\n@@ -303,17 +303,17 @@\n ///\n /// Returns [`ReaderError::UnsupportedScope`] for future gate-scope variants\n /// unknown to this v1 reader.\n fn scope_dir(scope: GateScope) -> Result<&'static str, ReaderError> {\n     match scope {\n         GateScope::Edit => Ok(\"edit\"),\n         GateScope::Prepush => Ok(\"prepush\"),\n         GateScope::Release => Ok(\"release\"),\n-        GateScope::Full => Ok(\"full\"),\n+         /* ~ changed by cargo-mutants ~ */\n         _ => Err(ReaderError::UnsupportedScope { scope: format!(\"{scope:?}\") }),\n     }\n }\n \n /// Build the artifact output directory path for a scope.\n fn artifact_dir(target_root: &Path, scope_dir: &str) -> PathBuf {\n     target_root.join(\".titania\").join(\"out\").join(scope_dir)\n }\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "scope_dir",
+      "return_type": "-> Result<&'static str, ReaderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 314
+        },
+        "start": {
+          "column": 1,
+          "line": 300
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:311:9: delete match arm GateScope::Full in scope_dir",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 39,
+        "line": 311
+      },
+      "start": {
+        "column": 9,
+        "line": 311
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/artifact_reader.rs\n+++ replace artifact_dir -> PathBuf with Default::default()\n@@ -310,17 +310,17 @@\n         GateScope::Release => Ok(\"release\"),\n         GateScope::Full => Ok(\"full\"),\n         _ => Err(ReaderError::UnsupportedScope { scope: format!(\"{scope:?}\") }),\n     }\n }\n \n /// Build the artifact output directory path for a scope.\n fn artifact_dir(target_root: &Path, scope_dir: &str) -> PathBuf {\n-    target_root.join(\".titania\").join(\"out\").join(scope_dir)\n+    Default::default() /* ~ changed by cargo-mutants ~ */\n }\n \n #[cfg(test)]\n mod tests {\n     //! Direct unit tests for internal helpers that are unreachable through the\n     //! public `read_lane_artifacts` API on a normal case-sensitive filesystem.\n     //!\n     //! The on-disk stem-to-lane mapping is one-to-one and the directory\n",
+    "file": "crates/titania-aggregate/src/artifact_reader.rs",
+    "function": {
+      "function_name": "artifact_dir",
+      "return_type": "-> PathBuf",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 319
+        },
+        "start": {
+          "column": 1,
+          "line": 316
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/artifact_reader.rs:318:5: replace artifact_dir -> PathBuf with Default::default()",
+    "package": "titania-aggregate",
+    "replacement": "Default::default()",
+    "span": {
+      "end": {
+        "column": 61,
+        "line": 318
+      },
+      "start": {
+        "column": 5,
+        "line": 318
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/receipt_builder.rs\n+++ replace build_quality_receipt -> Result<QualityReceipt, ReceiptBuilderError> with Ok(Default::default())\n@@ -24,17 +24,17 @@\n /// # Errors\n /// Returns [`ReceiptBuilderError::Receipt`] when the core receipt constructor rejects\n /// the supplied lane receipt list.\n pub fn build_quality_receipt(\n     scope: GateScope,\n     digests: ReceiptDigests,\n     lanes: Box<[titania_core::LaneReceipt]>,\n ) -> Result<QualityReceipt, ReceiptBuilderError> {\n-    QualityReceipt::new(scope, digests, lanes).map_err(Into::into)\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Compute the stable digest of parsed lane evidence.\n ///\n /// The v1 receipt records the digest of the typed [`LaneEvidence`] payload, not a\n /// caller-provided constant. Serialization is via `serde_json` because lane\n /// artifacts are JSON and all fields are strongly typed before hashing.\n ///\n",
+    "file": "crates/titania-aggregate/src/receipt_builder.rs",
+    "function": {
+      "function_name": "build_quality_receipt",
+      "return_type": "-> Result<QualityReceipt, ReceiptBuilderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 33
+        },
+        "start": {
+          "column": 1,
+          "line": 20
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/receipt_builder.rs:32:5: replace build_quality_receipt -> Result<QualityReceipt, ReceiptBuilderError> with Ok(Default::default())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 67,
+        "line": 32
+      },
+      "start": {
+        "column": 5,
+        "line": 32
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/receipt_builder.rs\n+++ replace compute_evidence_digest -> Result<Digest, ReceiptBuilderError> with Ok(Default::default())\n@@ -37,11 +37,10 @@\n /// The v1 receipt records the digest of the typed [`LaneEvidence`] payload, not a\n /// caller-provided constant. Serialization is via `serde_json` because lane\n /// artifacts are JSON and all fields are strongly typed before hashing.\n ///\n /// # Errors\n /// Returns [`ReceiptBuilderError::EvidenceSerialization`] if serializing the\n /// evidence payload fails.\n pub fn compute_evidence_digest(evidence: &LaneEvidence) -> Result<Digest, ReceiptBuilderError> {\n-    let payload = serde_json::to_vec(evidence)?;\n-    Ok(Digest::from_bytes(&payload))\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n",
+    "file": "crates/titania-aggregate/src/receipt_builder.rs",
+    "function": {
+      "function_name": "compute_evidence_digest",
+      "return_type": "-> Result<Digest, ReceiptBuilderError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 47
+        },
+        "start": {
+          "column": 1,
+          "line": 35
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/receipt_builder.rs:45:5: replace compute_evidence_digest -> Result<Digest, ReceiptBuilderError> with Ok(Default::default())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 37,
+        "line": 46
+      },
+      "start": {
+        "column": 5,
+        "line": 45
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace assemble_report -> Result<Report, ReportAssemblyError> with Ok(Default::default())\n@@ -85,37 +85,17 @@\n ///   the assembled fields.\n pub fn assemble_report(\n     scope: GateScope,\n     outcomes: Box<[PerLaneEntry]>,\n     pass_receipt: QualityReceipt,\n     policy_diagnostics: Box<[PolicyDiagnostic]>,\n     input_diagnostics: Box<[InputDiagnostic]>,\n ) -> Result<Report, ReportAssemblyError> {\n-    if !input_diagnostics.is_empty() {\n-        return Ok(Report::input_error(input_diagnostics));\n-    }\n-\n-    if !policy_diagnostics.is_empty() {\n-        return Ok(Report::policy_error(policy_diagnostics));\n-    }\n-\n-    check_outcomes_not_empty(&outcomes)?;\n-\n-    check_scope_outcome_identities(scope, &outcomes)?;\n-\n-    let code_findings = rejecting_findings(&outcomes);\n-    let gate_failures = gate_failures(&outcomes);\n-\n-    if has_rejection(&code_findings, &gate_failures) {\n-        return Report::reject(code_findings, gate_failures, outcomes).map_err(Into::into);\n-    }\n-\n-    validate_pass_candidate(scope, &pass_receipt)?;\n-    Report::pass(pass_receipt, outcomes).map_err(Into::into)\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n fn rejecting_findings(entries: &[PerLaneEntry]) -> Box<[Finding]> {\n     entries\n         .iter()\n         .filter_map(|e| findings(e.outcome()))\n         .flatten()\n         .filter(|finding| finding.is_reject())\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "assemble_report",
+      "return_type": "-> Result<Report, ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 114
+        },
+        "start": {
+          "column": 1,
+          "line": 67
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:93:5: replace assemble_report -> Result<Report, ReportAssemblyError> with Ok(Default::default())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 61,
+        "line": 113
+      },
+      "start": {
+        "column": 5,
+        "line": 93
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ delete ! in assemble_report\n@@ -85,17 +85,17 @@\n ///   the assembled fields.\n pub fn assemble_report(\n     scope: GateScope,\n     outcomes: Box<[PerLaneEntry]>,\n     pass_receipt: QualityReceipt,\n     policy_diagnostics: Box<[PolicyDiagnostic]>,\n     input_diagnostics: Box<[InputDiagnostic]>,\n ) -> Result<Report, ReportAssemblyError> {\n-    if !input_diagnostics.is_empty() {\n+    if  /* ~ changed by cargo-mutants ~ */input_diagnostics.is_empty() {\n         return Ok(Report::input_error(input_diagnostics));\n     }\n \n     if !policy_diagnostics.is_empty() {\n         return Ok(Report::policy_error(policy_diagnostics));\n     }\n \n     check_outcomes_not_empty(&outcomes)?;\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "assemble_report",
+      "return_type": "-> Result<Report, ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 114
+        },
+        "start": {
+          "column": 1,
+          "line": 67
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:93:8: delete ! in assemble_report",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 9,
+        "line": 93
+      },
+      "start": {
+        "column": 8,
+        "line": 93
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ delete ! in assemble_report\n@@ -89,17 +89,17 @@\n     pass_receipt: QualityReceipt,\n     policy_diagnostics: Box<[PolicyDiagnostic]>,\n     input_diagnostics: Box<[InputDiagnostic]>,\n ) -> Result<Report, ReportAssemblyError> {\n     if !input_diagnostics.is_empty() {\n         return Ok(Report::input_error(input_diagnostics));\n     }\n \n-    if !policy_diagnostics.is_empty() {\n+    if  /* ~ changed by cargo-mutants ~ */policy_diagnostics.is_empty() {\n         return Ok(Report::policy_error(policy_diagnostics));\n     }\n \n     check_outcomes_not_empty(&outcomes)?;\n \n     check_scope_outcome_identities(scope, &outcomes)?;\n \n     let code_findings = rejecting_findings(&outcomes);\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "assemble_report",
+      "return_type": "-> Result<Report, ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 114
+        },
+        "start": {
+          "column": 1,
+          "line": 67
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:97:8: delete ! in assemble_report",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 9,
+        "line": 97
+      },
+      "start": {
+        "column": 8,
+        "line": 97
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace rejecting_findings -> Box<[Finding]> with Box::new(Vec::leak(Vec::new()))\n@@ -109,24 +109,17 @@\n         return Report::reject(code_findings, gate_failures, outcomes).map_err(Into::into);\n     }\n \n     validate_pass_candidate(scope, &pass_receipt)?;\n     Report::pass(pass_receipt, outcomes).map_err(Into::into)\n }\n \n fn rejecting_findings(entries: &[PerLaneEntry]) -> Box<[Finding]> {\n-    entries\n-        .iter()\n-        .filter_map(|e| findings(e.outcome()))\n-        .flatten()\n-        .filter(|finding| finding.is_reject())\n-        .cloned()\n-        .collect::<Vec<_>>()\n-        .into_boxed_slice()\n+    Box::new(Vec::leak(Vec::new())) /* ~ changed by cargo-mutants ~ */\n }\n \n fn findings(outcome: &LaneOutcome) -> Option<std::slice::Iter<'_, Finding>> {\n     match outcome {\n         LaneOutcome::Findings { findings } => Some(findings.iter()),\n         LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {\n             None\n         }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "rejecting_findings",
+      "return_type": "-> Box<[Finding]>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 125
+        },
+        "start": {
+          "column": 1,
+          "line": 116
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:117:5: replace rejecting_findings -> Box<[Finding]> with Box::new(Vec::leak(Vec::new()))",
+    "package": "titania-aggregate",
+    "replacement": "Box::new(Vec::leak(Vec::new()))",
+    "span": {
+      "end": {
+        "column": 28,
+        "line": 124
+      },
+      "start": {
+        "column": 5,
+        "line": 117
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace rejecting_findings -> Box<[Finding]> with Box::new(Vec::leak(vec![Default::default()]))\n@@ -109,24 +109,17 @@\n         return Report::reject(code_findings, gate_failures, outcomes).map_err(Into::into);\n     }\n \n     validate_pass_candidate(scope, &pass_receipt)?;\n     Report::pass(pass_receipt, outcomes).map_err(Into::into)\n }\n \n fn rejecting_findings(entries: &[PerLaneEntry]) -> Box<[Finding]> {\n-    entries\n-        .iter()\n-        .filter_map(|e| findings(e.outcome()))\n-        .flatten()\n-        .filter(|finding| finding.is_reject())\n-        .cloned()\n-        .collect::<Vec<_>>()\n-        .into_boxed_slice()\n+    Box::new(Vec::leak(vec![Default::default()])) /* ~ changed by cargo-mutants ~ */\n }\n \n fn findings(outcome: &LaneOutcome) -> Option<std::slice::Iter<'_, Finding>> {\n     match outcome {\n         LaneOutcome::Findings { findings } => Some(findings.iter()),\n         LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {\n             None\n         }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "rejecting_findings",
+      "return_type": "-> Box<[Finding]>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 125
+        },
+        "start": {
+          "column": 1,
+          "line": 116
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:117:5: replace rejecting_findings -> Box<[Finding]> with Box::new(Vec::leak(vec![Default::default()]))",
+    "package": "titania-aggregate",
+    "replacement": "Box::new(Vec::leak(vec![Default::default()]))",
+    "span": {
+      "end": {
+        "column": 28,
+        "line": 124
+      },
+      "start": {
+        "column": 5,
+        "line": 117
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace findings -> Option<std::slice::Iter<'_, Finding>> with None\n@@ -120,22 +120,17 @@\n         .flatten()\n         .filter(|finding| finding.is_reject())\n         .cloned()\n         .collect::<Vec<_>>()\n         .into_boxed_slice()\n }\n \n fn findings(outcome: &LaneOutcome) -> Option<std::slice::Iter<'_, Finding>> {\n-    match outcome {\n-        LaneOutcome::Findings { findings } => Some(findings.iter()),\n-        LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {\n-            None\n-        }\n-    }\n+    None /* ~ changed by cargo-mutants ~ */\n }\n \n fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {\n     entries\n         .iter()\n         .filter_map(|entry| failed(entry.outcome()))\n         .cloned()\n         .collect::<Vec<_>>()\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "findings",
+      "return_type": "-> Option<std::slice::Iter<'_, Finding>>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 134
+        },
+        "start": {
+          "column": 1,
+          "line": 127
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:128:5: replace findings -> Option<std::slice::Iter<'_, Finding>> with None",
+    "package": "titania-aggregate",
+    "replacement": "None",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 133
+      },
+      "start": {
+        "column": 5,
+        "line": 128
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace findings -> Option<std::slice::Iter<'_, Finding>> with Some(Iter::new())\n@@ -120,22 +120,17 @@\n         .flatten()\n         .filter(|finding| finding.is_reject())\n         .cloned()\n         .collect::<Vec<_>>()\n         .into_boxed_slice()\n }\n \n fn findings(outcome: &LaneOutcome) -> Option<std::slice::Iter<'_, Finding>> {\n-    match outcome {\n-        LaneOutcome::Findings { findings } => Some(findings.iter()),\n-        LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {\n-            None\n-        }\n-    }\n+    Some(Iter::new()) /* ~ changed by cargo-mutants ~ */\n }\n \n fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {\n     entries\n         .iter()\n         .filter_map(|entry| failed(entry.outcome()))\n         .cloned()\n         .collect::<Vec<_>>()\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "findings",
+      "return_type": "-> Option<std::slice::Iter<'_, Finding>>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 134
+        },
+        "start": {
+          "column": 1,
+          "line": 127
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:128:5: replace findings -> Option<std::slice::Iter<'_, Finding>> with Some(Iter::new())",
+    "package": "titania-aggregate",
+    "replacement": "Some(Iter::new())",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 133
+      },
+      "start": {
+        "column": 5,
+        "line": 128
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace findings -> Option<std::slice::Iter<'_, Finding>> with Some(Iter::from_iter([Default::default()]))\n@@ -120,22 +120,17 @@\n         .flatten()\n         .filter(|finding| finding.is_reject())\n         .cloned()\n         .collect::<Vec<_>>()\n         .into_boxed_slice()\n }\n \n fn findings(outcome: &LaneOutcome) -> Option<std::slice::Iter<'_, Finding>> {\n-    match outcome {\n-        LaneOutcome::Findings { findings } => Some(findings.iter()),\n-        LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {\n-            None\n-        }\n-    }\n+    Some(Iter::from_iter([Default::default()])) /* ~ changed by cargo-mutants ~ */\n }\n \n fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {\n     entries\n         .iter()\n         .filter_map(|entry| failed(entry.outcome()))\n         .cloned()\n         .collect::<Vec<_>>()\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "findings",
+      "return_type": "-> Option<std::slice::Iter<'_, Finding>>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 134
+        },
+        "start": {
+          "column": 1,
+          "line": 127
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:128:5: replace findings -> Option<std::slice::Iter<'_, Finding>> with Some(Iter::from_iter([Default::default()]))",
+    "package": "titania-aggregate",
+    "replacement": "Some(Iter::from_iter([Default::default()]))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 133
+      },
+      "start": {
+        "column": 5,
+        "line": 128
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace findings -> Option<std::slice::Iter<'_, Finding>> with Some(Iter::new(Default::default()))\n@@ -120,22 +120,17 @@\n         .flatten()\n         .filter(|finding| finding.is_reject())\n         .cloned()\n         .collect::<Vec<_>>()\n         .into_boxed_slice()\n }\n \n fn findings(outcome: &LaneOutcome) -> Option<std::slice::Iter<'_, Finding>> {\n-    match outcome {\n-        LaneOutcome::Findings { findings } => Some(findings.iter()),\n-        LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {\n-            None\n-        }\n-    }\n+    Some(Iter::new(Default::default())) /* ~ changed by cargo-mutants ~ */\n }\n \n fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {\n     entries\n         .iter()\n         .filter_map(|entry| failed(entry.outcome()))\n         .cloned()\n         .collect::<Vec<_>>()\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "findings",
+      "return_type": "-> Option<std::slice::Iter<'_, Finding>>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 134
+        },
+        "start": {
+          "column": 1,
+          "line": 127
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:128:5: replace findings -> Option<std::slice::Iter<'_, Finding>> with Some(Iter::new(Default::default()))",
+    "package": "titania-aggregate",
+    "replacement": "Some(Iter::new(Default::default()))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 133
+      },
+      "start": {
+        "column": 5,
+        "line": 128
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace findings -> Option<std::slice::Iter<'_, Finding>> with Some(Iter::from(Default::default()))\n@@ -120,22 +120,17 @@\n         .flatten()\n         .filter(|finding| finding.is_reject())\n         .cloned()\n         .collect::<Vec<_>>()\n         .into_boxed_slice()\n }\n \n fn findings(outcome: &LaneOutcome) -> Option<std::slice::Iter<'_, Finding>> {\n-    match outcome {\n-        LaneOutcome::Findings { findings } => Some(findings.iter()),\n-        LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {\n-            None\n-        }\n-    }\n+    Some(Iter::from(Default::default())) /* ~ changed by cargo-mutants ~ */\n }\n \n fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {\n     entries\n         .iter()\n         .filter_map(|entry| failed(entry.outcome()))\n         .cloned()\n         .collect::<Vec<_>>()\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "findings",
+      "return_type": "-> Option<std::slice::Iter<'_, Finding>>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 134
+        },
+        "start": {
+          "column": 1,
+          "line": 127
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:128:5: replace findings -> Option<std::slice::Iter<'_, Finding>> with Some(Iter::from(Default::default()))",
+    "package": "titania-aggregate",
+    "replacement": "Some(Iter::from(Default::default()))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 133
+      },
+      "start": {
+        "column": 5,
+        "line": 128
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace gate_failures -> Box<[LaneFailure]> with Box::new(Vec::leak(Vec::new()))\n@@ -129,22 +129,17 @@\n         LaneOutcome::Findings { findings } => Some(findings.iter()),\n         LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {\n             None\n         }\n     }\n }\n \n fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {\n-    entries\n-        .iter()\n-        .filter_map(|entry| failed(entry.outcome()))\n-        .cloned()\n-        .collect::<Vec<_>>()\n-        .into_boxed_slice()\n+    Box::new(Vec::leak(Vec::new())) /* ~ changed by cargo-mutants ~ */\n }\n \n const fn failed(outcome: &LaneOutcome) -> Option<&LaneFailure> {\n     match outcome {\n         LaneOutcome::Failed { failure } => Some(failure),\n         LaneOutcome::Clean { .. } | LaneOutcome::Findings { .. } | LaneOutcome::Skipped { .. } => {\n             None\n         }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "gate_failures",
+      "return_type": "-> Box<[LaneFailure]>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 143
+        },
+        "start": {
+          "column": 1,
+          "line": 136
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:137:5: replace gate_failures -> Box<[LaneFailure]> with Box::new(Vec::leak(Vec::new()))",
+    "package": "titania-aggregate",
+    "replacement": "Box::new(Vec::leak(Vec::new()))",
+    "span": {
+      "end": {
+        "column": 28,
+        "line": 142
+      },
+      "start": {
+        "column": 5,
+        "line": 137
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace gate_failures -> Box<[LaneFailure]> with Box::new(Vec::leak(vec![Default::default()]))\n@@ -129,22 +129,17 @@\n         LaneOutcome::Findings { findings } => Some(findings.iter()),\n         LaneOutcome::Clean { .. } | LaneOutcome::Failed { .. } | LaneOutcome::Skipped { .. } => {\n             None\n         }\n     }\n }\n \n fn gate_failures(entries: &[PerLaneEntry]) -> Box<[LaneFailure]> {\n-    entries\n-        .iter()\n-        .filter_map(|entry| failed(entry.outcome()))\n-        .cloned()\n-        .collect::<Vec<_>>()\n-        .into_boxed_slice()\n+    Box::new(Vec::leak(vec![Default::default()])) /* ~ changed by cargo-mutants ~ */\n }\n \n const fn failed(outcome: &LaneOutcome) -> Option<&LaneFailure> {\n     match outcome {\n         LaneOutcome::Failed { failure } => Some(failure),\n         LaneOutcome::Clean { .. } | LaneOutcome::Findings { .. } | LaneOutcome::Skipped { .. } => {\n             None\n         }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "gate_failures",
+      "return_type": "-> Box<[LaneFailure]>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 143
+        },
+        "start": {
+          "column": 1,
+          "line": 136
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:137:5: replace gate_failures -> Box<[LaneFailure]> with Box::new(Vec::leak(vec![Default::default()]))",
+    "package": "titania-aggregate",
+    "replacement": "Box::new(Vec::leak(vec![Default::default()]))",
+    "span": {
+      "end": {
+        "column": 28,
+        "line": 142
+      },
+      "start": {
+        "column": 5,
+        "line": 137
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace failed -> Option<&LaneFailure> with None\n@@ -138,22 +138,17 @@\n         .iter()\n         .filter_map(|entry| failed(entry.outcome()))\n         .cloned()\n         .collect::<Vec<_>>()\n         .into_boxed_slice()\n }\n \n const fn failed(outcome: &LaneOutcome) -> Option<&LaneFailure> {\n-    match outcome {\n-        LaneOutcome::Failed { failure } => Some(failure),\n-        LaneOutcome::Clean { .. } | LaneOutcome::Findings { .. } | LaneOutcome::Skipped { .. } => {\n-            None\n-        }\n-    }\n+    None /* ~ changed by cargo-mutants ~ */\n }\n /// # Errors\n /// Returns [`ReportAssemblyError::ReceiptLaneIdentityMismatch`] when the supplied\n /// receipt does not match the requested pass scope.\n fn validate_pass_candidate(\n     scope: GateScope,\n     pass_receipt: &QualityReceipt,\n ) -> Result<(), ReportAssemblyError> {\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "failed",
+      "return_type": "-> Option<&LaneFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 152
+        },
+        "start": {
+          "column": 1,
+          "line": 145
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:146:5: replace failed -> Option<&LaneFailure> with None",
+    "package": "titania-aggregate",
+    "replacement": "None",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 151
+      },
+      "start": {
+        "column": 5,
+        "line": 146
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace failed -> Option<&LaneFailure> with Some(Box::leak(Box::new(Default::default())))\n@@ -138,22 +138,17 @@\n         .iter()\n         .filter_map(|entry| failed(entry.outcome()))\n         .cloned()\n         .collect::<Vec<_>>()\n         .into_boxed_slice()\n }\n \n const fn failed(outcome: &LaneOutcome) -> Option<&LaneFailure> {\n-    match outcome {\n-        LaneOutcome::Failed { failure } => Some(failure),\n-        LaneOutcome::Clean { .. } | LaneOutcome::Findings { .. } | LaneOutcome::Skipped { .. } => {\n-            None\n-        }\n-    }\n+    Some(Box::leak(Box::new(Default::default()))) /* ~ changed by cargo-mutants ~ */\n }\n /// # Errors\n /// Returns [`ReportAssemblyError::ReceiptLaneIdentityMismatch`] when the supplied\n /// receipt does not match the requested pass scope.\n fn validate_pass_candidate(\n     scope: GateScope,\n     pass_receipt: &QualityReceipt,\n ) -> Result<(), ReportAssemblyError> {\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "failed",
+      "return_type": "-> Option<&LaneFailure>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 152
+        },
+        "start": {
+          "column": 1,
+          "line": 145
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:146:5: replace failed -> Option<&LaneFailure> with Some(Box::leak(Box::new(Default::default())))",
+    "package": "titania-aggregate",
+    "replacement": "Some(Box::leak(Box::new(Default::default())))",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 151
+      },
+      "start": {
+        "column": 5,
+        "line": 146
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace validate_pass_candidate -> Result<(), ReportAssemblyError> with Ok(())\n@@ -152,18 +152,17 @@\n }\n /// # Errors\n /// Returns [`ReportAssemblyError::ReceiptLaneIdentityMismatch`] when the supplied\n /// receipt does not match the requested pass scope.\n fn validate_pass_candidate(\n     scope: GateScope,\n     pass_receipt: &QualityReceipt,\n ) -> Result<(), ReportAssemblyError> {\n-    check_receipt_scope(scope, pass_receipt)?;\n-    check_receipt_lane_identities(scope, pass_receipt)\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Reject empty lane outcome sets before any report variant is built.\n ///\n /// # Errors\n /// Returns [`ReportAssemblyError::EmptyOutcomes`] when `outcomes` is empty.\n fn check_outcomes_not_empty(entries: &[PerLaneEntry]) -> Result<(), ReportAssemblyError> {\n     (!entries.is_empty()).then_some(()).ok_or(ReportAssemblyError::EmptyOutcomes)\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "validate_pass_candidate",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 162
+        },
+        "start": {
+          "column": 1,
+          "line": 153
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:160:5: replace validate_pass_candidate -> Result<(), ReportAssemblyError> with Ok(())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 55,
+        "line": 161
+      },
+      "start": {
+        "column": 5,
+        "line": 160
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace check_outcomes_not_empty -> Result<(), ReportAssemblyError> with Ok(())\n@@ -161,17 +161,17 @@\n     check_receipt_lane_identities(scope, pass_receipt)\n }\n \n /// Reject empty lane outcome sets before any report variant is built.\n ///\n /// # Errors\n /// Returns [`ReportAssemblyError::EmptyOutcomes`] when `outcomes` is empty.\n fn check_outcomes_not_empty(entries: &[PerLaneEntry]) -> Result<(), ReportAssemblyError> {\n-    (!entries.is_empty()).then_some(()).ok_or(ReportAssemblyError::EmptyOutcomes)\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Select the expected lane for a divergence index without unchecked access.\n ///\n /// # Errors\n /// Returns [`ReportAssemblyError::EmptyOutcomes`] when the scope has no lanes.\n fn expected_lane(canonical: &[Lane], index: usize) -> Result<Lane, ReportAssemblyError> {\n     canonical\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_outcomes_not_empty",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 170
+        },
+        "start": {
+          "column": 1,
+          "line": 164
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:169:5: replace check_outcomes_not_empty -> Result<(), ReportAssemblyError> with Ok(())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 82,
+        "line": 169
+      },
+      "start": {
+        "column": 5,
+        "line": 169
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ delete ! in check_outcomes_not_empty\n@@ -161,17 +161,17 @@\n     check_receipt_lane_identities(scope, pass_receipt)\n }\n \n /// Reject empty lane outcome sets before any report variant is built.\n ///\n /// # Errors\n /// Returns [`ReportAssemblyError::EmptyOutcomes`] when `outcomes` is empty.\n fn check_outcomes_not_empty(entries: &[PerLaneEntry]) -> Result<(), ReportAssemblyError> {\n-    (!entries.is_empty()).then_some(()).ok_or(ReportAssemblyError::EmptyOutcomes)\n+    ( /* ~ changed by cargo-mutants ~ */entries.is_empty()).then_some(()).ok_or(ReportAssemblyError::EmptyOutcomes)\n }\n \n /// Select the expected lane for a divergence index without unchecked access.\n ///\n /// # Errors\n /// Returns [`ReportAssemblyError::EmptyOutcomes`] when the scope has no lanes.\n fn expected_lane(canonical: &[Lane], index: usize) -> Result<Lane, ReportAssemblyError> {\n     canonical\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_outcomes_not_empty",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 170
+        },
+        "start": {
+          "column": 1,
+          "line": 164
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:169:6: delete ! in check_outcomes_not_empty",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 169
+      },
+      "start": {
+        "column": 6,
+        "line": 169
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace expected_lane -> Result<Lane, ReportAssemblyError> with Ok(Default::default())\n@@ -169,21 +169,17 @@\n     (!entries.is_empty()).then_some(()).ok_or(ReportAssemblyError::EmptyOutcomes)\n }\n \n /// Select the expected lane for a divergence index without unchecked access.\n ///\n /// # Errors\n /// Returns [`ReportAssemblyError::EmptyOutcomes`] when the scope has no lanes.\n fn expected_lane(canonical: &[Lane], index: usize) -> Result<Lane, ReportAssemblyError> {\n-    canonical\n-        .get(index)\n-        .copied()\n-        .or_else(|| canonical.last().copied())\n-        .ok_or(ReportAssemblyError::EmptyOutcomes)\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Check the caller supplied exactly one outcome per scoped lane, in the\n /// canonical order required by [`GateScope::lanes`].\n ///\n /// The check rejects omissions, duplicates, substitutions, and reorderings\n /// by comparing each entry's [`PerLaneEntry::lane`] against the canonical\n /// lane at the same index. The first divergence (by index) is reported so the\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "expected_lane",
+      "return_type": "-> Result<Lane, ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 182
+        },
+        "start": {
+          "column": 1,
+          "line": 172
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:177:5: replace expected_lane -> Result<Lane, ReportAssemblyError> with Ok(Default::default())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 51,
+        "line": 181
+      },
+      "start": {
+        "column": 5,
+        "line": 177
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace check_scope_outcome_identities -> Result<(), ReportAssemblyError> with Ok(())\n@@ -192,49 +192,17 @@\n /// # Errors\n /// Returns [`ReportAssemblyError::LaneIdentityMismatch`] when an entry is\n /// missing, repeated, swapped, or otherwise does not match the canonical\n /// lane at its index.\n fn check_scope_outcome_identities(\n     scope: GateScope,\n     entries: &[PerLaneEntry],\n ) -> Result<(), ReportAssemblyError> {\n-    let canonical = scope.lanes();\n-    if entries.len() != canonical.len() {\n-        // The first divergence is the index where canonical and entries\n-        // stop agreeing. When the caller supplied fewer entries than\n-        // canonical, the divergence is the first missing slot. When the\n-        // caller supplied extra entries, the divergence is the first\n-        // index past canonical — `expected` is reported as the first\n-        // canonical lane so the error always names a valid in-scope\n-        // lane, and the slot number alone distinguishes the two cases.\n-        let index = entries.len().min(canonical.len());\n-        let expected = expected_lane(canonical, index)?;\n-        return Err(ReportAssemblyError::LaneIdentityMismatch {\n-            scope,\n-            index,\n-            expected,\n-            found: entries.get(index).map(PerLaneEntry::lane).copied(),\n-        });\n-    }\n-    canonical\n-        .iter()\n-        .zip(entries.iter())\n-        .enumerate()\n-        .find_map(|(index, (expected, entry))| {\n-            (entry.lane() != expected).then_some((index, *expected, *entry.lane()))\n-        })\n-        .map_or(Ok(()), |(index, expected, found)| {\n-            Err(ReportAssemblyError::LaneIdentityMismatch {\n-                scope,\n-                index,\n-                expected,\n-                found: Some(found),\n-            })\n-        })\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Check the pass receipt was produced for the requested scope.\n ///\n /// # Errors\n /// Returns [`ReportAssemblyError::ReceiptScopeMismatch`] when the receipt scope\n /// differs from `scope`.\n fn check_receipt_scope(\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_scope_outcome_identities",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 233
+        },
+        "start": {
+          "column": 1,
+          "line": 184
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:200:5: replace check_scope_outcome_identities -> Result<(), ReportAssemblyError> with Ok(())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 11,
+        "line": 232
+      },
+      "start": {
+        "column": 5,
+        "line": 200
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace != with == in check_scope_outcome_identities\n@@ -193,17 +193,17 @@\n /// Returns [`ReportAssemblyError::LaneIdentityMismatch`] when an entry is\n /// missing, repeated, swapped, or otherwise does not match the canonical\n /// lane at its index.\n fn check_scope_outcome_identities(\n     scope: GateScope,\n     entries: &[PerLaneEntry],\n ) -> Result<(), ReportAssemblyError> {\n     let canonical = scope.lanes();\n-    if entries.len() != canonical.len() {\n+    if entries.len() == /* ~ changed by cargo-mutants ~ */ canonical.len() {\n         // The first divergence is the index where canonical and entries\n         // stop agreeing. When the caller supplied fewer entries than\n         // canonical, the divergence is the first missing slot. When the\n         // caller supplied extra entries, the divergence is the first\n         // index past canonical — `expected` is reported as the first\n         // canonical lane so the error always names a valid in-scope\n         // lane, and the slot number alone distinguishes the two cases.\n         let index = entries.len().min(canonical.len());\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_scope_outcome_identities",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 233
+        },
+        "start": {
+          "column": 1,
+          "line": 184
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:201:22: replace != with == in check_scope_outcome_identities",
+    "package": "titania-aggregate",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 24,
+        "line": 201
+      },
+      "start": {
+        "column": 22,
+        "line": 201
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace != with == in check_scope_outcome_identities\n@@ -215,17 +215,17 @@\n             found: entries.get(index).map(PerLaneEntry::lane).copied(),\n         });\n     }\n     canonical\n         .iter()\n         .zip(entries.iter())\n         .enumerate()\n         .find_map(|(index, (expected, entry))| {\n-            (entry.lane() != expected).then_some((index, *expected, *entry.lane()))\n+            (entry.lane() == /* ~ changed by cargo-mutants ~ */ expected).then_some((index, *expected, *entry.lane()))\n         })\n         .map_or(Ok(()), |(index, expected, found)| {\n             Err(ReportAssemblyError::LaneIdentityMismatch {\n                 scope,\n                 index,\n                 expected,\n                 found: Some(found),\n             })\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_scope_outcome_identities",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 233
+        },
+        "start": {
+          "column": 1,
+          "line": 184
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:223:27: replace != with == in check_scope_outcome_identities",
+    "package": "titania-aggregate",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 29,
+        "line": 223
+      },
+      "start": {
+        "column": 27,
+        "line": 223
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace check_receipt_scope -> Result<(), ReportAssemblyError> with Ok(())\n@@ -236,19 +236,17 @@\n ///\n /// # Errors\n /// Returns [`ReportAssemblyError::ReceiptScopeMismatch`] when the receipt scope\n /// differs from `scope`.\n fn check_receipt_scope(\n     scope: GateScope,\n     pass_receipt: &QualityReceipt,\n ) -> Result<(), ReportAssemblyError> {\n-    (*pass_receipt.scope() == scope).then_some(()).ok_or_else(|| {\n-        ReportAssemblyError::ReceiptScopeMismatch { expected: scope, found: *pass_receipt.scope() }\n-    })\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Check the pass receipt contains one lane receipt per scoped lane, in the\n /// canonical order required by [`GateScope::lanes`].\n ///\n /// The check rejects omissions, duplicates, substitutions, and reorderings\n /// by comparing each receipt's [`LaneReceipt::lane`] against the canonical\n /// lane at the same index. The first divergence (by index) is reported\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_receipt_scope",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 247
+        },
+        "start": {
+          "column": 1,
+          "line": 235
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:244:5: replace check_receipt_scope -> Result<(), ReportAssemblyError> with Ok(())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 246
+      },
+      "start": {
+        "column": 5,
+        "line": 244
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace == with != in check_receipt_scope\n@@ -236,17 +236,17 @@\n ///\n /// # Errors\n /// Returns [`ReportAssemblyError::ReceiptScopeMismatch`] when the receipt scope\n /// differs from `scope`.\n fn check_receipt_scope(\n     scope: GateScope,\n     pass_receipt: &QualityReceipt,\n ) -> Result<(), ReportAssemblyError> {\n-    (*pass_receipt.scope() == scope).then_some(()).ok_or_else(|| {\n+    (*pass_receipt.scope() != /* ~ changed by cargo-mutants ~ */ scope).then_some(()).ok_or_else(|| {\n         ReportAssemblyError::ReceiptScopeMismatch { expected: scope, found: *pass_receipt.scope() }\n     })\n }\n \n /// Check the pass receipt contains one lane receipt per scoped lane, in the\n /// canonical order required by [`GateScope::lanes`].\n ///\n /// The check rejects omissions, duplicates, substitutions, and reorderings\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_receipt_scope",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 247
+        },
+        "start": {
+          "column": 1,
+          "line": 235
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:244:28: replace == with != in check_receipt_scope",
+    "package": "titania-aggregate",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 30,
+        "line": 244
+      },
+      "start": {
+        "column": 28,
+        "line": 244
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace check_receipt_lane_identities -> Result<(), ReportAssemblyError> with Ok(())\n@@ -257,48 +257,15 @@\n /// # Errors\n /// Returns [`ReportAssemblyError::ReceiptLaneIdentityMismatch`] when a\n /// receipt is missing, repeated, swapped, or otherwise does not match\n /// the canonical lane at its index.\n fn check_receipt_lane_identities(\n     scope: GateScope,\n     pass_receipt: &QualityReceipt,\n ) -> Result<(), ReportAssemblyError> {\n-    let canonical = scope.lanes();\n-    let actual = pass_receipt.lanes();\n-    if actual.len() != canonical.len() {\n-        // The first divergence is the index where canonical and actual\n-        // stop agreeing. When the receipt has fewer entries than\n-        // canonical, the divergence is the first missing slot. When the\n-        // receipt has extra entries, the divergence is the first index\n-        // past canonical — `expected` is reported as the first canonical\n-        // lane so the error always names a valid in-scope lane, and the\n-        // slot number alone distinguishes the two cases.\n-        let index = actual.len().min(canonical.len());\n-        let expected = expected_lane(canonical, index)?;\n-        return Err(ReportAssemblyError::ReceiptLaneIdentityMismatch {\n-            scope,\n-            index,\n-            expected,\n-            found: actual.get(index).map(LaneReceipt::lane).copied(),\n-        });\n-    }\n-    canonical\n-        .iter()\n-        .zip(actual.iter())\n-        .enumerate()\n-        .find_map(|(index, (expected, receipt))| {\n-            (receipt.lane() != expected).then_some((index, *expected, *receipt.lane()))\n-        })\n-        .map_or(Ok(()), |(index, expected, found)| {\n-            Err(ReportAssemblyError::ReceiptLaneIdentityMismatch {\n-                scope,\n-                index,\n-                expected,\n-                found: Some(found),\n-            })\n-        })\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn has_rejection(code_findings: &[Finding], gate_failures: &[LaneFailure]) -> bool {\n     !code_findings.is_empty() || !gate_failures.is_empty()\n }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_receipt_lane_identities",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 299
+        },
+        "start": {
+          "column": 1,
+          "line": 249
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:265:5: replace check_receipt_lane_identities -> Result<(), ReportAssemblyError> with Ok(())",
+    "package": "titania-aggregate",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 11,
+        "line": 298
+      },
+      "start": {
+        "column": 5,
+        "line": 265
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace != with == in check_receipt_lane_identities\n@@ -259,17 +259,17 @@\n /// receipt is missing, repeated, swapped, or otherwise does not match\n /// the canonical lane at its index.\n fn check_receipt_lane_identities(\n     scope: GateScope,\n     pass_receipt: &QualityReceipt,\n ) -> Result<(), ReportAssemblyError> {\n     let canonical = scope.lanes();\n     let actual = pass_receipt.lanes();\n-    if actual.len() != canonical.len() {\n+    if actual.len() == /* ~ changed by cargo-mutants ~ */ canonical.len() {\n         // The first divergence is the index where canonical and actual\n         // stop agreeing. When the receipt has fewer entries than\n         // canonical, the divergence is the first missing slot. When the\n         // receipt has extra entries, the divergence is the first index\n         // past canonical — `expected` is reported as the first canonical\n         // lane so the error always names a valid in-scope lane, and the\n         // slot number alone distinguishes the two cases.\n         let index = actual.len().min(canonical.len());\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_receipt_lane_identities",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 299
+        },
+        "start": {
+          "column": 1,
+          "line": 249
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:267:21: replace != with == in check_receipt_lane_identities",
+    "package": "titania-aggregate",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 23,
+        "line": 267
+      },
+      "start": {
+        "column": 21,
+        "line": 267
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace != with == in check_receipt_lane_identities\n@@ -281,17 +281,17 @@\n             found: actual.get(index).map(LaneReceipt::lane).copied(),\n         });\n     }\n     canonical\n         .iter()\n         .zip(actual.iter())\n         .enumerate()\n         .find_map(|(index, (expected, receipt))| {\n-            (receipt.lane() != expected).then_some((index, *expected, *receipt.lane()))\n+            (receipt.lane() == /* ~ changed by cargo-mutants ~ */ expected).then_some((index, *expected, *receipt.lane()))\n         })\n         .map_or(Ok(()), |(index, expected, found)| {\n             Err(ReportAssemblyError::ReceiptLaneIdentityMismatch {\n                 scope,\n                 index,\n                 expected,\n                 found: Some(found),\n             })\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "check_receipt_lane_identities",
+      "return_type": "-> Result<(), ReportAssemblyError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 299
+        },
+        "start": {
+          "column": 1,
+          "line": 249
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:289:29: replace != with == in check_receipt_lane_identities",
+    "package": "titania-aggregate",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 31,
+        "line": 289
+      },
+      "start": {
+        "column": 29,
+        "line": 289
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace has_rejection -> bool with true\n@@ -295,10 +295,10 @@\n                 expected,\n                 found: Some(found),\n             })\n         })\n }\n \n #[must_use]\n const fn has_rejection(code_findings: &[Finding], gate_failures: &[LaneFailure]) -> bool {\n-    !code_findings.is_empty() || !gate_failures.is_empty()\n+    true /* ~ changed by cargo-mutants ~ */\n }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "has_rejection",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 304
+        },
+        "start": {
+          "column": 1,
+          "line": 301
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:303:5: replace has_rejection -> bool with true",
+    "package": "titania-aggregate",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 59,
+        "line": 303
+      },
+      "start": {
+        "column": 5,
+        "line": 303
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace has_rejection -> bool with false\n@@ -295,10 +295,10 @@\n                 expected,\n                 found: Some(found),\n             })\n         })\n }\n \n #[must_use]\n const fn has_rejection(code_findings: &[Finding], gate_failures: &[LaneFailure]) -> bool {\n-    !code_findings.is_empty() || !gate_failures.is_empty()\n+    false /* ~ changed by cargo-mutants ~ */\n }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "has_rejection",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 304
+        },
+        "start": {
+          "column": 1,
+          "line": 301
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:303:5: replace has_rejection -> bool with false",
+    "package": "titania-aggregate",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 59,
+        "line": 303
+      },
+      "start": {
+        "column": 5,
+        "line": 303
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ replace || with && in has_rejection\n@@ -295,10 +295,10 @@\n                 expected,\n                 found: Some(found),\n             })\n         })\n }\n \n #[must_use]\n const fn has_rejection(code_findings: &[Finding], gate_failures: &[LaneFailure]) -> bool {\n-    !code_findings.is_empty() || !gate_failures.is_empty()\n+    !code_findings.is_empty() && /* ~ changed by cargo-mutants ~ */ !gate_failures.is_empty()\n }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "has_rejection",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 304
+        },
+        "start": {
+          "column": 1,
+          "line": 301
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:303:31: replace || with && in has_rejection",
+    "package": "titania-aggregate",
+    "replacement": "&&",
+    "span": {
+      "end": {
+        "column": 33,
+        "line": 303
+      },
+      "start": {
+        "column": 31,
+        "line": 303
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ delete ! in has_rejection\n@@ -295,10 +295,10 @@\n                 expected,\n                 found: Some(found),\n             })\n         })\n }\n \n #[must_use]\n const fn has_rejection(code_findings: &[Finding], gate_failures: &[LaneFailure]) -> bool {\n-    !code_findings.is_empty() || !gate_failures.is_empty()\n+     /* ~ changed by cargo-mutants ~ */code_findings.is_empty() || !gate_failures.is_empty()\n }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "has_rejection",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 304
+        },
+        "start": {
+          "column": 1,
+          "line": 301
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:303:5: delete ! in has_rejection",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 303
+      },
+      "start": {
+        "column": 5,
+        "line": 303
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-aggregate/src/report_assembly.rs\n+++ delete ! in has_rejection\n@@ -295,10 +295,10 @@\n                 expected,\n                 found: Some(found),\n             })\n         })\n }\n \n #[must_use]\n const fn has_rejection(code_findings: &[Finding], gate_failures: &[LaneFailure]) -> bool {\n-    !code_findings.is_empty() || !gate_failures.is_empty()\n+    !code_findings.is_empty() ||  /* ~ changed by cargo-mutants ~ */gate_failures.is_empty()\n }\n",
+    "file": "crates/titania-aggregate/src/report_assembly.rs",
+    "function": {
+      "function_name": "has_rejection",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 304
+        },
+        "start": {
+          "column": 1,
+          "line": 301
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-aggregate/src/report_assembly.rs:303:34: delete ! in has_rejection",
+    "package": "titania-aggregate",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 35,
+        "line": 303
+      },
+      "start": {
+        "column": 34,
+        "line": 303
+      }
+    }
+  }
+]

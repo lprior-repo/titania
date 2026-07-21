@@ -42,6 +42,11 @@ path = "fuzz_targets/fuzz_parse_outcomes.rs"
 test = false
 
 [[bin]]
+name = "fuzz_parse_lane_outcome"
+path = "fuzz_targets/fuzz_parse_lane_outcome.rs"
+test = false
+
+[[bin]]
 name = "fuzz_parse_records"
 path = "fuzz_targets/fuzz_parse_records.rs"
 test = false

@@ -1,0 +1,7 @@
+376:  gate-full:
+377-    # v1.5 Full gate — release + Kani + Mutants. PROOF_KANI_* and
+378-    # MUTANT_SURVIVED findings surface in the aggregate report.
+379-    command: 'cargo run --frozen --quiet -p titania-check -- aggregate --scope full'
+380-    deps: ['~:gate-release', '~:titania-kani', '~:titania-mutants']
+381-    options:
+382-      runInCI: true

@@ -1,0 +1,3074 @@
+[
+  {
+    "diff": "--- crates/titania-policy/src/lib.rs\n+++ replace PolicyDefaults::embedded -> Self with Default::default()\n@@ -64,35 +64,17 @@\n impl PolicyDefaults {\n     /// Return the embedded binary defaults.\n     ///\n     /// This function performs no filesystem I/O. It returns the compiled\n     /// strict-ai baseline that Titania applies before target-local\n     /// `.titania/profiles/strict-ai/` overrides are loaded.\n     #[must_use]\n     pub fn embedded() -> Self {\n-        Self {\n-            schema_version: 1,\n-            profile_name: String::from(\"strict-ai\"),\n-            sources: vec![String::from(\"v1-spec.md\"), String::from(\"AGENTS.md\")],\n-            architecture: ArchitecturePolicy {\n-                core_dirs: vec![\n-                    String::from(\"src/core\"),\n-                    String::from(\"src/domain\"),\n-                    String::from(\"crates/*-core/src\"),\n-                ],\n-                infra_crates: vec![\n-                    String::from(\"tokio\"),\n-                    String::from(\"axum\"),\n-                    String::from(\"sqlx\"),\n-                    String::from(\"reqwest\"),\n-                ],\n-            },\n-            embedded: true,\n-        }\n+        Default::default() /* ~ changed by cargo-mutants ~ */\n     }\n \n     /// Return `true` when these defaults were loaded from the embedded\n     /// binary without filesystem access.\n     #[must_use]\n     pub const fn no_fs_access(&self) -> bool {\n         self.embedded\n     }\n",
+    "file": "crates/titania-policy/src/lib.rs",
+    "function": {
+      "function_name": "PolicyDefaults::embedded",
+      "return_type": "-> Self",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 91
+        },
+        "start": {
+          "column": 5,
+          "line": 65
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/lib.rs:72:9: replace PolicyDefaults::embedded -> Self with Default::default()",
+    "package": "titania-policy",
+    "replacement": "Default::default()",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 90
+      },
+      "start": {
+        "column": 9,
+        "line": 72
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/lib.rs\n+++ replace PolicyDefaults::no_fs_access -> bool with true\n@@ -89,17 +89,17 @@\n             embedded: true,\n         }\n     }\n \n     /// Return `true` when these defaults were loaded from the embedded\n     /// binary without filesystem access.\n     #[must_use]\n     pub const fn no_fs_access(&self) -> bool {\n-        self.embedded\n+        true /* ~ changed by cargo-mutants ~ */\n     }\n \n     /// Return the list of source documents that defined these defaults.\n     #[must_use]\n     pub fn sources(&self) -> &[String] {\n         &self.sources\n     }\n }\n",
+    "file": "crates/titania-policy/src/lib.rs",
+    "function": {
+      "function_name": "PolicyDefaults::no_fs_access",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 98
+        },
+        "start": {
+          "column": 5,
+          "line": 93
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/lib.rs:97:9: replace PolicyDefaults::no_fs_access -> bool with true",
+    "package": "titania-policy",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 22,
+        "line": 97
+      },
+      "start": {
+        "column": 9,
+        "line": 97
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/lib.rs\n+++ replace PolicyDefaults::no_fs_access -> bool with false\n@@ -89,17 +89,17 @@\n             embedded: true,\n         }\n     }\n \n     /// Return `true` when these defaults were loaded from the embedded\n     /// binary without filesystem access.\n     #[must_use]\n     pub const fn no_fs_access(&self) -> bool {\n-        self.embedded\n+        false /* ~ changed by cargo-mutants ~ */\n     }\n \n     /// Return the list of source documents that defined these defaults.\n     #[must_use]\n     pub fn sources(&self) -> &[String] {\n         &self.sources\n     }\n }\n",
+    "file": "crates/titania-policy/src/lib.rs",
+    "function": {
+      "function_name": "PolicyDefaults::no_fs_access",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 98
+        },
+        "start": {
+          "column": 5,
+          "line": 93
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/lib.rs:97:9: replace PolicyDefaults::no_fs_access -> bool with false",
+    "package": "titania-policy",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 22,
+        "line": 97
+      },
+      "start": {
+        "column": 9,
+        "line": 97
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/lib.rs\n+++ replace PolicyDefaults::sources -> &[String] with Vec::leak(Vec::new())\n@@ -95,11 +95,11 @@\n     #[must_use]\n     pub const fn no_fs_access(&self) -> bool {\n         self.embedded\n     }\n \n     /// Return the list of source documents that defined these defaults.\n     #[must_use]\n     pub fn sources(&self) -> &[String] {\n-        &self.sources\n+        Vec::leak(Vec::new()) /* ~ changed by cargo-mutants ~ */\n     }\n }\n",
+    "file": "crates/titania-policy/src/lib.rs",
+    "function": {
+      "function_name": "PolicyDefaults::sources",
+      "return_type": "-> &[String]",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 104
+        },
+        "start": {
+          "column": 5,
+          "line": 100
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/lib.rs:103:9: replace PolicyDefaults::sources -> &[String] with Vec::leak(Vec::new())",
+    "package": "titania-policy",
+    "replacement": "Vec::leak(Vec::new())",
+    "span": {
+      "end": {
+        "column": 22,
+        "line": 103
+      },
+      "start": {
+        "column": 9,
+        "line": 103
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/lib.rs\n+++ replace PolicyDefaults::sources -> &[String] with Vec::leak(vec![String::new()])\n@@ -95,11 +95,11 @@\n     #[must_use]\n     pub const fn no_fs_access(&self) -> bool {\n         self.embedded\n     }\n \n     /// Return the list of source documents that defined these defaults.\n     #[must_use]\n     pub fn sources(&self) -> &[String] {\n-        &self.sources\n+        Vec::leak(vec![String::new()]) /* ~ changed by cargo-mutants ~ */\n     }\n }\n",
+    "file": "crates/titania-policy/src/lib.rs",
+    "function": {
+      "function_name": "PolicyDefaults::sources",
+      "return_type": "-> &[String]",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 104
+        },
+        "start": {
+          "column": 5,
+          "line": 100
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/lib.rs:103:9: replace PolicyDefaults::sources -> &[String] with Vec::leak(vec![String::new()])",
+    "package": "titania-policy",
+    "replacement": "Vec::leak(vec![String::new()])",
+    "span": {
+      "end": {
+        "column": 22,
+        "line": 103
+      },
+      "start": {
+        "column": 9,
+        "line": 103
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/lib.rs\n+++ replace PolicyDefaults::sources -> &[String] with Vec::leak(vec![\"xyzzy\".into()])\n@@ -95,11 +95,11 @@\n     #[must_use]\n     pub const fn no_fs_access(&self) -> bool {\n         self.embedded\n     }\n \n     /// Return the list of source documents that defined these defaults.\n     #[must_use]\n     pub fn sources(&self) -> &[String] {\n-        &self.sources\n+        Vec::leak(vec![\"xyzzy\".into()]) /* ~ changed by cargo-mutants ~ */\n     }\n }\n",
+    "file": "crates/titania-policy/src/lib.rs",
+    "function": {
+      "function_name": "PolicyDefaults::sources",
+      "return_type": "-> &[String]",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 104
+        },
+        "start": {
+          "column": 5,
+          "line": 100
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/lib.rs:103:9: replace PolicyDefaults::sources -> &[String] with Vec::leak(vec![\"xyzzy\".into()])",
+    "package": "titania-policy",
+    "replacement": "Vec::leak(vec![\"xyzzy\".into()])",
+    "span": {
+      "end": {
+        "column": 22,
+        "line": 103
+      },
+      "start": {
+        "column": 9,
+        "line": 103
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace PolicyDigest::compute -> Self with Default::default()\n@@ -22,23 +22,17 @@\n     #[must_use]\n     pub fn compute(\n         defaults: &PolicyDefaults,\n         policy_toml: Option<&str>,\n         exceptions_toml: Option<&str>,\n         deny_toml: Option<&str>,\n         clippy_toml: Option<&str>,\n     ) -> Self {\n-        let mut payload = String::new();\n-        push_segment(&mut payload, \"binary_defaults\", &canonical_defaults(defaults));\n-        push_segment(&mut payload, \"policy_toml\", &canonical_toml(policy_toml));\n-        push_segment(&mut payload, \"exceptions_toml\", &canonical_toml(exceptions_toml));\n-        push_segment(&mut payload, \"deny_toml\", &canonical_toml(deny_toml));\n-        push_segment(&mut payload, \"clippy_toml\", &canonical_toml(clippy_toml));\n-        Self { digest: Digest::from_bytes(payload.as_bytes()) }\n+        Default::default() /* ~ changed by cargo-mutants ~ */\n     }\n \n     /// Borrow the 64-character lowercase hex digest.\n     #[must_use]\n     pub fn as_hex(&self) -> &str {\n         self.digest.as_hex()\n     }\n \n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "PolicyDigest::compute",
+      "return_type": "-> Self",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 17
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:30:9: replace PolicyDigest::compute -> Self with Default::default()",
+    "package": "titania-policy",
+    "replacement": "Default::default()",
+    "span": {
+      "end": {
+        "column": 64,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 30
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace PolicyDigest::as_hex -> &str with \"\"\n@@ -34,17 +34,17 @@\n         push_segment(&mut payload, \"deny_toml\", &canonical_toml(deny_toml));\n         push_segment(&mut payload, \"clippy_toml\", &canonical_toml(clippy_toml));\n         Self { digest: Digest::from_bytes(payload.as_bytes()) }\n     }\n \n     /// Borrow the 64-character lowercase hex digest.\n     #[must_use]\n     pub fn as_hex(&self) -> &str {\n-        self.digest.as_hex()\n+        \"\" /* ~ changed by cargo-mutants ~ */\n     }\n \n     /// Borrow the validated core digest.\n     #[must_use]\n     pub const fn digest(&self) -> &Digest {\n         &self.digest\n     }\n }\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "PolicyDigest::as_hex",
+      "return_type": "-> &str",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 43
+        },
+        "start": {
+          "column": 5,
+          "line": 39
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:42:9: replace PolicyDigest::as_hex -> &str with \"\"",
+    "package": "titania-policy",
+    "replacement": "\"\"",
+    "span": {
+      "end": {
+        "column": 29,
+        "line": 42
+      },
+      "start": {
+        "column": 9,
+        "line": 42
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace PolicyDigest::as_hex -> &str with \"xyzzy\"\n@@ -34,17 +34,17 @@\n         push_segment(&mut payload, \"deny_toml\", &canonical_toml(deny_toml));\n         push_segment(&mut payload, \"clippy_toml\", &canonical_toml(clippy_toml));\n         Self { digest: Digest::from_bytes(payload.as_bytes()) }\n     }\n \n     /// Borrow the 64-character lowercase hex digest.\n     #[must_use]\n     pub fn as_hex(&self) -> &str {\n-        self.digest.as_hex()\n+        \"xyzzy\" /* ~ changed by cargo-mutants ~ */\n     }\n \n     /// Borrow the validated core digest.\n     #[must_use]\n     pub const fn digest(&self) -> &Digest {\n         &self.digest\n     }\n }\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "PolicyDigest::as_hex",
+      "return_type": "-> &str",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 43
+        },
+        "start": {
+          "column": 5,
+          "line": 39
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:42:9: replace PolicyDigest::as_hex -> &str with \"xyzzy\"",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\"",
+    "span": {
+      "end": {
+        "column": 29,
+        "line": 42
+      },
+      "start": {
+        "column": 9,
+        "line": 42
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace PolicyDigest::digest -> &Digest with Box::leak(Box::new(Default::default()))\n@@ -40,17 +40,17 @@\n     #[must_use]\n     pub fn as_hex(&self) -> &str {\n         self.digest.as_hex()\n     }\n \n     /// Borrow the validated core digest.\n     #[must_use]\n     pub const fn digest(&self) -> &Digest {\n-        &self.digest\n+        Box::leak(Box::new(Default::default())) /* ~ changed by cargo-mutants ~ */\n     }\n }\n \n #[derive(Debug, Deserialize)]\n #[serde(untagged)]\n enum CanonicalTomlValue {\n     Table(BTreeMap<String, Self>),\n     Array(Vec<Self>),\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "PolicyDigest::digest",
+      "return_type": "-> &Digest",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 49
+        },
+        "start": {
+          "column": 5,
+          "line": 45
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:48:9: replace PolicyDigest::digest -> &Digest with Box::leak(Box::new(Default::default()))",
+    "package": "titania-policy",
+    "replacement": "Box::leak(Box::new(Default::default()))",
+    "span": {
+      "end": {
+        "column": 21,
+        "line": 48
+      },
+      "start": {
+        "column": 9,
+        "line": 48
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_defaults -> String with String::new()\n@@ -57,30 +57,17 @@\n     String(String),\n     Integer(i64),\n     Float(f64),\n     Boolean(bool),\n     Datetime(toml_edit::Datetime),\n }\n \n fn canonical_defaults(defaults: &PolicyDefaults) -> String {\n-    let mut out = String::new();\n-    push_segment(&mut out, \"schema_version\", &defaults.schema_version.to_string());\n-    push_segment(&mut out, \"profile_name\", &defaults.profile_name);\n-    out.push_str(&canonical_string_list(\"sources\", &defaults.sources));\n-    out.push_str(&canonical_string_list(\n-        \"architecture.core_dirs\",\n-        &defaults.architecture.core_dirs,\n-    ));\n-    out.push_str(&canonical_string_list(\n-        \"architecture.infra_crates\",\n-        &defaults.architecture.infra_crates,\n-    ));\n-    push_segment(&mut out, \"embedded\", bool_text(defaults.embedded));\n-    out\n+    String::new() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_toml(input: Option<&str>) -> String {\n     let Some(text) = input else {\n         return String::new();\n     };\n     match toml_edit::de::from_str::<BTreeMap<String, CanonicalTomlValue>>(text) {\n         Ok(table) => canonical_table(&table),\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_defaults",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 79
+        },
+        "start": {
+          "column": 1,
+          "line": 64
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:65:5: replace canonical_defaults -> String with String::new()",
+    "package": "titania-policy",
+    "replacement": "String::new()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 78
+      },
+      "start": {
+        "column": 5,
+        "line": 65
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_defaults -> String with \"xyzzy\".into()\n@@ -57,30 +57,17 @@\n     String(String),\n     Integer(i64),\n     Float(f64),\n     Boolean(bool),\n     Datetime(toml_edit::Datetime),\n }\n \n fn canonical_defaults(defaults: &PolicyDefaults) -> String {\n-    let mut out = String::new();\n-    push_segment(&mut out, \"schema_version\", &defaults.schema_version.to_string());\n-    push_segment(&mut out, \"profile_name\", &defaults.profile_name);\n-    out.push_str(&canonical_string_list(\"sources\", &defaults.sources));\n-    out.push_str(&canonical_string_list(\n-        \"architecture.core_dirs\",\n-        &defaults.architecture.core_dirs,\n-    ));\n-    out.push_str(&canonical_string_list(\n-        \"architecture.infra_crates\",\n-        &defaults.architecture.infra_crates,\n-    ));\n-    push_segment(&mut out, \"embedded\", bool_text(defaults.embedded));\n-    out\n+    \"xyzzy\".into() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_toml(input: Option<&str>) -> String {\n     let Some(text) = input else {\n         return String::new();\n     };\n     match toml_edit::de::from_str::<BTreeMap<String, CanonicalTomlValue>>(text) {\n         Ok(table) => canonical_table(&table),\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_defaults",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 79
+        },
+        "start": {
+          "column": 1,
+          "line": 64
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:65:5: replace canonical_defaults -> String with \"xyzzy\".into()",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\".into()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 78
+      },
+      "start": {
+        "column": 5,
+        "line": 65
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_toml -> String with String::new()\n@@ -74,23 +74,17 @@\n         \"architecture.infra_crates\",\n         &defaults.architecture.infra_crates,\n     ));\n     push_segment(&mut out, \"embedded\", bool_text(defaults.embedded));\n     out\n }\n \n fn canonical_toml(input: Option<&str>) -> String {\n-    let Some(text) = input else {\n-        return String::new();\n-    };\n-    match toml_edit::de::from_str::<BTreeMap<String, CanonicalTomlValue>>(text) {\n-        Ok(table) => canonical_table(&table),\n-        Err(error) => canonical_invalid_toml(text, &error),\n-    }\n+    String::new() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_invalid_toml(text: &str, error: &toml_edit::de::Error) -> String {\n     let mut out = String::new();\n     push_segment(&mut out, \"invalid_toml_error\", &error.to_string());\n     push_segment(&mut out, \"invalid_toml_raw\", text);\n     out\n }\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_toml",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 89
+        },
+        "start": {
+          "column": 1,
+          "line": 81
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:82:5: replace canonical_toml -> String with String::new()",
+    "package": "titania-policy",
+    "replacement": "String::new()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 88
+      },
+      "start": {
+        "column": 5,
+        "line": 82
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_toml -> String with \"xyzzy\".into()\n@@ -74,23 +74,17 @@\n         \"architecture.infra_crates\",\n         &defaults.architecture.infra_crates,\n     ));\n     push_segment(&mut out, \"embedded\", bool_text(defaults.embedded));\n     out\n }\n \n fn canonical_toml(input: Option<&str>) -> String {\n-    let Some(text) = input else {\n-        return String::new();\n-    };\n-    match toml_edit::de::from_str::<BTreeMap<String, CanonicalTomlValue>>(text) {\n-        Ok(table) => canonical_table(&table),\n-        Err(error) => canonical_invalid_toml(text, &error),\n-    }\n+    \"xyzzy\".into() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_invalid_toml(text: &str, error: &toml_edit::de::Error) -> String {\n     let mut out = String::new();\n     push_segment(&mut out, \"invalid_toml_error\", &error.to_string());\n     push_segment(&mut out, \"invalid_toml_raw\", text);\n     out\n }\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_toml",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 89
+        },
+        "start": {
+          "column": 1,
+          "line": 81
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:82:5: replace canonical_toml -> String with \"xyzzy\".into()",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\".into()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 88
+      },
+      "start": {
+        "column": 5,
+        "line": 82
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_invalid_toml -> String with String::new()\n@@ -84,20 +84,17 @@\n     };\n     match toml_edit::de::from_str::<BTreeMap<String, CanonicalTomlValue>>(text) {\n         Ok(table) => canonical_table(&table),\n         Err(error) => canonical_invalid_toml(text, &error),\n     }\n }\n \n fn canonical_invalid_toml(text: &str, error: &toml_edit::de::Error) -> String {\n-    let mut out = String::new();\n-    push_segment(&mut out, \"invalid_toml_error\", &error.to_string());\n-    push_segment(&mut out, \"invalid_toml_raw\", text);\n-    out\n+    String::new() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_table(table: &BTreeMap<String, CanonicalTomlValue>) -> String {\n     let entries = table\n         .iter()\n         .map(|(key, value)| {\n             let mut entry = String::new();\n             push_segment(&mut entry, \"key\", key);\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_invalid_toml",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 96
+        },
+        "start": {
+          "column": 1,
+          "line": 91
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:92:5: replace canonical_invalid_toml -> String with String::new()",
+    "package": "titania-policy",
+    "replacement": "String::new()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 95
+      },
+      "start": {
+        "column": 5,
+        "line": 92
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_invalid_toml -> String with \"xyzzy\".into()\n@@ -84,20 +84,17 @@\n     };\n     match toml_edit::de::from_str::<BTreeMap<String, CanonicalTomlValue>>(text) {\n         Ok(table) => canonical_table(&table),\n         Err(error) => canonical_invalid_toml(text, &error),\n     }\n }\n \n fn canonical_invalid_toml(text: &str, error: &toml_edit::de::Error) -> String {\n-    let mut out = String::new();\n-    push_segment(&mut out, \"invalid_toml_error\", &error.to_string());\n-    push_segment(&mut out, \"invalid_toml_raw\", text);\n-    out\n+    \"xyzzy\".into() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_table(table: &BTreeMap<String, CanonicalTomlValue>) -> String {\n     let entries = table\n         .iter()\n         .map(|(key, value)| {\n             let mut entry = String::new();\n             push_segment(&mut entry, \"key\", key);\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_invalid_toml",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 96
+        },
+        "start": {
+          "column": 1,
+          "line": 91
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:92:5: replace canonical_invalid_toml -> String with \"xyzzy\".into()",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\".into()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 95
+      },
+      "start": {
+        "column": 5,
+        "line": 92
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_table -> String with String::new()\n@@ -91,30 +91,17 @@\n fn canonical_invalid_toml(text: &str, error: &toml_edit::de::Error) -> String {\n     let mut out = String::new();\n     push_segment(&mut out, \"invalid_toml_error\", &error.to_string());\n     push_segment(&mut out, \"invalid_toml_raw\", text);\n     out\n }\n \n fn canonical_table(table: &BTreeMap<String, CanonicalTomlValue>) -> String {\n-    let entries = table\n-        .iter()\n-        .map(|(key, value)| {\n-            let mut entry = String::new();\n-            push_segment(&mut entry, \"key\", key);\n-            entry.push_str(&canonical_value(value));\n-            entry\n-        })\n-        .collect::<String>();\n-    let mut out = String::new();\n-    out.push_str(\"table\");\n-    push_len(&mut out, table.len());\n-    out.push_str(&entries);\n-    out\n+    String::new() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_value(value: &CanonicalTomlValue) -> String {\n     match value {\n         CanonicalTomlValue::Table(table) => canonical_table(table),\n         CanonicalTomlValue::Array(values) => canonical_array(values),\n         CanonicalTomlValue::String(value) => segment(\"string\", value),\n         CanonicalTomlValue::Integer(value) => segment(\"integer\", &value.to_string()),\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_table",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 113
+        },
+        "start": {
+          "column": 1,
+          "line": 98
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:99:5: replace canonical_table -> String with String::new()",
+    "package": "titania-policy",
+    "replacement": "String::new()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 112
+      },
+      "start": {
+        "column": 5,
+        "line": 99
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_table -> String with \"xyzzy\".into()\n@@ -91,30 +91,17 @@\n fn canonical_invalid_toml(text: &str, error: &toml_edit::de::Error) -> String {\n     let mut out = String::new();\n     push_segment(&mut out, \"invalid_toml_error\", &error.to_string());\n     push_segment(&mut out, \"invalid_toml_raw\", text);\n     out\n }\n \n fn canonical_table(table: &BTreeMap<String, CanonicalTomlValue>) -> String {\n-    let entries = table\n-        .iter()\n-        .map(|(key, value)| {\n-            let mut entry = String::new();\n-            push_segment(&mut entry, \"key\", key);\n-            entry.push_str(&canonical_value(value));\n-            entry\n-        })\n-        .collect::<String>();\n-    let mut out = String::new();\n-    out.push_str(\"table\");\n-    push_len(&mut out, table.len());\n-    out.push_str(&entries);\n-    out\n+    \"xyzzy\".into() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_value(value: &CanonicalTomlValue) -> String {\n     match value {\n         CanonicalTomlValue::Table(table) => canonical_table(table),\n         CanonicalTomlValue::Array(values) => canonical_array(values),\n         CanonicalTomlValue::String(value) => segment(\"string\", value),\n         CanonicalTomlValue::Integer(value) => segment(\"integer\", &value.to_string()),\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_table",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 113
+        },
+        "start": {
+          "column": 1,
+          "line": 98
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:99:5: replace canonical_table -> String with \"xyzzy\".into()",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\".into()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 112
+      },
+      "start": {
+        "column": 5,
+        "line": 99
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_value -> String with String::new()\n@@ -108,25 +108,17 @@\n     let mut out = String::new();\n     out.push_str(\"table\");\n     push_len(&mut out, table.len());\n     out.push_str(&entries);\n     out\n }\n \n fn canonical_value(value: &CanonicalTomlValue) -> String {\n-    match value {\n-        CanonicalTomlValue::Table(table) => canonical_table(table),\n-        CanonicalTomlValue::Array(values) => canonical_array(values),\n-        CanonicalTomlValue::String(value) => segment(\"string\", value),\n-        CanonicalTomlValue::Integer(value) => segment(\"integer\", &value.to_string()),\n-        CanonicalTomlValue::Float(value) => segment(\"float\", &value.to_string()),\n-        CanonicalTomlValue::Boolean(value) => segment(\"boolean\", bool_text(*value)),\n-        CanonicalTomlValue::Datetime(value) => segment(\"datetime\", &value.to_string()),\n-    }\n+    String::new() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_array(values: &[CanonicalTomlValue]) -> String {\n     let entries = values.iter().map(canonical_value).collect::<String>();\n     let mut out = String::new();\n     out.push_str(\"array\");\n     push_len(&mut out, values.len());\n     out.push_str(&entries);\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_value",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 125
+        },
+        "start": {
+          "column": 1,
+          "line": 115
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:116:5: replace canonical_value -> String with String::new()",
+    "package": "titania-policy",
+    "replacement": "String::new()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 124
+      },
+      "start": {
+        "column": 5,
+        "line": 116
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_value -> String with \"xyzzy\".into()\n@@ -108,25 +108,17 @@\n     let mut out = String::new();\n     out.push_str(\"table\");\n     push_len(&mut out, table.len());\n     out.push_str(&entries);\n     out\n }\n \n fn canonical_value(value: &CanonicalTomlValue) -> String {\n-    match value {\n-        CanonicalTomlValue::Table(table) => canonical_table(table),\n-        CanonicalTomlValue::Array(values) => canonical_array(values),\n-        CanonicalTomlValue::String(value) => segment(\"string\", value),\n-        CanonicalTomlValue::Integer(value) => segment(\"integer\", &value.to_string()),\n-        CanonicalTomlValue::Float(value) => segment(\"float\", &value.to_string()),\n-        CanonicalTomlValue::Boolean(value) => segment(\"boolean\", bool_text(*value)),\n-        CanonicalTomlValue::Datetime(value) => segment(\"datetime\", &value.to_string()),\n-    }\n+    \"xyzzy\".into() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_array(values: &[CanonicalTomlValue]) -> String {\n     let entries = values.iter().map(canonical_value).collect::<String>();\n     let mut out = String::new();\n     out.push_str(\"array\");\n     push_len(&mut out, values.len());\n     out.push_str(&entries);\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_value",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 125
+        },
+        "start": {
+          "column": 1,
+          "line": 115
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:116:5: replace canonical_value -> String with \"xyzzy\".into()",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\".into()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 124
+      },
+      "start": {
+        "column": 5,
+        "line": 116
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_array -> String with String::new()\n@@ -120,22 +120,17 @@\n         CanonicalTomlValue::Integer(value) => segment(\"integer\", &value.to_string()),\n         CanonicalTomlValue::Float(value) => segment(\"float\", &value.to_string()),\n         CanonicalTomlValue::Boolean(value) => segment(\"boolean\", bool_text(*value)),\n         CanonicalTomlValue::Datetime(value) => segment(\"datetime\", &value.to_string()),\n     }\n }\n \n fn canonical_array(values: &[CanonicalTomlValue]) -> String {\n-    let entries = values.iter().map(canonical_value).collect::<String>();\n-    let mut out = String::new();\n-    out.push_str(\"array\");\n-    push_len(&mut out, values.len());\n-    out.push_str(&entries);\n-    out\n+    String::new() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_string_list(label: &str, values: &[String]) -> String {\n     let entries = values.iter().map(|value| segment(\"item\", value)).collect::<String>();\n     let mut out = String::new();\n     out.push_str(label);\n     push_len(&mut out, values.len());\n     out.push_str(&entries);\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_array",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 134
+        },
+        "start": {
+          "column": 1,
+          "line": 127
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:128:5: replace canonical_array -> String with String::new()",
+    "package": "titania-policy",
+    "replacement": "String::new()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 133
+      },
+      "start": {
+        "column": 5,
+        "line": 128
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_array -> String with \"xyzzy\".into()\n@@ -120,22 +120,17 @@\n         CanonicalTomlValue::Integer(value) => segment(\"integer\", &value.to_string()),\n         CanonicalTomlValue::Float(value) => segment(\"float\", &value.to_string()),\n         CanonicalTomlValue::Boolean(value) => segment(\"boolean\", bool_text(*value)),\n         CanonicalTomlValue::Datetime(value) => segment(\"datetime\", &value.to_string()),\n     }\n }\n \n fn canonical_array(values: &[CanonicalTomlValue]) -> String {\n-    let entries = values.iter().map(canonical_value).collect::<String>();\n-    let mut out = String::new();\n-    out.push_str(\"array\");\n-    push_len(&mut out, values.len());\n-    out.push_str(&entries);\n-    out\n+    \"xyzzy\".into() /* ~ changed by cargo-mutants ~ */\n }\n \n fn canonical_string_list(label: &str, values: &[String]) -> String {\n     let entries = values.iter().map(|value| segment(\"item\", value)).collect::<String>();\n     let mut out = String::new();\n     out.push_str(label);\n     push_len(&mut out, values.len());\n     out.push_str(&entries);\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_array",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 134
+        },
+        "start": {
+          "column": 1,
+          "line": 127
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:128:5: replace canonical_array -> String with \"xyzzy\".into()",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\".into()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 133
+      },
+      "start": {
+        "column": 5,
+        "line": 128
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_string_list -> String with String::new()\n@@ -129,22 +129,17 @@\n     let mut out = String::new();\n     out.push_str(\"array\");\n     push_len(&mut out, values.len());\n     out.push_str(&entries);\n     out\n }\n \n fn canonical_string_list(label: &str, values: &[String]) -> String {\n-    let entries = values.iter().map(|value| segment(\"item\", value)).collect::<String>();\n-    let mut out = String::new();\n-    out.push_str(label);\n-    push_len(&mut out, values.len());\n-    out.push_str(&entries);\n-    out\n+    String::new() /* ~ changed by cargo-mutants ~ */\n }\n \n fn segment(label: &str, text: &str) -> String {\n     let mut out = String::new();\n     push_segment(&mut out, label, text);\n     out\n }\n \n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_string_list",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 143
+        },
+        "start": {
+          "column": 1,
+          "line": 136
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:137:5: replace canonical_string_list -> String with String::new()",
+    "package": "titania-policy",
+    "replacement": "String::new()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 142
+      },
+      "start": {
+        "column": 5,
+        "line": 137
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace canonical_string_list -> String with \"xyzzy\".into()\n@@ -129,22 +129,17 @@\n     let mut out = String::new();\n     out.push_str(\"array\");\n     push_len(&mut out, values.len());\n     out.push_str(&entries);\n     out\n }\n \n fn canonical_string_list(label: &str, values: &[String]) -> String {\n-    let entries = values.iter().map(|value| segment(\"item\", value)).collect::<String>();\n-    let mut out = String::new();\n-    out.push_str(label);\n-    push_len(&mut out, values.len());\n-    out.push_str(&entries);\n-    out\n+    \"xyzzy\".into() /* ~ changed by cargo-mutants ~ */\n }\n \n fn segment(label: &str, text: &str) -> String {\n     let mut out = String::new();\n     push_segment(&mut out, label, text);\n     out\n }\n \n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "canonical_string_list",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 143
+        },
+        "start": {
+          "column": 1,
+          "line": 136
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:137:5: replace canonical_string_list -> String with \"xyzzy\".into()",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\".into()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 142
+      },
+      "start": {
+        "column": 5,
+        "line": 137
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace segment -> String with String::new()\n@@ -138,19 +138,17 @@\n     let mut out = String::new();\n     out.push_str(label);\n     push_len(&mut out, values.len());\n     out.push_str(&entries);\n     out\n }\n \n fn segment(label: &str, text: &str) -> String {\n-    let mut out = String::new();\n-    push_segment(&mut out, label, text);\n-    out\n+    String::new() /* ~ changed by cargo-mutants ~ */\n }\n \n fn push_segment(out: &mut String, label: &str, text: &str) {\n     out.push_str(label);\n     push_len(out, text.len());\n     out.push_str(text);\n }\n \n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "segment",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 149
+        },
+        "start": {
+          "column": 1,
+          "line": 145
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:146:5: replace segment -> String with String::new()",
+    "package": "titania-policy",
+    "replacement": "String::new()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 148
+      },
+      "start": {
+        "column": 5,
+        "line": 146
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace segment -> String with \"xyzzy\".into()\n@@ -138,19 +138,17 @@\n     let mut out = String::new();\n     out.push_str(label);\n     push_len(&mut out, values.len());\n     out.push_str(&entries);\n     out\n }\n \n fn segment(label: &str, text: &str) -> String {\n-    let mut out = String::new();\n-    push_segment(&mut out, label, text);\n-    out\n+    \"xyzzy\".into() /* ~ changed by cargo-mutants ~ */\n }\n \n fn push_segment(out: &mut String, label: &str, text: &str) {\n     out.push_str(label);\n     push_len(out, text.len());\n     out.push_str(text);\n }\n \n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "segment",
+      "return_type": "-> String",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 149
+        },
+        "start": {
+          "column": 1,
+          "line": 145
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:146:5: replace segment -> String with \"xyzzy\".into()",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\".into()",
+    "span": {
+      "end": {
+        "column": 8,
+        "line": 148
+      },
+      "start": {
+        "column": 5,
+        "line": 146
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace push_segment with ()\n@@ -144,19 +144,17 @@\n \n fn segment(label: &str, text: &str) -> String {\n     let mut out = String::new();\n     push_segment(&mut out, label, text);\n     out\n }\n \n fn push_segment(out: &mut String, label: &str, text: &str) {\n-    out.push_str(label);\n-    push_len(out, text.len());\n-    out.push_str(text);\n+    () /* ~ changed by cargo-mutants ~ */\n }\n \n fn push_len(out: &mut String, len: usize) {\n     out.push(':');\n     out.push_str(&len.to_string());\n     out.push(':');\n }\n \n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "push_segment",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 155
+        },
+        "start": {
+          "column": 1,
+          "line": 151
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:152:5: replace push_segment with ()",
+    "package": "titania-policy",
+    "replacement": "()",
+    "span": {
+      "end": {
+        "column": 24,
+        "line": 154
+      },
+      "start": {
+        "column": 5,
+        "line": 152
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace push_len with ()\n@@ -150,16 +150,14 @@\n \n fn push_segment(out: &mut String, label: &str, text: &str) {\n     out.push_str(label);\n     push_len(out, text.len());\n     out.push_str(text);\n }\n \n fn push_len(out: &mut String, len: usize) {\n-    out.push(':');\n-    out.push_str(&len.to_string());\n-    out.push(':');\n+    () /* ~ changed by cargo-mutants ~ */\n }\n \n const fn bool_text(value: bool) -> &'static str {\n     if value { \"true\" } else { \"false\" }\n }\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "push_len",
+      "return_type": "",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 161
+        },
+        "start": {
+          "column": 1,
+          "line": 157
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:158:5: replace push_len with ()",
+    "package": "titania-policy",
+    "replacement": "()",
+    "span": {
+      "end": {
+        "column": 19,
+        "line": 160
+      },
+      "start": {
+        "column": 5,
+        "line": 158
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace bool_text -> &'static str with \"\"\n@@ -156,10 +156,10 @@\n \n fn push_len(out: &mut String, len: usize) {\n     out.push(':');\n     out.push_str(&len.to_string());\n     out.push(':');\n }\n \n const fn bool_text(value: bool) -> &'static str {\n-    if value { \"true\" } else { \"false\" }\n+    \"\" /* ~ changed by cargo-mutants ~ */\n }\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "bool_text",
+      "return_type": "-> &'static str",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 165
+        },
+        "start": {
+          "column": 1,
+          "line": 163
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:164:5: replace bool_text -> &'static str with \"\"",
+    "package": "titania-policy",
+    "replacement": "\"\"",
+    "span": {
+      "end": {
+        "column": 41,
+        "line": 164
+      },
+      "start": {
+        "column": 5,
+        "line": 164
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/digest.rs\n+++ replace bool_text -> &'static str with \"xyzzy\"\n@@ -156,10 +156,10 @@\n \n fn push_len(out: &mut String, len: usize) {\n     out.push(':');\n     out.push_str(&len.to_string());\n     out.push(':');\n }\n \n const fn bool_text(value: bool) -> &'static str {\n-    if value { \"true\" } else { \"false\" }\n+    \"xyzzy\" /* ~ changed by cargo-mutants ~ */\n }\n",
+    "file": "crates/titania-policy/src/digest.rs",
+    "function": {
+      "function_name": "bool_text",
+      "return_type": "-> &'static str",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 165
+        },
+        "start": {
+          "column": 1,
+          "line": 163
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/digest.rs:164:5: replace bool_text -> &'static str with \"xyzzy\"",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\"",
+    "span": {
+      "end": {
+        "column": 41,
+        "line": 164
+      },
+      "start": {
+        "column": 5,
+        "line": 164
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace ExceptionError::code -> &'static str with \"\"\n@@ -75,22 +75,17 @@\n         today: Box<str>,\n     },\n }\n \n impl ExceptionError {\n     /// Return the stable diagnostic code for this error.\n     #[must_use]\n     pub const fn code(&self) -> &'static str {\n-        match self {\n-            Self::ExceptionExpired { .. } => \"POLICY_EXCEPTION_EXPIRED\",\n-            Self::InvalidField { .. } => \"POLICY_EXCEPTION_INVALID_FIELD\",\n-            Self::ParseError { .. } => \"POLICY_EXCEPTION_PARSE_ERROR\",\n-            Self::MissingField { .. } => \"POLICY_EXCEPTION_MISSING_FIELD\",\n-        }\n+        \"\" /* ~ changed by cargo-mutants ~ */\n     }\n }\n \n /// Parse and validate `.titania/profiles/strict-ai/exceptions.toml` content.\n ///\n /// `today` must be a canonical ISO date (`YYYY-MM-DD`) supplied by the caller's\n /// clock boundary. Keeping the parser pure avoids hidden time access.\n ///\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "ExceptionError::code",
+      "return_type": "-> &'static str",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 89
+        },
+        "start": {
+          "column": 5,
+          "line": 80
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:83:9: replace ExceptionError::code -> &'static str with \"\"",
+    "package": "titania-policy",
+    "replacement": "\"\"",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 88
+      },
+      "start": {
+        "column": 9,
+        "line": 83
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace ExceptionError::code -> &'static str with \"xyzzy\"\n@@ -75,22 +75,17 @@\n         today: Box<str>,\n     },\n }\n \n impl ExceptionError {\n     /// Return the stable diagnostic code for this error.\n     #[must_use]\n     pub const fn code(&self) -> &'static str {\n-        match self {\n-            Self::ExceptionExpired { .. } => \"POLICY_EXCEPTION_EXPIRED\",\n-            Self::InvalidField { .. } => \"POLICY_EXCEPTION_INVALID_FIELD\",\n-            Self::ParseError { .. } => \"POLICY_EXCEPTION_PARSE_ERROR\",\n-            Self::MissingField { .. } => \"POLICY_EXCEPTION_MISSING_FIELD\",\n-        }\n+        \"xyzzy\" /* ~ changed by cargo-mutants ~ */\n     }\n }\n \n /// Parse and validate `.titania/profiles/strict-ai/exceptions.toml` content.\n ///\n /// `today` must be a canonical ISO date (`YYYY-MM-DD`) supplied by the caller's\n /// clock boundary. Keeping the parser pure avoids hidden time access.\n ///\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "ExceptionError::code",
+      "return_type": "-> &'static str",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 89
+        },
+        "start": {
+          "column": 5,
+          "line": 80
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:83:9: replace ExceptionError::code -> &'static str with \"xyzzy\"",
+    "package": "titania-policy",
+    "replacement": "\"xyzzy\"",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 88
+      },
+      "start": {
+        "column": 9,
+        "line": 83
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace parse_exceptions -> Result<Vec<Exception>, ExceptionError> with Ok(vec![])\n@@ -95,25 +95,17 @@\n /// clock boundary. Keeping the parser pure avoids hidden time access.\n ///\n /// # Errors\n /// Returns [`ExceptionError::ParseError`] for malformed TOML,\n /// [`ExceptionError::MissingField`] for missing/empty required fields,\n /// [`ExceptionError::InvalidField`] for malformed rule ids, paths, or dates,\n /// and [`ExceptionError::ExceptionExpired`] when `expires_on < today`.\n pub fn parse_exceptions(content: &str, today: &str) -> Result<Vec<Exception>, ExceptionError> {\n-    let today_date = parse_date(today, \"today\")?;\n-    toml_edit::de::from_str::<ExceptionsDocument>(content)\n-        .map_err(|error| ExceptionError::ParseError {\n-            message: error.to_string().into_boxed_str(),\n-        })?\n-        .exceptions\n-        .into_iter()\n-        .map(|wire| validate_exception(wire, today, today_date))\n-        .collect()\n+    Ok(vec![]) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate one decoded exception entry.\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when a required field is absent\n /// or empty, [`ExceptionError::InvalidField`] when a typed field violates its\n /// constructor, and [`ExceptionError::ExceptionExpired`] when the exception is\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "parse_exceptions",
+      "return_type": "-> Result<Vec<Exception>, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 112
+        },
+        "start": {
+          "column": 1,
+          "line": 92
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:103:5: replace parse_exceptions -> Result<Vec<Exception>, ExceptionError> with Ok(vec![])",
+    "package": "titania-policy",
+    "replacement": "Ok(vec![])",
+    "span": {
+      "end": {
+        "column": 19,
+        "line": 111
+      },
+      "start": {
+        "column": 5,
+        "line": 103
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace parse_exceptions -> Result<Vec<Exception>, ExceptionError> with Ok(vec![Default::default()])\n@@ -95,25 +95,17 @@\n /// clock boundary. Keeping the parser pure avoids hidden time access.\n ///\n /// # Errors\n /// Returns [`ExceptionError::ParseError`] for malformed TOML,\n /// [`ExceptionError::MissingField`] for missing/empty required fields,\n /// [`ExceptionError::InvalidField`] for malformed rule ids, paths, or dates,\n /// and [`ExceptionError::ExceptionExpired`] when `expires_on < today`.\n pub fn parse_exceptions(content: &str, today: &str) -> Result<Vec<Exception>, ExceptionError> {\n-    let today_date = parse_date(today, \"today\")?;\n-    toml_edit::de::from_str::<ExceptionsDocument>(content)\n-        .map_err(|error| ExceptionError::ParseError {\n-            message: error.to_string().into_boxed_str(),\n-        })?\n-        .exceptions\n-        .into_iter()\n-        .map(|wire| validate_exception(wire, today, today_date))\n-        .collect()\n+    Ok(vec![Default::default()]) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate one decoded exception entry.\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when a required field is absent\n /// or empty, [`ExceptionError::InvalidField`] when a typed field violates its\n /// constructor, and [`ExceptionError::ExceptionExpired`] when the exception is\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "parse_exceptions",
+      "return_type": "-> Result<Vec<Exception>, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 112
+        },
+        "start": {
+          "column": 1,
+          "line": 92
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:103:5: replace parse_exceptions -> Result<Vec<Exception>, ExceptionError> with Ok(vec![Default::default()])",
+    "package": "titania-policy",
+    "replacement": "Ok(vec![Default::default()])",
+    "span": {
+      "end": {
+        "column": 19,
+        "line": 111
+      },
+      "start": {
+        "column": 5,
+        "line": 103
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace validate_exception -> Result<Exception, ExceptionError> with Ok(Default::default())\n@@ -118,27 +118,17 @@\n /// or empty, [`ExceptionError::InvalidField`] when a typed field violates its\n /// constructor, and [`ExceptionError::ExceptionExpired`] when the exception is\n /// stale for the supplied policy date.\n fn validate_exception(\n     wire: ExceptionWire,\n     today_text: &str,\n     today: PolicyDate,\n ) -> Result<Exception, ExceptionError> {\n-    let rule_id_text = required(wire.rule_id, \"rule_id\")?;\n-    let path_text = required(wire.path, \"path\")?;\n-    let owner = required_boxed(wire.owner, \"owner\")?;\n-    let reason = required_boxed(wire.reason, \"reason\")?;\n-    let expires_on = required_boxed(wire.expires_on, \"expires_on\")?;\n-    let review = required_boxed(wire.review, \"review\")?;\n-    let rule_id = validated_rule_id(&rule_id_text)?;\n-    let path = validated_path(&path_text)?;\n-    let expires_on_date = parse_date(&expires_on, \"expires_on\")?;\n-    reject_expired(&rule_id, &expires_on, expires_on_date, today_text, today)?;\n-    Ok(Exception { rule_id, path, owner, reason, expires_on, review })\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Parse and validate a required string as a [`RuleId`].\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when [`RuleId`] rejects the value.\n fn validated_rule_id(value: &str) -> Result<RuleId, ExceptionError> {\n     RuleId::new(value).map_err(|error| ExceptionError::InvalidField {\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "validate_exception",
+      "return_type": "-> Result<Exception, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 137
+        },
+        "start": {
+          "column": 1,
+          "line": 114
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:126:5: replace validate_exception -> Result<Exception, ExceptionError> with Ok(Default::default())",
+    "package": "titania-policy",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 71,
+        "line": 136
+      },
+      "start": {
+        "column": 5,
+        "line": 126
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace validated_rule_id -> Result<RuleId, ExceptionError> with Ok(Default::default())\n@@ -136,20 +136,17 @@\n     Ok(Exception { rule_id, path, owner, reason, expires_on, review })\n }\n \n /// Parse and validate a required string as a [`RuleId`].\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when [`RuleId`] rejects the value.\n fn validated_rule_id(value: &str) -> Result<RuleId, ExceptionError> {\n-    RuleId::new(value).map_err(|error| ExceptionError::InvalidField {\n-        field: \"rule_id\",\n-        message: error.to_string().into_boxed_str(),\n-    })\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Parse and validate a required string as a [`WorkspacePath`].\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when [`WorkspacePath`] rejects the value.\n fn validated_path(value: &str) -> Result<WorkspacePath, ExceptionError> {\n     WorkspacePath::new(value).map_err(|error| ExceptionError::InvalidField {\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "validated_rule_id",
+      "return_type": "-> Result<RuleId, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 148
+        },
+        "start": {
+          "column": 1,
+          "line": 139
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:144:5: replace validated_rule_id -> Result<RuleId, ExceptionError> with Ok(Default::default())",
+    "package": "titania-policy",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 147
+      },
+      "start": {
+        "column": 5,
+        "line": 144
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace validated_path -> Result<WorkspacePath, ExceptionError> with Ok(Default::default())\n@@ -147,20 +147,17 @@\n     })\n }\n \n /// Parse and validate a required string as a [`WorkspacePath`].\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when [`WorkspacePath`] rejects the value.\n fn validated_path(value: &str) -> Result<WorkspacePath, ExceptionError> {\n-    WorkspacePath::new(value).map_err(|error| ExceptionError::InvalidField {\n-        field: \"path\",\n-        message: error.to_string().into_boxed_str(),\n-    })\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Reject stale policy exceptions.\n ///\n /// # Errors\n /// Returns [`ExceptionError::ExceptionExpired`] when `expires_on < today`.\n fn reject_expired(\n     rule_id: &RuleId,\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "validated_path",
+      "return_type": "-> Result<WorkspacePath, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 159
+        },
+        "start": {
+          "column": 1,
+          "line": 150
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:155:5: replace validated_path -> Result<WorkspacePath, ExceptionError> with Ok(Default::default())",
+    "package": "titania-policy",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 158
+      },
+      "start": {
+        "column": 5,
+        "line": 155
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace reject_expired -> Result<(), ExceptionError> with Ok(())\n@@ -164,24 +164,17 @@\n /// Returns [`ExceptionError::ExceptionExpired`] when `expires_on < today`.\n fn reject_expired(\n     rule_id: &RuleId,\n     expires_on_text: &str,\n     expires_on: PolicyDate,\n     today_text: &str,\n     today: PolicyDate,\n ) -> Result<(), ExceptionError> {\n-    if expires_on >= today {\n-        return Ok(());\n-    }\n-    Err(ExceptionError::ExceptionExpired {\n-        rule_id: rule_id.as_str().into(),\n-        expires_on: expires_on_text.into(),\n-        today: today_text.into(),\n-    })\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Extract a required non-empty string field.\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when the value is absent or blank.\n fn required(value: Option<String>, field: &'static str) -> Result<String, ExceptionError> {\n     value\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "reject_expired",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 180
+        },
+        "start": {
+          "column": 1,
+          "line": 161
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:172:5: replace reject_expired -> Result<(), ExceptionError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 179
+      },
+      "start": {
+        "column": 5,
+        "line": 172
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace >= with < in reject_expired\n@@ -164,17 +164,17 @@\n /// Returns [`ExceptionError::ExceptionExpired`] when `expires_on < today`.\n fn reject_expired(\n     rule_id: &RuleId,\n     expires_on_text: &str,\n     expires_on: PolicyDate,\n     today_text: &str,\n     today: PolicyDate,\n ) -> Result<(), ExceptionError> {\n-    if expires_on >= today {\n+    if expires_on < /* ~ changed by cargo-mutants ~ */ today {\n         return Ok(());\n     }\n     Err(ExceptionError::ExceptionExpired {\n         rule_id: rule_id.as_str().into(),\n         expires_on: expires_on_text.into(),\n         today: today_text.into(),\n     })\n }\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "reject_expired",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 180
+        },
+        "start": {
+          "column": 1,
+          "line": 161
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:172:19: replace >= with < in reject_expired",
+    "package": "titania-policy",
+    "replacement": "<",
+    "span": {
+      "end": {
+        "column": 21,
+        "line": 172
+      },
+      "start": {
+        "column": 19,
+        "line": 172
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace required -> Result<String, ExceptionError> with Ok(String::new())\n@@ -179,19 +179,17 @@\n     })\n }\n \n /// Extract a required non-empty string field.\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when the value is absent or blank.\n fn required(value: Option<String>, field: &'static str) -> Result<String, ExceptionError> {\n-    value\n-        .filter(|candidate| !candidate.trim().is_empty())\n-        .ok_or(ExceptionError::MissingField { field })\n+    Ok(String::new()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Extract a required non-empty string field as [`Box<str>`].\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when the value is absent or blank.\n fn required_boxed(value: Option<String>, field: &'static str) -> Result<Box<str>, ExceptionError> {\n     required(value, field).map(String::into_boxed_str)\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "required",
+      "return_type": "-> Result<String, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 190
+        },
+        "start": {
+          "column": 1,
+          "line": 182
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:187:5: replace required -> Result<String, ExceptionError> with Ok(String::new())",
+    "package": "titania-policy",
+    "replacement": "Ok(String::new())",
+    "span": {
+      "end": {
+        "column": 55,
+        "line": 189
+      },
+      "start": {
+        "column": 5,
+        "line": 187
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace required -> Result<String, ExceptionError> with Ok(\"xyzzy\".into())\n@@ -179,19 +179,17 @@\n     })\n }\n \n /// Extract a required non-empty string field.\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when the value is absent or blank.\n fn required(value: Option<String>, field: &'static str) -> Result<String, ExceptionError> {\n-    value\n-        .filter(|candidate| !candidate.trim().is_empty())\n-        .ok_or(ExceptionError::MissingField { field })\n+    Ok(\"xyzzy\".into()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Extract a required non-empty string field as [`Box<str>`].\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when the value is absent or blank.\n fn required_boxed(value: Option<String>, field: &'static str) -> Result<Box<str>, ExceptionError> {\n     required(value, field).map(String::into_boxed_str)\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "required",
+      "return_type": "-> Result<String, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 190
+        },
+        "start": {
+          "column": 1,
+          "line": 182
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:187:5: replace required -> Result<String, ExceptionError> with Ok(\"xyzzy\".into())",
+    "package": "titania-policy",
+    "replacement": "Ok(\"xyzzy\".into())",
+    "span": {
+      "end": {
+        "column": 55,
+        "line": 189
+      },
+      "start": {
+        "column": 5,
+        "line": 187
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ delete ! in required\n@@ -180,17 +180,17 @@\n }\n \n /// Extract a required non-empty string field.\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when the value is absent or blank.\n fn required(value: Option<String>, field: &'static str) -> Result<String, ExceptionError> {\n     value\n-        .filter(|candidate| !candidate.trim().is_empty())\n+        .filter(|candidate|  /* ~ changed by cargo-mutants ~ */candidate.trim().is_empty())\n         .ok_or(ExceptionError::MissingField { field })\n }\n \n /// Extract a required non-empty string field as [`Box<str>`].\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when the value is absent or blank.\n fn required_boxed(value: Option<String>, field: &'static str) -> Result<Box<str>, ExceptionError> {\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "required",
+      "return_type": "-> Result<String, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 190
+        },
+        "start": {
+          "column": 1,
+          "line": 182
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:188:29: delete ! in required",
+    "package": "titania-policy",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 30,
+        "line": 188
+      },
+      "start": {
+        "column": 29,
+        "line": 188
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace required_boxed -> Result<Box<str>, ExceptionError> with Ok(Box::new(\"\"))\n@@ -189,17 +189,17 @@\n         .ok_or(ExceptionError::MissingField { field })\n }\n \n /// Extract a required non-empty string field as [`Box<str>`].\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when the value is absent or blank.\n fn required_boxed(value: Option<String>, field: &'static str) -> Result<Box<str>, ExceptionError> {\n-    required(value, field).map(String::into_boxed_str)\n+    Ok(Box::new(\"\")) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Parse a canonical `YYYY-MM-DD` date.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when the date is malformed,\n /// non-canonical, or outside supported calendar ranges.\n fn parse_date(value: &str, field: &'static str) -> Result<PolicyDate, ExceptionError> {\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "required_boxed",
+      "return_type": "-> Result<Box<str>, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 198
+        },
+        "start": {
+          "column": 1,
+          "line": 192
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:197:5: replace required_boxed -> Result<Box<str>, ExceptionError> with Ok(Box::new(\"\"))",
+    "package": "titania-policy",
+    "replacement": "Ok(Box::new(\"\"))",
+    "span": {
+      "end": {
+        "column": 55,
+        "line": 197
+      },
+      "start": {
+        "column": 5,
+        "line": 197
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace required_boxed -> Result<Box<str>, ExceptionError> with Ok(Box::new(\"xyzzy\"))\n@@ -189,17 +189,17 @@\n         .ok_or(ExceptionError::MissingField { field })\n }\n \n /// Extract a required non-empty string field as [`Box<str>`].\n ///\n /// # Errors\n /// Returns [`ExceptionError::MissingField`] when the value is absent or blank.\n fn required_boxed(value: Option<String>, field: &'static str) -> Result<Box<str>, ExceptionError> {\n-    required(value, field).map(String::into_boxed_str)\n+    Ok(Box::new(\"xyzzy\")) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Parse a canonical `YYYY-MM-DD` date.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when the date is malformed,\n /// non-canonical, or outside supported calendar ranges.\n fn parse_date(value: &str, field: &'static str) -> Result<PolicyDate, ExceptionError> {\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "required_boxed",
+      "return_type": "-> Result<Box<str>, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 198
+        },
+        "start": {
+          "column": 1,
+          "line": 192
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:197:5: replace required_boxed -> Result<Box<str>, ExceptionError> with Ok(Box::new(\"xyzzy\"))",
+    "package": "titania-policy",
+    "replacement": "Ok(Box::new(\"xyzzy\"))",
+    "span": {
+      "end": {
+        "column": 55,
+        "line": 197
+      },
+      "start": {
+        "column": 5,
+        "line": 197
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace parse_date -> Result<PolicyDate, ExceptionError> with Ok(Default::default())\n@@ -198,28 +198,17 @@\n }\n \n /// Parse a canonical `YYYY-MM-DD` date.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when the date is malformed,\n /// non-canonical, or outside supported calendar ranges.\n fn parse_date(value: &str, field: &'static str) -> Result<PolicyDate, ExceptionError> {\n-    let (year_text, month_text, day_text) = split_date(value, field)?;\n-    require_date_widths(value, year_text, month_text, day_text, field)?;\n-    require_digits(year_text, field)?;\n-    require_digits(month_text, field)?;\n-    require_digits(day_text, field)?;\n-    let date = PolicyDate {\n-        year: parse_date_part(year_text, field)?,\n-        month: parse_date_part(month_text, field)?,\n-        day: parse_date_part(day_text, field)?,\n-    };\n-    validate_date_range(date, field)?;\n-    Ok(date)\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n type DateParts<'a> = (&'a str, &'a str, &'a str);\n \n /// Split a date into year, month, and day text.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] unless the value has exactly three\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "parse_date",
+      "return_type": "-> Result<PolicyDate, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 218
+        },
+        "start": {
+          "column": 1,
+          "line": 200
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:206:5: replace parse_date -> Result<PolicyDate, ExceptionError> with Ok(Default::default())",
+    "package": "titania-policy",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 13,
+        "line": 217
+      },
+      "start": {
+        "column": 5,
+        "line": 206
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace split_date -> Result<DateParts<'a>, ExceptionError> with Ok(Default::default())\n@@ -220,22 +220,17 @@\n type DateParts<'a> = (&'a str, &'a str, &'a str);\n \n /// Split a date into year, month, and day text.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] unless the value has exactly three\n /// dash-delimited parts.\n fn split_date<'a>(value: &'a str, field: &'static str) -> Result<DateParts<'a>, ExceptionError> {\n-    let mut parts = value.split('-');\n-    let year = parts.next().ok_or_else(|| invalid_date(field))?;\n-    let month = parts.next().ok_or_else(|| invalid_date(field))?;\n-    let day = parts.next().ok_or_else(|| invalid_date(field))?;\n-    parts.next().is_none().then_some(()).ok_or_else(|| invalid_date(field))?;\n-    Ok((year, month, day))\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate canonical date widths.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when the total or component widths\n /// are not exactly `YYYY-MM-DD`.\n fn require_date_widths(\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "split_date",
+      "return_type": "-> Result<DateParts<'a>, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 234
+        },
+        "start": {
+          "column": 1,
+          "line": 222
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:228:5: replace split_date -> Result<DateParts<'a>, ExceptionError> with Ok(Default::default())",
+    "package": "titania-policy",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 27,
+        "line": 233
+      },
+      "start": {
+        "column": 5,
+        "line": 228
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace require_date_widths -> Result<(), ExceptionError> with Ok(())\n@@ -240,20 +240,17 @@\n /// are not exactly `YYYY-MM-DD`.\n fn require_date_widths(\n     value: &str,\n     year: &str,\n     month: &str,\n     day: &str,\n     field: &'static str,\n ) -> Result<(), ExceptionError> {\n-    if value.len() == 10 && year.len() == 4 && month.len() == 2 && day.len() == 2 {\n-        return Ok(());\n-    }\n-    Err(invalid_date(field))\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate a date component contains only ASCII digits.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when `value` contains non-digits.\n fn require_digits(value: &str, field: &'static str) -> Result<(), ExceptionError> {\n     if value.chars().all(|ch| ch.is_ascii_digit()) {\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "require_date_widths",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 252
+        },
+        "start": {
+          "column": 1,
+          "line": 236
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:248:5: replace require_date_widths -> Result<(), ExceptionError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 29,
+        "line": 251
+      },
+      "start": {
+        "column": 5,
+        "line": 248
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace && with || in require_date_widths\n@@ -240,17 +240,17 @@\n /// are not exactly `YYYY-MM-DD`.\n fn require_date_widths(\n     value: &str,\n     year: &str,\n     month: &str,\n     day: &str,\n     field: &'static str,\n ) -> Result<(), ExceptionError> {\n-    if value.len() == 10 && year.len() == 4 && month.len() == 2 && day.len() == 2 {\n+    if value.len() == 10 && year.len() == 4 && month.len() == 2 || /* ~ changed by cargo-mutants ~ */ day.len() == 2 {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n /// Validate a date component contains only ASCII digits.\n ///\n /// # Errors\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "require_date_widths",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 252
+        },
+        "start": {
+          "column": 1,
+          "line": 236
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:248:65: replace && with || in require_date_widths",
+    "package": "titania-policy",
+    "replacement": "||",
+    "span": {
+      "end": {
+        "column": 67,
+        "line": 248
+      },
+      "start": {
+        "column": 65,
+        "line": 248
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace && with || in require_date_widths\n@@ -240,17 +240,17 @@\n /// are not exactly `YYYY-MM-DD`.\n fn require_date_widths(\n     value: &str,\n     year: &str,\n     month: &str,\n     day: &str,\n     field: &'static str,\n ) -> Result<(), ExceptionError> {\n-    if value.len() == 10 && year.len() == 4 && month.len() == 2 && day.len() == 2 {\n+    if value.len() == 10 && year.len() == 4 || /* ~ changed by cargo-mutants ~ */ month.len() == 2 && day.len() == 2 {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n /// Validate a date component contains only ASCII digits.\n ///\n /// # Errors\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "require_date_widths",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 252
+        },
+        "start": {
+          "column": 1,
+          "line": 236
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:248:45: replace && with || in require_date_widths",
+    "package": "titania-policy",
+    "replacement": "||",
+    "span": {
+      "end": {
+        "column": 47,
+        "line": 248
+      },
+      "start": {
+        "column": 45,
+        "line": 248
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace && with || in require_date_widths\n@@ -240,17 +240,17 @@\n /// are not exactly `YYYY-MM-DD`.\n fn require_date_widths(\n     value: &str,\n     year: &str,\n     month: &str,\n     day: &str,\n     field: &'static str,\n ) -> Result<(), ExceptionError> {\n-    if value.len() == 10 && year.len() == 4 && month.len() == 2 && day.len() == 2 {\n+    if value.len() == 10 || /* ~ changed by cargo-mutants ~ */ year.len() == 4 && month.len() == 2 && day.len() == 2 {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n /// Validate a date component contains only ASCII digits.\n ///\n /// # Errors\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "require_date_widths",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 252
+        },
+        "start": {
+          "column": 1,
+          "line": 236
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:248:26: replace && with || in require_date_widths",
+    "package": "titania-policy",
+    "replacement": "||",
+    "span": {
+      "end": {
+        "column": 28,
+        "line": 248
+      },
+      "start": {
+        "column": 26,
+        "line": 248
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace == with != in require_date_widths\n@@ -240,17 +240,17 @@\n /// are not exactly `YYYY-MM-DD`.\n fn require_date_widths(\n     value: &str,\n     year: &str,\n     month: &str,\n     day: &str,\n     field: &'static str,\n ) -> Result<(), ExceptionError> {\n-    if value.len() == 10 && year.len() == 4 && month.len() == 2 && day.len() == 2 {\n+    if value.len() != /* ~ changed by cargo-mutants ~ */ 10 && year.len() == 4 && month.len() == 2 && day.len() == 2 {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n /// Validate a date component contains only ASCII digits.\n ///\n /// # Errors\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "require_date_widths",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 252
+        },
+        "start": {
+          "column": 1,
+          "line": 236
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:248:20: replace == with != in require_date_widths",
+    "package": "titania-policy",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 22,
+        "line": 248
+      },
+      "start": {
+        "column": 20,
+        "line": 248
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace == with != in require_date_widths\n@@ -240,17 +240,17 @@\n /// are not exactly `YYYY-MM-DD`.\n fn require_date_widths(\n     value: &str,\n     year: &str,\n     month: &str,\n     day: &str,\n     field: &'static str,\n ) -> Result<(), ExceptionError> {\n-    if value.len() == 10 && year.len() == 4 && month.len() == 2 && day.len() == 2 {\n+    if value.len() == 10 && year.len() != /* ~ changed by cargo-mutants ~ */ 4 && month.len() == 2 && day.len() == 2 {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n /// Validate a date component contains only ASCII digits.\n ///\n /// # Errors\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "require_date_widths",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 252
+        },
+        "start": {
+          "column": 1,
+          "line": 236
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:248:40: replace == with != in require_date_widths",
+    "package": "titania-policy",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 42,
+        "line": 248
+      },
+      "start": {
+        "column": 40,
+        "line": 248
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace == with != in require_date_widths\n@@ -240,17 +240,17 @@\n /// are not exactly `YYYY-MM-DD`.\n fn require_date_widths(\n     value: &str,\n     year: &str,\n     month: &str,\n     day: &str,\n     field: &'static str,\n ) -> Result<(), ExceptionError> {\n-    if value.len() == 10 && year.len() == 4 && month.len() == 2 && day.len() == 2 {\n+    if value.len() == 10 && year.len() == 4 && month.len() != /* ~ changed by cargo-mutants ~ */ 2 && day.len() == 2 {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n /// Validate a date component contains only ASCII digits.\n ///\n /// # Errors\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "require_date_widths",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 252
+        },
+        "start": {
+          "column": 1,
+          "line": 236
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:248:60: replace == with != in require_date_widths",
+    "package": "titania-policy",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 62,
+        "line": 248
+      },
+      "start": {
+        "column": 60,
+        "line": 248
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace == with != in require_date_widths\n@@ -240,17 +240,17 @@\n /// are not exactly `YYYY-MM-DD`.\n fn require_date_widths(\n     value: &str,\n     year: &str,\n     month: &str,\n     day: &str,\n     field: &'static str,\n ) -> Result<(), ExceptionError> {\n-    if value.len() == 10 && year.len() == 4 && month.len() == 2 && day.len() == 2 {\n+    if value.len() == 10 && year.len() == 4 && month.len() == 2 && day.len() != /* ~ changed by cargo-mutants ~ */ 2 {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n /// Validate a date component contains only ASCII digits.\n ///\n /// # Errors\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "require_date_widths",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 252
+        },
+        "start": {
+          "column": 1,
+          "line": 236
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:248:78: replace == with != in require_date_widths",
+    "package": "titania-policy",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 80,
+        "line": 248
+      },
+      "start": {
+        "column": 78,
+        "line": 248
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace require_digits -> Result<(), ExceptionError> with Ok(())\n@@ -251,20 +251,17 @@\n     Err(invalid_date(field))\n }\n \n /// Validate a date component contains only ASCII digits.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when `value` contains non-digits.\n fn require_digits(value: &str, field: &'static str) -> Result<(), ExceptionError> {\n-    if value.chars().all(|ch| ch.is_ascii_digit()) {\n-        return Ok(());\n-    }\n-    Err(invalid_date(field))\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Parse one date component.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when the number cannot fit the\n /// requested destination type.\n fn parse_date_part<T>(value: &str, field: &'static str) -> Result<T, ExceptionError>\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "require_digits",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 263
+        },
+        "start": {
+          "column": 1,
+          "line": 254
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:259:5: replace require_digits -> Result<(), ExceptionError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 29,
+        "line": 262
+      },
+      "start": {
+        "column": 5,
+        "line": 259
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace parse_date_part -> Result<T, ExceptionError> with Ok(Default::default())\n@@ -266,17 +266,17 @@\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when the number cannot fit the\n /// requested destination type.\n fn parse_date_part<T>(value: &str, field: &'static str) -> Result<T, ExceptionError>\n where\n     T: core::str::FromStr,\n {\n-    value.parse().map_err(|_error| invalid_date(field))\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate month and day bounds.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when month or day is outside the\n /// supported Gregorian calendar range.\n fn validate_date_range(date: PolicyDate, field: &'static str) -> Result<(), ExceptionError> {\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "parse_date_part",
+      "return_type": "-> Result<T, ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 275
+        },
+        "start": {
+          "column": 1,
+          "line": 265
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:274:5: replace parse_date_part -> Result<T, ExceptionError> with Ok(Default::default())",
+    "package": "titania-policy",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 56,
+        "line": 274
+      },
+      "start": {
+        "column": 5,
+        "line": 274
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace validate_date_range -> Result<(), ExceptionError> with Ok(())\n@@ -275,23 +275,17 @@\n }\n \n /// Validate month and day bounds.\n ///\n /// # Errors\n /// Returns [`ExceptionError::InvalidField`] when month or day is outside the\n /// supported Gregorian calendar range.\n fn validate_date_range(date: PolicyDate, field: &'static str) -> Result<(), ExceptionError> {\n-    let Some(limit) = day_limit(date) else {\n-        return Err(invalid_date(field));\n-    };\n-    if (1..=limit).contains(&date.day) {\n-        return Ok(());\n-    }\n-    Err(invalid_date(field))\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn day_limit(date: PolicyDate) -> Option<u8> {\n     match date.month {\n         1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),\n         4 | 6 | 9 | 11 => Some(30),\n         2 => Some(february_limit(date.year)),\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "validate_date_range",
+      "return_type": "-> Result<(), ExceptionError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 290
+        },
+        "start": {
+          "column": 1,
+          "line": 277
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:283:5: replace validate_date_range -> Result<(), ExceptionError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 29,
+        "line": 289
+      },
+      "start": {
+        "column": 5,
+        "line": 283
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace day_limit -> Option<u8> with None\n@@ -286,22 +286,17 @@\n     if (1..=limit).contains(&date.day) {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n #[must_use]\n const fn day_limit(date: PolicyDate) -> Option<u8> {\n-    match date.month {\n-        1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),\n-        4 | 6 | 9 | 11 => Some(30),\n-        2 => Some(february_limit(date.year)),\n-        _ => None,\n-    }\n+    None /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "day_limit",
+      "return_type": "-> Option<u8>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 300
+        },
+        "start": {
+          "column": 1,
+          "line": 292
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:294:5: replace day_limit -> Option<u8> with None",
+    "package": "titania-policy",
+    "replacement": "None",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 299
+      },
+      "start": {
+        "column": 5,
+        "line": 294
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace day_limit -> Option<u8> with Some(0)\n@@ -286,22 +286,17 @@\n     if (1..=limit).contains(&date.day) {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n #[must_use]\n const fn day_limit(date: PolicyDate) -> Option<u8> {\n-    match date.month {\n-        1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),\n-        4 | 6 | 9 | 11 => Some(30),\n-        2 => Some(february_limit(date.year)),\n-        _ => None,\n-    }\n+    Some(0) /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "day_limit",
+      "return_type": "-> Option<u8>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 300
+        },
+        "start": {
+          "column": 1,
+          "line": 292
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:294:5: replace day_limit -> Option<u8> with Some(0)",
+    "package": "titania-policy",
+    "replacement": "Some(0)",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 299
+      },
+      "start": {
+        "column": 5,
+        "line": 294
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace day_limit -> Option<u8> with Some(1)\n@@ -286,22 +286,17 @@\n     if (1..=limit).contains(&date.day) {\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n #[must_use]\n const fn day_limit(date: PolicyDate) -> Option<u8> {\n-    match date.month {\n-        1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),\n-        4 | 6 | 9 | 11 => Some(30),\n-        2 => Some(february_limit(date.year)),\n-        _ => None,\n-    }\n+    Some(1) /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "day_limit",
+      "return_type": "-> Option<u8>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 300
+        },
+        "start": {
+          "column": 1,
+          "line": 292
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:294:5: replace day_limit -> Option<u8> with Some(1)",
+    "package": "titania-policy",
+    "replacement": "Some(1)",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 299
+      },
+      "start": {
+        "column": 5,
+        "line": 294
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ delete match arm 1 | 3 | 5 | 7 | 8 | 10 | 12 in day_limit\n@@ -287,17 +287,17 @@\n         return Ok(());\n     }\n     Err(invalid_date(field))\n }\n \n #[must_use]\n const fn day_limit(date: PolicyDate) -> Option<u8> {\n     match date.month {\n-        1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),\n+         /* ~ changed by cargo-mutants ~ */\n         4 | 6 | 9 | 11 => Some(30),\n         2 => Some(february_limit(date.year)),\n         _ => None,\n     }\n }\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "day_limit",
+      "return_type": "-> Option<u8>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 300
+        },
+        "start": {
+          "column": 1,
+          "line": 292
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-policy/src/exceptions.rs:295:9: delete match arm 1 | 3 | 5 | 7 | 8 | 10 | 12 in day_limit",
+    "package": "titania-policy",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 49,
+        "line": 295
+      },
+      "start": {
+        "column": 9,
+        "line": 295
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ delete match arm 4 | 6 | 9 | 11 in day_limit\n@@ -288,17 +288,17 @@\n     }\n     Err(invalid_date(field))\n }\n \n #[must_use]\n const fn day_limit(date: PolicyDate) -> Option<u8> {\n     match date.month {\n         1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),\n-        4 | 6 | 9 | 11 => Some(30),\n+         /* ~ changed by cargo-mutants ~ */\n         2 => Some(february_limit(date.year)),\n         _ => None,\n     }\n }\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "day_limit",
+      "return_type": "-> Option<u8>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 300
+        },
+        "start": {
+          "column": 1,
+          "line": 292
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-policy/src/exceptions.rs:296:9: delete match arm 4 | 6 | 9 | 11 in day_limit",
+    "package": "titania-policy",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 36,
+        "line": 296
+      },
+      "start": {
+        "column": 9,
+        "line": 296
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ delete match arm 2 in day_limit\n@@ -289,17 +289,17 @@\n     Err(invalid_date(field))\n }\n \n #[must_use]\n const fn day_limit(date: PolicyDate) -> Option<u8> {\n     match date.month {\n         1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),\n         4 | 6 | 9 | 11 => Some(30),\n-        2 => Some(february_limit(date.year)),\n+         /* ~ changed by cargo-mutants ~ */\n         _ => None,\n     }\n }\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n }\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "day_limit",
+      "return_type": "-> Option<u8>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 300
+        },
+        "start": {
+          "column": 1,
+          "line": 292
+        }
+      }
+    },
+    "genre": "MatchArm",
+    "name": "crates/titania-policy/src/exceptions.rs:297:9: delete match arm 2 in day_limit",
+    "package": "titania-policy",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 46,
+        "line": 297
+      },
+      "start": {
+        "column": 9,
+        "line": 297
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace february_limit -> u8 with 0\n@@ -296,17 +296,17 @@\n         4 | 6 | 9 | 11 => Some(30),\n         2 => Some(february_limit(date.year)),\n         _ => None,\n     }\n }\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n-    if is_leap_year(year) { 29 } else { 28 }\n+    0 /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn is_leap_year(year: u16) -> bool {\n     (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "february_limit",
+      "return_type": "-> u8",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 305
+        },
+        "start": {
+          "column": 1,
+          "line": 302
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:304:5: replace february_limit -> u8 with 0",
+    "package": "titania-policy",
+    "replacement": "0",
+    "span": {
+      "end": {
+        "column": 45,
+        "line": 304
+      },
+      "start": {
+        "column": 5,
+        "line": 304
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace february_limit -> u8 with 1\n@@ -296,17 +296,17 @@\n         4 | 6 | 9 | 11 => Some(30),\n         2 => Some(february_limit(date.year)),\n         _ => None,\n     }\n }\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n-    if is_leap_year(year) { 29 } else { 28 }\n+    1 /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn is_leap_year(year: u16) -> bool {\n     (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "february_limit",
+      "return_type": "-> u8",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 305
+        },
+        "start": {
+          "column": 1,
+          "line": 302
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:304:5: replace february_limit -> u8 with 1",
+    "package": "titania-policy",
+    "replacement": "1",
+    "span": {
+      "end": {
+        "column": 45,
+        "line": 304
+      },
+      "start": {
+        "column": 5,
+        "line": 304
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace is_leap_year -> bool with true\n@@ -301,17 +301,17 @@\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n }\n \n #[must_use]\n const fn is_leap_year(year: u16) -> bool {\n-    (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n+    true /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn is_divisible_by(value: u16, divisor: u16) -> bool {\n     matches!(value.checked_rem(divisor), Some(0))\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "is_leap_year",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 310
+        },
+        "start": {
+          "column": 1,
+          "line": 307
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:309:5: replace is_leap_year -> bool with true",
+    "package": "titania-policy",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 92,
+        "line": 309
+      },
+      "start": {
+        "column": 5,
+        "line": 309
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace is_leap_year -> bool with false\n@@ -301,17 +301,17 @@\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n }\n \n #[must_use]\n const fn is_leap_year(year: u16) -> bool {\n-    (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n+    false /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn is_divisible_by(value: u16, divisor: u16) -> bool {\n     matches!(value.checked_rem(divisor), Some(0))\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "is_leap_year",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 310
+        },
+        "start": {
+          "column": 1,
+          "line": 307
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:309:5: replace is_leap_year -> bool with false",
+    "package": "titania-policy",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 92,
+        "line": 309
+      },
+      "start": {
+        "column": 5,
+        "line": 309
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace || with && in is_leap_year\n@@ -301,17 +301,17 @@\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n }\n \n #[must_use]\n const fn is_leap_year(year: u16) -> bool {\n-    (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n+    (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) && /* ~ changed by cargo-mutants ~ */ is_divisible_by(year, 400)\n }\n \n #[must_use]\n const fn is_divisible_by(value: u16, divisor: u16) -> bool {\n     matches!(value.checked_rem(divisor), Some(0))\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "is_leap_year",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 310
+        },
+        "start": {
+          "column": 1,
+          "line": 307
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:309:63: replace || with && in is_leap_year",
+    "package": "titania-policy",
+    "replacement": "&&",
+    "span": {
+      "end": {
+        "column": 65,
+        "line": 309
+      },
+      "start": {
+        "column": 63,
+        "line": 309
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace && with || in is_leap_year\n@@ -301,17 +301,17 @@\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n }\n \n #[must_use]\n const fn is_leap_year(year: u16) -> bool {\n-    (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n+    (is_divisible_by(year, 4) || /* ~ changed by cargo-mutants ~ */ !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n }\n \n #[must_use]\n const fn is_divisible_by(value: u16, divisor: u16) -> bool {\n     matches!(value.checked_rem(divisor), Some(0))\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "is_leap_year",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 310
+        },
+        "start": {
+          "column": 1,
+          "line": 307
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:309:31: replace && with || in is_leap_year",
+    "package": "titania-policy",
+    "replacement": "||",
+    "span": {
+      "end": {
+        "column": 33,
+        "line": 309
+      },
+      "start": {
+        "column": 31,
+        "line": 309
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ delete ! in is_leap_year\n@@ -301,17 +301,17 @@\n \n #[must_use]\n const fn february_limit(year: u16) -> u8 {\n     if is_leap_year(year) { 29 } else { 28 }\n }\n \n #[must_use]\n const fn is_leap_year(year: u16) -> bool {\n-    (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n+    (is_divisible_by(year, 4) &&  /* ~ changed by cargo-mutants ~ */is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n }\n \n #[must_use]\n const fn is_divisible_by(value: u16, divisor: u16) -> bool {\n     matches!(value.checked_rem(divisor), Some(0))\n }\n \n #[must_use]\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "is_leap_year",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 310
+        },
+        "start": {
+          "column": 1,
+          "line": 307
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-policy/src/exceptions.rs:309:34: delete ! in is_leap_year",
+    "package": "titania-policy",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 35,
+        "line": 309
+      },
+      "start": {
+        "column": 34,
+        "line": 309
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace is_divisible_by -> bool with true\n@@ -306,17 +306,17 @@\n \n #[must_use]\n const fn is_leap_year(year: u16) -> bool {\n     (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n }\n \n #[must_use]\n const fn is_divisible_by(value: u16, divisor: u16) -> bool {\n-    matches!(value.checked_rem(divisor), Some(0))\n+    true /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n fn invalid_date(field: &'static str) -> ExceptionError {\n     ExceptionError::InvalidField {\n         field,\n         message: \"date must be a canonical zero-padded YYYY-MM-DD calendar date\".into(),\n     }\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "is_divisible_by",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 315
+        },
+        "start": {
+          "column": 1,
+          "line": 312
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:314:5: replace is_divisible_by -> bool with true",
+    "package": "titania-policy",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 50,
+        "line": 314
+      },
+      "start": {
+        "column": 5,
+        "line": 314
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace is_divisible_by -> bool with false\n@@ -306,17 +306,17 @@\n \n #[must_use]\n const fn is_leap_year(year: u16) -> bool {\n     (is_divisible_by(year, 4) && !is_divisible_by(year, 100)) || is_divisible_by(year, 400)\n }\n \n #[must_use]\n const fn is_divisible_by(value: u16, divisor: u16) -> bool {\n-    matches!(value.checked_rem(divisor), Some(0))\n+    false /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n fn invalid_date(field: &'static str) -> ExceptionError {\n     ExceptionError::InvalidField {\n         field,\n         message: \"date must be a canonical zero-padded YYYY-MM-DD calendar date\".into(),\n     }\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "is_divisible_by",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 315
+        },
+        "start": {
+          "column": 1,
+          "line": 312
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:314:5: replace is_divisible_by -> bool with false",
+    "package": "titania-policy",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 50,
+        "line": 314
+      },
+      "start": {
+        "column": 5,
+        "line": 314
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/exceptions.rs\n+++ replace invalid_date -> ExceptionError with Default::default()\n@@ -311,13 +311,10 @@\n \n #[must_use]\n const fn is_divisible_by(value: u16, divisor: u16) -> bool {\n     matches!(value.checked_rem(divisor), Some(0))\n }\n \n #[must_use]\n fn invalid_date(field: &'static str) -> ExceptionError {\n-    ExceptionError::InvalidField {\n-        field,\n-        message: \"date must be a canonical zero-padded YYYY-MM-DD calendar date\".into(),\n-    }\n+    Default::default() /* ~ changed by cargo-mutants ~ */\n }\n",
+    "file": "crates/titania-policy/src/exceptions.rs",
+    "function": {
+      "function_name": "invalid_date",
+      "return_type": "-> ExceptionError",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 323
+        },
+        "start": {
+          "column": 1,
+          "line": 317
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/exceptions.rs:319:5: replace invalid_date -> ExceptionError with Default::default()",
+    "package": "titania-policy",
+    "replacement": "Default::default()",
+    "span": {
+      "end": {
+        "column": 6,
+        "line": 322
+      },
+      "start": {
+        "column": 5,
+        "line": 319
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace parse_profile -> Result<PolicyProfile, ProfileError> with Ok(Default::default())\n@@ -86,27 +86,17 @@\n /// Parse and validate `.titania/profiles/strict-ai/policy.toml` content.\n ///\n /// # Errors\n /// Returns [`ProfileError::ParseError`] for malformed TOML,\n /// [`ProfileError::MissingField`] for missing/empty required architecture\n /// settings, and [`ProfileError::InvalidField`] for malformed paths, crate\n /// names, or map keys.\n pub fn parse_profile(content: &str) -> Result<PolicyProfile, ProfileError> {\n-    let document = toml_edit::de::from_str::<PolicyDocument>(content).map_err(|error| {\n-        ProfileError::ParseError { message: error.to_string().into_boxed_str() }\n-    })?;\n-    validate_policy_maps(&document)?;\n-    let architecture = validate_architecture(document.architecture)?;\n-    Ok(PolicyProfile {\n-        lints: document.lints,\n-        thresholds: document.thresholds,\n-        architecture,\n-        supply_chain: document.supply_chain,\n-    })\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate override map keys and lint levels.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when a map key is blank or a lint\n /// level is not one of the supported rustc/clippy levels.\n fn validate_policy_maps(document: &PolicyDocument) -> Result<(), ProfileError> {\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "parse_profile",
+      "return_type": "-> Result<PolicyProfile, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 105
+        },
+        "start": {
+          "column": 1,
+          "line": 86
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:94:5: replace parse_profile -> Result<PolicyProfile, ProfileError> with Ok(Default::default())",
+    "package": "titania-policy",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 104
+      },
+      "start": {
+        "column": 5,
+        "line": 94
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_policy_maps -> Result<(), ProfileError> with Ok(())\n@@ -105,20 +105,17 @@\n }\n \n /// Validate override map keys and lint levels.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when a map key is blank or a lint\n /// level is not one of the supported rustc/clippy levels.\n fn validate_policy_maps(document: &PolicyDocument) -> Result<(), ProfileError> {\n-    validate_named_map_keys(&document.lints, \"lints\")?;\n-    validate_lint_levels(&document.lints)?;\n-    validate_named_map_keys(&document.thresholds, \"thresholds\")?;\n-    validate_named_map_keys(&document.supply_chain, \"supply_chain\")\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate required architecture fields.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when architecture, `core_dirs`, or\n /// `infra_crates` is missing or empty. Returns [`ProfileError::InvalidField`]\n /// when any path or crate entry is semantically invalid.\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_policy_maps",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 117
+        },
+        "start": {
+          "column": 1,
+          "line": 107
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:113:5: replace validate_policy_maps -> Result<(), ProfileError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 68,
+        "line": 116
+      },
+      "start": {
+        "column": 5,
+        "line": 113
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_architecture -> Result<PolicyArchitecture, ProfileError> with Ok(Default::default())\n@@ -120,20 +120,17 @@\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when architecture, `core_dirs`, or\n /// `infra_crates` is missing or empty. Returns [`ProfileError::InvalidField`]\n /// when any path or crate entry is semantically invalid.\n fn validate_architecture(\n     architecture: Option<PolicyArchitectureWire>,\n ) -> Result<PolicyArchitecture, ProfileError> {\n-    let architecture = architecture.ok_or(ProfileError::MissingField { field: \"architecture\" })?;\n-    let core_dirs = validate_core_dirs(&architecture.core_dirs)?;\n-    let infra_crates = validate_infra_crates(architecture.infra_crates)?;\n-    Ok(PolicyArchitecture { core_dirs, infra_crates })\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate core source directory entries.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when no entries are supplied, and\n /// [`ProfileError::InvalidField`] when an entry is blank, whitespace-padded,\n /// non-relative, or otherwise rejected by [`WorkspacePath`].\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_architecture",
+      "return_type": "-> Result<PolicyArchitecture, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 132
+        },
+        "start": {
+          "column": 1,
+          "line": 119
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:128:5: replace validate_architecture -> Result<PolicyArchitecture, ProfileError> with Ok(Default::default())",
+    "package": "titania-policy",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 55,
+        "line": 131
+      },
+      "start": {
+        "column": 5,
+        "line": 128
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_core_dirs -> Result<Vec<WorkspacePath>, ProfileError> with Ok(vec![])\n@@ -133,18 +133,17 @@\n \n /// Validate core source directory entries.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when no entries are supplied, and\n /// [`ProfileError::InvalidField`] when an entry is blank, whitespace-padded,\n /// non-relative, or otherwise rejected by [`WorkspacePath`].\n fn validate_core_dirs(entries: &[String]) -> Result<Vec<WorkspacePath>, ProfileError> {\n-    check_entries_present(entries, \"architecture.core_dirs\")?;\n-    entries.iter().map(String::as_str).map(validate_core_dir_entry).collect()\n+    Ok(vec![]) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate infrastructure crate entries.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when no entries are supplied, and\n /// [`ProfileError::InvalidField`] when an entry is blank, whitespace-padded, or\n /// not a conservative Cargo package identifier.\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_core_dirs",
+      "return_type": "-> Result<Vec<WorkspacePath>, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 143
+        },
+        "start": {
+          "column": 1,
+          "line": 134
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:141:5: replace validate_core_dirs -> Result<Vec<WorkspacePath>, ProfileError> with Ok(vec![])",
+    "package": "titania-policy",
+    "replacement": "Ok(vec![])",
+    "span": {
+      "end": {
+        "column": 78,
+        "line": 142
+      },
+      "start": {
+        "column": 5,
+        "line": 141
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_core_dirs -> Result<Vec<WorkspacePath>, ProfileError> with Ok(vec![Default::default()])\n@@ -133,18 +133,17 @@\n \n /// Validate core source directory entries.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when no entries are supplied, and\n /// [`ProfileError::InvalidField`] when an entry is blank, whitespace-padded,\n /// non-relative, or otherwise rejected by [`WorkspacePath`].\n fn validate_core_dirs(entries: &[String]) -> Result<Vec<WorkspacePath>, ProfileError> {\n-    check_entries_present(entries, \"architecture.core_dirs\")?;\n-    entries.iter().map(String::as_str).map(validate_core_dir_entry).collect()\n+    Ok(vec![Default::default()]) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate infrastructure crate entries.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when no entries are supplied, and\n /// [`ProfileError::InvalidField`] when an entry is blank, whitespace-padded, or\n /// not a conservative Cargo package identifier.\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_core_dirs",
+      "return_type": "-> Result<Vec<WorkspacePath>, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 143
+        },
+        "start": {
+          "column": 1,
+          "line": 134
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:141:5: replace validate_core_dirs -> Result<Vec<WorkspacePath>, ProfileError> with Ok(vec![Default::default()])",
+    "package": "titania-policy",
+    "replacement": "Ok(vec![Default::default()])",
+    "span": {
+      "end": {
+        "column": 78,
+        "line": 142
+      },
+      "start": {
+        "column": 5,
+        "line": 141
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_infra_crates -> Result<Vec<String>, ProfileError> with Ok(vec![])\n@@ -144,18 +144,17 @@\n \n /// Validate infrastructure crate entries.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when no entries are supplied, and\n /// [`ProfileError::InvalidField`] when an entry is blank, whitespace-padded, or\n /// not a conservative Cargo package identifier.\n fn validate_infra_crates(entries: Vec<String>) -> Result<Vec<String>, ProfileError> {\n-    check_entries_present(&entries, \"architecture.infra_crates\")?;\n-    entries.into_iter().map(validate_infra_crate_entry).collect()\n+    Ok(vec![]) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Check a required list is present and non-empty.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when the list is empty.\n fn check_entries_present<T>(entries: &[T], field: &'static str) -> Result<(), ProfileError> {\n     (!entries.is_empty()).then_some(()).ok_or(ProfileError::MissingField { field })\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_infra_crates",
+      "return_type": "-> Result<Vec<String>, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 154
+        },
+        "start": {
+          "column": 1,
+          "line": 145
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:152:5: replace validate_infra_crates -> Result<Vec<String>, ProfileError> with Ok(vec![])",
+    "package": "titania-policy",
+    "replacement": "Ok(vec![])",
+    "span": {
+      "end": {
+        "column": 66,
+        "line": 153
+      },
+      "start": {
+        "column": 5,
+        "line": 152
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_infra_crates -> Result<Vec<String>, ProfileError> with Ok(vec![String::new()])\n@@ -144,18 +144,17 @@\n \n /// Validate infrastructure crate entries.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when no entries are supplied, and\n /// [`ProfileError::InvalidField`] when an entry is blank, whitespace-padded, or\n /// not a conservative Cargo package identifier.\n fn validate_infra_crates(entries: Vec<String>) -> Result<Vec<String>, ProfileError> {\n-    check_entries_present(&entries, \"architecture.infra_crates\")?;\n-    entries.into_iter().map(validate_infra_crate_entry).collect()\n+    Ok(vec![String::new()]) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Check a required list is present and non-empty.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when the list is empty.\n fn check_entries_present<T>(entries: &[T], field: &'static str) -> Result<(), ProfileError> {\n     (!entries.is_empty()).then_some(()).ok_or(ProfileError::MissingField { field })\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_infra_crates",
+      "return_type": "-> Result<Vec<String>, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 154
+        },
+        "start": {
+          "column": 1,
+          "line": 145
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:152:5: replace validate_infra_crates -> Result<Vec<String>, ProfileError> with Ok(vec![String::new()])",
+    "package": "titania-policy",
+    "replacement": "Ok(vec![String::new()])",
+    "span": {
+      "end": {
+        "column": 66,
+        "line": 153
+      },
+      "start": {
+        "column": 5,
+        "line": 152
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_infra_crates -> Result<Vec<String>, ProfileError> with Ok(vec![\"xyzzy\".into()])\n@@ -144,18 +144,17 @@\n \n /// Validate infrastructure crate entries.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when no entries are supplied, and\n /// [`ProfileError::InvalidField`] when an entry is blank, whitespace-padded, or\n /// not a conservative Cargo package identifier.\n fn validate_infra_crates(entries: Vec<String>) -> Result<Vec<String>, ProfileError> {\n-    check_entries_present(&entries, \"architecture.infra_crates\")?;\n-    entries.into_iter().map(validate_infra_crate_entry).collect()\n+    Ok(vec![\"xyzzy\".into()]) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Check a required list is present and non-empty.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when the list is empty.\n fn check_entries_present<T>(entries: &[T], field: &'static str) -> Result<(), ProfileError> {\n     (!entries.is_empty()).then_some(()).ok_or(ProfileError::MissingField { field })\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_infra_crates",
+      "return_type": "-> Result<Vec<String>, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 154
+        },
+        "start": {
+          "column": 1,
+          "line": 145
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:152:5: replace validate_infra_crates -> Result<Vec<String>, ProfileError> with Ok(vec![\"xyzzy\".into()])",
+    "package": "titania-policy",
+    "replacement": "Ok(vec![\"xyzzy\".into()])",
+    "span": {
+      "end": {
+        "column": 66,
+        "line": 153
+      },
+      "start": {
+        "column": 5,
+        "line": 152
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace check_entries_present -> Result<(), ProfileError> with Ok(())\n@@ -153,17 +153,17 @@\n     entries.into_iter().map(validate_infra_crate_entry).collect()\n }\n \n /// Check a required list is present and non-empty.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when the list is empty.\n fn check_entries_present<T>(entries: &[T], field: &'static str) -> Result<(), ProfileError> {\n-    (!entries.is_empty()).then_some(()).ok_or(ProfileError::MissingField { field })\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate one core directory entry.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the entry is blank,\n /// whitespace-padded, or invalid as a workspace-relative path.\n fn validate_core_dir_entry(entry: &str) -> Result<WorkspacePath, ProfileError> {\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "check_entries_present",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 162
+        },
+        "start": {
+          "column": 1,
+          "line": 156
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:161:5: replace check_entries_present -> Result<(), ProfileError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 84,
+        "line": 161
+      },
+      "start": {
+        "column": 5,
+        "line": 161
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ delete ! in check_entries_present\n@@ -153,17 +153,17 @@\n     entries.into_iter().map(validate_infra_crate_entry).collect()\n }\n \n /// Check a required list is present and non-empty.\n ///\n /// # Errors\n /// Returns [`ProfileError::MissingField`] when the list is empty.\n fn check_entries_present<T>(entries: &[T], field: &'static str) -> Result<(), ProfileError> {\n-    (!entries.is_empty()).then_some(()).ok_or(ProfileError::MissingField { field })\n+    ( /* ~ changed by cargo-mutants ~ */entries.is_empty()).then_some(()).ok_or(ProfileError::MissingField { field })\n }\n \n /// Validate one core directory entry.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the entry is blank,\n /// whitespace-padded, or invalid as a workspace-relative path.\n fn validate_core_dir_entry(entry: &str) -> Result<WorkspacePath, ProfileError> {\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "check_entries_present",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 162
+        },
+        "start": {
+          "column": 1,
+          "line": 156
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-policy/src/profile.rs:161:6: delete ! in check_entries_present",
+    "package": "titania-policy",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 161
+      },
+      "start": {
+        "column": 6,
+        "line": 161
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_core_dir_entry -> Result<WorkspacePath, ProfileError> with Ok(Default::default())\n@@ -162,21 +162,17 @@\n }\n \n /// Validate one core directory entry.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the entry is blank,\n /// whitespace-padded, or invalid as a workspace-relative path.\n fn validate_core_dir_entry(entry: &str) -> Result<WorkspacePath, ProfileError> {\n-    reject_surrounding_whitespace(entry, \"architecture.core_dirs\")?;\n-    WorkspacePath::new(entry).map_err(|error| ProfileError::InvalidField {\n-        field: \"architecture.core_dirs\",\n-        message: error.to_string().into_boxed_str(),\n-    })\n+    Ok(Default::default()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate one infrastructure crate entry.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the entry is blank,\n /// whitespace-padded, or contains characters outside lowercase ASCII letters,\n /// digits, `_`, and `-`.\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_core_dir_entry",
+      "return_type": "-> Result<WorkspacePath, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 175
+        },
+        "start": {
+          "column": 1,
+          "line": 164
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:170:5: replace validate_core_dir_entry -> Result<WorkspacePath, ProfileError> with Ok(Default::default())",
+    "package": "titania-policy",
+    "replacement": "Ok(Default::default())",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 174
+      },
+      "start": {
+        "column": 5,
+        "line": 170
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_infra_crate_entry -> Result<String, ProfileError> with Ok(String::new())\n@@ -176,26 +176,17 @@\n \n /// Validate one infrastructure crate entry.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the entry is blank,\n /// whitespace-padded, or contains characters outside lowercase ASCII letters,\n /// digits, `_`, and `-`.\n fn validate_infra_crate_entry(entry: String) -> Result<String, ProfileError> {\n-    reject_surrounding_whitespace(&entry, \"architecture.infra_crates\")?;\n-    reject_empty(&entry, \"architecture.infra_crates\")?;\n-    if !entry.chars().all(is_cargo_package_char) {\n-        return Err(ProfileError::InvalidField {\n-            field: \"architecture.infra_crates\",\n-            message: \"infrastructure crate entry must use lowercase ASCII, digits, '_' or '-'\"\n-                .into(),\n-        });\n-    }\n-    Ok(entry)\n+    Ok(String::new()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate map keys are non-empty and not whitespace-padded.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when any key is blank or has leading\n /// or trailing whitespace.\n fn validate_named_map_keys<T>(\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_infra_crate_entry",
+      "return_type": "-> Result<String, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 194
+        },
+        "start": {
+          "column": 1,
+          "line": 177
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:184:5: replace validate_infra_crate_entry -> Result<String, ProfileError> with Ok(String::new())",
+    "package": "titania-policy",
+    "replacement": "Ok(String::new())",
+    "span": {
+      "end": {
+        "column": 14,
+        "line": 193
+      },
+      "start": {
+        "column": 5,
+        "line": 184
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_infra_crate_entry -> Result<String, ProfileError> with Ok(\"xyzzy\".into())\n@@ -176,26 +176,17 @@\n \n /// Validate one infrastructure crate entry.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the entry is blank,\n /// whitespace-padded, or contains characters outside lowercase ASCII letters,\n /// digits, `_`, and `-`.\n fn validate_infra_crate_entry(entry: String) -> Result<String, ProfileError> {\n-    reject_surrounding_whitespace(&entry, \"architecture.infra_crates\")?;\n-    reject_empty(&entry, \"architecture.infra_crates\")?;\n-    if !entry.chars().all(is_cargo_package_char) {\n-        return Err(ProfileError::InvalidField {\n-            field: \"architecture.infra_crates\",\n-            message: \"infrastructure crate entry must use lowercase ASCII, digits, '_' or '-'\"\n-                .into(),\n-        });\n-    }\n-    Ok(entry)\n+    Ok(\"xyzzy\".into()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate map keys are non-empty and not whitespace-padded.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when any key is blank or has leading\n /// or trailing whitespace.\n fn validate_named_map_keys<T>(\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_infra_crate_entry",
+      "return_type": "-> Result<String, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 194
+        },
+        "start": {
+          "column": 1,
+          "line": 177
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:184:5: replace validate_infra_crate_entry -> Result<String, ProfileError> with Ok(\"xyzzy\".into())",
+    "package": "titania-policy",
+    "replacement": "Ok(\"xyzzy\".into())",
+    "span": {
+      "end": {
+        "column": 14,
+        "line": 193
+      },
+      "start": {
+        "column": 5,
+        "line": 184
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ delete ! in validate_infra_crate_entry\n@@ -178,17 +178,17 @@\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the entry is blank,\n /// whitespace-padded, or contains characters outside lowercase ASCII letters,\n /// digits, `_`, and `-`.\n fn validate_infra_crate_entry(entry: String) -> Result<String, ProfileError> {\n     reject_surrounding_whitespace(&entry, \"architecture.infra_crates\")?;\n     reject_empty(&entry, \"architecture.infra_crates\")?;\n-    if !entry.chars().all(is_cargo_package_char) {\n+    if  /* ~ changed by cargo-mutants ~ */entry.chars().all(is_cargo_package_char) {\n         return Err(ProfileError::InvalidField {\n             field: \"architecture.infra_crates\",\n             message: \"infrastructure crate entry must use lowercase ASCII, digits, '_' or '-'\"\n                 .into(),\n         });\n     }\n     Ok(entry)\n }\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_infra_crate_entry",
+      "return_type": "-> Result<String, ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 194
+        },
+        "start": {
+          "column": 1,
+          "line": 177
+        }
+      }
+    },
+    "genre": "UnaryOperator",
+    "name": "crates/titania-policy/src/profile.rs:186:8: delete ! in validate_infra_crate_entry",
+    "package": "titania-policy",
+    "replacement": "",
+    "span": {
+      "end": {
+        "column": 9,
+        "line": 186
+      },
+      "start": {
+        "column": 8,
+        "line": 186
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_named_map_keys -> Result<(), ProfileError> with Ok(())\n@@ -197,17 +197,17 @@\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when any key is blank or has leading\n /// or trailing whitespace.\n fn validate_named_map_keys<T>(\n     map: &BTreeMap<String, T>,\n     field: &'static str,\n ) -> Result<(), ProfileError> {\n-    map.keys().try_for_each(|key| validate_named_key(key, field))\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate one map key.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the key is blank or\n /// whitespace-padded.\n fn validate_named_key(key: &str, field: &'static str) -> Result<(), ProfileError> {\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_named_map_keys",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 206
+        },
+        "start": {
+          "column": 1,
+          "line": 196
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:205:5: replace validate_named_map_keys -> Result<(), ProfileError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 66,
+        "line": 205
+      },
+      "start": {
+        "column": 5,
+        "line": 205
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_named_key -> Result<(), ProfileError> with Ok(())\n@@ -206,18 +206,17 @@\n }\n \n /// Validate one map key.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the key is blank or\n /// whitespace-padded.\n fn validate_named_key(key: &str, field: &'static str) -> Result<(), ProfileError> {\n-    reject_surrounding_whitespace(key, field)?;\n-    reject_empty(key, field)\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate lint override levels.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when any lint level is not supported.\n fn validate_lint_levels(lints: &BTreeMap<String, String>) -> Result<(), ProfileError> {\n     lints.values().try_for_each(|level| validate_lint_level(level))\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_named_key",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 216
+        },
+        "start": {
+          "column": 1,
+          "line": 208
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:214:5: replace validate_named_key -> Result<(), ProfileError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 29,
+        "line": 215
+      },
+      "start": {
+        "column": 5,
+        "line": 214
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_lint_levels -> Result<(), ProfileError> with Ok(())\n@@ -215,17 +215,17 @@\n     reject_empty(key, field)\n }\n \n /// Validate lint override levels.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when any lint level is not supported.\n fn validate_lint_levels(lints: &BTreeMap<String, String>) -> Result<(), ProfileError> {\n-    lints.values().try_for_each(|level| validate_lint_level(level))\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Validate one lint level.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the level is not allow, warn,\n /// deny, or forbid.\n fn validate_lint_level(level: &str) -> Result<(), ProfileError> {\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_lint_levels",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 224
+        },
+        "start": {
+          "column": 1,
+          "line": 218
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:223:5: replace validate_lint_levels -> Result<(), ProfileError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 68,
+        "line": 223
+      },
+      "start": {
+        "column": 5,
+        "line": 223
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace validate_lint_level -> Result<(), ProfileError> with Ok(())\n@@ -224,23 +224,17 @@\n }\n \n /// Validate one lint level.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the level is not allow, warn,\n /// deny, or forbid.\n fn validate_lint_level(level: &str) -> Result<(), ProfileError> {\n-    if matches!(level, \"allow\" | \"warn\" | \"deny\" | \"forbid\") {\n-        return Ok(());\n-    }\n-    Err(ProfileError::InvalidField {\n-        field: \"lints\",\n-        message: \"lint level must be allow, warn, deny, or forbid\".into(),\n-    })\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Reject surrounding whitespace.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when trimming would change the value.\n fn reject_surrounding_whitespace(value: &str, field: &'static str) -> Result<(), ProfileError> {\n     if value.trim() == value {\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "validate_lint_level",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 239
+        },
+        "start": {
+          "column": 1,
+          "line": 226
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:232:5: replace validate_lint_level -> Result<(), ProfileError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 238
+      },
+      "start": {
+        "column": 5,
+        "line": 232
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace reject_surrounding_whitespace -> Result<(), ProfileError> with Ok(())\n@@ -238,23 +238,17 @@\n     })\n }\n \n /// Reject surrounding whitespace.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when trimming would change the value.\n fn reject_surrounding_whitespace(value: &str, field: &'static str) -> Result<(), ProfileError> {\n-    if value.trim() == value {\n-        return Ok(());\n-    }\n-    Err(ProfileError::InvalidField {\n-        field,\n-        message: \"value must not have surrounding whitespace\".into(),\n-    })\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n /// Reject blank values.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the value is empty after trim.\n fn reject_empty(value: &str, field: &'static str) -> Result<(), ProfileError> {\n     if value.trim().is_empty() {\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "reject_surrounding_whitespace",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 253
+        },
+        "start": {
+          "column": 1,
+          "line": 241
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:246:5: replace reject_surrounding_whitespace -> Result<(), ProfileError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 7,
+        "line": 252
+      },
+      "start": {
+        "column": 5,
+        "line": 246
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace == with != in reject_surrounding_whitespace\n@@ -238,17 +238,17 @@\n     })\n }\n \n /// Reject surrounding whitespace.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when trimming would change the value.\n fn reject_surrounding_whitespace(value: &str, field: &'static str) -> Result<(), ProfileError> {\n-    if value.trim() == value {\n+    if value.trim() != /* ~ changed by cargo-mutants ~ */ value {\n         return Ok(());\n     }\n     Err(ProfileError::InvalidField {\n         field,\n         message: \"value must not have surrounding whitespace\".into(),\n     })\n }\n \n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "reject_surrounding_whitespace",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 253
+        },
+        "start": {
+          "column": 1,
+          "line": 241
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "crates/titania-policy/src/profile.rs:246:21: replace == with != in reject_surrounding_whitespace",
+    "package": "titania-policy",
+    "replacement": "!=",
+    "span": {
+      "end": {
+        "column": 23,
+        "line": 246
+      },
+      "start": {
+        "column": 21,
+        "line": 246
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace reject_empty -> Result<(), ProfileError> with Ok(())\n@@ -252,21 +252,15 @@\n     })\n }\n \n /// Reject blank values.\n ///\n /// # Errors\n /// Returns [`ProfileError::InvalidField`] when the value is empty after trim.\n fn reject_empty(value: &str, field: &'static str) -> Result<(), ProfileError> {\n-    if value.trim().is_empty() {\n-        return Err(ProfileError::InvalidField {\n-            field,\n-            message: \"value must not be blank\".into(),\n-        });\n-    }\n-    Ok(())\n+    Ok(()) /* ~ changed by cargo-mutants ~ */\n }\n \n #[must_use]\n const fn is_cargo_package_char(ch: char) -> bool {\n     matches!(ch, 'a'..='z' | '0'..='9' | '_' | '-')\n }\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "reject_empty",
+      "return_type": "-> Result<(), ProfileError>",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 267
+        },
+        "start": {
+          "column": 1,
+          "line": 255
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:260:5: replace reject_empty -> Result<(), ProfileError> with Ok(())",
+    "package": "titania-policy",
+    "replacement": "Ok(())",
+    "span": {
+      "end": {
+        "column": 11,
+        "line": 266
+      },
+      "start": {
+        "column": 5,
+        "line": 260
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace is_cargo_package_char -> bool with true\n@@ -263,10 +263,10 @@\n             message: \"value must not be blank\".into(),\n         });\n     }\n     Ok(())\n }\n \n #[must_use]\n const fn is_cargo_package_char(ch: char) -> bool {\n-    matches!(ch, 'a'..='z' | '0'..='9' | '_' | '-')\n+    true /* ~ changed by cargo-mutants ~ */\n }\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "is_cargo_package_char",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 272
+        },
+        "start": {
+          "column": 1,
+          "line": 269
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:271:5: replace is_cargo_package_char -> bool with true",
+    "package": "titania-policy",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 52,
+        "line": 271
+      },
+      "start": {
+        "column": 5,
+        "line": 271
+      }
+    }
+  },
+  {
+    "diff": "--- crates/titania-policy/src/profile.rs\n+++ replace is_cargo_package_char -> bool with false\n@@ -263,10 +263,10 @@\n             message: \"value must not be blank\".into(),\n         });\n     }\n     Ok(())\n }\n \n #[must_use]\n const fn is_cargo_package_char(ch: char) -> bool {\n-    matches!(ch, 'a'..='z' | '0'..='9' | '_' | '-')\n+    false /* ~ changed by cargo-mutants ~ */\n }\n",
+    "file": "crates/titania-policy/src/profile.rs",
+    "function": {
+      "function_name": "is_cargo_package_char",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 2,
+          "line": 272
+        },
+        "start": {
+          "column": 1,
+          "line": 269
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "crates/titania-policy/src/profile.rs:271:5: replace is_cargo_package_char -> bool with false",
+    "package": "titania-policy",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 52,
+        "line": 271
+      },
+      "start": {
+        "column": 5,
+        "line": 271
+      }
+    }
+  }
+]

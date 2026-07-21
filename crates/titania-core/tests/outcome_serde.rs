@@ -285,6 +285,22 @@ fn outcome_error_argv0_mismatch_message() {
 }
 
 #[test]
+fn outcome_error_argv0_mismatch_display_bounds_hostile_payload() {
+    let err = OutcomeError::Argv0Mismatch {
+        expected: String::from_utf8_lossy(&vec![b'X'; 10 * 1024]).into_owned(),
+        found: String::from("y"),
+    };
+    let rendered = std::panic::catch_unwind(|| err.to_string())
+        .expect("OutcomeError display must not panic for a hostile payload");
+
+    assert!(rendered.len() <= 512, "display length {} exceeds 512 bytes", rendered.len());
+    assert!(
+        rendered.bytes().all(|byte| !byte.is_ascii_control()),
+        "display must not contain raw control bytes"
+    );
+}
+
+#[test]
 fn outcome_error_non_zero_exit_message() {
     let err = OutcomeError::NonZeroExit;
     assert_eq!(err.to_string(), "exit status must be Exited(0) for Clean lanes");
