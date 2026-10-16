@@ -63,26 +63,38 @@ pub(super) fn operator_for_raw(
 /// coercion to [`MutantOperator::ArithmeticOpFlip`] is removed; an
 /// unrecognised binary mutation now fails closed instead of silently
 /// sticking a typed `ArithmeticOpFlip` id on the survivor.
+/// Closed-set binary patterns in first-match order; anything else fails
+/// closed via [`MutantsLaneError::UnknownOperator`].
+const BINARY_OPERATOR_PATTERNS: &[(&str, MutantOperator)] = &[
+    ("replace == with !=", MutantOperator::EqualReplace),
+    ("replace != with ==", MutantOperator::NotInserted),
+    ("replace && with ||", MutantOperator::AndOr),
+    ("replace || with &&", MutantOperator::AndOr),
+    ("replace + with -", MutantOperator::ArithmeticOpFlip),
+    ("replace - with +", MutantOperator::ArithmeticOpFlip),
+    ("replace * with /", MutantOperator::ArithmeticOpFlip),
+    ("replace / with *", MutantOperator::ArithmeticOpFlip),
+];
+
+/// Classify a textual cargo-mutants `BinaryOperator` mutation name.
+///
+/// # Errors
+///
+/// Returns [`MutantsLaneError::UnknownOperator`] when the textual name
+/// does not match a v1.5 closed-set binary pattern. An unrecognised
+/// binary mutation fails closed instead of silently sticking a typed
+/// `ArithmeticOpFlip` id on the survivor.
 fn binary_operator(name: &str) -> Result<MutantOperator, MutantsLaneError> {
-    if name.contains("replace == with !=") {
-        Ok(MutantOperator::EqualReplace)
-    } else if name.contains("replace != with ==") {
-        Ok(MutantOperator::NotInserted)
-    } else if name.contains("replace && with ||") || name.contains("replace || with &&") {
-        Ok(MutantOperator::AndOr)
-    } else if name.contains("replace + with -")
-        || name.contains("replace - with +")
-        || name.contains("replace * with /")
-        || name.contains("replace / with *")
-    {
-        Ok(MutantOperator::ArithmeticOpFlip)
-    } else {
-        Err(MutantsLaneError::UnknownOperator {
-            name: Box::from(name),
-            genre: Box::from("BinaryOperator"),
-            raw: Box::from(name),
-        })
-    }
+    BINARY_OPERATOR_PATTERNS.iter().find(|(pattern, _)| name.contains(pattern)).map_or_else(
+        || {
+            Err(MutantsLaneError::UnknownOperator {
+                name: Box::from(name),
+                genre: Box::from("BinaryOperator"),
+                raw: Box::from(name),
+            })
+        },
+        |(_, operator)| Ok(*operator),
+    )
 }
 
 /// Classify a textual cargo-mutants `UnaryOperator` mutation name.

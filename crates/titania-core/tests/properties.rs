@@ -12,7 +12,7 @@
 
 use proptest::prelude::*;
 
-use titania_core::{Digest, RuleId, TextRange, WorkspacePath};
+use titania_core::{Digest, OutcomeError, RuleId, TextRange, WorkspacePath};
 
 proptest! {
     #[test]
@@ -214,6 +214,36 @@ proptest! {
             let json = serde_json::to_string(&r).unwrap();
             let back: TextRange = serde_json::from_str(&json).unwrap();
             prop_assert_eq!(r, back);
+        }
+    }
+
+    // ---- OutcomeError display ----
+
+    #[test]
+    fn outcome_argv0_mismatch_display_is_bounded_and_sanitized(
+        expected in ".*",
+        found in ".*",
+    ) {
+        // Invariant: hostile payloads render short, printable, and
+        // panic-free; short clean payloads render verbatim.
+        let rendered = OutcomeError::Argv0Mismatch {
+            expected: expected.clone(),
+            found: found.clone(),
+        }
+        .to_string();
+        prop_assert!(rendered.len() <= 512, "display too long: {}", rendered.len());
+        prop_assert!(
+            rendered.bytes().all(|byte| !byte.is_ascii_control()),
+            "control byte in display"
+        );
+        prop_assert!(rendered.contains("argv[0]"), "marker missing: {rendered}");
+        for (value, label) in [(&expected, "expected"), (&found, "found")] {
+            if value.len() <= 197 && !value.chars().any(|ch| ch.is_control()) {
+                prop_assert!(
+                    rendered.contains(value),
+                    "short clean {label} must render verbatim: {rendered}"
+                );
+            }
         }
     }
 }

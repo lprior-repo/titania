@@ -31,6 +31,13 @@ serde_json   = "1.0"
 # enabling the default features.
 libfuzzer-sys = { version = "0.4", default-features = false }
 
+# Machete cannot see the libfuzzer-sys use: targets declare the
+# `LLVMFuzzerTestOneInput` ABI entry point manually and the crate only
+# links the real runtime when operators enable default features at
+# fuzz time. The dependency is load-bearing, not unused.
+[package.metadata.cargo-machete]
+ignored = ["libfuzzer-sys"]
+
 [[bin]]
 name = "fuzz_parse_inventory"
 path = "fuzz_targets/fuzz_parse_inventory.rs"

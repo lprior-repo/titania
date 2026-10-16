@@ -269,6 +269,27 @@ fn records_classify_operator_handles_unknown_binary_name() {
 }
 
 #[test]
+fn records_classify_operator_covers_remaining_binary_arms() {
+    let record = |name: &str| MutantRecord {
+        name: String::from(name),
+        package: String::from("pkg"),
+        file: String::from("crates/pkg/src/lib.rs"),
+        span: None,
+        genre: Some(String::from("BinaryOperator")),
+        replacement: None,
+        function: None,
+    };
+    assert_eq!(
+        record("crates/pkg/src/lib.rs:1:1: replace != with ==").classify_operator(),
+        MutantOperator::NotInserted
+    );
+    assert_eq!(
+        record("crates/pkg/src/lib.rs:1:1: replace || with &&").classify_operator(),
+        MutantOperator::AndOr
+    );
+}
+
+#[test]
 fn relative_mutant_path_strips_crates_prefix() {
     let path = relative_mutant_path("titania-core", "crates/titania-core/src/lib.rs")
         .expect("crates path inside package must succeed");

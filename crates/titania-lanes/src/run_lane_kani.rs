@@ -199,36 +199,6 @@ pub(super) enum KaniInventoryError {
     },
 }
 
-/// Errors produced while probing `cargo kani --version`.
-///
-/// `cargo_kani_supported` collapses every failure mode into `None` for
-/// the lane dispatch (the lane always treats a version-probe failure as
-/// "tool unavailable"). This enum is retained for future callers that
-/// want explicit diagnostic surfaces; all variants are constructed via
-/// dedicated reporter helpers below.
-#[expect(
-    dead_code,
-    reason = "retained for explicit diagnostic surfaces; see describe_version_failure"
-)]
-#[derive(Debug, Error)]
-pub(super) enum KaniVersionError {
-    /// The `cargo kani --version` invocation could not be spawned or read.
-    #[error("cargo kani --version failed: {0}")]
-    Spawn(#[source] std::io::Error),
-    /// `cargo kani --version` exited non-zero.
-    #[error("cargo kani --version exited with code {0:?}")]
-    NonZeroExit(Option<i32>),
-    /// `cargo kani --version` did not write valid UTF-8 to stdout.
-    #[error("cargo kani --version stdout was not valid UTF-8")]
-    NonUtf8,
-    /// `cargo kani --version` did not match the expected `cargo-kani <X>.<Y>.<Z>` shape.
-    #[error("cannot parse cargo kani --version output: {0}")]
-    Unparseable(String),
-    /// Installed cargo-kani is older than [`MIN_KANI_VERSION`].
-    #[error("cargo-kani {0} is older than the minimum required 0.50.0")]
-    TooOld(String),
-}
-
 /// Errors produced while running one package's `cargo kani` invocation.
 #[derive(Debug, Error)]
 pub(super) enum KaniRunError {
@@ -1071,33 +1041,6 @@ fn parse_kani_version(stdout: &str) -> Option<DetectedCargoKani> {
     detected.meets_floor().then_some(detected)
 }
 
-/// Map a [`KaniVersionError`] (unused in the happy path — kept for test
-/// parity and future explicit-error callers).
-#[expect(dead_code, reason = "retained for diagnostic context and future explicit-error callers")]
-fn describe_version_error(error: &KaniVersionError) -> String {
-    error.to_string()
-}
-
-/// Construct each [`KaniVersionError`] variant once so the enum's variants
-/// are reachable from this module even when callers don't yet surface
-/// them.
-///
-/// Keeps the typed-error surface alive without bypassing the
-/// `cargo_kani_supported` `Option` contract on the hot path.
-#[expect(
-    dead_code,
-    reason = "touches every variant so it stays compiled into this module's typed-error surface"
-)]
-fn touch_version_error_variants() -> Vec<KaniVersionError> {
-    vec![
-        KaniVersionError::Spawn(std::io::Error::other("stub")),
-        KaniVersionError::NonZeroExit(None),
-        KaniVersionError::NonUtf8,
-        KaniVersionError::Unparseable(String::from("cargo-kani ?")),
-        KaniVersionError::TooOld(String::from("0.40.0")),
-    ]
-}
-
 /// Run one package's `cargo kani -p <pkg>` with optional cgroup wrapping.
 ///
 /// # Errors
@@ -1196,12 +1139,6 @@ fn terminate_timed_out_child(child: &mut Child, program: &str) -> Result<Package
         cmd: PackageCmd { executable: program.to_owned(), argv: Box::new([]) },
         teardown_errors: Vec::new(),
     })
-}
-
-/// Map a [`KaniRunError`] into the lane's public [`KaniLaneError`] shape.
-#[expect(dead_code, reason = "retained for explicit-error callers and future diagnostic reporting")]
-fn describe_run_error(error: &KaniRunError) -> String {
-    error.to_string()
 }
 
 /// A typed description of one `cargo kani` invocation.
@@ -1489,9 +1426,8 @@ fn harnesses_from_file_map(
 #[cfg(test)]
 mod tests {
     use super::{
-        DetectedCargoKani, FALLBACK_RULE_BLOCKED, FALLBACK_RULE_FAIL, FALLBACK_RULE_INFRA,
-        FALLBACK_RULE_NO_HARNESSES, FALLBACK_RULE_NO_VERDICT, FALLBACK_RULE_PASS,
-        FALLBACK_RULE_UNSUPPORTED, HarnessVerdict, HarnessVerdictMap, KaniHarness,
+        DetectedCargoKani, FALLBACK_RULE_BLOCKED, FALLBACK_RULE_INFRA, FALLBACK_RULE_NO_HARNESSES,
+        FALLBACK_RULE_NO_VERDICT, HarnessVerdict, HarnessVerdictMap, KaniHarness,
         KaniInventoryError, KaniLaneError, KaniRunError, LaneRunState, MIN_KANI_VERSION,
         PER_PACKAGE_TIMEOUT_SECS, PIPE_BYTE_CAP, PackageCmd, PackageRun,
         blocked_findings_for_package, build_clean_outcome, build_no_harness_outcome,
@@ -1821,26 +1757,6 @@ VERIFICATION:- FAILED
     }
 
     #[test]
-    #[expect(
-        clippy::unused_unit,
-        reason = "touching touched-constants surface keeps the constants reachable"
-    )]
-    fn fallback_constants_reachability_probe() {
-        // Touch every constant used by the public surface to keep
-        // `unused_variables` clean if a future change drops one of the
-        // helper paths above.
-        let _ = FALLBACK_RULE_PASS;
-        let _ = FALLBACK_RULE_FAIL;
-        let _ = FALLBACK_RULE_BLOCKED;
-        let _ = FALLBACK_RULE_NO_VERDICT;
-        let _ = FALLBACK_RULE_UNSUPPORTED;
-        let _ = FALLBACK_RULE_INFRA;
-        let _ = FALLBACK_RULE_NO_HARNESSES;
-        let _ = ();
-        let _ = build_clean_outcome;
-    }
-
-    #[test]
     fn pipe_byte_cap_is_large_but_bounded() {
         assert_eq!(PIPE_BYTE_CAP, 8 * 1024 * 1024);
         assert!(PER_PACKAGE_TIMEOUT_SECS > 0);
@@ -1964,20 +1880,6 @@ VERIFICATION:- FAILED
                 .map(String::from)
                 .collect(),
         }
-    }
-
-    // Touch every constant used by the public surface to keep
-    // `unused_variables` clean if a future change drops one of the
-    // helper paths above.
-    #[expect(dead_code, reason = "compile-time reference to keep fallback constants reachable")]
-    fn touch_constants() {
-        let _ = FALLBACK_RULE_PASS;
-        let _ = FALLBACK_RULE_FAIL;
-        let _ = FALLBACK_RULE_BLOCKED;
-        let _ = FALLBACK_RULE_NO_VERDICT;
-        let _ = FALLBACK_RULE_UNSUPPORTED;
-        let _ = FALLBACK_RULE_INFRA;
-        let _ = FALLBACK_RULE_NO_HARNESSES;
     }
 }
 

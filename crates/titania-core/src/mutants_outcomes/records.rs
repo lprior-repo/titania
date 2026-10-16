@@ -165,18 +165,21 @@ fn path_outside_package_error(path: &str, mutation_name: &str) -> MutantsOutcome
     }
 }
 
+/// Closed-set binary-operator patterns in first-match order.
+const BINARY_OPERATOR_PATTERNS: &[(&str, MutantOperator)] = &[
+    ("replace == with !=", MutantOperator::EqualReplace),
+    ("replace != with ==", MutantOperator::NotInserted),
+    ("replace && with ||", MutantOperator::AndOr),
+    ("replace || with &&", MutantOperator::AndOr),
+];
+
 /// Classify a binary-operator mutation by scanning its textual name.
 #[must_use]
 fn classify_binary_operator(name: &str) -> MutantOperator {
-    if name.contains("replace == with !=") {
-        MutantOperator::EqualReplace
-    } else if name.contains("replace != with ==") {
-        MutantOperator::NotInserted
-    } else if name.contains("replace && with ||") || name.contains("replace || with &&") {
-        MutantOperator::AndOr
-    } else {
-        MutantOperator::ArithmeticOpFlip
-    }
+    BINARY_OPERATOR_PATTERNS
+        .iter()
+        .find(|(pattern, _)| name.contains(pattern))
+        .map_or(MutantOperator::ArithmeticOpFlip, |(_, operator)| *operator)
 }
 
 /// Convert a workspace-relative cargo-mutants path to package-relative form.

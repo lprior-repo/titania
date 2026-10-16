@@ -46,8 +46,8 @@ fn checked_in_strict_ai_exceptions_parse_audit_exception() {
 
     assert_eq!(
         exceptions.len(),
-        2,
-        "expected exactly two audited exceptions (tn-dylint-abi-expect + tn-dylint-abi-lints)"
+        3,
+        "expected exactly three audited exceptions (tn-xou8 + tn-lux5 + tn-mudh)"
     );
 
     let by_rule: std::collections::BTreeMap<&str, &_> =
@@ -61,8 +61,8 @@ fn checked_in_strict_ai_exceptions_parse_audit_exception() {
         "BYPASS_EXPECT_ATTR reason should cite Dylint ABI/no_mangle rationale, got: {}",
         expect_attr.reason
     );
-    assert_eq!(expect_attr.expires_on.as_ref(), "2026-10-01");
-    assert_eq!(expect_attr.review.as_ref(), "tn-dylint-abi-expect");
+    assert_eq!(expect_attr.expires_on.as_ref(), "2027-04-16");
+    assert_eq!(expect_attr.review.as_ref(), "tn-xou8");
 
     let cargo_lints = by_rule
         .get("BYPASS_CARGO_LINTS_WEAKENING")
@@ -74,8 +74,21 @@ fn checked_in_strict_ai_exceptions_parse_audit_exception() {
         "BYPASS_CARGO_LINTS_WEAKENING reason should cite Dylint, got: {}",
         cargo_lints.reason
     );
-    assert_eq!(cargo_lints.expires_on.as_ref(), "2026-10-01");
-    assert_eq!(cargo_lints.review.as_ref(), "tn-dylint-abi-lints");
+    assert_eq!(cargo_lints.expires_on.as_ref(), "2027-04-16");
+    assert_eq!(cargo_lints.review.as_ref(), "tn-lux5");
+
+    let recursion = by_rule
+        .get("FUNC_RECURSION_DIRECT")
+        .expect("FUNC_RECURSION_DIRECT exception must be present");
+    assert_eq!(recursion.path.as_str(), "crates/titania-core/src/kani.rs");
+    assert_eq!(recursion.owner.as_ref(), "titania-maintainers");
+    assert!(
+        recursion.reason.contains("totality"),
+        "FUNC_RECURSION_DIRECT reason should cite the documented totality argument, got: {}",
+        recursion.reason
+    );
+    assert_eq!(recursion.expires_on.as_ref(), "2027-04-16");
+    assert_eq!(recursion.review.as_ref(), "tn-mudh");
 }
 
 #[test]

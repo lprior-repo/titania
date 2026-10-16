@@ -66,6 +66,10 @@ criteria = "safe-to-run"
 version = "0.1.9"
 criteria = "safe-to-deploy"
 
+[[exemptions.generator]]
+version = "0.8.9"
+criteria = "safe-to-run"
+
 [[exemptions.getrandom]]
 version = "0.3.4"
 criteria = "safe-to-run"
@@ -94,12 +98,20 @@ criteria = "safe-to-deploy"
 version = "0.12.1"
 criteria = "safe-to-run"
 
+[[exemptions.loom]]
+version = "0.7.2"
+criteria = "safe-to-run"
+
 [[exemptions.memchr]]
 version = "2.8.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.once_cell]]
 version = "1.21.4"
+criteria = "safe-to-run"
+
+[[exemptions.pin-project-lite]]
+version = "0.2.17"
 criteria = "safe-to-run"
 
 [[exemptions.proptest]]
@@ -170,6 +182,10 @@ criteria = "safe-to-deploy"
 version = "2.0.18"
 criteria = "safe-to-deploy"
 
+[[exemptions.thread_local]]
+version = "1.1.10"
+criteria = "safe-to-run"
+
 [[exemptions.tinyvec]]
 version = "1.11.0"
 criteria = "safe-to-deploy"
@@ -190,6 +206,14 @@ criteria = "safe-to-deploy"
 version = "1.1.1+spec-1.1.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.tracing]]
+version = "0.1.44"
+criteria = "safe-to-run"
+
+[[exemptions.tracing-subscriber]]
+version = "0.3.23"
+criteria = "safe-to-run"
+
 [[exemptions.unicode-ident]]
 version = "1.0.24"
 criteria = "safe-to-deploy"
@@ -197,6 +221,10 @@ criteria = "safe-to-deploy"
 [[exemptions.wait-timeout]]
 version = "0.2.1"
 criteria = "safe-to-deploy"
+
+[[exemptions.windows-result]]
+version = "0.4.1"
+criteria = "safe-to-run"
 
 [[exemptions.winnow]]
 version = "1.0.3"

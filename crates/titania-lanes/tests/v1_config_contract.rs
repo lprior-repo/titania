@@ -246,7 +246,7 @@ fn strict_ai_exceptions_all_fields_present() {
     let exceptions =
         parse_exceptions(EXCEPTIONS, POLICY_TODAY).expect("checked-in exceptions.toml must parse");
 
-    assert_eq!(exceptions.len(), 2, "expected exactly two reviewed strict-ai exceptions");
+    assert_eq!(exceptions.len(), 3, "expected exactly three reviewed strict-ai exceptions");
 
     exceptions.iter().for_each(|exception| {
         assert!(!exception.rule_id.as_str().is_empty(), "rule_id must be present");
@@ -269,22 +269,30 @@ fn strict_ai_exceptions_metadata_matches_audit() {
     assert_eq!(exception.owner.as_ref(), "titania-maintainers");
     assert_eq!(
         exception.reason.as_ref(),
-        "Dylint ABI exports require audited #[expect(unsafe_code)] on unsafe no_mangle exports, and register_lints also requires #[expect(clippy::no_mangle_with_rust_abi)] because Dylint documents a Rust-ABI no_mangle registration hook."
+        "Dylint ABI exports require audited #[expect(unsafe_code)] on unsafe no_mangle exports, and register_lints also requires #[expect(clippy::no_mangle_with_rust_abi)] because Dylint documents a Rust-ABI no_mangle registration hook. Renewed 2026-10-16 after verifying the expects still fire (removal breaks deny(unsafe_code); allow() would trip BYPASS_PUB_ALLOW on the pub exports)."
     );
-    assert_eq!(exception.expires_on.as_ref(), "2026-10-01");
-    assert_eq!(exception.review.as_ref(), "tn-dylint-abi-expect");
+    assert_eq!(exception.expires_on.as_ref(), "2027-04-16");
+    assert_eq!(exception.review.as_ref(), "tn-xou8");
     let local_lints = exceptions
         .iter()
         .find(|entry| entry.rule_id.as_str() == "BYPASS_CARGO_LINTS_WEAKENING")
         .expect("Dylint local lint policy exception must exist");
     assert_eq!(local_lints.path.as_ref(), "crates/titania-dylint/Cargo.toml");
     assert_eq!(local_lints.owner.as_ref(), "titania-maintainers");
-    assert_eq!(local_lints.expires_on.as_ref(), "2026-10-01");
+    assert_eq!(local_lints.expires_on.as_ref(), "2027-04-16");
     assert_eq!(
         local_lints.reason.as_ref(),
-        "Dylint requires a local lint profile for its ABI-facing plugin build; it mirrors the strict workspace policy and is reviewed separately."
+        "Dylint requires a local lint profile for its ABI-facing plugin build: the workspace forbids unsafe_code but the two #[unsafe(no_mangle)] exports need per-site #[expect], which forbid rejects, so unsafe_code must stay deny. Inheritance verified impossible 2026-10-16: cargo rejects [lints] workspace=true combined with any [lints.*] override. Local profile otherwise mirrors the workspace policy line-for-line."
     );
-    assert_eq!(local_lints.review.as_ref(), "tn-dylint-abi-lints");
+    assert_eq!(local_lints.review.as_ref(), "tn-lux5");
+    let recursion = exceptions
+        .iter()
+        .find(|entry| entry.rule_id.as_str() == "FUNC_RECURSION_DIRECT")
+        .expect("Kani harness recursion exception must exist");
+    assert_eq!(recursion.path.as_ref(), "crates/titania-core/src/kani.rs");
+    assert_eq!(recursion.owner.as_ref(), "titania-maintainers");
+    assert_eq!(recursion.expires_on.as_ref(), "2027-04-16");
+    assert_eq!(recursion.review.as_ref(), "tn-mudh");
 }
 
 #[test]
