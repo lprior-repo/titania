@@ -103,7 +103,7 @@ fn matching_exception_suppresses_config_flags_finding() -> TestResult {
     write_manifest(
         &dir,
         "Cargo.toml",
-        "[workspace]\nmembers = [\"crates/example\"]\n[workspace.lints.clippy]\npanic = \"deny\"\npedantic = \"deny\"\nunwrap_used = \"deny\"\nexpect_used = \"deny\"\ntodo = \"deny\"\nunimplemented = \"deny\"\nindexing_slicing = \"deny\"\nstring_slice = \"deny\"\ndbg_macro = \"deny\"\nas_conversions = \"deny\"\n[workspace.lints.rust]\nunsafe_code = \"deny\"\nunreachable_pub = \"deny\"\nmissing_debug_implementations = \"deny\"\nfuture_incompatible = \"deny\"\n[workspace.lints.rustdoc]\nbroken_intra_doc_links = \"deny\"\nprivate_intra_doc_links = \"deny\"\n",
+        "[workspace]\nmembers = [\"crates/example\"]\n[workspace.lints.clippy]\npanic = \"deny\"\npedantic = \"deny\"\nunwrap_used = \"deny\"\nexpect_used = \"deny\"\ntodo = \"deny\"\nunimplemented = \"deny\"\nindexing_slicing = \"deny\"\nstring_slice = \"deny\"\ndbg_macro = \"deny\"\nas_conversions = \"deny\"\nlet_underscore_must_use = \"deny\"\n[workspace.lints.rust]\nunsafe_code = \"deny\"\nunreachable_pub = \"deny\"\nmissing_debug_implementations = \"deny\"\nfuture_incompatible = \"deny\"\nunused_must_use = \"deny\"\nunused_results = \"deny\"\nlet_underscore_drop = \"deny\"\n[workspace.lints.rustdoc]\nbroken_intra_doc_links = \"deny\"\nprivate_intra_doc_links = \"deny\"\n",
     )?;
     std::fs::create_dir_all(dir.path().join(".cargo"))?;
     write_manifest(&dir, ".cargo/config.toml", "[build]\nrustflags = [\"-Z\", \"some-flag\"]\n")?;

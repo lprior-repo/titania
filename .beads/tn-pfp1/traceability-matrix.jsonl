@@ -1,0 +1,4 @@
+{"acceptance":"Existing functional_surface fixture still rejects","seed_id":"tnpfp1.P1","spec_section":"tn-pfp1§2-post","spec_text":"classify by resolved identity; direct calls rejected"}
+{"acceptance":"custom_same_name fixture exits 0","seed_id":"tnpfp1.P2","spec_section":"tn-pfp1§2-post","spec_text":"custom same-name methods not flagged"}
+{"acceptance":"macro_expanded fixture emits FUNC_UNWRAP_USED","seed_id":"tnpfp1.P3","spec_section":"tn-pfp1§2-post","spec_text":"macro-expanded calls inspected with actionable spans"}
+{"acceptance":"ufcs + alias fixtures emit FUNC_UNWRAP_USED","seed_id":"tnpfp1.P4","spec_section":"tn-pfp1§2-post","spec_text":"UFCS, alias and macro-expanded forms detected"}

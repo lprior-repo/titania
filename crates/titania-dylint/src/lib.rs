@@ -48,6 +48,7 @@ extern crate rustc_driver as _;
 extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_lint;
+extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 
@@ -345,6 +346,7 @@ const REQUIRED_LINTS: &[&str] = &[
     "clippy::unwrap_used",
     "clippy::expect_used",
     "clippy::unwrap_in_result",
+    "clippy::let_underscore_must_use",
     "clippy::panic",
     "clippy::panic_in_result_fn",
     "clippy::todo",

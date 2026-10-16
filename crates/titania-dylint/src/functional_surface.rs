@@ -5,10 +5,14 @@ use rustc_ast::{
     MetaItemInner,
 };
 use rustc_errors::DiagDecorator;
-use rustc_hir::{Expr as HirExpr, ExprKind as HirExprKind, PathSegment};
+use rustc_hir::{
+    Expr as HirExpr, ExprKind as HirExprKind, QPath,
+    def::{DefKind, Res},
+};
 use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintContext, LintStore};
+use rustc_middle::ty::{self, TyKind};
 use rustc_session::{declare_lint, impl_lint_pass};
-use rustc_span::{Span, sym};
+use rustc_span::{Span, def_id::DefId, sym};
 
 declare_lint! {
     /// Detects `.unwrap()` method calls in production Rust.
@@ -85,7 +89,11 @@ impl EarlyLintPass for FunctionalSurface {
 
 impl<'tcx> LateLintPass<'tcx> for FunctionalSurface {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx HirExpr<'tcx>) {
-        emit_method_policy(cx, expr);
+        match &expr.kind {
+            HirExprKind::MethodCall(..) => emit_method_policy(cx, expr),
+            HirExprKind::Call(func, _) => emit_path_call_policy(cx, expr, func),
+            _ => (),
+        }
     }
 }
 
@@ -104,18 +112,128 @@ pub(crate) fn register(lint_store: &mut LintStore) {
 }
 
 fn emit_method_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>) {
-    let HirExprKind::MethodCall(segment, _, _, _) = expr.kind else {
+    let HirExprKind::MethodCall(segment, _, _, _) = &expr.kind else {
         return;
     };
-    if segment.ident.span.from_expansion() {
+    let name = segment.ident.name.as_str();
+    if matches!(method_policy(name), MethodPolicy::None) {
         return;
     }
-    match method_policy(segment) {
-        MethodPolicy::None => (),
-        MethodPolicy::Unwrap => emit_unwrap(cx, segment.ident.span),
-        MethodPolicy::Expect => emit_expect(cx, segment.ident.span),
-        MethodPolicy::UnwrapOr => emit_unwrap_or(cx, segment.ident.span),
+    if !is_core_or_unknown_method(cx, expr) {
+        return;
     }
+    emit_named_policy(cx, actionable_span(segment.ident.span), name);
+}
+
+fn emit_path_call_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>, func: &HirExpr<'_>) {
+    let HirExprKind::Path(qpath) = &func.kind else {
+        return;
+    };
+    let Res::Def(DefKind::AssocFn, def_id) = cx.qpath_res(qpath, func.hir_id) else {
+        return;
+    };
+    let Some(name) = qpath_final_name(qpath) else {
+        return;
+    };
+    if matches!(method_policy(name), MethodPolicy::None) {
+        return;
+    }
+    if !is_core_option_result_method(cx, def_id) {
+        return;
+    }
+    emit_named_policy(cx, actionable_span(expr.span), name);
+}
+
+fn emit_named_policy(cx: &LateContext<'_>, span: Span, name: &str) {
+    match method_policy(name) {
+        MethodPolicy::None => (),
+        MethodPolicy::Unwrap => emit_unwrap(cx, span),
+        MethodPolicy::Expect => emit_expect(cx, span),
+        MethodPolicy::UnwrapOr => emit_unwrap_or(cx, span),
+    }
+}
+
+/// Classify a method-call receiver by resolved definition identity.
+///
+/// `CoreStd` covers the inherent `Option`/`Result` methods in `core`.
+/// `Other` covers unrelated same-name methods (custom types, foreign traits).
+/// `Unknown` covers unresolvable receivers; callers fail closed toward the
+/// historic name-based verdict so real violations are never skipped silently.
+enum MethodIdentity {
+    CoreStd,
+    Other,
+    Unknown,
+}
+
+fn is_core_or_unknown_method(cx: &LateContext<'_>, expr: &HirExpr<'_>) -> bool {
+    match identify_method(cx, expr) {
+        MethodIdentity::CoreStd | MethodIdentity::Unknown => true,
+        MethodIdentity::Other => false,
+    }
+}
+
+fn identify_method(cx: &LateContext<'_>, expr: &HirExpr<'_>) -> MethodIdentity {
+    let Some(typeck) = cx.maybe_typeck_results() else {
+        return MethodIdentity::Unknown;
+    };
+    let Some((DefKind::AssocFn, def_id)) = typeck.type_dependent_def(expr.hir_id) else {
+        return MethodIdentity::Unknown;
+    };
+    if is_core_option_result_method(cx, def_id) {
+        MethodIdentity::CoreStd
+    } else {
+        MethodIdentity::Other
+    }
+}
+
+/// Return `true` when `def_id` is an inherent method on `core`'s `Option` or
+/// `Result`. Trait-provided same-name methods resolve to `Other`.
+fn is_core_option_result_method(cx: &LateContext<'_>, def_id: DefId) -> bool {
+    let Some(assoc) = cx.tcx.opt_associated_item(def_id) else {
+        return false;
+    };
+    if assoc.container != ty::AssocContainer::InherentImpl {
+        return false;
+    }
+    let Some(impl_id) = cx.tcx.opt_parent(def_id) else {
+        return false;
+    };
+    let self_ty = cx.tcx.type_of(impl_id).skip_binder();
+    let TyKind::Adt(adt, _) = *self_ty.kind() else {
+        return false;
+    };
+    let adt_id = adt.did();
+    if adt_id.is_local() {
+        return false;
+    }
+    if cx.tcx.crate_name(adt_id.krate).as_str() != "core" {
+        return false;
+    }
+    // `def_path_str` renders `core` items through their `std` re-export path.
+    matches!(
+        cx.tcx.def_path_str(adt_id).as_str(),
+        "core::option::Option"
+            | "std::option::Option"
+            | "core::result::Result"
+            | "std::result::Result"
+    )
+}
+
+fn qpath_final_name<'a>(qpath: &'a QPath<'a>) -> Option<&'a str> {
+    match qpath {
+        QPath::Resolved(_, path) => path.segments.last().map(|segment| segment.ident.name.as_str()),
+        QPath::TypeRelative(_, segment) => Some(segment.ident.name.as_str()),
+    }
+}
+
+/// Unfold macro-expansion spans to the outermost call site so diagnostics
+/// point at the actionable production code instead of vanishing.
+fn actionable_span(span: Span) -> Span {
+    let unfolded = std::iter::successors(Some(span), |current| {
+        current.from_expansion().then(|| current.ctxt().outer_expn_data().call_site)
+    })
+    .last();
+    unfolded.map_or(span, |found| found)
 }
 
 fn emit_loop_policy(cx: &EarlyContext<'_>, expr: &AstExpr) {
@@ -159,8 +277,8 @@ enum MethodPolicy {
     UnwrapOr,
 }
 
-fn method_policy(segment: &PathSegment<'_>) -> MethodPolicy {
-    match segment.ident.name.as_str() {
+fn method_policy(name: &str) -> MethodPolicy {
+    match name {
         "unwrap" => MethodPolicy::Unwrap,
         "expect" => MethodPolicy::Expect,
         "unwrap_or" | "unwrap_or_else" | "unwrap_or_default" => MethodPolicy::UnwrapOr,

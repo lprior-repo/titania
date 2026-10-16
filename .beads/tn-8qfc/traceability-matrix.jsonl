@@ -1,0 +1,3 @@
+{"acceptance":"4-weakening matrix asserts count/messages/lines","seed_id":"tn8qfc.P1","spec_section":"tn-8qfc§2-post","spec_text":"deny discarded must-use results and forgotten futures at target boundary"}
+{"acceptance":"CANONICAL_LINT_COUNT=20; root+template pin the floor","seed_id":"tn8qfc.P2","spec_section":"tn-8qfc§2-post","spec_text":"consistent canonical policy, target manifests, adoption template"}
+{"acceptance":"BYPASS_REQUIRED_LINT_WEAKENING fires on the new allow","seed_id":"tn8qfc.P3","spec_section":"tn-8qfc§2-post","spec_text":"Dylint weakening protection covers the must-use floor"}

@@ -45,6 +45,12 @@ const FIXTURE_WEAKEN_UNWRAP: &str = r#"
 pub fn kept() {}
 "#;
 
+const FIXTURE_WEAKEN_LET_UNDERSCORE: &str = r#"
+#![allow(clippy::let_underscore_must_use)]
+
+pub fn kept() {}
+"#;
+
 const FIXTURE_WEAKEN_WARNINGS: &str = r#"
 #![allow(warnings)]
 
@@ -284,6 +290,16 @@ fn bypass_required_lint_weakening_detects_forbid_downgrade() {
 fn bypass_required_lint_weakening_detects_deny_unwrap_removal() {
     let output = run_dylint_on_fixture("weaken_unwrap", FIXTURE_WEAKEN_UNWRAP);
     assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "clippy::unwrap_used allow");
+}
+
+#[test]
+fn bypass_required_lint_weakening_detects_let_underscore_removal() {
+    let output = run_dylint_on_fixture("weaken_let_underscore", FIXTURE_WEAKEN_LET_UNDERSCORE);
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_REQUIRED_LINT_WEAKENING",
+        "clippy::let_underscore_must_use allow",
+    );
 }
 
 #[test]

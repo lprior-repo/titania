@@ -60,6 +60,50 @@ pub fn inert_text() -> &'static str {
 }
 "#;
 
+const FIXTURE_CUSTOM_SAME_NAME_METHOD: &str = r#"
+pub struct Token(i32);
+
+impl Token {
+    pub fn unwrap(self) -> i32 {
+        self.0
+    }
+
+    pub fn expect(self, _message: &str) -> i32 {
+        self.0
+    }
+}
+
+pub fn redeem(first: Token, second: Token) -> i32 {
+    first.unwrap() + second.expect("not a panic path")
+}
+"#;
+
+const FIXTURE_MACRO_EXPANDED_UNWRAP: &str = r#"
+macro_rules! take_it {
+    ($value:expr) => {
+        $value.unwrap()
+    };
+}
+
+pub fn redeem_macro(value: Option<i32>) -> i32 {
+    take_it!(value)
+}
+"#;
+
+const FIXTURE_UFCS_UNWRAP: &str = r#"
+pub fn redeem_ufcs(value: Option<i32>) -> i32 {
+    Option::unwrap(value)
+}
+"#;
+
+const FIXTURE_ALIAS_UNWRAP: &str = r#"
+use std::option::Option as Maybe;
+
+pub fn redeem_alias(value: Maybe<i32>) -> i32 {
+    Maybe::unwrap(value)
+}
+"#;
+
 const FIXTURE_CFG_TEST_MODULE: &str = r#"
 #[cfg(test)]
 mod tests {
@@ -270,6 +314,34 @@ fn policy_surface_ignores_strings_and_comments() {
         "strings and comments must not trigger Dylint policy rules:\n{}",
         combined_output(&output)
     );
+}
+
+#[test]
+fn functional_surface_ignores_unrelated_custom_methods() {
+    let output = run_dylint_on_fixture("custom_same_name", FIXTURE_CUSTOM_SAME_NAME_METHOD);
+    assert!(
+        output.status.success(),
+        "custom same-name methods must not trigger resolved-identity rules:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn functional_surface_detects_macro_expanded_unwrap() {
+    let output = run_dylint_on_fixture("macro_expanded", FIXTURE_MACRO_EXPANDED_UNWRAP);
+    assert_dylint_rejects(&output, "FUNC_UNWRAP_USED", "macro-expanded unwrap calls");
+}
+
+#[test]
+fn functional_surface_detects_ufcs_unwrap() {
+    let output = run_dylint_on_fixture("ufcs", FIXTURE_UFCS_UNWRAP);
+    assert_dylint_rejects(&output, "FUNC_UNWRAP_USED", "UFCS unwrap calls");
+}
+
+#[test]
+fn functional_surface_detects_aliased_unwrap() {
+    let output = run_dylint_on_fixture("alias", FIXTURE_ALIAS_UNWRAP);
+    assert_dylint_rejects(&output, "FUNC_UNWRAP_USED", "aliased unwrap calls");
 }
 
 #[test]

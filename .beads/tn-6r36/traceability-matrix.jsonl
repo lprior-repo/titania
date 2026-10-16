@@ -1,0 +1,9 @@
+{"acceptance":"Happy 1: bounded for + ? permitted","seed_id":"tn6r36.P1","spec_section":"tn-6r36§4-H1","spec_text":"bounded for-loop propagating process(item)? failures permitted"}
+{"acceptance":"Happy 2: approved unwrap_or_else permitted","seed_id":"tn6r36.P2","spec_section":"tn-6r36§4-H2","spec_text":"contract-approved recovery consuming typed failure permitted"}
+{"acceptance":"Error 1: combinator retry rejected","seed_id":"tn6r36.P3","spec_section":"tn-6r36§4-E1","spec_text":"unbounded retry as combinators rejected"}
+{"acceptance":"Transitions 4: erasure rejected","seed_id":"tn6r36.P4","spec_section":"tn-6r36§2-post","spec_text":"error erasure without approval rejected"}
+{"acceptance":"Approval shape matches exceptions.toml strictness","seed_id":"tn6r36.P5","spec_section":"tn-6r36§0-clarify","spec_text":"recovery approval authority via exceptions.toml owner/reason/expiry/review"}
+{"acceptance":"Bound smart constructor rejects zero","seed_id":"tn6r36.P6","spec_section":"tn-6r36§1-ubiq","spec_text":"bounded execution needs named bound + evidence"}
+{"acceptance":"Critical shipping blocked while unproven","seed_id":"tn6r36.V1","spec_section":"tn-6r36§1-unwanted","spec_text":"unproven required obligations block critical shipping"}
+{"acceptance":"Criticality from maintained contracts only","seed_id":"tn6r36.P7","spec_section":"tn-6r36§0-clarify","spec_text":"critical-module designation via maintained contracts"}
+{"acceptance":"Malformed TOML fails closed typed","seed_id":"tn6r36.F1","spec_section":"tn-6r36§3-inversion","spec_text":"unsupported proof/evidence claims fail closed"}

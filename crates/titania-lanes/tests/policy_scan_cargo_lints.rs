@@ -69,6 +69,38 @@ fn multiple_weakened_lints_produce_one_finding_each() -> TestResult {
 }
 
 #[test]
+fn must_use_family_weakenings_emit_typed_findings() -> TestResult {
+    let report = scan_manifest(
+        "[lints.rust]\nunused_must_use = \"allow\"\nunused_results = \"warn\"\nlet_underscore_drop = \"allow\"\n\n[lints.clippy]\nlet_underscore_must_use = \"warn\"\n",
+    )?;
+    assert_eq!(report.finding_count(), 4);
+    assert!(report.findings()[0].message().starts_with("rust.unused_must_use is allow"));
+    assert_eq!(report.findings()[0].line(), 2);
+    assert!(report.findings()[1].message().starts_with("rust.unused_results is warn"));
+    assert_eq!(report.findings()[1].line(), 3);
+    assert!(report.findings()[2].message().starts_with("rust.let_underscore_drop is allow"));
+    assert_eq!(report.findings()[2].line(), 4);
+    assert!(report.findings()[3].message().starts_with("clippy.let_underscore_must_use is warn"));
+    assert_eq!(report.findings()[3].line(), 7);
+    Ok(())
+}
+
+#[test]
+fn must_use_family_deny_levels_are_clean() -> TestResult {
+    let dir = TempDir::new()?;
+    write_manifest(
+        &dir,
+        "Cargo.toml",
+        "[lints.rust]\nunused_must_use = \"deny\"\nunused_results = \"deny\"\nlet_underscore_drop = \"deny\"\n\n[lints.clippy]\nlet_underscore_must_use = \"deny\"\n",
+    )?;
+    let mut report = LaneReport::new();
+    let found = scan_cargo_lints_weakening(dir.path(), Path::new("Cargo.toml"), &mut report)?;
+    assert!(!found);
+    assert!(report.is_clean());
+    Ok(())
+}
+
+#[test]
 fn required_deny_and_warn_levels_are_clean() -> TestResult {
     let dir = TempDir::new()?;
     write_manifest(
@@ -319,7 +351,7 @@ fn policy_lint_override_only_weakens_never_strengthens() -> TestResult {
 
 /// Number of canonical entries in `EXPECTED_LEVELS`; exact-count tests
 /// below assert that every absent canonical emits its own typed finding.
-const CANONICAL_LINT_COUNT: usize = 16;
+const CANONICAL_LINT_COUNT: usize = 20;
 
 #[test]
 fn empty_workspace_lints_table_enumerates_every_canonical_omission() -> TestResult {

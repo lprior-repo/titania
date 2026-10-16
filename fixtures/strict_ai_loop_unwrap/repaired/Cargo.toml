@@ -25,12 +25,16 @@ indexing_slicing = "deny"
 string_slice = "deny"
 dbg_macro = "deny"
 as_conversions = "deny"
+let_underscore_must_use = "deny"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
 unreachable_pub = "deny"
 missing_debug_implementations = "deny"
 future_incompatible = { level = "deny", priority = -1 }
+unused_must_use = "deny"
+unused_results = "deny"
+let_underscore_drop = "deny"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "deny"
