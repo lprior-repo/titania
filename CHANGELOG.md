@@ -7,12 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- CLI help and input-error guidance now list the `full` scope and the `kani`
-  and `mutants` lane spellings accepted by the parser.
-
-## [0.1.0] - 2026-07-12
+## [0.1.0] - 2026-10-16
 
 First typed, evidence-bearing release of titania-check — the Moon-orchestrated
 Rust QA gate for the `strict-ai` coding standard. Single binary
@@ -58,6 +53,14 @@ Rust QA gate for the `strict-ai` coding standard. Single binary
   `LaneOutcome::Failed { LaneFailure::Tool }` (gate failure, exit 1) on
   nonzero exit instead of synthetic findings, per v1-spec §5. Clippy remains
   the only cargo lane that normalizes output into typed `CLIPPY_*` findings.
+
+### Fixed
+
+- CLI help and input-error guidance now list the `full` scope and the `kani`
+  and `mutants` lane spellings accepted by the parser.
+- `OutcomeError::Argv0Mismatch` display is bounded (200 bytes per payload,
+  control characters sanitized), so hostile `argv[0]`/executable values can
+  no longer produce multi-kilobyte unbounded error strings.
 
 [Unreleased]: https://github.com/lprior-repo/titania/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/lprior-repo/titania/releases/tag/v0.1.0
