@@ -435,6 +435,27 @@ pub enum ArtifactError {
     },
 }
 
+/// Display budget for one executable/argv payload inside [`OutcomeError`].
+/// Two budgets plus the fixed template stay under the 512-byte display cap.
+const ARGV0_DISPLAY_BUDGET_BYTES: usize = 200;
+/// Body budget reserving room for the truncation marker (`…`, 3 bytes).
+const ARGV0_DISPLAY_BODY_BYTES: usize = ARGV0_DISPLAY_BUDGET_BYTES.saturating_sub(3);
+
+/// Render an unbounded executable/argv payload for error display.
+///
+/// Replaces control characters with `?` and truncates to
+/// [`ARGV0_DISPLAY_BODY_BYTES`] bytes on a character boundary, appending
+/// `…` when truncated.
+fn argv0_display_piece(value: &str) -> String {
+    let clean: String = value.chars().map(|ch| if ch.is_control() { '?' } else { ch }).collect();
+    let head: String = clean
+        .char_indices()
+        .filter(|(index, ch)| index.saturating_add(ch.len_utf8()) <= ARGV0_DISPLAY_BODY_BYTES)
+        .map(|(_, ch)| ch)
+        .collect();
+    if clean.len() > ARGV0_DISPLAY_BODY_BYTES { format!("{head}…") } else { head }
+}
+
 /// Errors produced by [`crate::CommandEvidence::new`], [`crate::LaneEvidence::new`],
 /// and the lane outcome wire deserializers.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -443,7 +464,11 @@ pub enum OutcomeError {
     #[error("argv must not be empty")]
     EmptyArgv,
     /// Captured `argv[0]` did not match the executable field.
-    #[error("argv[0] ({found}) must equal executable ({expected})")]
+    #[error(
+        "argv[0] ({}) must equal executable ({})",
+        argv0_display_piece(found),
+        argv0_display_piece(expected)
+    )]
     Argv0Mismatch {
         /// Expected executable name.
         expected: String,

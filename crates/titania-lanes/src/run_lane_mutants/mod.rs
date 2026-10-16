@@ -91,7 +91,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use titania_core::{Finding, LaneOutcome, SkipReason, TargetProject, ToolKind};
 
 pub(super) use error::MutantsLaneError;
-use state::LaneRunState;
+use state::{LaneRunState, NewSurvivor};
 
 use self::{
     baseline::{baseline_path, load_baseline},
@@ -126,15 +126,9 @@ use self::{
 pub(super) fn outcome(target: &TargetProject) -> Result<LaneOutcome, MutantsLaneError> {
     let workspace_root = target.as_std_path();
 
-    let Some(tool_version) = detect_cargo_mutants_version() else {
+    let Some(tool_version) = available_tool_version() else {
         return Ok(tool_unavailable_outcome());
     };
-    let Some(major_version) = parse_cargo_mutants_major(&tool_version) else {
-        return Ok(tool_unavailable_outcome());
-    };
-    if !major_meets_floor(major_version) {
-        return Ok(tool_unavailable_outcome());
-    }
 
     let baseline_path_value = baseline_path(workspace_root);
     if let Err(MutantsLaneError::BaselineMissing(label)) = load_baseline(&baseline_path_value) {
@@ -152,11 +146,35 @@ pub(super) fn outcome(target: &TargetProject) -> Result<LaneOutcome, MutantsLane
     if new_survivors.is_empty() {
         return build_clean_outcome(&state).map_err(|error| map_outcome_error(&error));
     }
-    let mut findings: Vec<Finding> = Vec::with_capacity(new_survivors.len());
-    for survivor in &new_survivors {
-        findings.push(survivor_finding(survivor)?);
-    }
-    Ok(LaneOutcome::Findings { findings: findings.into_boxed_slice() })
+    Ok(LaneOutcome::Findings { findings: findings_for_new_survivors(&new_survivors)? })
+}
+
+/// Assemble one typed finding per new survivor; any per-survivor
+/// failure bubbles up as [`MutantsLaneError`] so the lane fails
+/// closed instead of emitting a bogus finding.
+///
+/// # Errors
+///
+/// Returns [`MutantsLaneError`] from [`survivor_finding`] for the
+/// first survivor that cannot be resolved to a typed finding.
+fn findings_for_new_survivors(
+    new_survivors: &[NewSurvivor],
+) -> Result<Box<[Finding]>, MutantsLaneError> {
+    new_survivors
+        .iter()
+        .map(survivor_finding)
+        .collect::<Result<Vec<_>, _>>()
+        .map(Vec::into_boxed_slice)
+}
+
+/// Resolve the cargo-mutants tool version when usable.
+///
+/// `None` folds the absent/unparseable/below-floor paths into the
+/// [`SkipReason::ToolUnavailable`] outcome.
+fn available_tool_version() -> Option<String> {
+    let tool_version = detect_cargo_mutants_version()?;
+    let major_version = parse_cargo_mutants_major(&tool_version)?;
+    major_meets_floor(major_version).then_some(tool_version)
 }
 
 /// Fold the absence-of-binary / version-parse-failure paths into a

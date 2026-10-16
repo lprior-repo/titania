@@ -42,18 +42,13 @@ pub(super) fn build_new_survivors(
     now_unix: u64,
 ) -> Result<Vec<NewSurvivor>, MutantsLaneError> {
     let baseline = load_baseline(&super::baseline::baseline_path(workspace_root)).ok();
-    let mut kept: Vec<NewSurvivor> = Vec::with_capacity(survivor_names.len());
-    for mutation_id in survivor_names {
-        let classified =
-            classify_survivor_typed(mutation_id, workspace_root, baseline.as_ref(), now_unix);
-        let survivor = match classified {
-            Ok(Some(survivor)) => survivor,
-            Ok(None) => continue,
-            Err(error) => return Err(error),
-        };
-        kept.push(survivor);
-    }
-    Ok(kept)
+    survivor_names
+        .iter()
+        .map(|mutation_id| {
+            classify_survivor_typed(mutation_id, workspace_root, baseline.as_ref(), now_unix)
+        })
+        .filter_map(Result::transpose)
+        .collect()
 }
 
 /// Typed inner classifier; bubbles [`MutantsLaneError`] up to the caller.

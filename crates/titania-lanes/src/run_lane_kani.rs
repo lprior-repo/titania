@@ -383,14 +383,16 @@ impl HarnessVerdictMap {
 /// Walk `stdout` line-by-line and pair each `Checking harness <NAME>...`
 /// with the next `VERIFICATION:-` line.
 ///
-/// Free function (not inside `impl`) so the `for` body stays at
+/// Free function (not inside `impl`) so the fold body stays at
 /// `clippy::excessive_nesting` level 2.
 fn build_verdict_map(stdout: &str) -> HarnessVerdictMap {
-    let mut map = HarnessVerdictMap::default();
-    let mut current: Option<String> = None;
-    for line in stdout.lines() {
-        absorb_verdict_line(&mut map, &mut current, line);
-    }
+    let (map, _) = stdout.lines().fold(
+        (HarnessVerdictMap::default(), None::<String>),
+        |(mut map, mut current), line| {
+            absorb_verdict_line(&mut map, &mut current, line);
+            (map, current)
+        },
+    );
     map
 }
 
@@ -539,7 +541,7 @@ pub(super) fn outcome(target: &TargetProject) -> Result<LaneOutcome, KaniLaneErr
     let cgroup_available = probe_systemd_run();
     let mut findings: Vec<Finding> = Vec::new();
     let mut worst_run: Option<PackageRun> = None;
-    for (package, harnesses) in &groups {
+    groups.iter().try_for_each(|(package, harnesses)| {
         let run = run_package(workspace_root, package, cgroup_available)
             .map_err(KaniLaneError::Package)?;
         update_worst_exit(&mut state, &run);
@@ -547,7 +549,8 @@ pub(super) fn outcome(target: &TargetProject) -> Result<LaneOutcome, KaniLaneErr
         let verdicts = HarnessVerdictMap::from_stdout(&run.stdout);
         let package_findings = findings_for_package(harnesses, &verdicts, &run)?;
         findings.extend(package_findings);
-    }
+        Ok::<(), KaniLaneError>(())
+    })?;
     if !findings.is_empty() {
         return Ok(LaneOutcome::Findings { findings: findings.into_boxed_slice() });
     }
@@ -973,11 +976,14 @@ type PackageGroup = (String, Vec<KaniHarness>);
 /// and inserting into a `BTreeMap` keyed by package; the outer iteration
 /// is therefore deterministic.
 fn group_by_package(inventory: &[KaniHarness]) -> Vec<PackageGroup> {
-    let mut groups: BTreeMap<String, Vec<KaniHarness>> = BTreeMap::new();
-    for harness in inventory {
-        groups.entry(harness.package.clone()).or_default().push(harness.clone());
-    }
-    groups.into_iter().collect()
+    inventory
+        .iter()
+        .fold(BTreeMap::new(), |mut groups: BTreeMap<String, Vec<KaniHarness>>, harness| {
+            groups.entry(harness.package.clone()).or_default().push(harness.clone());
+            groups
+        })
+        .into_iter()
+        .collect()
 }
 
 /// Probe `cargo kani --version` once and cache the result for the lane's
@@ -1307,10 +1313,11 @@ fn list_kani_harnesses(
     })?;
     let crate_dirs: Vec<(PathBuf, String)> =
         entries.flatten().filter_map(|entry| crate_entry(&entry)).collect();
-    let mut aggregate = InventoryAggregate::default();
-    for (path, pkg) in &crate_dirs {
-        accumulate_inventory(&mut aggregate, pkg, list_kani_for_crate(path, pkg, state));
-    }
+    let aggregate =
+        crate_dirs.iter().fold(InventoryAggregate::default(), |mut aggregate, (path, pkg)| {
+            accumulate_inventory(&mut aggregate, pkg, list_kani_for_crate(path, pkg, state));
+            aggregate
+        });
     if !aggregate.any_listed && aggregate.harnesses.is_empty() && aggregate.errors.is_empty() {
         return Err(KaniInventoryError::NoCratesDir(crates_dir.display().to_string()));
     }
