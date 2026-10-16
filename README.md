@@ -46,8 +46,7 @@ your team can review, gate on, and accumulate over time.
   review, gate on, and accumulate. A future `titania watch` is sugar, not
   v1 core.
 - **Not a CI replacement.** It runs **inside** Moon, which is the
-  orchestrator. CI systems (GitHub Actions, GitLab CI, Buildkite) call
-  Moon, which calls `titania`.
+  orchestrator. CI systems call Moon, which calls `titania`.
 - **Not a YAML pipeline.** It replaces bash-in-YAML with typed Rust
   lanes that emit structured JSON, run in a DAG, and cache by content
   hash.
@@ -230,9 +229,6 @@ binary, the same policy, the same receipts.
 ```bash
 # Coming with v1.0 release.
 cargo install titania-check
-
-# Or with cargo-binstall (faster, prebuilt binaries).
-cargo binstall titania-check
 ```
 
 For pre-v1 development, see [`v1-spec.md`](./v1-spec.md) for the buildable

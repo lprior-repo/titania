@@ -37,11 +37,9 @@ Rust QA gate for the `strict-ai` coding standard. Single binary
   pinned `nightly-2026-04-27` toolchain and the strict-ai gate pre-wired.
 - **Moon DAG** (`setup-hermetic` → lane tasks → aggregate) with content-hash
   caching.
-- **Distribution**: `cargo binstall titania-check` support
-  (`[package.metadata.binstall]`) and a GitHub Actions release workflow
-  (`.github/workflows/release.yml`) building the `titania-check` binary and
-  the `titania-dylint` cdylib across a Linux/macOS/Windows × x86_64/aarch64
-  matrix.
+- **Distribution**: version tags (`v*`) with Moon-built release binaries
+  (`moon run :titania-build --release`) for the `titania-check` binary and
+  the `titania-dylint` cdylib.
 - **Co-located `titania-dylint` cdylib** (`libtitania_dylint.so` / `.dylib` /
     `titania_dylint.dll`) for type-aware lint scans.
 
@@ -63,4 +61,4 @@ Rust QA gate for the `strict-ai` coding standard. Single binary
   no longer produce multi-kilobyte unbounded error strings.
 
 [Unreleased]: https://github.com/lprior-repo/titania/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/lprior-repo/titania/releases/tag/v0.1.0
+[0.1.0]: https://github.com/lprior-repo/titania/tree/v0.1.0

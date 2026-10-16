@@ -33,12 +33,3 @@ tempfile = "3.27.0"
 
 [lints]
 workspace = true
-
-# cargo-binstall: `cargo binstall titania-check` fetches the prebuilt
-# binary produced by .github/workflows/release.yml on tag `v*`. The binary
-# name is `titania-check` (== package name). Assets are named
-# `titania-check-<target>-v<version>.tar.gz`.
-[package.metadata.binstall]
-pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }-v{ version }.{ archive-suffix }"
-bin-dir = "{ bin }{ binary-ext }"
-pkg-fmt = "tgz"
