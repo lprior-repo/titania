@@ -1,17 +1,3 @@
-//! Cargo-mutants process invocation: cgroup wrapper and bare fallback.
-//!
-//! The lane runs the workspace-level full test-mode command exactly
-//! once. The shape is locked by the v1.5 spec §4.3 / §7:
-//!
-//! - `systemd-run --user --scope -p MemoryHigh=20G -p MemoryMax=24G
-//!   -p MemorySwapMax=0 -- cargo mutants --no-shuffle --output <dir>
-//!   --workspace` when the host provides `systemd-run`;
-//! - `cargo mutants --no-shuffle --output <dir> --workspace` otherwise.
-//!
-//! Both the [`Command`] builder and the public argv materialisation
-//! live here so the receipt auditor can re-derive the run from
-//! `LaneEvidence::command` without ambiguity.
-
 use std::{
     io,
     path::Path,
@@ -28,12 +14,6 @@ use super::{
     error::MutantsLaneError,
 };
 
-/// Build the [`Command`] used for the workspace-level cargo-mutants run.
-///
-/// The shape is locked by the v1.5 spec §4.3 / §7: a single
-/// `cargo mutants --no-shuffle --output <dir> --workspace` invocation,
-/// optionally wrapped in `systemd-run --user --scope -p MemoryHigh=20G
-/// -p MemoryMax=24G -p MemorySwapMax=0 --` when the host provides it.
 pub(super) fn build_cargo_mutants_command(
     workspace_root: &Path,
     cgroup_available: bool,
@@ -45,8 +25,6 @@ pub(super) fn build_cargo_mutants_command(
     }
 }
 
-/// Build a `systemd-run --user --scope … -- cargo mutants --no-shuffle
-/// --output <dir> --workspace` command.
 fn build_cgroup_command(workspace_root: &Path) -> Command {
     let mut cmd = Command::new("systemd-run");
     let _ = cmd.current_dir(workspace_root);
@@ -68,8 +46,6 @@ fn build_cgroup_command(workspace_root: &Path) -> Command {
     cmd
 }
 
-/// Build the bare `cargo mutants --no-shuffle --output <dir>
-/// --workspace` command (cgroup fallback).
 fn build_bare_command(workspace_root: &Path) -> Command {
     let mut cmd = Command::new("cargo");
     let _ = cmd.current_dir(workspace_root);
@@ -81,11 +57,6 @@ fn build_bare_command(workspace_root: &Path) -> Command {
     cmd
 }
 
-/// Materialise the argv that the cgroup wrapper would invoke.
-///
-/// Used by [`super::outcomes::build_clean_outcome`] to satisfy the
-/// "command evidence must match actual argv" requirement when the run
-/// completes clean.
 #[must_use]
 pub(super) fn cgroup_argv() -> Vec<String> {
     Vec::from([
@@ -108,7 +79,6 @@ pub(super) fn cgroup_argv() -> Vec<String> {
     ])
 }
 
-/// Materialise the bare fallback argv.
 #[must_use]
 pub(super) fn bare_argv() -> Vec<String> {
     Vec::from([
@@ -121,21 +91,6 @@ pub(super) fn bare_argv() -> Vec<String> {
     ])
 }
 
-/// Spawn the workspace-level cargo-mutants invocation and wait up to
-/// [`MUTANTS_WALLCLOCK_TIMEOUT_SECS`] for completion.
-///
-/// Reaps the child on timeout and surfaces a typed [`MutantsLaneError`]
-/// on every failure path so the dispatch site can map it to a
-/// `LaneFailure::Infra`.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::Spawn`] when `Command::spawn` fails,
-/// [`MutantsLaneError::Wait`] for `wait_timeout` I/O errors,
-/// [`MutantsLaneError::KillAfterTimeout`] /
-/// [`MutantsLaneError::ReapAfterTimeout`] for post-timeout kill/reap
-/// failures, and [`MutantsLaneError::TimedOut`] when the wallclock cap
-/// is exceeded.
 pub(super) fn run_workspace_command(
     workspace_root: &Path,
     cgroup_used: bool,
@@ -160,23 +115,10 @@ pub(super) fn run_workspace_command(
     Err(MutantsLaneError::TimedOut { timeout_secs: MUTANTS_WALLCLOCK_TIMEOUT_SECS })
 }
 
-/// Box the display representation of an [`io::Error`] so the
-/// surrounding variant stays under the workspace
-/// `large-error-threshold = 64`.
-///
-/// The typed source is recoverable at the dispatch site from the
-/// formatted text.
 fn boxed_io_error(error: &io::Error) -> Box<str> {
     Box::from(error.to_string().as_str())
 }
 
-/// Extract the exit code from an [`ExitStatus`].
-///
-/// Cargo-mutants is a normal child process that exits via `_exit`, so
-/// we always expect a code. A signal-terminated child (negative codes
-/// are reserved for kernel sentinels) collapses to `-1` and the caller
-/// can decide how to render it; cargo-mutants does not raise real-time
-/// signals under normal shutdown.
 fn exit_code_from_status(status: ExitStatus) -> i32 {
     status.code().map_or(-1, |code| code)
 }
@@ -213,7 +155,6 @@ mod tests {
     #[test]
     fn cgroup_argv_preserves_direct_flag_order() {
         let argv = cgroup_argv();
-        // --no-shuffle must precede --output for evidence clarity.
         let no_shuffle_idx = argv
             .iter()
             .position(|arg| arg == "--no-shuffle")

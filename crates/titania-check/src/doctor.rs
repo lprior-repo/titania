@@ -1,5 +1,3 @@
-//! Doctor report rendering for the `titania-check doctor` subcommand.
-
 use titania_core::GateScope;
 use titania_output::{
     OutputError,
@@ -8,12 +6,6 @@ use titania_output::{
 
 use crate::{CliDisposition, args::EmitFormat};
 
-/// Render a doctor report for CLI stdout.
-///
-/// # Errors
-///
-/// Returns [`OutputError`] if the doctor report producer detects a compiled
-/// output-component misconfiguration.
 pub(crate) fn render(scope: GateScope, emit: EmitFormat) -> Result<CliDisposition, OutputError> {
     let report = titania_output::doctor::doctor_report(scope)?;
     let stdout = match emit {
@@ -31,7 +23,6 @@ const fn report_code(status: DoctorStatus) -> u8 {
     }
 }
 
-/// Render a doctor report as the human-readable table.
 #[must_use]
 pub fn render_human(report: &DoctorReport) -> String {
     let rows = report.tools.iter().map(|tool| to_human_row(report.scope, tool)).collect::<String>();
@@ -88,11 +79,6 @@ fn installed_label(tool: &ToolRow) -> &'static str {
     }
 }
 
-/// Map the internal tool name to the v1-spec human display label.
-///
-/// `clippy-driver` is the on-disk binary name but the v1 spec shows `clippy`
-/// in the `Tool` column; the same applies to `cargo-dylint` → `dylint`. JSON
-/// output keeps the internal name unchanged.
 fn human_label(name: &'static str) -> &'static str {
     match name {
         "clippy-driver" => "clippy",
@@ -102,7 +88,6 @@ fn human_label(name: &'static str) -> &'static str {
     }
 }
 
-/// Render a doctor report as machine-readable JSON.
 #[must_use]
 pub fn render_json(report: &DoctorReport) -> String {
     let tools = report.tools.iter().map(to_json_row).collect::<Vec<_>>();

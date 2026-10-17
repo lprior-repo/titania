@@ -1,8 +1,3 @@
-//! Pure cargo-deny JSON normalization into typed `DENY_*` findings.
-//!
-//! This module converts cargo-deny machine output into lane findings. It does
-//! not run cargo-deny and does not read `deny.toml`.
-
 use serde_json::Value;
 use titania_core::LaneFailure;
 
@@ -18,30 +13,19 @@ const RULE_UNKNOWN_GIT: &str = "DENY_UNKNOWN_GIT";
 const RULE_UNKNOWN: &str = "DENY_UNKNOWN";
 const RULE_INFRA: &str = "DENY_INFRA_FAILURE";
 
-/// Result of normalizing cargo-deny output.
 #[derive(Debug, Clone)]
 pub enum DenyNormalization {
-    /// Parsed cargo-deny diagnostics as typed findings.
     Findings(LaneReport),
-    /// No usable diagnostics were present and the stream itself was malformed.
     SuspiciousFailure(LaneFailure),
-    /// cargo-deny itself was unavailable.
-    InfraFailure {
-        /// Typed failure explaining that cargo-deny could not be invoked.
-        failure: LaneFailure,
-        /// Human-readable finding mirror for lane-report consumers.
-        report: LaneReport,
-    },
+    InfraFailure { failure: LaneFailure, report: LaneReport },
 }
 
 impl DenyNormalization {
-    /// Whether the normalized output contains no findings or failure.
     #[must_use]
     pub fn is_clean(&self) -> bool {
         matches!(self, Self::Findings(report) if report.is_clean())
     }
 
-    /// Borrow normalized findings. Suspicious failures contain no code findings.
     #[must_use]
     pub fn findings(&self) -> &[Finding] {
         match self {
@@ -50,13 +34,11 @@ impl DenyNormalization {
         }
     }
 
-    /// Count normalized findings.
     #[must_use]
     pub fn finding_count(&self) -> usize {
         self.findings().len()
     }
 
-    /// Render normalized findings or failure evidence.
     #[must_use]
     pub fn render(&self) -> String {
         match self {
@@ -65,7 +47,6 @@ impl DenyNormalization {
         }
     }
 
-    /// Borrow failure details when the result represents a tool failure.
     #[must_use]
     pub const fn failure(&self) -> Option<&LaneFailure> {
         match self {
@@ -75,13 +56,11 @@ impl DenyNormalization {
     }
 }
 
-/// Normalize cargo-deny JSON or JSONL output into typed findings.
 #[must_use]
 pub fn normalize_deny_json(input: &str) -> DenyNormalization {
     input.lines().fold(NormalizerState::default(), NormalizerState::feed).finish()
 }
 
-/// Build the typed result for a missing cargo-deny binary.
 #[must_use]
 pub fn deny_missing_binary() -> DenyNormalization {
     DenyNormalization::InfraFailure {

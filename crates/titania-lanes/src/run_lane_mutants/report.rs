@@ -1,10 +1,3 @@
-//! Cargo-mutants artifact-directory resolution and report parsing.
-//!
-//! Uses the typed core parsers (`titania_core::MutantsOutcomes` and
-//! `titania_core::MutantsRecords`) instead of duplicating
-//! `serde_json::Value` decoding logic; the lane shell only knows how to
-//! read files off disk and how to validate exit codes.
-
 use std::path::{Path, PathBuf};
 
 use titania_core::{
@@ -13,15 +6,6 @@ use titania_core::{
 
 use super::{constants::MUTANTS_OUTPUT_DIR, error::MutantsLaneError, state::MutantsReport};
 
-/// Read the workspace-level cargo-mutants output directory and validate
-/// that the run actually produced parseable JSON artifacts.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::ArtifactDir`] when neither supported
-/// artifact layout exists,
-/// [`MutantsLaneError::OutcomesParse`] for malformed `outcomes.json`,
-/// and [`MutantsLaneError::MutantsParse`] for malformed `mutants.json`.
 pub(super) fn read_workspace_report(
     workspace_root: &Path,
     exit_code: i32,
@@ -44,20 +28,10 @@ pub(super) fn read_workspace_report(
             reason: Box::from(format!("read failed: {error}").as_str()),
         })?;
     let survivor_names = parse_survivor_names(&outcomes_contents, &outcomes_label)?;
-    // Validate that `mutants.json` parses; the per-survivor classifier
-    // reads the same file later to recover source-span geometry, so we
-    // surface any parse error here as a typed `MutantsParse` failure
-    // rather than waiting until the per-survivor loop to discover it.
     drop(parse_mutants_records(&mutants_contents, &mutants_label)?);
     Ok(MutantsReport { survivor_names, exit_code })
 }
 
-/// Locate cargo-mutants artifacts in direct or version-27 nested output.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::ArtifactDir`] when neither supported
-/// artifact layout exists.
 pub(super) fn find_mutants_artifact_dir(output_dir: &Path) -> Result<PathBuf, MutantsLaneError> {
     let direct_outcomes = output_dir.join("outcomes.json");
     if direct_outcomes.is_file() {
@@ -74,16 +48,6 @@ pub(super) fn find_mutants_artifact_dir(output_dir: &Path) -> Result<PathBuf, Mu
     )))
 }
 
-/// Parse the per-scenario `outcomes.json` and extract every stable
-/// `MissedMutant` mutation name via the typed core [`MutantsOutcomes`]
-/// parser, then validate the aggregate `missed` count.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::OutcomesParse`] for malformed JSON and
-/// [`MutantsLaneError::MissedCountMismatch`] when the aggregate count
-/// disagrees with the actual number of [`OutcomeSummary::MissedMutant`]
-/// entries.
 pub(super) fn parse_survivor_names(
     outcomes_json: &str,
     label: &str,
@@ -104,11 +68,6 @@ pub(super) fn parse_survivor_names(
     Ok(survivor_names)
 }
 
-/// Pull `scenario.Mutant.name` from a single typed outcome entry.
-///
-/// Returns [`None`] for the `Baseline` discriminator or when the
-/// `Mutant` payload is missing the `name` field; the caller converts
-/// a count mismatch into a typed [`MutantsLaneError::MissedCountMismatch`].
 pub(super) fn survivor_name_from_entry(entry: &titania_core::MutantOutcomeEntry) -> Option<String> {
     match &entry.scenario {
         OutcomeScenario::Mutant { mutant } => Some(mutant.name.clone()),
@@ -116,15 +75,6 @@ pub(super) fn survivor_name_from_entry(entry: &titania_core::MutantOutcomeEntry)
     }
 }
 
-/// Cross-check the aggregate `missed` count cargo-mutants reports when
-/// it carries one. Pure: missing counts ⇒ no-op (forward-compat with
-/// cargo-mutants 28's possibly-renamed aggregate).
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::MissedCountMismatch`] when the reported
-/// count disagrees with the actual `MissedMutant` entry count or when
-/// the reported value exceeds platform limits.
 fn validate_reported_missed_count(
     outcomes: &MutantsOutcomes,
     actual: usize,
@@ -146,17 +96,6 @@ fn validate_reported_missed_count(
     Ok(())
 }
 
-/// Parse the flat `mutants.json` array into typed records.
-///
-/// The lane reads it primarily to recover source-span coordinates for
-/// every survivor; the typed-id construction in
-/// [`super::survivors::build_new_survivors`] is the single read site
-/// for the records themselves.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::MutantsParse`] when the JSON is
-/// malformed or the wire shape is incompatible with the v1.5 contract.
 pub(super) fn parse_mutants_records(
     mutants_json: &str,
     label: &str,
@@ -170,17 +109,6 @@ pub(super) fn parse_mutants_records(
     Ok(records.into_inner())
 }
 
-/// Validate the cargo-mutants exit code against the survivor evidence.
-///
-/// cargo-mutants exits `0` when every mutant was caught, `2` when at
-/// least one mutant survived the test run. Any other code means the run
-/// failed before producing trustable evidence and the lane must surface
-/// a typed infra failure.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::CargoMutantsExit`] when the exit code
-/// is non-zero and unrelated to a survivor report.
 pub(super) fn validate_report_exit(report: &MutantsReport) -> Result<(), MutantsLaneError> {
     if report.exit_code == 0 {
         return Ok(());

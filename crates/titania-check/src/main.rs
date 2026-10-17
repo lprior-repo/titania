@@ -1,7 +1,3 @@
-//! CLI dispatch shell for `titania-check`.
-//!
-//! The shell owns argument parsing, exit-code mapping, and typed dispatch.
-//! It does not fake doctor output or lane execution.
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
@@ -63,14 +59,6 @@ fn dispatch(cli: Cli) -> CliDisposition {
     }
 }
 
-/// Drive `Command::Check` through Moon (spec §12, §13).
-///
-/// Builds the moon task list for the scope, spawns `moon run <tasks...>` with
-/// stderr inherited so the user sees lane progress, then runs the in-process
-/// aggregate (`aggregate::report_json`) with the user's `--emit`/`--out` flags.
-/// Individual lane outcomes are read from the artifacts Moon's tasks wrote. A
-/// missing `moon` binary surfaces as `InputError(3)`; an unreadable artifact or
-/// spawn failure (other than `NotFound`) surfaces as `InternalError(>=4)`.
 fn check_with_moon(options: &args::CheckOptions) -> CliDisposition {
     let scope = options.scope;
     let emit = options.emit();
@@ -101,12 +89,6 @@ fn check_with_moon(options: &args::CheckOptions) -> CliDisposition {
     }
 }
 
-/// Create hermetic `CARGO_HOME` / `RUSTUP_HOME` symlinks (v1-spec §9.5).
-///
-/// Creates `<root>/.titania/hermetic/cargo-home` and `rustup-home` as
-/// symlinks to the real homes (resolved from `CARGO_HOME` / `RUSTUP_HOME` or
-/// their defaults). Prints the export lines on stdout so the caller can
-/// `eval "$(titania-check setup-hermetic)"`.
 fn setup_hermetic() -> CliDisposition {
     let root = match env::current_dir() {
         Ok(path) => path,
@@ -162,16 +144,6 @@ fn setup_hermetic() -> CliDisposition {
     CliDisposition::report(output, EXIT_PASS)
 }
 
-/// Resolve the real home directory for a tool by following symlinks.
-///
-/// Uses `std::fs::canonicalize` to follow the entire symlink chain to the
-/// real directory. This handles all cases: env var pointing at a hermetic
-/// symlink, env var pointing at a real path, or env var unset (falls back
-/// to `$HOME/<suffix>`).
-///
-/// # Errors
-/// Returns [`io::Error`] when the resolved path does not exist or is a
-/// broken/circular symlink. The caller surfaces this to the user.
 fn resolve_real_home(var: &str, suffix: &str) -> Result<PathBuf, io::Error> {
     let raw = match env::var(var) {
         Ok(value) => PathBuf::from(value),
@@ -180,11 +152,6 @@ fn resolve_real_home(var: &str, suffix: &str) -> Result<PathBuf, io::Error> {
     std::fs::canonicalize(&raw)
 }
 
-/// Resolve `HOME` from the environment, returning a typed error if unset.
-///
-/// # Errors
-/// Returns [`io::Error`] with [`io::ErrorKind::NotFound`] when `HOME` is not
-/// set in the environment.
 fn home_from_env() -> Result<PathBuf, io::Error> {
     match env::var("HOME") {
         Ok(value) => Ok(PathBuf::from(value)),
@@ -194,15 +161,6 @@ fn home_from_env() -> Result<PathBuf, io::Error> {
     }
 }
 
-/// Create or refresh a symlink at `link` pointing to `target`.
-///
-/// If `link` already points at `target`, this is a no-op. If `link` exists
-/// as a real directory (not a symlink), returns an error to avoid clobbering
-/// user data.
-///
-/// # Errors
-/// Returns [`io::Error`] when the symlink cannot be created or a real
-/// directory blocks the link path.
 fn link_if_needed(target: &std::path::Path, link: &std::path::Path) -> Result<(), io::Error> {
     use std::fs;
 
@@ -218,7 +176,6 @@ fn link_if_needed(target: &std::path::Path, link: &std::path::Path) -> Result<()
         ));
     }
 
-    // Remove an existing symlink (or stale link); ignore NotFound.
     match fs::remove_file(link) {
         Ok(()) => {}
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
@@ -238,20 +195,11 @@ fn link_if_needed(target: &std::path::Path, link: &std::path::Path) -> Result<()
     }
 }
 
-/// Remove stale artifacts for the selected scope before a fresh Moon run.
-///
-/// # Errors
-/// Returns the filesystem error when an existing artifact cannot be removed.
 fn clear_scope_outputs(target_root: &std::path::Path, scope: GateScope) -> Result<(), io::Error> {
     let out_dir = target_root.join(".titania").join("out").join(scope_dir(scope));
     scope.lanes().iter().try_for_each(|lane| remove_lane_artifact(&out_dir, *lane))
 }
 
-/// Remove one lane artifact, treating a missing file as already clean.
-///
-/// # Errors
-/// Returns the filesystem error when removal fails for a reason other than
-/// `NotFound`.
 fn remove_lane_artifact(out_dir: &std::path::Path, lane: Lane) -> Result<(), io::Error> {
     match std::fs::remove_file(out_dir.join(lane.file_stem()).with_extension("json")) {
         Ok(()) => Ok(()),
@@ -284,9 +232,6 @@ fn current_dir_error(error: &io::Error) -> CliDisposition {
     CliDisposition::internal_error(format!("InternalError: current directory unavailable: {error}"))
 }
 
-/// Run the in-process aggregate after Moon finishes, emitting the hermetic
-/// hint when the policy-scan artifact contains `BYPASS_ENV_*` findings and the
-/// hermetic dirs were not detected.
 fn aggregate_after_moon(
     target_root: &std::path::Path,
     scope: GateScope,
@@ -300,22 +245,11 @@ fn aggregate_after_moon(
     aggregate_from_root(target_root, scope, emit, out)
 }
 
-/// Emit a one-line stderr hint suggesting `setup-hermetic` when the hermetic
-/// dirs are absent (v1-spec §9.5).
-///
-/// Non-intrusive: emitted only after Moon finishes AND the policy-scan
-/// artifact actually contains `BYPASS_ENV_*` findings, so Clean runs and
-/// pre-baked test artifacts never trigger the hint.
 fn emit_hermetic_hint() {
     let hint = "hint: run `titania-check setup-hermetic` to create hermetic CARGO_HOME/RUSTUP_HOME for PolicyScan";
     drop(write_stderr_line(hint));
 }
 
-/// Return `true` when the policy-scan artifact for `scope` contains a
-/// `BYPASS_ENV_CARGO_HOME` or `BYPASS_ENV_RUSTUP_HOME` finding.
-///
-/// Used to gate the `setup-hermetic` hint so it only appears when `PolicyScan`
-/// actually rejected on env, not on every run missing the hermetic dirs.
 fn policy_scan_has_env_bypass(target_root: &std::path::Path, scope: GateScope) -> bool {
     let artifact =
         target_root.join(".titania").join("out").join(scope_dir(scope)).join("policy-scan.json");
@@ -335,7 +269,6 @@ fn aggregate_from_root(
         Err(error) => CliDisposition::input_error(error.diagnostic()),
     }
 }
-/// Render the report with emit-format selection and optional file output.
 fn report_with_opts(
     report: &aggregate::ReportJson,
     emit: args::EmitFormat,
@@ -347,15 +280,12 @@ fn report_with_opts(
     };
 
     if let Some(path) = out {
-        // Write report to file, suppress stdout.
         write_report(path, &stdout, report.status())
     } else {
         CliDisposition::report(stdout, report_code(report.status()))
     }
 }
 
-/// Write a report to file and return a silent disposition, or an internal
-/// error disposition when the file write fails.
 fn write_report(
     path: &std::path::PathBuf,
     content: &str,
@@ -384,7 +314,6 @@ fn run_lane(lane: Lane) -> CliDisposition {
     CliDisposition::lane_execution(map_lane_exit(execution.exit()), execution.stderr())
 }
 
-/// Map lane exit disposition to a stable process exit code.
 const fn map_lane_exit(exit: LaneExit) -> u8 {
     match exit {
         LaneExit::Clean | LaneExit::NotApplicable => EXIT_PASS,
@@ -456,12 +385,6 @@ fn exit(disposition: &CliDisposition) -> ExitCode {
     )
 }
 
-/// Write the diagnostic for a CLI disposition when one exists.
-///
-/// # Errors
-///
-/// Returns the underlying stderr I/O error when the diagnostic cannot be
-/// written completely.
 fn write_disposition(disposition: &CliDisposition) -> io::Result<()> {
     if let Some(stdout) = disposition.stdout() {
         stdout_is_silent(stdout)?;
@@ -472,12 +395,6 @@ fn write_disposition(disposition: &CliDisposition) -> io::Result<()> {
     Ok(())
 }
 
-/// Write `text` to stdout; treat `BrokenPipe` (from a closed reader) as
-/// success so the dispatch `code` still propagates to the OS (red-queen CRIT-1).
-///
-/// # Errors
-/// Returns the underlying stdout I/O error when the write fails for a reason
-/// other than `BrokenPipe`.
 fn stdout_is_silent(text: &str) -> io::Result<()> {
     match write_stdout_line(text) {
         Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
@@ -485,24 +402,12 @@ fn stdout_is_silent(text: &str) -> io::Result<()> {
     }
 }
 
-/// Write a single stdout line.
-///
-/// # Errors
-///
-/// Returns the underlying stdout I/O error when the line or newline cannot be
-/// written completely.
 fn write_stdout_line(text: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     stdout.write_all(text.as_bytes())?;
     stdout.write_all(b"\n")
 }
 
-/// Write a single stderr line.
-///
-/// # Errors
-///
-/// Returns the underlying stderr I/O error when the line or newline cannot be
-/// written completely.
 fn write_stderr_line(text: &str) -> io::Result<()> {
     let mut stderr = io::stderr().lock();
     stderr.write_all(text.as_bytes())?;

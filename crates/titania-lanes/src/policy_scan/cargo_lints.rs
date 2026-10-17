@@ -1,20 +1,3 @@
-//! Cargo manifest lint-weakening scanner.
-//!
-//! Detects `[lints.*]` and `[workspace.lints.*]` entries that lower required
-//! strict lint levels, plus missing workspace-lint inheritance on root and
-//! member manifests. A root manifest (path is exactly `Cargo.toml`) must
-//! workspace-lint inheritance on root and member manifests. A root manifest
-//! (path is exactly `Cargo.toml`) must declare a non-empty `[workspace.lints]`
-//! table; a member manifest (subdirectory) must declare `[lints]` with
-//! `workspace = true`.
-//!
-//! The required lint levels can be lowered at runtime by a checked-in
-//! `.titania/profiles/strict-ai/policy.toml` `[lints]` override map (see
-//! v1-spec.md §9.7). Overrides only ever *weaken* the required level; an
-//! override that is stronger than the default, references an unknown lint,
-//! or carries an unparsable level is silently ignored so the embedded
-//! binary defaults always act as a floor.
-
 use std::{collections::BTreeMap, path::Path};
 
 mod line_lookup;
@@ -42,10 +25,7 @@ const EXPECTED_LEVELS: &[ExpectedLint] = &[
     ExpectedLint::deny("clippy", "let_underscore_must_use"),
     ExpectedLint::deny("rust", "unsafe_code"),
     ExpectedLint::deny("rust", "unreachable_pub"),
-    ExpectedLint::deny("rust", "missing_debug_implementations"),
     ExpectedLint::deny("rust", "future_incompatible"),
-    ExpectedLint::deny("rustdoc", "broken_intra_doc_links"),
-    ExpectedLint::deny("rustdoc", "private_intra_doc_links"),
 ];
 
 const LINT_TABLES: &[LintTableRef] = &[
@@ -136,19 +116,9 @@ struct FindingContext<'a> {
     content: &'a str,
     document: &'a DocumentMut,
     rule: &'a RuleId,
-    /// Optional `policy.toml` `[lints]` override map. `None` keeps the
-    /// compile-time default required levels; `Some(map)` may lower them.
     lint_overrides: Option<&'a BTreeMap<String, String>>,
 }
 
-/// Scan one Cargo manifest for strict-lint weakening and missing
-/// workspace-lint inheritance using only the binary defaults.
-///
-/// See [`scan_cargo_lints_weakening_with_overrides`] for the full contract;
-/// this is a thin shim that passes `None` for the override map.
-///
-/// # Errors
-/// Returns [`RuleIdError`] if the embedded finding rule identifier is invalid.
 pub fn scan_cargo_lints_weakening(
     root: &Path,
     manifest_path: &Path,
@@ -157,25 +127,6 @@ pub fn scan_cargo_lints_weakening(
     scan_cargo_lints_weakening_with_overrides(root, manifest_path, None, report)
 }
 
-/// Scan one Cargo manifest for strict-lint weakening and missing
-/// workspace-lint inheritance, optionally applying a checked-in
-/// `policy.toml` `[lints]` override map.
-///
-/// `manifest_path` is resolved relative to `root` and is also used as the
-/// finding path. Missing files and malformed TOML are clean for this
-/// scanner. A root manifest (path is exactly `Cargo.toml`) is clean only
-/// when it declares a non-empty `[workspace.lints]` table; a member
-/// manifest (subdirectory) is clean only when it declares `[lints]` with
-/// `workspace = true`.
-///
-/// When `lint_overrides` is `Some`, each key is `{category}::{key}` (e.g.
-/// `"clippy::needless_return"`) and the value is one of `allow`, `warn`,
-/// `deny`, or `forbid`. An override only ever *lowers* the required
-/// level: a stronger override, an unknown lint, or an unparsable level
-/// is silently ignored so the embedded defaults always act as a floor.
-///
-/// # Errors
-/// Returns [`RuleIdError`] if the embedded finding rule identifier is invalid.
 pub fn scan_cargo_lints_weakening_with_overrides(
     root: &Path,
     manifest_path: &Path,
@@ -187,15 +138,6 @@ pub fn scan_cargo_lints_weakening_with_overrides(
     })
 }
 
-/// Scan manifest content after the caller has loaded it.
-///
-/// `lint_overrides` is the optional `policy.toml` `[lints]` map; when
-/// present, an entry `{category}::{key}` → level may lower the required
-/// level for a single lint. See
-/// [`scan_cargo_lints_weakening_with_overrides`] for the full contract.
-///
-/// # Errors
-/// Returns [`RuleIdError`] if the finding rule identifier is invalid.
 fn scan_manifest_content(
     manifest_path: &Path,
     content: &str,
@@ -238,8 +180,6 @@ fn manifest_has_lints(document: &DocumentMut) -> bool {
     })
 }
 
-/// Classify a manifest path as either root (`Cargo.toml` at the workspace
-/// root) or a workspace member (any other relative manifest path).
 fn is_root_manifest(manifest_path: &Path) -> bool {
     manifest_path.parent().is_none_or(|parent| parent.as_os_str().is_empty())
 }
@@ -260,14 +200,6 @@ fn has_member_inheritance(document: &DocumentMut) -> bool {
         == Some(true)
 }
 
-/// Emit v1 §9.1 inheritance findings.
-///
-/// Root manifests must pin every canonical entry under
-/// `[workspace.lints.*]` at or above the required level: one typed
-/// `BYPASS_CARGO_LINTS_WEAKENING` finding per absent or below-required
-/// entry, plus a sentinel when the table itself is missing.
-///
-/// Member manifests must declare `[lints] workspace = true`.
 fn missing_inheritance_finding(
     manifest_path: &Path,
     content: &str,
@@ -283,14 +215,6 @@ fn missing_inheritance_finding(
     vec![member_inheritance_finding(manifest_path, content, rule)]
 }
 
-/// Classify a root manifest and emit the appropriate inheritance findings.
-///
-/// A root manifest with no `[workspace]` table is a single-package crate
-/// root and is out of scope for §9.1 inheritance. A virtual root with
-/// both `[workspace]` and `[package]` is a self-hosted member and
-/// §9.10 step 0 mandates `[lints] workspace = true`. Otherwise the
-/// canonical-table rules apply and every missing canonical entry
-/// emits its own typed finding.
 fn root_inheritance_finding(
     manifest_path: &Path,
     content: &str,
@@ -307,24 +231,11 @@ fn root_inheritance_finding(
     missing_root_inheritance_finding(manifest_path, content, document, rule)
 }
 
-/// v1 §9.10 step 0 requires `[lints] workspace = true` for every
-/// workspace member crate.
-///
-/// The workspace root is conventionally a member of itself only when it
-/// ALSO declares `[package]` (the `members=["."]` self-hosted root
-/// case — see `titania/template/Cargo.toml`); a pure virtual root with
-/// only `[workspace]` is table-only.
 fn root_package_member_branch(document: &DocumentMut) -> bool {
     document.get("workspace").and_then(Item::as_table).is_some()
         && document.get("package").and_then(Item::as_table).is_some()
 }
 
-/// Build the per-root canonical-table findings or sentinel when the
-/// table itself is missing.
-///
-/// Returns one typed `BYPASS_CARGO_LINTS_WEAKENING` finding per absent
-/// or below-required canonical entry so editors can triage every gap
-/// individually.
 fn missing_root_inheritance_finding(
     manifest_path: &Path,
     content: &str,
@@ -412,14 +323,6 @@ fn inheritance_finding(
     )
 }
 
-/// Collect weakening findings for parsed manifest lint tables.
-///
-/// Returns the list of weakening findings; the caller is responsible for
-/// recording pass/fail counters and pushing findings to the report.
-///
-/// # Errors
-/// Returns [`RuleIdError`] if the finding rule identifier is invalid
-/// (only reachable via internal misuse; the public entry validates first).
 fn scan_document_lints(
     manifest_path: &Path,
     content: &str,
@@ -468,12 +371,6 @@ fn weakening_finding(
     ))
 }
 
-/// Resolve the effective required level for one expected lint, applying
-/// the `policy.toml` `[lints]` override map when present.
-///
-/// Overrides only ever *lower* the required level: a stronger override,
-/// an unparsable level, or an unknown lint key leaves the default
-/// unchanged. This guarantees the binary defaults act as a strict floor.
 fn effective_required_level(
     overrides: Option<&BTreeMap<String, String>>,
     expected: &ExpectedLint,

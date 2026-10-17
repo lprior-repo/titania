@@ -1,5 +1,3 @@
-//! Invariant tests for receipt constructors and rejected inputs.
-
 use std::{error::Error, fs, path::Path};
 
 use titania_core::{
@@ -8,13 +6,6 @@ use titania_core::{
     TargetProjectError,
 };
 
-/// Constructing a QualityReceipt with zero lanes must be rejected by the
-/// constructor returning Err(ReceiptError::EmptyLaneReceiptList).
-///
-/// This test is expected to FAIL at compile time until the production
-/// constructor `QualityReceipt::new` is changed from `Self` to
-/// `Result<Self, ReceiptError>`. The compile error proves the invariant
-/// contract is not yet in place.
 #[test]
 fn quality_receipt_new_rejects_empty_lane_list() -> Result<(), Box<dyn Error>> {
     let scope: GateScope = "edit".parse().unwrap();
@@ -38,9 +29,6 @@ fn quality_receipt_new_rejects_empty_lane_list() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Deserializing a QualityReceipt JSON lane entry that omits the required
-/// `evidence_digest` field must fail, and the error must reference the
-/// missing field.
 #[test]
 fn quality_receipt_deserialization_rejects_lane_missing_evidence_digest()
 -> Result<(), Box<dyn Error>> {

@@ -1,8 +1,3 @@
-//! Outcome construction for cargo lanes.
-//!
-//! Holds helpers that turn a raw [`CommandOutput`](crate::CommandOutput) and
-//! [`LaneReport`](crate::LaneReport) into a typed [`LaneOutcome`](titania_core::LaneOutcome).
-
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
@@ -17,12 +12,6 @@ use super::{
 };
 use crate::{CommandIn, Finding, LaneReport};
 
-/// Build clean-lane evidence including command argv and tool version.
-///
-/// # Errors
-/// Returns [`RunCargoError::Outcome`] when command or lane evidence
-/// construction fails, or [`RunCargoError::Command`] when the tool
-/// version command cannot run.
 pub(super) fn clean_outcome(
     target: &TargetProject,
     lane: CargoLane,
@@ -39,10 +28,6 @@ pub(super) fn clean_outcome(
     Ok(titania_core::LaneOutcome::Clean { evidence })
 }
 
-/// Build [`CommandEvidence`] recording the underlying cargo argv.
-///
-/// # Errors
-/// Returns [`RunCargoError::Outcome`] on invalid command evidence.
 fn command_evidence(
     lane: CargoLane,
     extra_args: &[String],
@@ -51,7 +36,6 @@ fn command_evidence(
         .map_err(RunCargoError::Outcome)
 }
 
-/// Build the argv box for a cargo invocation including *lane* args.
 fn argv_for_lane(lane: CargoLane, extra_args: &[String]) -> Box<[String]> {
     std::iter::once(String::from("cargo"))
         .chain(args_for_lane(lane).iter().map(|arg| (*arg).to_owned()))
@@ -59,12 +43,6 @@ fn argv_for_lane(lane: CargoLane, extra_args: &[String]) -> Box<[String]> {
         .collect()
 }
 
-/// Fetch tool version by running `cargo <version_args>` separately from the
-/// lane command whose stdout may legitimately be empty.
-///
-/// # Errors
-/// Returns [`RunCargoError::Command`] on execution or decoding failure,
-/// or [`RunCargoError::ToolVersion`] when the version output is empty.
 fn tool_version(target: &TargetProject, lane: CargoLane) -> Result<String, RunCargoError> {
     let mut command = CommandIn::new(target, "cargo").map_err(RunCargoError::Command)?;
     let _ = command.inherit_env();
@@ -77,8 +55,6 @@ fn tool_version(target: &TargetProject, lane: CargoLane) -> Result<String, RunCa
     )
 }
 
-/// Convert a raw [`ExitStatus`](std::process::ExitStatus) into a
-/// [`ProcessTermination`].
 pub(super) fn process_termination(status: std::process::ExitStatus) -> ProcessTermination {
     status
         .code()
@@ -98,13 +74,11 @@ fn termination_from_signal(_status: std::process::ExitStatus) -> ProcessTerminat
     ProcessTermination::SpawnFailed
 }
 
-/// Turn a report with findings into a [`LaneOutcome::Findings`](titania_core::LaneOutcome::Findings).
 pub(super) fn findings_outcome(lane: CargoLane, report: &LaneReport) -> titania_core::LaneOutcome {
     let findings = report.findings().iter().map(|finding| core_finding(lane, finding)).collect();
     titania_core::LaneOutcome::Findings { findings }
 }
 
-/// Convert an inner [`Finding`] into a core [`CoreFinding`].
 fn core_finding(lane: CargoLane, finding: &Finding) -> CoreFinding {
     CoreFinding::reject(
         core_lane(lane),

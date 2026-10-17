@@ -1,17 +1,3 @@
-//! Behavior tests for authoritative proof-registry completeness (bead `tn-f7ti`).
-//!
-//! The inventory audits `.rs` and `.vr` proof sources against the required
-//! obligation registry: a registered missing, unreadable, proof-free, or
-//! smoke-only obligation fails; a removed required row fails; a discovered
-//! unregistered production proof requires disposition. Coverage integrity
-//! only — never a claim of executable correctness.
-//!
-//! Acceptance command:
-//!
-//! ```bash
-//! cargo test -p titania-lanes --test proof_registry
-//! ```
-
 use std::collections::HashMap;
 
 use titania_lanes::proof_registry::{
@@ -91,11 +77,6 @@ fn two_file_store() -> HashMap<String, String> {
     ])
 }
 
-// ── happy paths ──────────────────────────────────────────────────────────
-
-/// Registered non-smoke proofs in `.rs` are accounted for by stable identity,
-/// and the explicitly non-authoritative smoke fixture is accounted for as a
-/// fixture without satisfying production coverage.
 #[test]
 fn registered_proofs_are_accounted_for_by_stable_identity() {
     let files = two_file_store();
@@ -106,17 +87,12 @@ fn registered_proofs_are_accounted_for_by_stable_identity() {
     assert_eq!(report.passed(), &[RECEIPT_PATH.to_owned(), SMOKE_PATH.to_owned()]);
 }
 
-/// Genuine `.vr` content classifies as proof by content, never by extension.
 #[test]
 fn genuine_vr_content_counts_as_proof_by_content() {
     let body = "proof fn ledger_integrity()\n    ensures\n        1 + 1 == 2,\n{\n    assert(1 + 1 == 2);\n}\n";
     assert_eq!(classify_source(body), titania_lanes::proof_registry::SourceClass::GenuineProof);
 }
 
-// ── error paths ──────────────────────────────────────────────────────────
-
-/// The smoke fixture registered as a production obligation fails loudly: a
-/// smoke-only file can never satisfy a production obligation.
 #[test]
 fn smoke_fixture_cannot_satisfy_a_production_obligation() {
     let files = two_file_store();
@@ -131,7 +107,6 @@ fn smoke_fixture_cannot_satisfy_a_production_obligation() {
     );
 }
 
-/// A registered proof file that was deleted fails with the named obligation.
 #[test]
 fn deleted_registered_file_fails_the_named_obligation() {
     let files = HashMap::from([(SMOKE_PATH.to_owned(), SMOKE_FIXTURE.to_owned())]);
@@ -143,7 +118,6 @@ fn deleted_registered_file_fails_the_named_obligation() {
         == AuditFailure::RegisteredMissing { obligation: RECEIPT_PATH.to_owned() }));
 }
 
-/// A registered proof file replaced with proof-free content fails.
 #[test]
 fn proof_free_replacement_fails_the_named_obligation() {
     let files = HashMap::from([
@@ -160,8 +134,6 @@ fn proof_free_replacement_fails_the_named_obligation() {
     );
 }
 
-/// A removed registry row that hides a required obligation blocks, even when
-/// every remaining registered file is healthy.
 #[test]
 fn removed_registry_row_hiding_a_required_obligation_blocks() {
     let files = two_file_store();
@@ -173,8 +145,6 @@ fn removed_registry_row_hiding_a_required_obligation_blocks() {
         == AuditFailure::RequiredObligationRemoved { obligation: RECEIPT_PATH.to_owned() }));
 }
 
-/// A discovered unregistered production proof requires disposition instead of
-/// passing silently.
 #[test]
 fn unregistered_production_proof_requires_disposition() {
     let registry = registry_with(vec![production_entry(RECEIPT_PATH), fixture_entry(SMOKE_PATH)]);
@@ -202,26 +172,18 @@ fn unregistered_production_proof_requires_disposition() {
     );
 }
 
-// ── edge cases ───────────────────────────────────────────────────────────
-
-/// Proof words inside comments or string literals are not proof. Only real
-/// code tokens count.
 #[test]
 fn comment_and_string_mentions_are_not_proof() {
     let body = "// proof fn ensures requires invariant assert\nfn main() {\n    let note = \"assume_specification verus kani proof ensures\";\n}\n";
     assert_eq!(classify_source(body), titania_lanes::proof_registry::SourceClass::ProofFree);
 }
 
-/// File extension alone is never evidence of proof: empty and code-only
-/// bodies classify as proof-free however they are named.
 #[test]
 fn extension_alone_is_never_evidence_of_proof() {
     assert_eq!(classify_source(""), titania_lanes::proof_registry::SourceClass::ProofFree);
     assert_eq!(classify_source(PROOF_FREE), titania_lanes::proof_registry::SourceClass::ProofFree);
 }
 
-/// The explicit smoke tag wins over proof tokens: tagged content is smoke,
-/// never production evidence.
 #[test]
 fn explicit_smoke_tag_wins_over_proof_tokens() {
     assert_eq!(
@@ -234,10 +196,6 @@ fn explicit_smoke_tag_wins_over_proof_tokens() {
     );
 }
 
-// ── registry boundary ────────────────────────────────────────────────────
-
-/// The checked-in registry parses and marks the setup fixture as explicitly
-/// non-authoritative.
 #[test]
 fn checked_in_registry_parses_with_smoke_authority() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
@@ -260,7 +218,6 @@ fn checked_in_registry_parses_with_smoke_authority() {
     assert_eq!(receipt.authority, RegistryAuthority::Production);
 }
 
-/// Unknown registry fields fail closed instead of being ignored.
 #[test]
 fn unknown_registry_fields_fail_closed() {
     let content =
@@ -268,10 +225,6 @@ fn unknown_registry_fields_fail_closed() {
     assert!(parse_registry(content).is_err());
 }
 
-// ── live inventory ───────────────────────────────────────────────────────
-
-/// The real inventory over the working tree is clean: every registered
-/// obligation resolves to proof-bearing content with the declared authority.
 #[test]
 fn live_workspace_inventory_is_clean() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");

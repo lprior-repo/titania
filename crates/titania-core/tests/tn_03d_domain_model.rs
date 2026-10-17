@@ -1,8 +1,3 @@
-//! Comprehensive tests for the v1 domain model (19 types).
-//!
-//! Covers: serde round-trips, constructor validation, invariants,
-//! Acceptance criteria from bead tn-03d §4.
-
 #![allow(clippy::as_conversions)]
 #![allow(clippy::useless_vec)]
 #![allow(clippy::arithmetic_side_effects)]
@@ -13,10 +8,6 @@ use titania_core::{
     PolicyDiagnostic, ProcessTermination, QualityReceipt, ReceiptDigests, ReceiptError, RejectKind,
     RepairHint, Report, RuleId, SkipReason, TextRange, WorkspacePath,
 };
-
-// ===========================================================================
-// Lane — 10 variants
-// ===========================================================================
 
 #[test]
 fn lane_all_10_variants_constructible() {
@@ -50,10 +41,8 @@ fn lane_from_str_exact_pascal_case() {
     assert_eq!("Test".parse::<Lane>(), Ok(Lane::Test));
     assert_eq!("Deny".parse::<Lane>(), Ok(Lane::Deny));
     assert_eq!("Build".parse::<Lane>(), Ok(Lane::Build));
-    // Case-sensitive: lowercase should fail
     assert!("compile".parse::<Lane>().is_err());
     assert!("fmt".parse::<Lane>().is_err());
-    // Mixed case should fail
     assert!("FMT".parse::<Lane>().is_err());
 }
 
@@ -83,10 +72,6 @@ fn lane_serde_round_trip() {
         assert_eq!(*lane, back);
     }
 }
-
-// ===========================================================================
-// GateScope — 3 variants + #[non_exhaustive]
-// ===========================================================================
 
 #[test]
 fn gate_scope_from_str() {
@@ -141,10 +126,6 @@ fn gate_scope_serde_round_trip() {
         assert_eq!(*scope, back);
     }
 }
-
-// ===========================================================================
-// Finding, FindingEffect, Location, RepairHint
-// ===========================================================================
 
 fn make_valid_finding() -> Finding {
     Finding::reject(
@@ -224,8 +205,6 @@ fn repair_hint_other_variants() {
 
 #[test]
 fn repair_hint_patch_accepts_zero_width() {
-    // v1 §10: TextRange invariant is end_byte >= start_byte, so a zero-width
-    // range is a valid patch range and must be accepted.
     let range = TextRange::new(5, 5).unwrap();
     let _patch = RepairHint::patch("f.rs".to_string(), range, "x".to_string());
 }
@@ -249,10 +228,6 @@ fn repair_hint_serde_round_trip() {
     });
 }
 
-// ===========================================================================
-// Report, RejectKind
-// ===========================================================================
-
 fn make_quality_receipt() -> Result<QualityReceipt, ReceiptError> {
     let digest = Digest::from_bytes(b"test");
     let edit_lanes: Box<[LaneReceipt]> = GateScope::Edit
@@ -267,10 +242,6 @@ fn make_quality_receipt() -> Result<QualityReceipt, ReceiptError> {
     )
 }
 
-/// Build the canonical `per_lane` slice for a [`GateScope::Edit`] Pass
-/// report: every Edit lane present, each carrying a pass-shaped `Skipped`
-/// outcome. Used by tests that exercise Pass construction without caring
-/// about a specific lane's outcome.
 #[must_use]
 fn make_edit_per_lane_skipped() -> Box<[titania_core::PerLaneEntry]> {
     use titania_core::{LaneOutcome, SkipReason};
@@ -286,9 +257,6 @@ fn make_edit_per_lane_skipped() -> Box<[titania_core::PerLaneEntry]> {
         .collect()
 }
 
-/// Build a canonical Edit `per_lane` slice where every lane uses the
-/// pass-shaped `Skipped { NotApplicable }` outcome except `target`, which
-/// receives `make_outcome(target)`.
 #[must_use]
 fn build_edit_per_lane_with(
     target: titania_core::Lane,
@@ -417,8 +385,6 @@ fn report_serde_round_trip() {
     assert_eq!(report, back);
 }
 
-/// Informational-only findings SHOULD make Report::pass succeed.
-/// This guards the pass-shaped findings invariant used by aggregate reports.
 #[test]
 fn report_pass_accepts_informational_only_findings() {
     let rule_id = RuleId::new("TEST_STYLE_NOTE").unwrap();
@@ -470,10 +436,6 @@ fn report_pass_rejects_failed_outcome() {
     let result = Report::pass(receipt, per_lane);
     assert!(result.is_err());
 }
-
-// ===========================================================================
-// LaneOutcome, SkipReason
-// ===========================================================================
 
 fn make_valid_evidence() -> LaneEvidence {
     let cmd = CommandEvidence::new(
@@ -595,10 +557,6 @@ fn lane_outcome_is_not_pass_failed() {
     assert!(!outcome.is_pass());
 }
 
-// ===========================================================================
-// ProcessTermination, LaneFailure
-// ===========================================================================
-
 #[test]
 fn process_termination_variants() {
     assert!(
@@ -711,10 +669,6 @@ fn lane_failure_serde_round_trip() {
     }
 }
 
-// ===========================================================================
-// CommandEvidence, LaneEvidence
-// ===========================================================================
-
 #[test]
 fn command_evidence_constructs() {
     let cmd = CommandEvidence::new(
@@ -750,10 +704,6 @@ fn lane_evidence_constructs() {
     .unwrap();
     assert_eq!(evidence.tool_version(), "rustfmt 1.84");
 }
-
-// ===========================================================================
-// QualityReceipt, LaneReceipt
-// ===========================================================================
 
 #[test]
 fn quality_receipt_constructs() {
@@ -800,10 +750,6 @@ fn quality_receipt_serde_round_trip() {
     assert_eq!(receipt, back);
 }
 
-// ===========================================================================
-// PolicyDiagnostic, InputDiagnostic, DiagnosticSeverity
-// ===========================================================================
-
 #[test]
 fn policy_diagnostic_constructs() {
     let d = PolicyDiagnostic {
@@ -831,10 +777,6 @@ fn diagnostic_severity_variants() {
     assert!(matches!(DiagnosticSeverity::Error, DiagnosticSeverity::Error));
     assert!(matches!(DiagnosticSeverity::Warning, DiagnosticSeverity::Warning));
 }
-
-// ===========================================================================
-// FindingEffect
-// ===========================================================================
 
 #[test]
 fn finding_effect_variants() {

@@ -1,5 +1,3 @@
-// Fixture: allowed — no entropy sources in core/domain.
-// Core code receives randomness through a trait abstraction.
 
 use std::ops::Range;
 

@@ -1,5 +1,3 @@
-// Fixture: triggers BYPASS_ALLOW_ATTR
-// An #[allow(...)] attribute suppresses a clippy lint on a function.
 
 #[allow(dead_code)]
 pub fn unused_but_allowed() -> i32 {

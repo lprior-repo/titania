@@ -1,22 +1,3 @@
-//! Behaviour tests for the versioned required-versus-optional obligation contract.
-//!
-//! The production entry point
-//! `titania_aggregate::assemble_report_with_obligations` is the aggregation
-//! boundary where a mandatory lane must prove execution.
-//!
-//! Contracts defended:
-//! 1. Required lane `Skipped` (`NotApplicable`) + otherwise clean → Reject.
-//! 2. Required lane `Skipped` (`ToolUnavailable`) + otherwise clean → Reject.
-//! 3. Legacy v1 `assemble_report` still passes with a skip (compat pin).
-//! 4. `ObligationSet::v1_legacy` through the new entry point still passes.
-//! 5. Optional-lane skip through the new entry point still passes.
-//! 6. All-required + all-clean + valid receipt → Pass.
-//! 7. Required lane `Failed` with `TimedOut` termination → Reject.
-//! 8. Missing required lane → `Err`, never a pass receipt.
-//! 9. `requiring` rejects out-of-scope and duplicate lanes with typed errors.
-//! 10. Required skip + rejecting finding → Reject `Mixed` carrying both.
-//! 11. Informational-only findings on a required lane still pass.
-
 use titania_aggregate::{
     ObligationError, ObligationSet, ReportAssemblyError, assemble_report,
     assemble_report_with_obligations,
@@ -27,7 +8,6 @@ use titania_core::{
     ReceiptDigests, RepairHint, RuleId, SkipReason, TextRange, ToolKind, WorkspacePath,
 };
 
-/// Minimal helper: build a `LaneEvidence` for a clean lane.
 fn clean_evidence() -> LaneEvidence {
     let cmd = titania_core::CommandEvidence::new(
         "cargo".into(),
@@ -43,17 +23,14 @@ fn clean_evidence() -> LaneEvidence {
     .unwrap()
 }
 
-/// Minimal helper: build a `LaneOutcome::Clean`.
 fn clean_outcome() -> LaneOutcome {
     LaneOutcome::Clean { evidence: clean_evidence() }
 }
 
-/// Minimal helper: build a `LaneOutcome::Skipped` with the given reason.
 fn skipped_outcome(reason: SkipReason) -> LaneOutcome {
     LaneOutcome::Skipped { reason }
 }
 
-/// Assert the obligation set exposes its scope, order, and kinds.
 fn assert_contract_accessors(obligations: &ObligationSet, scope: GateScope) {
     use titania_aggregate::ObligationKind;
     assert_eq!(obligations.scope(), scope);
@@ -65,14 +42,12 @@ fn assert_contract_accessors(obligations: &ObligationSet, scope: GateScope) {
     assert!(ObligationSet::v1_legacy(scope).required_lanes().is_empty());
 }
 
-/// Minimal helper: build a `LaneOutcome::Failed` with a timeout termination.
 fn timeout_outcome(tool: &str) -> LaneOutcome {
     LaneOutcome::Failed {
         failure: LaneFailure::Tool { tool: tool.into(), termination: ProcessTermination::TimedOut },
     }
 }
 
-/// Minimal helper: build a `LaneOutcome::Findings` with one rejecting finding.
 fn rejecting_outcome(lane: Lane) -> LaneOutcome {
     let rule_id = RuleId::new("TEST_LINT_VIOLATION").unwrap();
     let loc = WorkspacePath::new("src/main.rs").unwrap();
@@ -83,7 +58,6 @@ fn rejecting_outcome(lane: Lane) -> LaneOutcome {
     LaneOutcome::Findings { findings: Box::from([finding]) }
 }
 
-/// Minimal helper: build a `LaneOutcome::Findings` with one informational finding.
 fn informational_outcome(lane: Lane) -> LaneOutcome {
     let rule_id = RuleId::new("TEST_STYLE_NOTE").unwrap();
     let loc = WorkspacePath::new("src/main.rs").unwrap();
@@ -97,7 +71,6 @@ fn informational_outcome(lane: Lane) -> LaneOutcome {
     LaneOutcome::Findings { findings: Box::from([finding]) }
 }
 
-/// Build a minimal `QualityReceiptV1` for all lanes in the given scope.
 fn test_receipt(scope: GateScope) -> QualityReceiptV1 {
     let digests = ReceiptDigests::new(
         Digest::from_bytes(&[1u8; 32]),
@@ -118,7 +91,6 @@ fn test_receipt(scope: GateScope) -> QualityReceiptV1 {
     QualityReceiptV1::new(scope, digests, lane_receipts).unwrap()
 }
 
-/// Canonical clean entries for `scope`, with entry `at` replaced by `outcome`.
 fn entries_with(scope: GateScope, at: usize, outcome: LaneOutcome) -> Box<[PerLaneEntry]> {
     scope
         .lanes()
@@ -136,7 +108,6 @@ fn entries_with(scope: GateScope, at: usize, outcome: LaneOutcome) -> Box<[PerLa
         .into_boxed_slice()
 }
 
-/// Canonical all-clean entries for `scope`.
 fn clean_entries(scope: GateScope) -> Box<[PerLaneEntry]> {
     scope
         .lanes()
@@ -147,7 +118,6 @@ fn clean_entries(scope: GateScope) -> Box<[PerLaneEntry]> {
         .into_boxed_slice()
 }
 
-/// Assert the single gate failure records the required-lane skip.
 fn assert_required_skip_failure(failures: &[LaneFailure], lane: Lane) {
     assert_eq!(failures.len(), 1, "exactly one gate failure expected");
     match &failures[0] {
@@ -161,8 +131,6 @@ fn assert_required_skip_failure(failures: &[LaneFailure], lane: Lane) {
         other => panic!("expected Infra gate failure for required skip, got {other:?}"),
     }
 }
-
-// ── Test 1: required NotApplicable skip rejects ────────────────────────────
 
 #[test]
 fn required_skip_not_applicable_rejects() {
@@ -184,8 +152,6 @@ fn required_skip_not_applicable_rejects() {
     let failures = report.gate_failures().expect("Reject must carry gate failures");
     assert_required_skip_failure(failures, Lane::Fmt);
 }
-
-// ── Test 2: required ToolUnavailable skip rejects ──────────────────────────
 
 #[test]
 fn required_skip_tool_unavailable_rejects() {
@@ -213,8 +179,6 @@ fn required_skip_tool_unavailable_rejects() {
     assert_required_skip_failure(failures, Lane::Kani);
 }
 
-// ── Test 3: legacy v1 entry point still passes with a skip ──────────────────
-
 #[test]
 fn legacy_assemble_report_still_passes_with_skip() {
     let scope = GateScope::Edit;
@@ -227,8 +191,6 @@ fn legacy_assemble_report_still_passes_with_skip() {
 
     assert!(report.is_pass(), "v1 compatibility: optional skip still passes");
 }
-
-// ── Test 4: v1_legacy set through the new entry point still passes ──────────
 
 #[test]
 fn legacy_obligation_set_still_passes_with_skip() {
@@ -248,12 +210,9 @@ fn legacy_obligation_set_still_passes_with_skip() {
     assert!(report.is_pass(), "v1_legacy set must preserve v1 skip semantics");
 }
 
-// ── Test 5: optional-lane skip still passes ──────────────────────────────────
-
 #[test]
 fn optional_skip_still_passes() {
     let scope = GateScope::Edit;
-    // Every lane except Fmt is required; Fmt stays optional legacy work.
     let required: Vec<Lane> =
         scope.lanes().iter().copied().filter(|lane| *lane != Lane::Fmt).collect();
     let obligations = ObligationSet::requiring(scope, &required).expect("subset of scope is valid");
@@ -270,8 +229,6 @@ fn optional_skip_still_passes() {
 
     assert!(report.is_pass(), "optional skip must still pass");
 }
-
-// ── Test 6: all-required + all-clean passes ─────────────────────────────────
 
 #[test]
 fn all_required_all_clean_passes() {
@@ -290,8 +247,6 @@ fn all_required_all_clean_passes() {
 
     assert!(report.is_pass(), "proven mandatory lanes must pass");
 }
-
-// ── Test 7: required timeout failure rejects ────────────────────────────────
 
 #[test]
 fn required_timeout_failure_rejects() {
@@ -313,8 +268,6 @@ fn required_timeout_failure_rejects() {
     assert!(report.is_reject(), "timed-out mandatory lane must reject");
     assert_eq!(report.reject_kind(), Some(titania_core::RejectKind::GateOnly));
 }
-
-// ── Test 8: missing required lane yields error, never pass ──────────────────
 
 #[test]
 fn missing_required_lane_yields_error_not_pass() {
@@ -339,11 +292,8 @@ fn missing_required_lane_yields_error_not_pass() {
     }
 }
 
-// ── Test 9: requiring rejects out-of-scope and duplicate lanes ──────────────
-
 #[test]
 fn requiring_rejects_unknown_and_duplicate_lanes() {
-    // Test is not in Edit scope.
     match ObligationSet::requiring(GateScope::Edit, &[Lane::Test]) {
         Ok(_) => panic!("out-of-scope required lane must be rejected"),
         Err(error) => assert!(
@@ -359,8 +309,6 @@ fn requiring_rejects_unknown_and_duplicate_lanes() {
         ),
     }
 }
-
-// ── Test 10: required skip + rejecting finding yields Mixed ─────────────────
 
 #[test]
 fn required_skip_plus_reject_finding_yields_mixed() {
@@ -399,8 +347,6 @@ fn required_skip_plus_reject_finding_yields_mixed() {
     let failures = report.gate_failures().expect("Mixed must carry gate failures");
     assert_required_skip_failure(failures, Lane::Fmt);
 }
-
-// ── Test 11: informational findings on a required lane still pass ───────────
 
 #[test]
 fn informational_findings_on_required_still_pass() {

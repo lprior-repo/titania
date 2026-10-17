@@ -1,6 +1,3 @@
-// Fixture: triggers ARCHITECTURE_EFFECT_CORE_STATE.
-// Core/domain code must not use ambient mutable state; explicit values
-// travel through typed ports.
 
 static mut CALLS: i32 = 0;
 

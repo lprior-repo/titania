@@ -1,5 +1,3 @@
-// Fixture: triggers FUNC_WILDCARD_IMPORT
-// Wildcard imports in production source — should use explicit imports.
 
 use std::collections::*;
 use std::io::Write;

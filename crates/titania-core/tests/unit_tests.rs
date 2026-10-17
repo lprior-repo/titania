@@ -1,10 +1,4 @@
-//! Unit tests for `titania-core` primitives.
-//!
-//! These live in `tests/` so source-target lint and Dylint gates can stay
-//! strict while test assertions remain clear. The tests exercise the `pub` API
-//! surface end-to-end.
-
-#![allow(clippy::as_conversions)] // ASCII byte round-trip is exact in tests.
+#![allow(clippy::as_conversions)]
 
 use titania_core::{Digest, DigestError, RuleId, RuleIdError};
 
@@ -14,10 +8,6 @@ const DIGEST_HEX_LEN: usize = 64;
 const fn is_lower_hex(b: u8) -> bool {
     matches!(b, b'0'..=b'9' | b'a'..=b'f')
 }
-
-// ====================================================================
-// Digest
-// ====================================================================
 
 #[test]
 fn digest_from_bytes_is_deterministic() {
@@ -112,10 +102,6 @@ fn digest_distinct_inputs_produce_distinct_digests_sampled() {
         );
     }
 }
-
-// ====================================================================
-// RuleId
-// ====================================================================
 
 #[test]
 fn rule_id_accepts_well_formed_ids() {

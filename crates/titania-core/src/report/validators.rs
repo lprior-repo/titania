@@ -1,12 +1,5 @@
-//! Internal validators shared by [`Report`] constructors and wire
-//! deserialization. Private; not part of the public API.
-
 use super::PerLaneEntry;
 use crate::{error::ReportError, failure::LaneFailure, finding::Finding};
-/// Check a reject report contains at least one finding or failure.
-///
-/// # Errors
-/// Returns [`ReportError::EmptyReject`] when both reject collections are empty.
 pub(super) fn check_reject_not_empty(
     code_findings: &[Finding],
     gate_failures: &[LaneFailure],
@@ -16,21 +9,10 @@ pub(super) fn check_reject_not_empty(
         .ok_or(ReportError::EmptyReject)
 }
 
-/// Check a pass report carries per-lane evidence.
-///
-/// # Errors
-/// Returns [`ReportError::EmptyPerLane`] when `per_lane` is empty.
 pub(super) fn check_per_lane_not_empty(per_lane: &[PerLaneEntry]) -> Result<(), ReportError> {
     (!per_lane.is_empty()).then_some(()).ok_or(ReportError::EmptyPerLane)
 }
 
-/// Check every lane outcome in `per_lane` is pass-shaped (Clean, Skipped,
-/// or Findings with only informational findings).
-///
-/// # Errors
-///
-/// Returns [`ReportError::NonPassLaneOutcome`] for the first lane outcome
-/// that is not pass-shaped.
 pub(super) fn validate_per_lane_pass(per_lane: &[PerLaneEntry]) -> Result<(), ReportError> {
     per_lane.iter().find(|e| !e.outcome().is_pass()).map_or(Ok(()), |first_bad| {
         Err(ReportError::NonPassLaneOutcome(
@@ -40,11 +22,6 @@ pub(super) fn validate_per_lane_pass(per_lane: &[PerLaneEntry]) -> Result<(), Re
     })
 }
 
-/// Which reject collections are empty, used to classify a reject report.
-///
-/// Grouping the two emptiness flags into one typed record keeps
-/// `reject_kind_from_empty` under the workspace `max-fn-params-bools = 1`
-/// policy while remaining explicit and pattern-matchable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct RejectEmptiness {
     pub(super) code_empty: bool,
@@ -87,28 +64,12 @@ fn mismatch_detail(
     }
 }
 
-/// Validate that `per_lane`'s lane identities exactly match the canonical
-/// ordered lane sequence required by `scope` for a [`super::Report::pass`].
-///
-/// Each per-lane identity is checked in lockstep against `scope.lanes()`:
-/// the sequence must be the same length, the same order, and free of
-/// duplicates. Any deviation produces a typed [`PerLaneScopeError`] wrapped
-/// in [`ReportError::PerLaneScopeMismatch`].
-///
-/// # Errors
-///
-/// Returns [`ReportError::PerLaneScopeMismatch`] carrying a
-/// [`PerLaneScopeError::Missing`], [`PerLaneScopeError::Extra`],
-/// [`PerLaneScopeError::OutOfOrder`], or [`PerLaneScopeError::Duplicate`]
-/// detail describing the first violation encountered.
 pub(super) fn validate_per_lane_pass_scope(
     scope: crate::GateScope,
     per_lane: &[PerLaneEntry],
 ) -> Result<(), ReportError> {
     let expected = scope.lanes();
 
-    // Walk the overlap in lockstep; first mismatch wins so the caller gets
-    // the most actionable diagnostic (the offending position, not the tail).
     let first_mismatch = expected.iter().zip(per_lane.iter()).enumerate().find_map(
         |(idx, (expected_lane, entry))| {
             (expected_lane != entry.lane()).then_some((idx, *expected_lane, *entry.lane()))
@@ -120,8 +81,6 @@ pub(super) fn validate_per_lane_pass_scope(
         return Err(ReportError::PerLaneScopeMismatch { scope, error: detail });
     }
 
-    // The overlap matched; any remaining length difference is a missing-or-extra
-    // condition.
     if let Some(extra_entry) = per_lane.get(expected.len()) {
         return Err(ReportError::PerLaneScopeMismatch {
             scope,
@@ -136,20 +95,6 @@ pub(super) fn validate_per_lane_pass_scope(
     }
     Ok(())
 }
-/// The canonical lane DAG is the ordered set of all lanes that appear in any
-/// [`crate::GateScope`] (equivalent to `GateScope::Release.lanes()`, since
-/// Release is the superset).
-///
-/// Each per-lane identity must be known, unique, and strictly later in
-/// canonical order than every prior entry.
-///
-/// Used by [`super::Report::reject`] since the reject constructor does not
-/// receive a receipt/scope; the v1 DAG is the implicit scope.
-///
-/// # Errors
-///
-/// Returns [`ReportError::PerLaneScopeMismatch`] for an unknown, duplicate, or
-/// out-of-order lane.
 pub(super) fn validate_per_lane_reject(
     scope: crate::GateScope,
     per_lane: &[PerLaneEntry],
@@ -163,12 +108,6 @@ pub(super) fn validate_per_lane_reject(
         .map(|_| ())
 }
 
-/// Validate one lane and return its canonical position for the next entry.
-///
-/// # Errors
-///
-/// Returns [`ReportError::PerLaneScopeMismatch`] when `lane` violates the
-/// canonical sequence.
 fn validate_reject_entry(
     canonical: &[crate::Lane],
     scope: crate::GateScope,

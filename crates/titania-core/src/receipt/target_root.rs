@@ -5,21 +5,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{TargetProject, error::ReceiptError};
 
-/// Lexical target-root path recorded in an archived quality receipt.
-///
-/// Unlike [`TargetProject`], this type performs no filesystem I/O while
-/// deserializing. Receipts must remain readable after the judged project is
-/// moved, unmounted, or deleted.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RecordedTargetRoot(Utf8PathBuf);
 
 impl RecordedTargetRoot {
-    /// Construct a recorded target root from a UTF-8 path string.
-    ///
-    /// # Errors
-    /// - [`ReceiptError::TargetRootEmpty`] if the path is empty.
-    /// - [`ReceiptError::TargetRootNonAbsolute`] if the path is relative.
-    /// - [`ReceiptError::TargetRootContainsNul`] if the path contains NUL.
     pub fn new(path: impl Into<Utf8PathBuf>) -> Result<Self, ReceiptError> {
         let path = path.into();
         validate_recorded_root(&path)?;
@@ -30,31 +19,22 @@ impl RecordedTargetRoot {
         Self(target.as_path().to_owned())
     }
 
-    /// Borrow the recorded path.
     #[must_use]
     pub fn as_path(&self) -> &Utf8Path {
         &self.0
     }
 
-    /// Borrow the recorded path as UTF-8.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 
-    /// Recorded manifest path: `{target_root}/Cargo.toml`.
     #[must_use]
     pub fn manifest_path(&self) -> Utf8PathBuf {
         self.0.join("Cargo.toml")
     }
 }
 
-/// Validate a recorded target root before storing it in a receipt.
-///
-/// # Errors
-/// - [`ReceiptError::TargetRootEmpty`] if the root is empty.
-/// - [`ReceiptError::TargetRootNonAbsolute`] if the root is not absolute.
-/// - [`ReceiptError::TargetRootContainsNul`] if the root contains a NUL byte.
 fn validate_recorded_root(path: &Utf8Path) -> Result<(), ReceiptError> {
     if path.as_str().is_empty() {
         return Err(ReceiptError::TargetRootEmpty);

@@ -1,5 +1,3 @@
-//! Line and block comment transitions.
-
 use super::{BlockMark, LineScan, ScanMode};
 
 enum BlockClose {

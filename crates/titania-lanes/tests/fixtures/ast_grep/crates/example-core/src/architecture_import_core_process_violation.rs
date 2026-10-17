@@ -1,5 +1,3 @@
-// Fixture: triggers ARCHITECTURE_IMPORT_CORE_PROCESS.
-// Core/domain code spawning a subprocess directly.
 
 use std::process::Command;
 

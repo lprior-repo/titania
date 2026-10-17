@@ -1,22 +1,13 @@
-//! Parser and validator for `.titania/profiles/strict-ai/exceptions.toml`.
-
 use serde::Deserialize;
 use titania_core::{RuleId, WorkspacePath};
 
-/// A checked policy exception entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exception {
-    /// Rule identifier being excepted.
     pub rule_id: RuleId,
-    /// Workspace-relative path constrained by the exception.
     pub path: WorkspacePath,
-    /// Team or owner accountable for the exception.
     pub owner: Box<str>,
-    /// Human-readable justification.
     pub reason: Box<str>,
-    /// Canonical ISO-8601 date (`YYYY-MM-DD`) when the exception expires.
     pub expires_on: Box<str>,
-    /// Review ticket or approval identifier.
     pub review: Box<str>,
 }
 
@@ -45,39 +36,15 @@ struct PolicyDate {
     day: u8,
 }
 
-/// Errors returned while parsing or validating `exceptions.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExceptionError {
-    /// TOML parsing failed.
-    ParseError {
-        /// Human-readable parser message.
-        message: Box<str>,
-    },
-    /// A required field is absent or empty.
-    MissingField {
-        /// Missing field name.
-        field: &'static str,
-    },
-    /// A present field failed semantic validation.
-    InvalidField {
-        /// Invalid field name.
-        field: &'static str,
-        /// Human-readable validation message.
-        message: Box<str>,
-    },
-    /// The exception's expiry is older than the supplied policy date.
-    ExceptionExpired {
-        /// Rule identifier from the expired exception.
-        rule_id: Box<str>,
-        /// Expiry date from the exception.
-        expires_on: Box<str>,
-        /// Policy evaluation date.
-        today: Box<str>,
-    },
+    ParseError { message: Box<str> },
+    MissingField { field: &'static str },
+    InvalidField { field: &'static str, message: Box<str> },
+    ExceptionExpired { rule_id: Box<str>, expires_on: Box<str>, today: Box<str> },
 }
 
 impl ExceptionError {
-    /// Return the stable diagnostic code for this error.
     #[must_use]
     pub const fn code(&self) -> &'static str {
         match self {
@@ -89,16 +56,6 @@ impl ExceptionError {
     }
 }
 
-/// Parse and validate `.titania/profiles/strict-ai/exceptions.toml` content.
-///
-/// `today` must be a canonical ISO date (`YYYY-MM-DD`) supplied by the caller's
-/// clock boundary. Keeping the parser pure avoids hidden time access.
-///
-/// # Errors
-/// Returns [`ExceptionError::ParseError`] for malformed TOML,
-/// [`ExceptionError::MissingField`] for missing/empty required fields,
-/// [`ExceptionError::InvalidField`] for malformed rule ids, paths, or dates,
-/// and [`ExceptionError::ExceptionExpired`] when `expires_on < today`.
 pub fn parse_exceptions(content: &str, today: &str) -> Result<Vec<Exception>, ExceptionError> {
     let today_date = parse_date(today, "today")?;
     toml_edit::de::from_str::<ExceptionsDocument>(content)
@@ -111,13 +68,6 @@ pub fn parse_exceptions(content: &str, today: &str) -> Result<Vec<Exception>, Ex
         .collect()
 }
 
-/// Validate one decoded exception entry.
-///
-/// # Errors
-/// Returns [`ExceptionError::MissingField`] when a required field is absent
-/// or empty, [`ExceptionError::InvalidField`] when a typed field violates its
-/// constructor, and [`ExceptionError::ExceptionExpired`] when the exception is
-/// stale for the supplied policy date.
 fn validate_exception(
     wire: ExceptionWire,
     today_text: &str,
@@ -136,10 +86,6 @@ fn validate_exception(
     Ok(Exception { rule_id, path, owner, reason, expires_on, review })
 }
 
-/// Parse and validate a required string as a [`RuleId`].
-///
-/// # Errors
-/// Returns [`ExceptionError::InvalidField`] when [`RuleId`] rejects the value.
 fn validated_rule_id(value: &str) -> Result<RuleId, ExceptionError> {
     RuleId::new(value).map_err(|error| ExceptionError::InvalidField {
         field: "rule_id",
@@ -147,10 +93,6 @@ fn validated_rule_id(value: &str) -> Result<RuleId, ExceptionError> {
     })
 }
 
-/// Parse and validate a required string as a [`WorkspacePath`].
-///
-/// # Errors
-/// Returns [`ExceptionError::InvalidField`] when [`WorkspacePath`] rejects the value.
 fn validated_path(value: &str) -> Result<WorkspacePath, ExceptionError> {
     WorkspacePath::new(value).map_err(|error| ExceptionError::InvalidField {
         field: "path",
@@ -158,10 +100,6 @@ fn validated_path(value: &str) -> Result<WorkspacePath, ExceptionError> {
     })
 }
 
-/// Reject stale policy exceptions.
-///
-/// # Errors
-/// Returns [`ExceptionError::ExceptionExpired`] when `expires_on < today`.
 fn reject_expired(
     rule_id: &RuleId,
     expires_on_text: &str,
@@ -179,29 +117,16 @@ fn reject_expired(
     })
 }
 
-/// Extract a required non-empty string field.
-///
-/// # Errors
-/// Returns [`ExceptionError::MissingField`] when the value is absent or blank.
 fn required(value: Option<String>, field: &'static str) -> Result<String, ExceptionError> {
     value
         .filter(|candidate| !candidate.trim().is_empty())
         .ok_or(ExceptionError::MissingField { field })
 }
 
-/// Extract a required non-empty string field as [`Box<str>`].
-///
-/// # Errors
-/// Returns [`ExceptionError::MissingField`] when the value is absent or blank.
 fn required_boxed(value: Option<String>, field: &'static str) -> Result<Box<str>, ExceptionError> {
     required(value, field).map(String::into_boxed_str)
 }
 
-/// Parse a canonical `YYYY-MM-DD` date.
-///
-/// # Errors
-/// Returns [`ExceptionError::InvalidField`] when the date is malformed,
-/// non-canonical, or outside supported calendar ranges.
 fn parse_date(value: &str, field: &'static str) -> Result<PolicyDate, ExceptionError> {
     let (year_text, month_text, day_text) = split_date(value, field)?;
     require_date_widths(value, year_text, month_text, day_text, field)?;
@@ -219,11 +144,6 @@ fn parse_date(value: &str, field: &'static str) -> Result<PolicyDate, ExceptionE
 
 type DateParts<'a> = (&'a str, &'a str, &'a str);
 
-/// Split a date into year, month, and day text.
-///
-/// # Errors
-/// Returns [`ExceptionError::InvalidField`] unless the value has exactly three
-/// dash-delimited parts.
 fn split_date<'a>(value: &'a str, field: &'static str) -> Result<DateParts<'a>, ExceptionError> {
     let mut parts = value.split('-');
     let year = parts.next().ok_or_else(|| invalid_date(field))?;
@@ -233,11 +153,6 @@ fn split_date<'a>(value: &'a str, field: &'static str) -> Result<DateParts<'a>, 
     Ok((year, month, day))
 }
 
-/// Validate canonical date widths.
-///
-/// # Errors
-/// Returns [`ExceptionError::InvalidField`] when the total or component widths
-/// are not exactly `YYYY-MM-DD`.
 fn require_date_widths(
     value: &str,
     year: &str,
@@ -251,10 +166,6 @@ fn require_date_widths(
     Err(invalid_date(field))
 }
 
-/// Validate a date component contains only ASCII digits.
-///
-/// # Errors
-/// Returns [`ExceptionError::InvalidField`] when `value` contains non-digits.
 fn require_digits(value: &str, field: &'static str) -> Result<(), ExceptionError> {
     if value.chars().all(|ch| ch.is_ascii_digit()) {
         return Ok(());
@@ -262,11 +173,6 @@ fn require_digits(value: &str, field: &'static str) -> Result<(), ExceptionError
     Err(invalid_date(field))
 }
 
-/// Parse one date component.
-///
-/// # Errors
-/// Returns [`ExceptionError::InvalidField`] when the number cannot fit the
-/// requested destination type.
 fn parse_date_part<T>(value: &str, field: &'static str) -> Result<T, ExceptionError>
 where
     T: core::str::FromStr,
@@ -274,11 +180,6 @@ where
     value.parse().map_err(|_error| invalid_date(field))
 }
 
-/// Validate month and day bounds.
-///
-/// # Errors
-/// Returns [`ExceptionError::InvalidField`] when month or day is outside the
-/// supported Gregorian calendar range.
 fn validate_date_range(date: PolicyDate, field: &'static str) -> Result<(), ExceptionError> {
     let Some(limit) = day_limit(date) else {
         return Err(invalid_date(field));

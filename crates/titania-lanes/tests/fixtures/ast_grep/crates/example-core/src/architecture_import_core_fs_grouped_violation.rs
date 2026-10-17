@@ -1,4 +1,3 @@
-// Fixture: triggers ARCHITECTURE_IMPORT_CORE_FS when forbidden grouped member is not first.
 use std::{collections::HashMap, fs};
 
 pub fn load_config(path: &str) -> std::io::Result<HashMap<String, String>> {

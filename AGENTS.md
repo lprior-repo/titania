@@ -106,13 +106,14 @@ workspace = true
 ```
 
 Workspace lint policy:
-- Deny Rust warnings, future-incompatible lints, Rust 2018 idioms, unsafe code, unsafe operations in unsafe functions, unused must-use/results, `let_underscore_drop`, elided lifetimes, missing docs/debug impls, unreachable public items, trivial casts, variant size differences, unused extern crates/import braces, and 2024 keyword identifiers.
-- Deny rustdoc broken links, bare URLs, private intra-doc links, invalid codeblock attributes, and missing crate-level docs.
+- Deny Rust warnings, future-incompatible lints, Rust 2018 idioms, unsafe code, unsafe operations in unsafe functions, unused must-use/results, `let_underscore_drop`, elided lifetimes, unreachable public items, trivial casts, variant size differences, unused extern crates/import braces, and 2024 keyword identifiers.
+- Allow missing docs and missing debug impls (the comment-free law below forbids doc comments, so these lints must stay off).
+- Deny rustdoc bare URLs. Allow broken links, private intra-doc links, invalid codeblock attributes, and missing crate-level docs (vacuous without doc comments).
 - Deny Clippy `all`, `cargo`, `pedantic`, and `nursery`.
 - Deny escape hatches: `allow_attributes` and `allow_attributes_without_reason`.
 - Deny production panic/placeholder/debug/print surface: `unwrap_used`, `expect_used`, `unwrap_in_result`, `panic`, `panic_in_result_fn`, `todo`, `unimplemented`, `unreachable`, `dbg_macro`, `print_stdout`, and `print_stderr`.
 - Deny unchecked indexing, slicing, casts, arithmetic, integer division/remainder, modulo arithmetic, and float arithmetic unless the domain explicitly justifies local exceptions.
-- Deny weak error/API shape: large/unit errors, ignored mapped errors, missing error/panic/safety docs, and large enum variants.
+- Deny weak error/API shape: large/unit errors, ignored mapped errors, and large enum variants. Allow missing error/panic/safety docs (forbidden by the comment-free law).
 - Deny complexity debt: cognitive complexity, too many arguments, too many lines, type complexity, and excessive nesting.
 - Deny async/concurrency hazards: holding locks/refcells across await, non-send futures, and large futures.
 - Deny policy-configured disallowed methods, macros, types, and fields.
@@ -128,12 +129,17 @@ Workspace lint policy:
 - Configure disallowed macros for debug/print/panic/todo/unimplemented/unreachable/assert macros.
 - Configure disallowed types for linked lists, `Rc`, `RefCell`, and blocking sync locks unless the project explicitly accepts that level of constraint.
 
+### Comment-Free Code Law
+
+Zero code comments, ever. No `//`, `///`, `//!`, or `/* */` in Rust, no `#` comments in shell or Python, no doc comments on any item. Original blank lines are preserved; only comment text and comment-only lines go. Rationale: comments rot, state what the code does not say, and duplicate the contract that already lives in bead artifacts, contracts, and Markdown docs. Prose belongs in Markdown files, bead artifacts, `reason = "..."` attribute strings, assertion messages, and lint/help text — never in comment syntax. The machine gate is `scripts/dev/comment_free.py --check` (also the Moon `comment-free` task, wired into `ci` and `quick`); it parses strings, chars, lifetimes, raw strings, nested block comments, and shell heredocs, so `//` inside a string literal never false-positives. If the gate lists a file, run the same tool with `--write`, then re-run `cargo fmt`. Fixture files obey the same law; span-accuracy tests pin post-strip line numbers. Test helpers that build fixture source as string literals keep their content (string data is not a comment). Narrow exception (policy, not test weakening): `crates/titania-lanes/tests/fixtures/ast_grep/bypass/bypass_inline_suppression_violation.rs` may contain only its `// ast-grep-ignore` / `// sg-ignore` marker comment lines, because the production `detect_inline_suppression` detector recognizes markers solely inside real `//` or `/* */` comments — a string literal holding the marker text does not fire the lane and would falsify the fixture. `scripts/dev/comment_free.py` carries an explicit `MARKER_FIXTURE_EXEMPTIONS` list for exactly this path so the gate stays green.
+
 Canonical Moon-aligned source-only gate:
 
 ```bash
 cargo fmt --all -- --check
+python3 scripts/dev/comment_free.py --check
 cargo check --workspace --all-targets --all-features
-cargo clippy --workspace --lib --bins --examples --all-features -- -D warnings -D unsafe_code -D clippy::all -D clippy::cargo -D clippy::pedantic -D clippy::nursery -D clippy::unwrap_used -D clippy::expect_used -D clippy::unwrap_in_result -D clippy::panic -D clippy::panic_in_result_fn -D clippy::todo -D clippy::unimplemented -D clippy::unreachable -D clippy::dbg_macro -D clippy::print_stdout -D clippy::print_stderr -D clippy::indexing_slicing -D clippy::string_slice -D clippy::get_unwrap -D clippy::arithmetic_side_effects -D clippy::as_conversions -D clippy::integer_division -D clippy::integer_division_remainder_used -D clippy::let_underscore_must_use -D clippy::await_holding_lock -D clippy::future_not_send -D clippy::large_futures -D clippy::allow_attributes -D clippy::allow_attributes_without_reason -D clippy::disallowed_methods -D clippy::disallowed_macros -D clippy::disallowed_types -D clippy::disallowed_fields
+cargo clippy --workspace --lib --bins --examples --all-features -- -D warnings -D unsafe_code -D clippy::all -D clippy::cargo -D clippy::pedantic -D clippy::nursery -D clippy::unwrap_used -D clippy::expect_used -D clippy::unwrap_in_result -D clippy::panic -D clippy::panic_in_result_fn -D clippy::todo -D clippy::unimplemented -D clippy::unreachable -D clippy::dbg_macro -D clippy::print_stdout -D clippy::print_stderr -D clippy::indexing_slicing -D clippy::string_slice -D clippy::get_unwrap -D clippy::arithmetic_side_effects -D clippy::as_conversions -D clippy::integer_division -D clippy::integer_division_remainder_used -D clippy::let_underscore_must_use -D clippy::await_holding_lock -D clippy::future_not_send -D clippy::large_futures -D clippy::allow_attributes -D clippy::allow_attributes_without_reason -D clippy::disallowed_methods -D clippy::disallowed_macros -D clippy::disallowed_types -D clippy::disallowed_fields -A clippy::missing_errors_doc -A clippy::missing_panics_doc -A clippy::missing_safety_doc
 cargo nextest run --workspace --all-features
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps
 cargo dylint --workspace --all -- --lib --bins --examples

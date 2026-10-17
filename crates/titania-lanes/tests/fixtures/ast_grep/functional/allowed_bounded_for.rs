@@ -1,6 +1,3 @@
-// Fixture: allowed — bounded `for` iteration over finite input with `?`.
-// Bound::FiniteInput with the input length as evidence; the typed failure
-// stays observable through `?`. No unbounded retry or iterator source.
 
 pub fn total(items: &[i32]) -> Result<i32, &'static str> {
     let mut sum = 0;

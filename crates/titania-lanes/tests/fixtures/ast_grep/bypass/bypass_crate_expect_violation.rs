@@ -1,5 +1,3 @@
-// Fixture: triggers BYPASS_CRATE_EXPECT
-// A #![expect(...)] attribute at the crate root.
 
 #![expect(clippy::needless_return)]
 

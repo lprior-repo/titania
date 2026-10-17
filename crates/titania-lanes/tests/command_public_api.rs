@@ -1,5 +1,4 @@
 #![cfg(unix)]
-//! CommandIn public-API smoke tests.
 
 use std::{error::Error, io::ErrorKind, time::Duration};
 

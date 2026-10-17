@@ -41,6 +41,18 @@ tasks:
       - 'crates/**/*.rs'
       - 'rustfmt.toml'
 
+  comment-free:
+    command: 'python3 scripts/dev/comment_free.py --check'
+    options:
+      runInCI: true
+    inputs:
+      - 'crates/**/*.rs'
+      - 'fixtures/**/*.rs'
+      - 'titania/**/*.rs'
+      - 'verification/**/*.rs'
+      - 'scripts/**/*'
+      - 'scripts/dev/comment_free.py'
+
   lint-src:
     # ZERO TOLERANCE for source. Catches ALL clippy issues.
     command: 'cargo clippy --frozen --lib --bins --examples -- -D warnings -W clippy::all'
@@ -152,6 +164,18 @@ tasks:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'crates/**/Cargo.toml'
+
+  verus:
+    script: >-
+      verus verification/verus/khi_kernel.rs
+      &&
+      verus --no-cheating verification/verus/formal_setup_smoke.rs
+      &&
+      verus verification/verus/receipt_schema.rs
+    options:
+      runInCI: true
+    inputs:
+      - 'verification/verus/**/*.rs'
 
   # ---------- titania-lanes: 28 cargo bin targets ----------
 
@@ -398,6 +422,7 @@ tasks:
     # Canonical Moon v2 CI gate. Runs affected targets, respects runInCI.
     deps:
       - '~:fmt'
+      - '~:comment-free'
       - '~:lint-src'
       - '~:clippy-all'
       - '~:check'
@@ -406,6 +431,7 @@ tasks:
       - '~:deny'
       - '~:vet'
       - '~:geiger'
+      - '~:verus'
     options:
       runInCI: true
 
@@ -413,6 +439,7 @@ tasks:
     # Fast dev loop: format + source lint + type check. No tests, no build.
     deps:
       - '~:fmt'
+      - '~:comment-free'
       - '~:lint-src'
       - '~:check'
     options:

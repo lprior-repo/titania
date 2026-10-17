@@ -1,5 +1,3 @@
-//! Canonical strict-ai policy digest calculation.
-
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
@@ -7,18 +5,12 @@ use titania_core::Digest;
 
 use crate::PolicyDefaults;
 
-/// Blake3 digest of binary policy defaults and v1 policy input files.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PolicyDigest {
     digest: Digest,
 }
 
 impl PolicyDigest {
-    /// Compute the canonical v1 policy digest.
-    ///
-    /// Each component is serialized with explicit length prefixes before the
-    /// final Blake3 hash. TOML inputs are parsed into a sorted representation so
-    /// comments and source key order do not affect the digest.
     #[must_use]
     pub fn compute(
         defaults: &PolicyDefaults,
@@ -36,13 +28,11 @@ impl PolicyDigest {
         Self { digest: Digest::from_bytes(payload.as_bytes()) }
     }
 
-    /// Borrow the 64-character lowercase hex digest.
     #[must_use]
     pub fn as_hex(&self) -> &str {
         self.digest.as_hex()
     }
 
-    /// Borrow the validated core digest.
     #[must_use]
     pub const fn digest(&self) -> &Digest {
         &self.digest

@@ -1,97 +1,41 @@
-//! Single-pass scanner that skips comments and string literals.
-//!
-//! Words accumulate only in code mode, so proof tokens inside comments or
-//! strings never count. Over-stripping around lifetime ticks fails loud as
-//! proof-free; it can never manufacture a silent pass.
-
 use super::classify::{WordAction, is_word_char};
 
-/// Single-pass scanner mode.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Scan {
-    /// Normal code; words accumulate here.
     Code(CodeSub),
-    /// Comment content; skipped.
     Comment(CommentSub),
-    /// String, character, or raw-string content; skipped.
     Text(TextSub),
 }
 
-/// Code-level scanner sub-state.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum CodeSub {
-    /// Between tokens.
     Ready,
-    /// Just saw `/`; `//`, `/*`, or division follows.
     SawSlash,
-    /// Just saw `r` (plus `hashes` `#`) at a word start; a raw string,
-    /// an identifier continuation, or a boundary follows.
-    SawRaw {
-        /// `#` characters seen after the `r`.
-        hashes: u8,
-    },
+    SawRaw { hashes: u8 },
 }
 
-/// Comment scanner sub-state.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum CommentSub {
-    /// Inside `//` until newline.
     Line,
-    /// Inside `/*` with nesting depth.
-    Block {
-        /// Nesting depth, at least one.
-        depth: u32,
-    },
-    /// Inside `/*` just after `*`; `/` would close one level.
-    BlockStar {
-        /// Nesting depth, at least one.
-        depth: u32,
-    },
-    /// Inside `/*` just after `/`; `*` would nest one level deeper.
-    BlockSlash {
-        /// Nesting depth, at least one.
-        depth: u32,
-    },
+    Block { depth: u32 },
+    BlockStar { depth: u32 },
+    BlockSlash { depth: u32 },
 }
 
-/// String-literal scanner sub-state.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum TextSub {
-    /// Inside `"..."`.
-    Quoted {
-        /// Previous character was an unescaped backslash.
-        escaped: bool,
-    },
-    /// Inside `'...'` or a lifetime tick; bails out to code past short
-    /// literals so lifetime annotations cannot swallow real code.
-    Tick {
-        /// Content characters consumed so far.
-        length: u8,
-        /// Previous character was an unescaped backslash.
-        escaped: bool,
-    },
-    /// Inside `r#"..."#` with hash count.
-    Raw {
-        /// Opening hash count.
-        hashes: u8,
-    },
-    /// Inside a raw string just after `"`; `#` characters may close it.
-    RawEnd {
-        /// Opening hash count.
-        hashes: u8,
-        /// Closing `#` characters matched so far.
-        matched: u8,
-    },
+    Quoted { escaped: bool },
+    Tick { length: u8, escaped: bool },
+    Raw { hashes: u8 },
+    RawEnd { hashes: u8, matched: u8 },
 }
 
 impl Scan {
-    /// Scanner starting in normal code.
     pub(crate) const fn code() -> Self {
         Self::Code(CodeSub::Ready)
     }
 }
 
-/// Fold one character into the scanner, returning the word-buffer action.
 pub(crate) const fn scan_step(mode: Scan, next: char) -> (Scan, WordAction) {
     match mode {
         Scan::Code(sub) => step_code(sub, next),
@@ -100,7 +44,6 @@ pub(crate) const fn scan_step(mode: Scan, next: char) -> (Scan, WordAction) {
     }
 }
 
-/// Fold one character while in code.
 const fn step_code(sub: CodeSub, next: char) -> (Scan, WordAction) {
     match sub {
         CodeSub::Ready => step_code_ready(next),
@@ -109,7 +52,6 @@ const fn step_code(sub: CodeSub, next: char) -> (Scan, WordAction) {
     }
 }
 
-/// Enter the literal matching one quote character.
 const fn text_entry(next: char) -> TextSub {
     if next == '"' {
         TextSub::Quoted { escaped: false }
@@ -118,7 +60,6 @@ const fn text_entry(next: char) -> TextSub {
     }
 }
 
-/// Fold one character while between code tokens.
 const fn step_code_ready(next: char) -> (Scan, WordAction) {
     match next {
         '/' => (Scan::Code(CodeSub::SawSlash), WordAction::Check),
@@ -129,7 +70,6 @@ const fn step_code_ready(next: char) -> (Scan, WordAction) {
     }
 }
 
-/// Fold one character just after a code `/`.
 const fn step_code_slash(next: char) -> (Scan, WordAction) {
     match next {
         '/' => (Scan::Comment(CommentSub::Line), WordAction::None),
@@ -141,7 +81,6 @@ const fn step_code_slash(next: char) -> (Scan, WordAction) {
     }
 }
 
-/// Fold one character after `r` plus tracked `#` characters.
 const fn step_code_raw(hashes: u8, next: char) -> (Scan, WordAction) {
     match next {
         '"' => (Scan::Text(TextSub::Raw { hashes }), WordAction::Clear),
@@ -153,7 +92,6 @@ const fn step_code_raw(hashes: u8, next: char) -> (Scan, WordAction) {
     }
 }
 
-/// Fold one character while inside a comment.
 const fn step_comment(sub: CommentSub, next: char) -> Scan {
     match sub {
         CommentSub::Line => step_line_comment(next),
@@ -163,12 +101,10 @@ const fn step_comment(sub: CommentSub, next: char) -> Scan {
     }
 }
 
-/// Fold one character while inside a `//` comment.
 const fn step_line_comment(next: char) -> Scan {
     if next == '\n' { Scan::code() } else { Scan::Comment(CommentSub::Line) }
 }
 
-/// Fold one character while inside a `/*` comment.
 const fn step_block_comment(depth: u32, next: char) -> Scan {
     match next {
         '*' => Scan::Comment(CommentSub::BlockStar { depth }),
@@ -177,7 +113,6 @@ const fn step_block_comment(depth: u32, next: char) -> Scan {
     }
 }
 
-/// Fold one character just after `*` inside a block comment.
 const fn step_block_star(depth: u32, next: char) -> Scan {
     match next {
         '/' => close_block_level(depth),
@@ -186,13 +121,11 @@ const fn step_block_star(depth: u32, next: char) -> Scan {
     }
 }
 
-/// Close one block-comment level, returning to code at depth zero.
 const fn close_block_level(depth: u32) -> Scan {
     let rest = depth.saturating_sub(1);
     if rest == 0 { Scan::code() } else { Scan::Comment(CommentSub::Block { depth: rest }) }
 }
 
-/// Fold one character just after `/` inside a block comment.
 const fn step_block_slash(depth: u32, next: char) -> Scan {
     if next == '*' {
         Scan::Comment(CommentSub::Block { depth: depth.saturating_add(1) })
@@ -201,7 +134,6 @@ const fn step_block_slash(depth: u32, next: char) -> Scan {
     }
 }
 
-/// Fold one character while inside a string-like literal.
 const fn step_text(sub: TextSub, next: char) -> Scan {
     match sub {
         TextSub::Quoted { escaped } => step_quoted(escaped, next),
@@ -211,7 +143,6 @@ const fn step_text(sub: TextSub, next: char) -> Scan {
     }
 }
 
-/// Fold one character while inside a `"..."` literal.
 const fn step_quoted(escaped: bool, next: char) -> Scan {
     if next == '"' && !escaped {
         Scan::code()
@@ -220,7 +151,6 @@ const fn step_quoted(escaped: bool, next: char) -> Scan {
     }
 }
 
-/// Fold one character while inside a `'...'` literal or lifetime tick.
 const fn step_tick(length: u8, escaped: bool, next: char) -> Scan {
     match next {
         '\'' if !escaped => Scan::code(),
@@ -228,7 +158,6 @@ const fn step_tick(length: u8, escaped: bool, next: char) -> Scan {
     }
 }
 
-/// Fold a non-closing character while inside a tick literal.
 const fn extend_tick(length: u8, escaped: bool, next: char) -> Scan {
     let length = length.saturating_add(1);
     if length > 2 {
@@ -238,7 +167,6 @@ const fn extend_tick(length: u8, escaped: bool, next: char) -> Scan {
     }
 }
 
-/// Fold one character while inside a raw-string body.
 const fn step_raw_string(hashes: u8, next: char) -> Scan {
     match next {
         '"' if hashes == 0 => Scan::code(),
@@ -247,7 +175,6 @@ const fn step_raw_string(hashes: u8, next: char) -> Scan {
     }
 }
 
-/// Fold one character just after `"` inside a raw string.
 const fn step_raw_end(hashes: u8, matched: u8, next: char) -> Scan {
     match next {
         '#' => close_raw_hash(hashes, matched),
@@ -255,7 +182,6 @@ const fn step_raw_end(hashes: u8, matched: u8, next: char) -> Scan {
     }
 }
 
-/// Fold one `#` that may close a raw string.
 const fn close_raw_hash(hashes: u8, matched: u8) -> Scan {
     let matched = matched.saturating_add(1);
     if matched == hashes { Scan::code() } else { Scan::Text(TextSub::RawEnd { hashes, matched }) }

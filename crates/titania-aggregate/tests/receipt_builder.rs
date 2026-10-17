@@ -1,7 +1,3 @@
-//! Behavior tests for v1 receipt digest building.
-//!
-//! Bead: tn-d7l.3
-
 use std::error::Error;
 
 use titania_aggregate::receipt_builder::{build_quality_receipt, compute_evidence_digest};

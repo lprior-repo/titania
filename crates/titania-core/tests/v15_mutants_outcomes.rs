@@ -1,14 +1,3 @@
-//! v1.5 contract tests for the pure-core cargo-mutants outcomes and
-//! per-mutant records parsers
-//! (`crates/titania-core/src/mutants_outcomes.rs`).
-//!
-//! Mirrors the spec promise in `.beads/tn-7bq2.1/boundary-map.md`:
-//! the parsers accept `&str`, return typed thiserror errors, tolerate
-//! documented unknown top-level keys (forward compatibility for
-//! cargo-mutants field evolution), reject malformed required shapes,
-//! build typed `MutantId`s from per-mutant records, and perform no
-//! I/O / time / env / process access.
-
 use std::path::PathBuf;
 
 use titania_core::{

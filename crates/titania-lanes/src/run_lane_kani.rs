@@ -1,68 +1,3 @@
-//! Kani bounded model-check lane.
-//!
-//! Implements the v1-spec §4.2 / D4 per-package execution model:
-//!
-//! 1. Discover every `#[kani::proof]` harness workspace-wide by invoking
-//!    `cargo kani list --format json` per crate (cargo-kani 0.67.0 refuses
-//!    `--package` on `list`, so the workspace-wide shortcut cannot be used).
-//!    Each per-crate failure (spawn / non-zero exit / unparseable JSON) is
-//!    captured in a typed [`KaniInventoryError`]; the per-crate aggregate
-//!    preserves every individual failure so empty inventories can be
-//!    surfaced with actionable diagnostics rather than a silent
-//!    `LaneOutcome::Clean`.
-//! 2. Group harnesses by package; for each non-empty package run ONE
-//!    `cargo kani -p <pkg> --output-format regular` invocation, wrapped
-//!    in a `systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0`
-//!    cgroup scope (H1/D5). When `systemd-run` is unavailable the lane
-//!    falls back to an unwrapped `cargo kani -p <pkg>` and the fallback
-//!    is recorded in the clean-outcome argv.
-//! 3. Parse the single per-package stdout for `Checking harness <NAME>...`
-//!    followed by `VERIFICATION:-` verdict lines; build one typed finding
-//!    per harness in the pre-run inventory.
-//!
-//! ## Version detection
-//!
-//! Every lane invocation probes `cargo kani --version` at runtime, parses
-//! the reported `cargo-kani <X>.<Y>.<Z>` string, and rejects versions
-//! older than [`MIN_KANI_VERSION`] (currently `0.50.0`). Older versions
-//! are treated as missing per v1.5 spec §7 so downstream explanation
-//! logic can surface the floor cleanly.
-//!
-//! ## Per-finding rule ids
-//!
-//! - `PROOF_KANI_<HARNESS>` (informational) when `VERIFICATION:- SUCCESSFUL`.
-//! - `PROOF_KANI_<HARNESS>` (reject) when `VERIFICATION:- FAILED`.
-//! - `PROOF_KANI_<HARNESS>` (informational) when `VERIFICATION:- UNSUPPORTED`.
-//! - `PROOF_KANI_<HARNESS>` (reject) when the per-package run timed out or
-//!   cgroup `OOM`ed; fallback rule id `PROOF_KANI_BLOCKED`.
-//! - `PROOF_KANI_<HARNESS>` (reject) when no `VERIFICATION:-` line was
-//!   parsed for the harness even though the package run succeeded; fallback
-//!   rule id `PROOF_KANI_NO_VERDICT`. This distinguishes a verdict-parsing
-//!   infrastructure anomaly from the timeout/OOM case above (per spec §4.2
-//!   the gate is `BLOCK_LOCAL` rather than whole-lane reject).
-//! - `PROOF_KANI_NO_HARNESSES` (informational) when the workspace-wide
-//!   inventory is empty, so the receipt records the no-harness state
-//!   instead of collapsing to `LaneOutcome::Clean`.
-//! - `PROOF_KANI_INFRA` (reject) when `cargo kani list --format json`
-//!   failed for every crate (or its output could not be parsed).
-//! - `PROOF_KANI_NOT_RUN` is implicit: a missing or too-old cargo-kani
-//!   produces
-//!   `LaneOutcome::Skipped { reason: SkipReason::ToolUnavailable(ToolKind::CargoKani) }`
-//!   (the repair-catalog row documents the literal for downstream explainers).
-//!
-//! ## Resource discipline
-//!
-//! Every per-package child run enforces two bounded resources:
-//!
-//! - the wallclock cap [`PER_PACKAGE_TIMEOUT_SECS`] (timer is reaped, never
-//!   silently abandoned);
-//! - the per-pipe byte cap [`PIPE_BYTE_CAP`]; overflow surfaces as
-//!   [`KaniRunError::PipeCapExceeded`] so an unbounded child cannot OOM
-//!   the lane.
-//!
-//! Kill, wait, read, and cleanup failures are typed errors in the lane —
-//! none of them are dropped via `let _ =` or `drop()`.
-
 use std::{
     collections::BTreeMap,
     io::Read,
@@ -81,30 +16,16 @@ use titania_core::{
 };
 use wait_timeout::ChildExt;
 
-/// Per-package wallclock cap (seconds).
-///
-/// One slow CBMC run on a single package should never block the lane past
-/// this point; every harness in the affected package is recorded as
-/// `PROOF_KANI_BLOCKED` and the lane proceeds to the next package.
 pub(super) const PER_PACKAGE_TIMEOUT_SECS: u64 = 600;
 
-/// Hard byte cap applied to each captured stdout/stderr pipe from
-/// `cargo kani`. Exceeding it surfaces [`KaniRunError::PipeCapExceeded`] so
-/// an unbounded child cannot OOM the lane.
 const PIPE_BYTE_CAP: usize = 8 * 1024 * 1024;
 
-/// Tool name used in `LaneFailure::Infra` reporting.
 const KANI_TOOL: &str = "cargo-kani";
 
-/// Lowest cargo-kani version the lane supports. Older versions are
-/// treated as missing per v1.5 spec §7.
 const MIN_KANI_VERSION: (u64, u64, u64) = (0, 50, 0);
 
-/// Cgroup cap applied when `systemd-run` is available.
 const CGROUP_MEMORY_MAX: &str = "24G";
 
-/// Static fallback literals used when a per-harness rule id is rejected
-/// by the workspace rule-id grammar.
 const FALLBACK_RULE_PASS: &str = "PROOF_KANI_PASS";
 const FALLBACK_RULE_FAIL: &str = "PROOF_KANI_FAIL";
 const FALLBACK_RULE_BLOCKED: &str = "PROOF_KANI_BLOCKED";
@@ -113,248 +34,149 @@ const FALLBACK_RULE_UNSUPPORTED: &str = "PROOF_KANI_UNSUPPORTED";
 const FALLBACK_RULE_INFRA: &str = "PROOF_KANI_INFRA";
 const FALLBACK_RULE_NO_HARNESSES: &str = "PROOF_KANI_NO_HARNESSES";
 
-/// Errors that the Kani lane surfaces to [`crate::run_lane`].
 #[derive(Debug, Error)]
 pub(super) enum KaniLaneError {
-    /// Kani lane must be invoked inside a Cargo workspace root.
     #[error("Kani lane requires a Cargo workspace root at {0}")]
     NotACargoWorkspace(String),
-    /// Building a [`RuleId`] failed.
     #[error("Kani lane could not construct a rule id: {0}")]
     RuleId(#[source] RuleIdError),
-    /// Cargo-kani inventory discovery failed for a per-crate sub-invocation.
     #[error("cargo-kani inventory failed: {0}")]
     Inventory(#[from] KaniInventoryError),
-    /// Per-package `cargo kani` execution failed (kill / wait / pipe read).
     #[error("cargo-kani execution failed: {0}")]
     Package(#[from] KaniRunError),
-    /// Clean-outcome evidence could not be assembled.
     #[error("clean-outcome evidence build failed: {0}")]
     Outcome(#[from] OutcomeError),
 }
 
-/// Errors produced while scanning the workspace for Kani harnesses.
 #[derive(Debug, Error)]
 pub(super) enum KaniInventoryError {
-    /// The workspace is missing its `crates/` directory.
     #[error("workspace has no crates directory at {0}")]
     NoCratesDir(String),
-    /// Could not enumerate the workspace crates directory.
     #[error("cannot read crates directory at {path}: {source}")]
     CratesDirRead {
-        /// Path of the crates directory that failed to read.
         path: String,
-        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
-    /// Per-crate `cargo kani list` invocation could not be spawned or waited on.
     #[error("inventory command for crate `{crate_name}` failed: {source}")]
     ListCommand {
-        /// Crate that failed.
         crate_name: String,
-        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
-    /// Per-crate `cargo kani list` exited non-zero.
     #[error(
         "inventory command for crate `{crate_name}` exited with code {code:?}; stderr: {stderr}"
     )]
-    ListCommandExit {
-        /// Crate whose inventory command failed.
-        crate_name: String,
-        /// Exit code if reported, `None` when killed.
-        code: Option<i32>,
-        /// Captured stderr text (heap-boxed so the enclosing error enum
-        /// stays under the [`crate::clippy.toml`] `large-error-threshold`).
-        stderr: Box<str>,
-    },
-    /// Per-crate `kani-list.json` artifact could not be read.
+    ListCommandExit { crate_name: String, code: Option<i32>, stderr: Box<str> },
     #[error("cannot read inventory artifact at {path}: {source}")]
     ArtifactRead {
-        /// Artifact path that could not be read.
         path: String,
-        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
-    /// Per-crate `kani-list.json` artifact was not parseable JSON.
     #[error("cannot parse inventory artifact at {path}: {source}")]
     ArtifactParse {
-        /// Artifact path that was malformed.
         path: String,
-        /// Underlying JSON parse error.
         #[source]
         source: serde_json::Error,
     },
-    /// Stale `kani-list.json` could not be removed before the run.
     #[error("cannot remove stale inventory artifact at {path}: {source}")]
     CleanupFailed {
-        /// Stale artifact path that could not be removed.
         path: String,
-        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
 }
 
-/// Errors produced while running one package's `cargo kani` invocation.
 #[derive(Debug, Error)]
 pub(super) enum KaniRunError {
-    /// Spawning the per-package child failed.
     #[error("spawn failed for {program}: {source}")]
     Spawn {
-        /// Program that failed to spawn.
         program: String,
-        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
-    /// `wait_timeout` reported an I/O error.
     #[error("wait_timeout failed for {program}: {source}")]
     WaitTimeout {
-        /// Program whose wait failed.
         program: String,
-        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
-    /// Sending `SIGKILL` to a timed-out child failed.
     #[error("kill failed for timed-out {program}: {source}")]
     Kill {
-        /// Program that could not be killed.
         program: String,
-        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
-    /// Reaping a timed-out child via `wait` failed.
     #[error("wait failed for killed {program}: {source}")]
     WaitReap {
-        /// Program that could not be reaped.
         program: String,
-        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
-    /// A captured pipe exceeded [`PIPE_BYTE_CAP`].
     #[error("captured {program} {stream} pipe exceeded byte cap of {limit}")]
-    PipeCapExceeded {
-        /// Program whose captured stream overflowed.
-        program: String,
-        /// Captured stream that overflowed (stdout or stderr).
-        stream: &'static str,
-        /// Configured byte cap.
-        limit: usize,
-    },
-    /// Reading from a captured pipe returned an I/O error.
+    PipeCapExceeded { program: String, stream: &'static str, limit: usize },
     #[error("failed to read {program} {stream} pipe: {source}")]
     PipeRead {
-        /// Program whose pipe failed.
         program: String,
-        /// Stream that failed.
         stream: &'static str,
-        /// Underlying I/O error.
         #[source]
         source: std::io::Error,
     },
-    /// A captured pipe contained non-UTF-8 bytes.
     #[error("captured {program} {stream} pipe was not valid UTF-8")]
-    PipeNonUtf8 {
-        /// Program whose pipe was non-UTF-8.
-        program: String,
-        /// Stream that failed decoding.
-        stream: &'static str,
-    },
+    PipeNonUtf8 { program: String, stream: &'static str },
 }
 
-/// Result of running `cargo kani --version`: either absent (binary missing,
-/// older than the floor, or unreadable), or the parsed version string.
 #[derive(Debug, Clone)]
 struct DetectedCargoKani {
-    /// Canonical `X.Y.Z` version string parsed from stdout.
     version: String,
-    /// Major component of the version.
     major: u64,
-    /// Minor component of the version.
     minor: u64,
-    /// Patch component of the version.
     patch: u64,
 }
 
 impl DetectedCargoKani {
-    /// True if `self` is at least [`MIN_KANI_VERSION`].
     fn meets_floor(&self) -> bool {
         (self.major, self.minor, self.patch) >= MIN_KANI_VERSION
     }
 }
 
-/// Per-crate harness entry discovered via `cargo kani list`.
-///
-/// `full_name` is the qualified name cargo-kani prints in `Checking harness`
-/// lines (e.g. `kani::lane_name_rejects_empty_string`); `canonical_id` is the
-/// uppercased, prefix-stripped form that round-trips through [`KaniHarnessId`]
-/// (e.g. `LANE_NAME_REJECTS_EMPTY_STRING`). The canonical id is `None` when
-/// the uppercased form is rejected by [`KaniHarnessId::new`]; the lane falls
-/// back to a static rule id literal in that case.
 #[derive(Debug, Clone)]
 struct KaniHarness {
-    /// Cargo package name (e.g. `titania-core`).
     package: String,
-    /// Qualified harness name from `cargo kani list` (stdout correlation key).
     full_name: String,
-    /// Canonical uppercase id validated via [`KaniHarnessId::new`].
     canonical_id: Option<KaniHarnessId>,
 }
 
-/// Aggregated evidence captured across every `cargo kani` run.
 #[derive(Debug, Default)]
 struct LaneRunState {
-    /// Worst (highest) exit code observed across every package.
     worst_exit_code: i32,
-    /// Runtime-detected cargo-kani version string.
     tool_version: String,
 }
 
-/// Verdict parsed from a single `VERIFICATION:-` line.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum HarnessVerdict {
-    /// `VERIFICATION:- SUCCESSFUL`.
     Successful,
-    /// `VERIFICATION:- FAILED`.
     Failed,
-    /// `VERIFICATION:- <anything containing UNSUPPORTED>`.
     Unsupported,
-    /// No `VERIFICATION:-` line observed for this harness (infrastructure
-    /// anomaly rather than a timeout / OOM block).
     Unknown,
 }
 
-/// Map of harness name → verdict, built by scanning one stdout stream.
 #[derive(Debug, Default)]
 struct HarnessVerdictMap {
-    /// Verdict keyed by cargo-kani's qualified harness name.
     verdicts: BTreeMap<String, HarnessVerdict>,
 }
 
 impl HarnessVerdictMap {
-    /// Build a verdict map by parsing one cargo-kani stdout stream.
     fn from_stdout(stdout: &str) -> Self {
         build_verdict_map(stdout)
     }
 
-    /// Verdict for `full_name` or [`HarnessVerdict::Unknown`] when absent.
     fn verdict_for(&self, full_name: &str) -> HarnessVerdict {
         self.verdicts.get(full_name).copied().map_or(HarnessVerdict::Unknown, |v| v)
     }
 }
 
-/// Walk `stdout` line-by-line and pair each `Checking harness <NAME>...`
-/// with the next `VERIFICATION:-` line.
-///
-/// Free function (not inside `impl`) so the fold body stays at
-/// `clippy::excessive_nesting` level 2.
 fn build_verdict_map(stdout: &str) -> HarnessVerdictMap {
     let (map, _) = stdout.lines().fold(
         (HarnessVerdictMap::default(), None::<String>),
@@ -366,32 +188,18 @@ fn build_verdict_map(stdout: &str) -> HarnessVerdictMap {
     map
 }
 
-/// Fold one stdout line into the running verdict map.
-///
-/// Free function (not inside `impl`) so the function body's max block
-/// depth stays under `clippy::excessive_nesting` (threshold = 2). The
-/// `and_then` chain guarantees `current.take()` is only invoked when a
-/// `VERIFICATION:-` line was actually observed, so the pending harness
-/// name is preserved across unrelated build noise.
 fn absorb_verdict_line(map: &mut HarnessVerdictMap, current: &mut Option<String>, line: &str) {
     let _ = checking_harness_name(line).map(|name| *current = Some(name.to_owned()));
     let _ = verdict_from_line(line)
         .and_then(|verdict| current.take().map(|name| map.verdicts.insert(name, verdict)));
 }
 
-/// Extract the harness name from a `Checking harness <NAME>...` line.
-///
-/// Returns `None` when the line does not carry that prefix.
 fn checking_harness_name(line: &str) -> Option<&str> {
     let rest = line.trim_start().strip_prefix("Checking harness ")?;
     let name = rest.trim().strip_suffix("...")?.trim();
     if name.is_empty() { None } else { Some(name) }
 }
 
-/// Parse a single stdout line for the `VERIFICATION:` verdict marker.
-///
-/// Returns `None` for any line that does not carry the marker so the caller
-/// can keep [`HarnessVerdictMap::from_stdout`] flat.
 fn verdict_from_line(line: &str) -> Option<HarnessVerdict> {
     let trimmed = line.trim_start();
     let verification = trimmed.strip_prefix("VERIFICATION:")?;
@@ -404,50 +212,27 @@ fn verdict_from_line(line: &str) -> Option<HarnessVerdict> {
     })
 }
 
-/// The actual command that was executed for one package.
 #[derive(Debug, Clone)]
 struct PackageCmd {
-    /// Executable (`argv[0]`).
     executable: String,
-    /// Full argv that was executed.
     argv: Box<[String]>,
 }
 
-/// Outcome of one `cargo kani -p <pkg>` invocation (cgroup-wrapped or bare).
 #[derive(Debug, Clone)]
 struct PackageRun {
-    /// Process exit code (None on spawn failure or timeout).
     exit_code: Option<i32>,
-    /// Whether the run was killed by the wallclock timeout.
     timed_out: bool,
-    /// Captured stdout + stderr.
     stdout: String,
-    /// Actual command that was executed.
     cmd: PackageCmd,
-    /// Non-fatal I/O errors observed during teardown (carried so the
-    /// caller can surface them without panicking).
     teardown_errors: Vec<String>,
 }
 
 impl PackageRun {
-    /// True if this run produced a successful exit code (`Some(0)`).
     const fn is_successful(&self) -> bool {
         matches!(self.exit_code, Some(code) if code == 0)
     }
 }
 
-/// Drain one captured pipe into a UTF-8 `String` while enforcing
-/// [`PIPE_BYTE_CAP`] bytes.
-///
-/// `program` is the executable whose pipe is being drained (carried in
-/// the typed error message) and `stream` identifies stdout vs stderr.
-///
-/// # Errors
-///
-/// Returns [`KaniRunError::PipeRead`] when the underlying read fails,
-/// [`KaniRunError::PipeCapExceeded`] when `program` writes more than
-/// [`PIPE_BYTE_CAP`] bytes to the pipe, and [`KaniRunError::PipeNonUtf8`]
-/// when the captured bytes are not valid UTF-8.
 fn drain_pipe<R: Read>(
     program: &str,
     stream: &'static str,
@@ -475,19 +260,6 @@ fn drain_pipe<R: Read>(
         .map_err(|_source| KaniRunError::PipeNonUtf8 { program: program.to_owned(), stream })
 }
 
-/// Run the Kani lane for `target`.
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::NotACargoWorkspace`] when `target` does not
-/// resolve to a directory containing a `[workspace]` Cargo manifest.
-/// Returns [`KaniLaneError::Inventory`] when every per-crate harness
-/// inventory probe failed. Returns [`KaniLaneError::Version`] when the
-/// `cargo kani --version` probe could not be parsed or the installed
-/// version is below [`MIN_KANI_VERSION`]. Returns [`KaniLaneError::Outcome`]
-/// when the clean-outcome evidence cannot be assembled from the recorded
-/// state. Note that per-finding rule-id failures are surfaced as
-/// `LaneOutcome::Failed { LaneFailure::Infra }`, not as `Err`.
 pub(super) fn outcome(target: &TargetProject) -> Result<LaneOutcome, KaniLaneError> {
     let workspace_root = target.as_std_path();
     if cargo_kani_supported().is_none() {
@@ -530,14 +302,12 @@ pub(super) fn outcome(target: &TargetProject) -> Result<LaneOutcome, KaniLaneErr
     build_clean_outcome(&state, &worst).map_err(KaniLaneError::Outcome)
 }
 
-/// Update [`LaneRunState::worst_exit_code`] from one [`PackageRun`].
 fn update_worst_exit(state: &mut LaneRunState, run: &PackageRun) {
     if let Some(code) = run.exit_code {
         state.worst_exit_code = state.worst_exit_code.max(code);
     }
 }
 
-/// Compare two [`PackageRun`] exit codes without using [`Option::unwrap_or`].
 const fn exit_code_is_greater(prev: &PackageRun, candidate: i32) -> bool {
     match prev.exit_code {
         Some(prev_code) => candidate > prev_code,
@@ -545,9 +315,6 @@ const fn exit_code_is_greater(prev: &PackageRun, candidate: i32) -> bool {
     }
 }
 
-/// Replace `slot` with `candidate` when `candidate`'s exit code is greater
-/// (or when `slot` was empty). Lets the lane surface the argv of the
-/// highest-impact package in the clean-outcome evidence.
 fn replace_if_worst(slot: &mut Option<PackageRun>, candidate: &PackageRun) {
     let replace = match (slot.as_ref(), candidate.exit_code) {
         (None, Some(_)) => true,
@@ -559,17 +326,6 @@ fn replace_if_worst(slot: &mut Option<PackageRun>, candidate: &PackageRun) {
     }
 }
 
-/// Translate an inventory failure into a [`LaneOutcome`].
-///
-/// Substring checks against cargo's "subcommand not found" or the OS
-/// "not found" spawn error mean cargo-kani is missing and the lane
-/// should be skipped rather than reported as an infra failure (per
-/// spec §4.2 step 5 / repair catalog row `PROOF_KANI_NOT_RUN`).
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when the `PROOF_KANI_INFRA` rule id
-/// cannot be constructed by the workspace rule-id grammar.
 fn inventory_error_outcome(error: &KaniInventoryError) -> Result<LaneOutcome, KaniLaneError> {
     if is_subcommand_missing(error) {
         return Ok(LaneOutcome::Skipped {
@@ -580,14 +336,6 @@ fn inventory_error_outcome(error: &KaniInventoryError) -> Result<LaneOutcome, Ka
     Ok(LaneOutcome::Findings { findings: vec![finding].into_boxed_slice() })
 }
 
-/// Build the informational `PROOF_KANI_NO_HARNESSES` outcome for the
-/// empty-inventory case so the receipt records the no-harness state
-/// instead of collapsing to `LaneOutcome::Clean`.
-///
-/// # Errors
-///
-/// Returns [`OutcomeError`] when the rule id or evidence cannot be
-/// constructed.
 fn build_no_harness_outcome(state: &LaneRunState) -> Result<LaneOutcome, OutcomeError> {
     let rule_id =
         RuleId::new(FALLBACK_RULE_NO_HARNESSES).map_err(|_rule_err| OutcomeError::EmptyArgv)?;
@@ -610,24 +358,11 @@ fn build_no_harness_outcome(state: &LaneRunState) -> Result<LaneOutcome, Outcome
     })
 }
 
-/// Heuristic for cargo-kani not-installed subprocess errors.
 fn is_subcommand_missing(error: &KaniInventoryError) -> bool {
     let text = error.to_string();
     text.contains("no such subcommand") || text.contains("not found")
 }
 
-/// Build findings for one package.
-///
-/// On a spawn failure or wallclock timeout the entire package is reported
-/// as `PROOF_KANI_BLOCKED` for every harness in the inventory; otherwise
-/// each harness gets its own verdict-driven finding (or a per-harness
-/// `PROOF_KANI_NO_VERDICT` when stdout did not contain a verdict line for
-/// it).
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when a fallback rule-id literal
-/// cannot be constructed.
 fn findings_for_package(
     harnesses: &[KaniHarness],
     verdicts: &HarnessVerdictMap,
@@ -642,16 +377,6 @@ fn findings_for_package(
         .collect()
 }
 
-/// Build one `PROOF_KANI_BLOCKED` finding per harness in the package.
-///
-/// Used when the package-level run timed out, never produced an exit code,
-/// or observed teardown errors during kill/wait/read. The per-harness
-/// rule id is preferred over the static fallback.
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when the static fallback literal
-/// cannot be constructed.
 fn blocked_findings_for_package(
     harnesses: &[KaniHarness],
     run: &PackageRun,
@@ -678,8 +403,6 @@ fn blocked_findings_for_package(
         .collect()
 }
 
-/// Build a stable human-readable string describing why a package was
-/// classified as [`HarnessVerdict::Unknown`] for every harness.
 fn blocked_reason(run: &PackageRun) -> String {
     if run.timed_out {
         return format!("timed_out_after_{PER_PACKAGE_TIMEOUT_SECS}s");
@@ -692,19 +415,6 @@ fn blocked_reason(run: &PackageRun) -> String {
     }
 }
 
-/// Map one harness verdict to its finding.
-///
-/// Successful / Failed / Unsupported use the obvious per-harness rule id.
-/// `Unknown` (no `VERIFICATION:-` line for this harness in stdout) is
-/// surfaced as `PROOF_KANI_NO_VERDICT` because we cannot prove the
-/// harness completed; this is intentionally distinct from the
-/// `PROOF_KANI_BLOCKED` rule id emitted for timeout / OOM / spawn failures
-/// so verdict-parsing anomalies are visible to auditors.
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when the fallback rule-id literal
-/// cannot be constructed.
 fn finding_for_harness(
     harness: &KaniHarness,
     verdict: HarnessVerdict,
@@ -717,12 +427,6 @@ fn finding_for_harness(
     })
 }
 
-/// Build a `PROOF_KANI_PASS`-shaped informational finding for one harness.
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when neither the per-harness literal
-/// nor the static fallback can be parsed.
 fn pass_finding(harness: &KaniHarness) -> Result<Finding, KaniLaneError> {
     let rule_id = rule_id_for_harness(harness, FALLBACK_RULE_PASS)?;
     let label = harness_label(harness);
@@ -735,12 +439,6 @@ fn pass_finding(harness: &KaniHarness) -> Result<Finding, KaniLaneError> {
     ))
 }
 
-/// Build a `PROOF_KANI_FAIL`-shaped reject finding for one harness.
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when neither the per-harness literal
-/// nor the static fallback can be parsed.
 fn fail_finding(harness: &KaniHarness, reason: &str) -> Result<Finding, KaniLaneError> {
     let rule_id = rule_id_for_harness(harness, FALLBACK_RULE_FAIL)?;
     let label = harness_label(harness);
@@ -753,15 +451,6 @@ fn fail_finding(harness: &KaniHarness, reason: &str) -> Result<Finding, KaniLane
     ))
 }
 
-/// Build a `PROOF_KANI_NO_VERDICT`-shaped reject finding for one harness.
-///
-/// Used to distinguish verdict-parsing anomalies from the
-/// `PROOF_KANI_BLOCKED` case (timeout / OOM / spawn failure).
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when neither the per-harness literal
-/// nor the static fallback can be parsed.
 fn no_verdict_finding(harness: &KaniHarness) -> Result<Finding, KaniLaneError> {
     let rule_id = rule_id_for_harness(harness, FALLBACK_RULE_NO_VERDICT)?;
     let label = harness_label(harness);
@@ -778,12 +467,6 @@ fn no_verdict_finding(harness: &KaniHarness) -> Result<Finding, KaniLaneError> {
     ))
 }
 
-/// Build a `PROOF_KANI_UNSUPPORTED` informational finding for one harness.
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when neither the per-harness literal
-/// nor the static fallback can be parsed.
 fn unsupported_finding(harness: &KaniHarness) -> Result<Finding, KaniLaneError> {
     let rule_id = rule_id_for_harness(harness, FALLBACK_RULE_UNSUPPORTED)?;
     let label = harness_label(harness);
@@ -796,13 +479,6 @@ fn unsupported_finding(harness: &KaniHarness) -> Result<Finding, KaniLaneError> 
     ))
 }
 
-/// Build a `PROOF_KANI_INFRA` reject finding for a workspace-level
-/// cargo-kani failure (subcommand missing is mapped to `Skipped` instead).
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when the static fallback literal
-/// cannot be parsed.
 fn infra_finding(reason: &str) -> Result<Finding, KaniLaneError> {
     let rule_id = build_rule_id(FALLBACK_RULE_INFRA, FALLBACK_RULE_FAIL)?;
     Ok(harness_finding(
@@ -814,16 +490,6 @@ fn infra_finding(reason: &str) -> Result<Finding, KaniLaneError> {
     ))
 }
 
-/// Build the clean-outcome payload from the worst-case per-package run.
-///
-/// `worst` carries the actual [`PackageCmd`] (executable + argv), so the
-/// receipt records the command that was really executed instead of a
-/// synthesised placeholder.
-///
-/// # Errors
-///
-/// Returns [`OutcomeError`] when `CommandEvidence`, `LaneEvidence`, or
-/// `ProcessTermination` reject the recorded state.
 fn build_clean_outcome(
     state: &LaneRunState,
     worst: &PackageRun,
@@ -842,44 +508,18 @@ fn build_clean_outcome(
     Ok(LaneOutcome::Clean { evidence })
 }
 
-/// Tool-attached [`Location`] for a finding produced against a specific
-/// per-package command.
-///
-/// The [`PackageCmd`] identifies which run produced the finding (kept as
-/// a parameter even though the current implementation uses the global
-/// runtime-detected version) so future callers can surface per-command
-/// version data without changing the call sites.
 fn kani_location(_cmd: &PackageCmd) -> Location {
     Location::tool(KANI_TOOL.to_owned(), current_kani_version())
 }
 
-/// Tool-attached [`Location`] for a finding whose harness ran inside a
-/// specific package; uses the runtime-detected cargo-kani version.
 fn kani_location_for_harness(_harness: &KaniHarness) -> Location {
     Location::tool(KANI_TOOL.to_owned(), current_kani_version())
 }
 
-/// Resolve a rule id with a typed fallback chain.
-///
-/// 1. Try `RuleId::new(literal)`.
-/// 2. On `RuleIdError`, fall back to `RuleId::new(fallback)`.
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when both literals are rejected by
-/// the rule-id grammar.
 fn build_rule_id(literal: &str, fallback: &str) -> Result<RuleId, KaniLaneError> {
     RuleId::new(literal).map_or_else(|_| RuleId::new(fallback).map_err(KaniLaneError::RuleId), Ok)
 }
 
-/// Resolve a per-harness `RuleId`, preferring the canonical harness prefix
-/// over the static fallback.
-///
-/// # Errors
-///
-/// Returns [`KaniLaneError::RuleId`] when both the canonical-prefix and
-/// the static-fallback literal are rejected by the rule-id grammar
-/// (programmatically unreachable; defensive).
 fn rule_id_for_harness(harness: &KaniHarness, fallback: &str) -> Result<RuleId, KaniLaneError> {
     harness.canonical_id.as_ref().map_or_else(
         || RuleId::new(fallback).map_err(KaniLaneError::RuleId),
@@ -887,7 +527,6 @@ fn rule_id_for_harness(harness: &KaniHarness, fallback: &str) -> Result<RuleId, 
     )
 }
 
-/// Build a single per-harness [`Finding`] via the unified constructor.
 const fn harness_finding(
     rule_id: RuleId,
     effect: FindingEffect,
@@ -904,8 +543,6 @@ const fn harness_finding(
     }
 }
 
-/// Display label for a harness (its canonical id when present, otherwise
-/// the raw qualified name from cargo-kani).
 fn harness_label(harness: &KaniHarness) -> String {
     harness
         .canonical_id
@@ -913,11 +550,6 @@ fn harness_label(harness: &KaniHarness) -> String {
         .map_or_else(|| harness.full_name.clone(), |id| id.as_str().to_owned())
 }
 
-/// Derive a canonical [`KaniHarnessId`] for a cargo-kani harness name.
-///
-/// Strips a `kani::` prefix when present, uppercases ASCII letters and
-/// digits, replaces everything else with `_`. Returns `None` when the
-/// resulting form is rejected by [`KaniHarnessId::new`].
 fn canonical_harness_id(full_name: &str) -> Option<KaniHarnessId> {
     let prefix = "kani::";
     let stripped: &str = full_name.strip_prefix(prefix).map_or(full_name, |rest| rest);
@@ -929,7 +561,6 @@ fn canonical_harness_id(full_name: &str) -> Option<KaniHarnessId> {
     KaniHarnessId::new(&upper).ok()
 }
 
-/// True if `manifest_path` resolves to a `Cargo.toml` declaring `[workspace]`.
 fn has_workspace_root(manifest_path: &Path) -> bool {
     let Ok(contents) = std::fs::read_to_string(manifest_path) else {
         return false;
@@ -937,14 +568,8 @@ fn has_workspace_root(manifest_path: &Path) -> bool {
     contents.lines().any(|line| line.trim() == "[workspace]")
 }
 
-/// One group of harnesses for a single Cargo package.
 type PackageGroup = (String, Vec<KaniHarness>);
 
-/// Group the discovered harnesses by their Cargo package name.
-///
-/// Preserves cargo's package ordering by walking the inventory in order
-/// and inserting into a `BTreeMap` keyed by package; the outer iteration
-/// is therefore deterministic.
 fn group_by_package(inventory: &[KaniHarness]) -> Vec<PackageGroup> {
     inventory
         .iter()
@@ -956,21 +581,11 @@ fn group_by_package(inventory: &[KaniHarness]) -> Vec<PackageGroup> {
         .collect()
 }
 
-/// Probe `cargo kani --version` once and cache the result for the lane's
-/// lifetime.
-///
-/// Returns `None` when the binary is missing, exits non-zero, produces
-/// non-UTF-8 output, or reports a version older than [`MIN_KANI_VERSION`]
-/// — every one of those cases means the lane should downgrade to
-/// [`SkipReason::ToolUnavailable`] per v1.5 spec §7.
 fn cargo_kani_supported() -> Option<DetectedCargoKani> {
     static CACHED: OnceLock<Option<DetectedCargoKani>> = OnceLock::new();
     CACHED.get_or_init(detect_cargo_kani).clone()
 }
 
-/// Runtime-detected cargo-kani version (or the floor when detection
-/// failed — callers must not rely on this value when
-/// [`cargo_kani_supported`] returned `None`).
 fn current_kani_version() -> String {
     cargo_kani_supported().map_or_else(
         || format!("{}.{}.{}", MIN_KANI_VERSION.0, MIN_KANI_VERSION.1, MIN_KANI_VERSION.2),
@@ -978,17 +593,11 @@ fn current_kani_version() -> String {
     )
 }
 
-/// Probe `systemd-run --version` once per lane lifetime and cache the
-/// result so the per-package loop doesn't fork a probe on every package.
-///
-/// The result is process-wide invariant for the lane's lifetime so we
-/// cache it in a [`OnceLock`].
 fn probe_systemd_run() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
     *AVAILABLE.get_or_init(detect_systemd_run)
 }
 
-/// Detect `systemd-run` availability via a `--version` probe.
 fn detect_systemd_run() -> bool {
     Command::new("systemd-run")
         .arg("--version")
@@ -999,10 +608,6 @@ fn detect_systemd_run() -> bool {
         .is_ok_and(|status| status.success())
 }
 
-/// Detect the installed `cargo kani` version and parse it.
-///
-/// `None` means the lane should skip (missing binary, non-zero version
-/// exit, parse failure, or older than [`MIN_KANI_VERSION`]).
 fn detect_cargo_kani() -> Option<DetectedCargoKani> {
     let output = Command::new("cargo")
         .arg("kani")
@@ -1021,10 +626,6 @@ fn detect_cargo_kani() -> Option<DetectedCargoKani> {
     parse_kani_version(text)
 }
 
-/// Parse the stdout of `cargo kani --version`.
-///
-/// Expected shape (cargo-kani 0.50.0 and later): `cargo-kani <X>.<Y>.<Z>`,
-/// optionally followed by extra tokens.
 fn parse_kani_version(stdout: &str) -> Option<DetectedCargoKani> {
     let head = stdout.lines().next()?;
     let mut tokens = head.split_whitespace();
@@ -1041,13 +642,6 @@ fn parse_kani_version(stdout: &str) -> Option<DetectedCargoKani> {
     detected.meets_floor().then_some(detected)
 }
 
-/// Run one package's `cargo kani -p <pkg>` with optional cgroup wrapping.
-///
-/// # Errors
-///
-/// Returns [`KaniRunError`] for spawn / kill / wait / pipe read failures.
-/// The caller maps this into [`KaniLaneError::Package`] so the lane
-/// dispatcher in [`crate::run_lane`] can convert to a stable exit class.
 fn run_package(
     workspace_root: &Path,
     package: &str,
@@ -1070,14 +664,6 @@ fn run_package(
     })
 }
 
-/// Drive a package child to completion under a wallclock timeout while
-/// surfacing every kill/wait/read failure as a typed [`KaniRunError`].
-///
-/// # Errors
-///
-/// Returns [`KaniRunError::WaitTimeout`] when `wait_timeout` itself
-/// reports an I/O error (the underlying [`Child`] is then handled by
-/// the caller).
 fn run_child_with_timeout(
     child: &mut Child,
     timeout: Duration,
@@ -1090,14 +676,6 @@ fn run_child_with_timeout(
     }
 }
 
-/// Drain stdout + stderr after a normal exit and combine them.
-///
-/// # Errors
-///
-/// Returns [`KaniRunError::PipeRead`] when reading either pipe fails,
-/// [`KaniRunError::PipeCapExceeded`] when either pipe exceeds
-/// [`PIPE_BYTE_CAP`], and [`KaniRunError::PipeNonUtf8`] when either
-/// pipe contains non-UTF-8 bytes.
 fn complete_child(
     child: &mut Child,
     status: ExitStatus,
@@ -1117,14 +695,6 @@ fn complete_child(
     })
 }
 
-/// Reap a child that exceeded the wallclock cap; surface every kill/wait
-/// failure rather than dropping it.
-///
-/// # Errors
-///
-/// Returns [`KaniRunError::Kill`] when `Child::kill` fails on a
-/// timed-out process, and [`KaniRunError::WaitReap`] when the
-/// subsequent `Child::wait` reports an I/O error.
 fn terminate_timed_out_child(child: &mut Child, program: &str) -> Result<PackageRun, KaniRunError> {
     if let Err(source) = child.kill() {
         return Err(KaniRunError::Kill { program: program.to_owned(), source });
@@ -1141,22 +711,12 @@ fn terminate_timed_out_child(child: &mut Child, program: &str) -> Result<Package
     })
 }
 
-/// A typed description of one `cargo kani` invocation.
 struct CompiledCommand {
-    /// Executable (`argv[0]`).
     executable: String,
-    /// Full argv for the invocation.
     argv: Box<[String]>,
-    /// Working directory the invocation will run in.
     working_dir: PathBuf,
 }
 
-/// Spawn a real [`Command`] from a compiled description.
-///
-/// # Errors
-///
-/// Returns [`KaniRunError::Spawn`] when [`Command::spawn`] fails to
-/// launch the configured executable.
 fn spawn_compiled(cmd: &CompiledCommand) -> Result<Child, KaniRunError> {
     let mut builder = Command::new(&cmd.executable);
     let _ = builder.args(cmd.argv.iter().skip(1).cloned());
@@ -1169,7 +729,6 @@ fn spawn_compiled(cmd: &CompiledCommand) -> Result<Child, KaniRunError> {
         .map_err(|source| KaniRunError::Spawn { program: cmd.executable.clone(), source })
 }
 
-/// Build the `systemd-run --user --scope … -- cargo kani -p <pkg>` command.
 fn build_cgroup_command(workspace_root: &Path, package: &str) -> CompiledCommand {
     let argv: Box<[String]> = Vec::from([
         String::from("systemd-run"),
@@ -1195,7 +754,6 @@ fn build_cgroup_command(workspace_root: &Path, package: &str) -> CompiledCommand
     }
 }
 
-/// Build the bare `cargo kani -p <pkg>` command (cgroup fallback).
 fn build_bare_command(workspace_root: &Path, package: &str) -> CompiledCommand {
     let argv: Box<[String]> = Vec::from([
         String::from("cargo"),
@@ -1213,30 +771,13 @@ fn build_bare_command(workspace_root: &Path, package: &str) -> CompiledCommand {
     }
 }
 
-/// Mutable accumulator for [`list_kani_harnesses`].
 #[derive(Default)]
 struct InventoryAggregate {
-    /// All harnesses discovered across crates.
     harnesses: Vec<KaniHarness>,
-    /// Whether at least one crate produced a non-empty inventory.
     any_listed: bool,
-    /// Every per-crate error collected (kept in insertion order).
     errors: Vec<String>,
 }
 
-/// Run `cargo kani list --format json` from inside each crate directory.
-///
-/// Every per-crate failure (spawn, non-zero exit, unparseable JSON, or
-/// unremovable stale artifact) is preserved in
-/// [`InventoryAggregate::errors`] so the empty-inventory receipt can
-/// surface the actionable diagnostics instead of collapsing to
-/// `LaneOutcome::Clean`.
-///
-/// # Errors
-///
-/// Returns [`KaniInventoryError::NoCratesDir`] when the workspace does
-/// not own a `crates/` directory, and [`KaniInventoryError::CratesDirRead`]
-/// when that directory is not enumerable.
 fn list_kani_harnesses(
     workspace_root: &Path,
     state: &mut LaneRunState,
@@ -1261,8 +802,6 @@ fn list_kani_harnesses(
     Ok(aggregate.harnesses)
 }
 
-/// Filter a `crates/` directory entry down to the `(path, package)`
-/// pair we are willing to scan, or `None` if it must be skipped.
 fn crate_entry(entry: &std::fs::DirEntry) -> Option<(PathBuf, String)> {
     let path = entry.path();
     if !path.is_dir() {
@@ -1278,8 +817,6 @@ fn crate_entry(entry: &std::fs::DirEntry) -> Option<(PathBuf, String)> {
     Some((path, pkg))
 }
 
-/// Fold one crate's inventory result into the running aggregate,
-/// preserving every failure as a typed string.
 fn accumulate_inventory(
     aggregate: &mut InventoryAggregate,
     pkg: &str,
@@ -1294,28 +831,12 @@ fn accumulate_inventory(
     }
 }
 
-/// Mark the aggregate as having observed at least one harness, when the
-/// freshly-collected inventory is non-empty.
 const fn mark_listed(aggregate: &mut InventoryAggregate, harnesses: &[KaniHarness]) {
     if !harnesses.is_empty() {
         aggregate.any_listed = true;
     }
 }
 
-/// Run `cargo kani list --format json` from inside one crate directory.
-///
-/// cargo-kani 0.67.0 writes the inventory to `<crate_dir>/kani-list.json`,
-/// not to stdout. Read the file back and parse it.
-///
-/// # Errors
-///
-/// Returns [`KaniInventoryError::CleanupFailed`] when the stale
-/// `kani-list.json` cannot be removed (other than `NotFound`),
-/// [`KaniInventoryError::ListCommand`] when spawn / wait fails,
-/// [`KaniInventoryError::ListCommandExit`] when the command exits
-/// non-zero, [`KaniInventoryError::ArtifactRead`] when the produced
-/// artifact is unreadable, and [`KaniInventoryError::ArtifactParse`]
-/// when the JSON is malformed.
 fn list_kani_for_crate(
     crate_dir: &Path,
     package: &str,
@@ -1362,17 +883,6 @@ fn list_kani_for_crate(
     })
 }
 
-/// Best-effort cleanup of a stale `kani-list.json` left by a previous run.
-///
-/// `NotFound` is the expected case and returns success; any other I/O
-/// error is surfaced so the caller can downgrade to a typed
-/// [`KaniInventoryError::CleanupFailed`] rather than silently writing over
-/// the stale file.
-///
-/// # Errors
-///
-/// Returns the underlying I/O error when `remove_file` fails with a
-/// non-`NotFound` kind.
 fn cleanup_list_artifact(artifact: &Path) -> Result<(), std::io::Error> {
     match std::fs::remove_file(artifact) {
         Ok(()) => Ok(()),
@@ -1389,16 +899,6 @@ struct KaniListFile {
     contract_harnesses: std::collections::BTreeMap<String, Vec<String>>,
 }
 
-/// Parse cargo-kani's `kani-list.json` shape (not a flat array).
-///
-/// cargo-kani writes `{standard-harnesses: {<file>: [<harness>...]}, ...}`.
-///
-/// # Errors
-///
-/// Returns the underlying [`serde_json::Error`] when the JSON is
-/// unparseable so the caller can surface
-/// `PROOF_KANI_INFRA` rather than silently treating malformed input as an
-/// empty inventory.
 fn parse_kani_list(package: &str, contents: &str) -> Result<Vec<KaniHarness>, serde_json::Error> {
     let file: KaniListFile = serde_json::from_str(contents)?;
     let mut all = harnesses_from_file_map(package, &file.standard_harnesses);
@@ -1406,7 +906,6 @@ fn parse_kani_list(package: &str, contents: &str) -> Result<Vec<KaniHarness>, se
     Ok(all)
 }
 
-/// Flatten one `kani-list.json` section into a `Vec<KaniHarness>`.
 fn harnesses_from_file_map(
     package: &str,
     file_map: &std::collections::BTreeMap<String, Vec<String>>,
@@ -1671,12 +1170,6 @@ VERIFICATION:- FAILED
 
     #[test]
     fn missing_verdict_distinguishes_unknown_from_blocked() {
-        // Use a harness name whose canonical id is rejected by
-        // `KaniHarnessId::new` so the per-harness rule id falls back to
-        // `PROOF_KANI_NO_VERDICT`. With a valid id we'd get
-        // `PROOF_KANI_<NAME>` instead, which still distinguishes the
-        // no-verdict path from the BLOCKED path semantically (a
-        // harness-named rule id never starts with `_BLOCKED`).
         let harnesses = vec![harness_fixture("titania-core", "kani::123-leading-digit")];
         let verdicts = HarnessVerdictMap::default();
         let run = completed_run_fixture(0, true);
@@ -1779,10 +1272,6 @@ VERIFICATION:- FAILED
 
     #[test]
     fn rule_id_error_wraps_via_explicit_constructor() {
-        // Verifies the explicit `KaniLaneError::RuleId` constructor flow
-        // for `RuleIdError` -> `KaniLaneError::RuleId` (no From derived;
-        // the inner error is wrapped manually to preserve the existing
-        // `From<RuleIdError> for RuleIdError` boundary).
         let inner = RuleIdError::Empty;
         let wrapped = KaniLaneError::RuleId(inner);
         assert!(matches!(wrapped, KaniLaneError::RuleId(_)));
@@ -1791,8 +1280,6 @@ VERIFICATION:- FAILED
     #[test]
     fn location_tool_carries_runtime_detected_version() {
         let location = Location::tool(String::from("cargo-kani"), String::from("0.67.0"));
-        // Render the location back through its public surface so the
-        // constructor is exercised against a `serde_json::Value` auditor.
         let value = serde_json::to_value(&location).expect("location serialization must succeed");
         let obj = value.as_object().expect("location serializes to an object");
         assert!(obj.contains_key("Tool"), "Tool variant must round-trip through serde");
@@ -1885,10 +1372,6 @@ VERIFICATION:- FAILED
 
 #[cfg(test)]
 mod size_tests {
-    /// Compile-time guard that keeps the lane-error enum under the
-    /// workspace `large-error-threshold = 64` byte bound (see
-    /// `clippy.toml`). If this ever fires, re-box one of the inner
-    /// `String` fields rather than relaxing the threshold.
     #[test]
     fn assert_kani_lane_error_under_threshold() {
         assert!(std::mem::size_of::<super::KaniLaneError>() < 64);

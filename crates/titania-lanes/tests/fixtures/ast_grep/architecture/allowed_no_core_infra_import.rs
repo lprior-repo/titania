@@ -1,5 +1,3 @@
-// Fixture: allowed — no infrastructure imports in core/domain.
-// Core code using only standard library and domain types.
 
 use std::collections::HashMap;
 

@@ -1,5 +1,3 @@
-//! v1.5 contract tests for `SkipReason::ToolUnavailable(ToolKind)` serde round-trip.
-
 use titania_core::{SkipReason, ToolKind};
 
 #[test]

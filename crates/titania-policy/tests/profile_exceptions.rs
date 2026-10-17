@@ -1,5 +1,3 @@
-//! Policy and exception parser behavior tests.
-
 use std::{fs, path::PathBuf};
 use titania_policy::{ExceptionError, PolicyValue, ProfileError, parse_exceptions, parse_profile};
 

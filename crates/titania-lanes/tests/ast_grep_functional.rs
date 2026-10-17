@@ -1,28 +1,7 @@
-//! Contract tests for the embedded ast-grep functional rule catalog.
-//!
-//! The rules are loaded at compile time via `include_str!` from
-//! `crates/titania-lanes/rules/functional.yml`.  Tests assert structural
-//! properties of the YAML (rule IDs, language, severity, message, pattern,
-//! effect, path exclusion) so that any drift is caught before the
-//! `AstGrep` lane runs.
-//!
-//! Fixture files under `tests/fixtures/ast_grep/functional/` exercise each
-//! rule in isolation; the YAML patterns are expected to match them.
-
 use std::collections::BTreeSet;
 
-// ---------------------------------------------------------------------------
-// Compile-time YAML load — fails if the catalog is missing or malformed.
-// ---------------------------------------------------------------------------
-
-/// Raw YAML text of the embedded ast-grep functional rules.
 const FUNCTIONAL_YAML: &str = include_str!("../rules/functional.yml");
 
-// ---------------------------------------------------------------------------
-// Required rule IDs and their expected metadata.
-// ---------------------------------------------------------------------------
-
-/// The nine structural rule IDs that MUST appear in the catalog.
 const REQUIRED_RULE_IDS: &[&str] = &[
     "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
     "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR",
@@ -35,14 +14,8 @@ const REQUIRED_RULE_IDS: &[&str] = &[
     "FUNC_RESULT_STRING",
 ];
 
-/// Path segments that MUST be excluded from production scanning.
 const PROD_EXCLUSIONS: &[&str] = &["tests", "benches", "examples", "build.rs"];
 
-// ---------------------------------------------------------------------------
-// Minimal YAML helpers — no external serde dependency.
-// ---------------------------------------------------------------------------
-
-/// Returns the value string for a YAML key at a given indentation level.
 fn yaml_scalar_at<'a>(yaml: &'a str, key: &str, indent: usize) -> Option<&'a str> {
     let prefix = format!("{:indent$}{key}: ", "", indent = indent);
     for line in yaml.lines() {
@@ -54,7 +27,6 @@ fn yaml_scalar_at<'a>(yaml: &'a str, key: &str, indent: usize) -> Option<&'a str
     None
 }
 
-/// Strip optional YAML single/double quotes from a scalar value.
 fn strip_yaml_quotes(s: &str) -> &str {
     if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
         return inner;
@@ -65,14 +37,12 @@ fn strip_yaml_quotes(s: &str) -> &str {
     s
 }
 
-/// Extract the text block belonging to a single rule (after `id: <id>`).
 fn extract_rule_block<'a>(yaml: &'a str, rule_id: &str) -> Option<&'a str> {
     let marker = format!("\nid: {rule_id}");
     let start = yaml.find(&marker)?;
     let after_start = start + marker.len();
     let rest = &yaml[after_start..];
 
-    // Find next rule boundary (a line starting with "id: " at indent 0).
     let end_offset = rest
         .lines()
         .enumerate()
@@ -89,12 +59,6 @@ fn extract_rule_block<'a>(yaml: &'a str, rule_id: &str) -> Option<&'a str> {
     Some(&yaml[after_start..after_start + end_offset])
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-/// Every required rule ID appears in the YAML exactly once, and no
-/// extra rule IDs are present.
 #[test]
 fn ast_grep_functional_all_required_rule_ids_present_exactly_once() {
     let mut found = BTreeSet::new();
@@ -104,40 +68,33 @@ fn ast_grep_functional_all_required_rule_ids_present_exactly_once() {
         assert!(found.insert(id.to_string()), "Duplicate rule ID '{id}'",);
     }
 
-    // No extra rule IDs: every `id:` line must be one of the required set.
     let all_ids = collect_rule_ids(FUNCTIONAL_YAML);
     for id in &all_ids {
         assert!(REQUIRED_RULE_IDS.contains(&id.as_str()), "Unexpected rule ID '{id}' in catalog",);
     }
 }
 
-/// Every rule has language: Rust, a severity, a non-empty message,
-/// and a pattern inside a rules[] array.
 #[test]
 fn ast_grep_functional_every_rule_has_required_fields() {
     for &rule_id in REQUIRED_RULE_IDS {
         let block = extract_rule_block(FUNCTIONAL_YAML, rule_id)
             .unwrap_or_else(|| panic!("Rule block not found for '{rule_id}'"));
 
-        // language: Rust
         assert_eq!(
             yaml_scalar_at(block, "language", 0),
             Some("Rust"),
             "'{rule_id}' must have language: Rust",
         );
 
-        // severity (present, non-empty)
         assert!(
             yaml_scalar_at(block, "severity", 0).is_some(),
             "'{rule_id}' must have a severity field",
         );
 
-        // message (present, non-empty)
         let msg =
             yaml_scalar_at(block, "message", 0).expect("'{rule_id}' must have a message field");
         assert!(!msg.is_empty(), "'{rule_id}' message must be non-empty",);
 
-        // Rule body with at least one pattern.
         assert!(
             block.contains("rule:") || block.contains("rules:"),
             "'{rule_id}' must have a rule body",
@@ -149,7 +106,6 @@ fn ast_grep_functional_every_rule_has_required_fields() {
     }
 }
 
-/// FUNC_WILDCARD_IMPORT carries an Informational effect/status.
 #[test]
 fn ast_grep_functional_wildcard_import_is_informational() {
     let block = extract_rule_block(FUNCTIONAL_YAML, "FUNC_WILDCARD_IMPORT")
@@ -162,8 +118,6 @@ fn ast_grep_functional_wildcard_import_is_informational() {
     );
 }
 
-/// Production-only path exclusions are present: tests, benches, examples,
-/// and build.rs must be excluded from scanning.
 #[test]
 fn ast_grep_functional_production_only_path_exclusions_present() {
     for exclusion in PROD_EXCLUSIONS {
@@ -171,7 +125,6 @@ fn ast_grep_functional_production_only_path_exclusions_present() {
             FUNCTIONAL_YAML.contains("exclude:") || FUNCTIONAL_YAML.contains("files:"),
             "Catalog must contain 'exclude:' or 'files:' keys for path filtering",
         );
-        // The exclusion string itself must appear somewhere in the YAML.
         assert!(
             FUNCTIONAL_YAML.contains(exclusion),
             "Path exclusion '{exclusion}' must be present in catalog",
@@ -179,7 +132,6 @@ fn ast_grep_functional_production_only_path_exclusions_present() {
     }
 }
 
-/// Fixture files for each violating construct exist under fixtures/.
 #[test]
 fn ast_grep_functional_fixture_files_exist_for_each_rule() {
     let base = env!("CARGO_MANIFEST_DIR");
@@ -211,8 +163,6 @@ fn violation_fixture_name(rule_id: &str) -> String {
     }
 }
 
-/// The allowed-iterator-pipeline fixture is valid Rust that contains no
-/// unbounded retry or unbounded iterator source.
 #[test]
 fn ast_grep_functional_allowed_iterator_pipeline_fixture_has_no_loops() {
     let base = env!("CARGO_MANIFEST_DIR");
@@ -235,8 +185,6 @@ fn ast_grep_functional_allowed_iterator_pipeline_fixture_has_no_loops() {
     );
 }
 
-/// The allowed-bounded-for fixture uses finite `for` iteration with `?` and
-/// must not contain any unbounded retry or iterator source.
 #[test]
 fn ast_grep_functional_allowed_bounded_for_fixture_has_no_unbounded_surface() {
     let base = env!("CARGO_MANIFEST_DIR");
@@ -253,7 +201,6 @@ fn ast_grep_functional_allowed_bounded_for_fixture_has_no_unbounded_surface() {
     );
 }
 
-/// The allowed-no-print fixture has no print!/println!/eprintln! calls.
 #[test]
 fn ast_grep_functional_allowed_no_print_fixture_has_no_print_calls() {
     let base = env!("CARGO_MANIFEST_DIR");
@@ -266,13 +213,11 @@ fn ast_grep_functional_allowed_no_print_fixture_has_no_print_calls() {
     assert!(!content.contains("eprintln!"), "Allowed fixture must not contain eprintln! calls",);
 }
 
-/// Violation fixtures actually contain the patterns they are named for.
 #[test]
 fn ast_grep_functional_violation_fixtures_contain_their_patterns() {
     let base = env!("CARGO_MANIFEST_DIR");
     let fixtures_dir = format!("{base}/tests/fixtures/ast_grep/functional");
 
-    // unbounded-loop fixture (loop block and condition while, no while-let)
     assert_loop_fixture_contains(
         &fixtures_dir,
         "bounded_execution_unbounded_loop_violation.rs",
@@ -284,7 +229,6 @@ fn ast_grep_functional_violation_fixtures_contain_their_patterns() {
         "while ",
     );
 
-    // unbounded-iterator fixture (infinite sources, no loop syntax needed)
     let unbounded_iter =
         read_fixture(&fixtures_dir, "bounded_execution_unbounded_iterator_violation.rs");
     assert!(
@@ -292,38 +236,29 @@ fn ast_grep_functional_violation_fixtures_contain_their_patterns() {
         "'bounded_execution_unbounded_iterator_violation.rs' must contain repeat( or .cycle()",
     );
 
-    // print-stdout fixture
     let stdout = read_fixture(&fixtures_dir, "func_print_stdout_violation.rs");
     assert!(
         stdout.contains("println!") || stdout.contains("print!"),
         "func_print_stdout_violation.rs must contain println!/print!",
     );
 
-    // print-stderr fixture
     let stderr = read_fixture(&fixtures_dir, "func_print_stderr_violation.rs");
     assert!(stderr.contains("eprintln!"), "func_print_stderr_violation.rs must contain eprintln!",);
 
-    // wildcard-import fixture
     let wildcard = read_fixture(&fixtures_dir, "func_wildcard_import_violation.rs");
     assert!(
         wildcard.contains("::*"),
         "func_wildcard_import_violation.rs must contain wildcard import",
     );
-    // unwrap_or fixture
     let unwrap = read_fixture(&fixtures_dir, "func_unwrap_or_violation.rs");
     assert!(unwrap.contains(".unwrap_or"), "func_unwrap_or_violation.rs must contain .unwrap_or",);
 
-    // result_string fixture
     let result_string = read_fixture(&fixtures_dir, "func_result_string_violation.rs");
     assert!(
         result_string.contains("Result<") && result_string.contains(", String>"),
         "func_result_string_violation.rs must contain Result<T, String>",
     );
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 fn count_occurrences(haystack: &str, needle: &str) -> usize {
     let mut count = 0;

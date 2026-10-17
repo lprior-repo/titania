@@ -1,16 +1,3 @@
-//! Integration test for the template-prepush smoke (bead tn-rld.4).
-//!
-//! Generates a fresh workspace from the Titania cargo-generate skeleton into an
-//! isolated temp directory, then runs `titania-check --scope prepush --emit json`
-//! inside it.  Assertions check that:
-//!
-//! 1. The generated workspace actually exists with the expected files.
-//! 2. `titania-check --scope prepush --emit json` succeeds.
-//! 3. The JSON report is a v1 `Pass` with lane evidence.
-//!
-//! Selective acceptance filter:
-//! `cargo test -p titania-check template_prepush`
-
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
@@ -21,43 +8,17 @@ use std::{
 
 use wait_timeout::ChildExt;
 
-/// Wallclock timeout for `titania-check --scope prepush` on a generated
-/// template workspace. The prepush gate compiles the full workspace, runs
-/// clippy, tests, deny, and dylint — 300 s is the same budget used by the
-/// Moon gate-prepush test.
 const PREPUSH_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Serializes the two template smoke tests so they never contend on the
-/// shared `CARGO_HOME` package-cache lock. Without this, parallel execution
-/// produces "Blocking waiting for file lock on package cache" stalls that
-/// intermittently fail the suite (exit 101 under the Test lane).
-///
-/// Uses `unwrap_or_else(|e| e.into_inner())` so a panic in one test does not
-/// poison the lock for the other — the surviving test still acquires the guard
-/// and runs to completion, producing its own pass/fail evidence.
 static TEMPLATE_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn template_test_lock() -> &'static Mutex<()> {
     TEMPLATE_TEST_LOCK.get_or_init(|| Mutex::new(()))
 }
 
-/// Acquire the serialization guard, recovering from a poisoned lock so a
-/// panic in one test does not prevent the other from running.
 fn acquire_template_guard() -> std::sync::MutexGuard<'static, ()> {
     template_test_lock().lock().unwrap_or_else(|e| e.into_inner())
 }
-/// Return the root directory used by `generate_workspace` to host the
-/// cargo-generate scaffold output.
-///
-/// Honors `TITANIA_TEST_TMPDIR` (CI / restricted environments) and defaults
-/// to `$XDG_CACHE_HOME/titania-check-tests`, then `$HOME/.cache/titania-check-tests`,
-/// then `std::env::temp_dir()`.
-///
-/// **Why not `/tmp`?** This machine's `/tmp` is a 62G tmpfs with both block
-/// and inode quotas. `cargo generate` writes the generated workspace + lock
-/// files + inner `cargo metadata` cache there; with the tmpfs at 80% use
-/// the next allocation trips `os error 122 (EDQUOT)`. The home filesystem
-/// is btrfs with no inode cap and 990G free, so test artifacts land cleanly.
 fn test_workspace_dir() -> PathBuf {
     if let Ok(p) = std::env::var("TITANIA_TEST_TMPDIR") {
         if !p.is_empty() {
@@ -73,7 +34,6 @@ fn test_workspace_dir() -> PathBuf {
     std::env::temp_dir()
 }
 
-/// Run a single external command, capturing stdout / stderr / exit code.
 fn run_cmd<C, A, I>(cmd: C, args: I, cwd: Option<&std::path::Path>) -> CmdResult
 where
     C: AsRef<std::ffi::OsStr>,
@@ -161,16 +121,8 @@ impl CmdResult {
     }
 }
 
-/// Locate the titania-check binary.
-///
-/// Search order:
-/// 1. `CARGO_TARGET_DIR` / debug / titania-check  (if set)
-/// 2. `<worktree>/target/debug/titania-check` relative to the crate root
 fn find_titania_check() -> PathBuf {
     let binary_name = format!("titania-check{}", std::env::consts::EXE_SUFFIX);
-    // Derive the target/debug directory from the test binary's location.
-    // Test binary: target/debug/deps/template_prepush-XXXX
-    // Target binary: target/debug/titania-check[.exe]
     let mut exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
     _ = exe.pop();
     _ = exe.pop();
@@ -184,7 +136,6 @@ fn find_titania_check() -> PathBuf {
     p
 }
 
-/// Build and locate the local `titania-check` binary used to emulate an install.
 fn ensure_titania_check_binary() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = manifest_dir.ancestors().nth(2).unwrap();
@@ -204,8 +155,6 @@ fn ensure_titania_check_binary() -> PathBuf {
     check_bin
 }
 
-/// Build a PATH value that makes the just-built `titania-check` binary visible
-/// to generated Moon lane tasks.
 fn path_with_titania_check(check_bin: &std::path::Path) -> std::ffi::OsString {
     let check_dir = check_bin.parent().expect("titania-check binary must have a parent dir");
     let current_path = std::env::var_os("PATH").unwrap_or_default();
@@ -215,8 +164,6 @@ fn path_with_titania_check(check_bin: &std::path::Path) -> std::ffi::OsString {
     .expect("PATH with titania-check binary dir must be valid")
 }
 
-/// Ensure the local Dylint cdylib exists in cargo-dylint's `--lib-path`
-/// filename format and return its path.
 fn ensure_dylint_library(_check_bin: &std::path::Path) -> PathBuf {
     let workspace = test_workspace_root();
     let result = run_cmd("cargo", ["dylint", "list", "--all"], Some(&workspace));
@@ -269,21 +216,12 @@ fn find_titania_dylint_library(root: &Path) -> Option<PathBuf> {
     })
 }
 
-/// Preserve one host variable when building an otherwise clean child env.
 fn preserve_env(command: &mut Command, key: &str) {
     if let Some(value) = std::env::var_os(key) {
         let _ = command.env(key, value);
     }
 }
 
-/// Run `titania-check setup-hermetic` in `workspace_dir` to create the
-/// `.titania/hermetic/{cargo-home,rustup-home}` symlinks (v1-spec §9.5).
-///
-/// The generated template's Moon tasks do not include a `setup-hermetic`
-/// dependency or `env:` block for `CARGO_HOME` / `RUSTUP_HOME`. Without these
-/// symlinks, PolicyScan emits `BYPASS_ENV_*` findings and the smoke test
-/// cannot pass. This function bridges the gap by creating the symlinks before
-/// the prepush gate runs.
 fn setup_hermetic_in_workspace(check_bin: &std::path::Path, workspace_dir: &std::path::Path) {
     let result = run_cmd(check_bin, ["setup-hermetic"], Some(workspace_dir));
     assert!(
@@ -306,17 +244,12 @@ fn setup_hermetic_in_workspace(check_bin: &std::path::Path, workspace_dir: &std:
     );
 }
 
-/// Override `CARGO_HOME` / `RUSTUP_HOME` on `command` with the hermetic paths
-/// for `workspace_dir`, so PolicyScan sees the controlled paths (v1-spec §8,
-/// §9.5). Called after `configure_clean_child_env` to replace the preserved
-/// host values.
 fn set_hermetic_env(command: &mut Command, workspace_dir: &std::path::Path) {
     let hermetic = workspace_dir.join(".titania").join("hermetic");
     let _ = command.env("CARGO_HOME", hermetic.join("cargo-home"));
     let _ = command.env("RUSTUP_HOME", hermetic.join("rustup-home"));
 }
 
-/// Build a minimal environment for nested generated-workspace Moon execution.
 fn configure_clean_child_env(
     command: &mut Command,
     check_bin: &std::path::Path,
@@ -353,8 +286,6 @@ fn configure_clean_child_env(
     .for_each(|key| preserve_env(command, key));
 }
 
-/// Generate a fresh workspace from the Titania template into an isolated temp
-/// directory and return its path.  Panics on failure.
 fn generate_workspace(name: &str) -> PathBuf {
     let template_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -363,7 +294,6 @@ fn generate_workspace(name: &str) -> PathBuf {
         .join("titania")
         .join("template");
 
-    // Unique name using nanosecond timestamp to avoid collision across runs.
     let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
     let unique_name = format!("{name}-{ns}");
     let tmp_dir = {
@@ -377,14 +307,6 @@ fn generate_workspace(name: &str) -> PathBuf {
     };
     let dest = tmp_dir.join(&unique_name);
 
-    // Forward TMPDIR to the cargo-generate child so its inner
-    // `cargo metadata` invocation also routes through the redirected
-    // tmp_dir and avoids the /tmp tmpfs EDQUOT.
-    // Use a builder chain so the unused-result lint from -D unused-results
-    // (workspace AGENTS deny list) doesn't fire on `Command::env`'s
-    // `&mut Self` return type. Store the eventual error via let _ = ...
-    // just to thread the compiler; the methods return &mut Self which the
-    // ignore pattern satisfies.
     let mut cmd = std::process::Command::new("cargo");
     let _ = cmd
         .arg("generate")
@@ -392,26 +314,12 @@ fn generate_workspace(name: &str) -> PathBuf {
         .arg(template_root.to_string_lossy().as_ref())
         .arg("--name")
         .arg(&unique_name);
-    // Forward TMPDIR + CARGO_TARGET_DIR so the cargo-generate subprocess
-    // AND its inner cargo (which writes build artifacts and `.fingerprint/`
-    // files to TMPDIR by default) both route through the redirected tmpdir
-    // instead of /tmp, where the 62G tmpfs keeps tripping EDQUOT (os 122).
-    // cargo's default tmpdir lives at ${TMPDIR}/cargo-installXXXXXX/, so
-    // moving TMPDIR alone wasn't enough — the spawned cargo also needs
-    // its own target dir pinned off /tmp.
     let cargo_target = tmp_dir.join("cargo-target");
     std::fs::create_dir_all(&cargo_target).expect("create cargo target dir");
-    // TMPDIR redirects cargo's `std::env::temp_dir()` for build artifacts;
-    // CARGO_TARGET_DIR redirects the entire target dir; both are needed
-    // because the /tmp tmpfs on this machine hits EDQUOT.
     let _ = cmd.env("TMPDIR", &tmp_dir);
     let _ = cmd.env("CARGO_TARGET_DIR", &cargo_target);
     let _ = cmd.env("CARGO_BUILD_JOBS", "1");
     let _ = cmd.current_dir(&tmp_dir);
-    // CARGO_TARGET_DIR is preserved through the keep-list in
-    // configure_clean_child_env, so the moon→cargo chain inherits it.
-    // No unsafe block needed in this workspace; we add it to the
-    // keep-list at module load order below.
     let result = run_command_with_timeout(&mut cmd, Duration::from_secs(120));
 
     assert!(
@@ -421,10 +329,8 @@ fn generate_workspace(name: &str) -> PathBuf {
         result.stdout
     );
 
-    // cargo generate creates <tmp_dir>/<name>/
     assert!(dest.exists(), "generated workspace does not exist at {dest:?}");
 
-    // Verify key files are present
     let cargo_toml = dest.join("Cargo.toml");
     let deny_toml = dest.join("deny.toml");
     assert!(cargo_toml.exists(), "Cargo.toml missing from generated workspace at {cargo_toml:?}");
@@ -433,8 +339,6 @@ fn generate_workspace(name: &str) -> PathBuf {
     dest
 }
 
-/// Run `titania-check --scope prepush --emit json` in the given directory
-/// and return the stdout (the JSON report).
 fn run_prepush_check(workspace_dir: &std::path::Path) -> String {
     let check_bin = ensure_titania_check_binary();
     let dylint_lib = ensure_dylint_library(&check_bin);
@@ -457,7 +361,6 @@ fn run_prepush_check(workspace_dir: &std::path::Path) -> String {
 
     assert!(!result.stdout.is_empty(), "titania-check produced no stdout — JSON report is empty");
 
-    // Validate it is valid JSON with expected top-level fields
     let json: serde_json::Value =
         serde_json::from_str(&result.stdout).expect("titania-check stdout is not valid JSON");
 
@@ -541,7 +444,6 @@ fn template_prepush_generated_workspace_smoke() {
     let workspace = generate_workspace("tn-rld-4-smoke");
     let json_report = run_prepush_check(&workspace);
 
-    // The report should pass out of the box per v1 DoD #10.
     let parsed: serde_json::Value =
         serde_json::from_str(&json_report).expect("report is valid JSON");
 
@@ -561,7 +463,6 @@ fn template_prepush_generated_workspace_smoke() {
         "all generated template prepush lanes must be clean; report: {json_report}"
     );
 
-    // Clean up the generated workspace.
     std::fs::remove_dir_all(&workspace)
         .unwrap_or_else(|e| panic!("failed to clean up {workspace:?}: {e}"));
 }

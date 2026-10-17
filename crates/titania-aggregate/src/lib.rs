@@ -1,8 +1,3 @@
-//! v1 lane-artifact reader for Titania.
-//!
-//! Reads expected lane-output JSON files in Edit/Prepush/Release order from a
-//! target project's `.titania/out/` directory.
-
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

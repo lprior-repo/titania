@@ -1,32 +1,8 @@
-//! Contract tests for v1 documentation alignment.
-//!
-//! Tests that README.md and VISION.md do not contain obsolete command strings
-//! or out-of-scope claims. Acceptance command:
-//!
-//! ```bash
-//! cargo test -p titania-lanes --test docs_contract v1_docs_contract_sync
-//! ```
-//!
-//! Forbidden strings (per tn-30e):
-//! - `titania init` (replaced by `cargo generate titania/template`)
-//! - `titania doctor` (replaced by `titania-check doctor`)
-//! - `titania ci --scope edit` (replaced by `titania-check --scope edit`)
-//! - `titania ci --scope prepush` (replaced by `titania-check --scope prepush`)
-//! - `titania ci --scope full` (full is v1.5, not v1)
-//! - `vb-fmt-0012` (example rule ID not covered by v1)
-//! - claims that v1 proves panic-freedom or functional correctness
-
-// ── helpers ──────────────────────────────────────────────────────────────
-
-// ── workspace file access ─────────────────────────────────────────────────
-
-/// Resolve the repository root from this crate's manifest directory.
 fn workspace_root() -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     std::path::PathBuf::from(manifest).join("../../")
 }
 
-/// Read a file from the workspace root as a UTF-8 string.
 fn read_ws_file(name: &str) -> String {
     let path = workspace_root().join(name);
     std::fs::read_to_string(&path).unwrap_or_else(|_| {
@@ -34,9 +10,6 @@ fn read_ws_file(name: &str) -> String {
     })
 }
 
-// ── forbidden strings ──────────────────────────────────────────────────────
-
-/// All strings that must not appear anywhere in v1 public docs.
 const FORBIDDEN: &[&str] = &[
     "titania init",
     "titania doctor",
@@ -46,7 +19,6 @@ const FORBIDDEN: &[&str] = &[
     "vb-fmt-0012",
 ];
 
-/// Strings that assert v1 proves strong formal properties.
 const FORMAL_PROOF_CLAIMS: &[&str] = &[
     "v1 proves panic-freedom",
     "proves functional correctness",
@@ -54,9 +26,6 @@ const FORMAL_PROOF_CLAIMS: &[&str] = &[
     "functional correctness proof",
 ];
 
-// ── required v1 commands ──────────────────────────────────────────────────
-
-/// v1 must advertise these commands (subset of what docs should contain).
 const REQUIRED_V1_COMMANDS: &[&str] = &[
     "cargo generate titania/template",
     "titania-check doctor",
@@ -64,8 +33,6 @@ const REQUIRED_V1_COMMANDS: &[&str] = &[
     "titania-check --scope prepush",
     "titania-check --scope release",
 ];
-
-// ── test: forbidden strings absent ────────────────────────────────────────
 
 #[test]
 fn v1_docs_contract_no_forbidden_strings() {
@@ -95,8 +62,6 @@ fn v1_docs_contract_no_forbidden_strings() {
     );
 }
 
-// ── test: required v1 commands present ────────────────────────────────────
-
 #[test]
 fn v1_docs_contract_required_commands() {
     let readme = read_ws_file("README.md");
@@ -117,8 +82,6 @@ fn v1_docs_contract_required_commands() {
     );
 }
 
-// ── test: VISION links v1-spec.md ─────────────────────────────────────────
-
 #[test]
 fn v1_docs_contract_vision_links_v1spec() {
     let vision = read_ws_file("VISION.md");
@@ -129,20 +92,15 @@ fn v1_docs_contract_vision_links_v1spec() {
     );
 }
 
-// ── test: README scopes match GateScope variants ─────────────────────────
-
 #[test]
 fn v1_docs_contract_scopes_match_gatescope() {
     let readme = read_ws_file("README.md");
 
-    // v1 scopes: edit, prepush, release
-    // full and deep are v1.5+ and must not be advertised as v1
     let scopes_in_readme: Vec<&str> = ["edit", "prepush", "release", "full", "deep"]
         .into_iter()
         .filter(|s| readme.contains(&format!("--scope {s}")))
         .collect();
 
-    // full and deep should NOT appear with --scope in README
     let out_of_scope: Vec<&str> =
         scopes_in_readme.into_iter().filter(|s| *s == "full" || *s == "deep").collect();
 
@@ -153,12 +111,6 @@ fn v1_docs_contract_scopes_match_gatescope() {
     );
 }
 
-// ── acceptance entry point ─────────────────────────────────────────────────
-
-/// Acceptance test for tn-30e.
-/// Runs all docs-contract checks as a single named test.
-///
-/// Command: `cargo test -p titania-lanes --test docs_contract v1_docs_contract_sync`
 #[test]
 fn v1_docs_contract_sync() {
     v1_docs_contract_no_forbidden_strings();

@@ -18,31 +18,14 @@ use crate::command::{
 };
 
 impl CommandIn<'_> {
-    /// Run the subprocess, capture stdout/stderr, enforce the execution
-    /// budget, and reject non-zero exits.
-    ///
-    /// # Errors
-    /// [`LaneError::NonZeroExit`] on a non-zero exit, plus any
-    /// [`LaneError`] from [`CommandIn::run_capture_raw`].
     pub fn run(&self) -> Result<CommandOutput, LaneError> {
         self.run_capture_raw()?.into_result()
     }
 
-    /// Alias for [`CommandIn::run`]: checked captured execution.
-    ///
-    /// # Errors
-    /// See [`CommandIn::run`].
     pub fn run_capture(&self) -> Result<CommandOutput, LaneError> {
         self.run()
     }
 
-    /// Run the subprocess, capture stdout/stderr, and enforce execution
-    /// and output budgets without checking the exit status.
-    ///
-    /// # Errors
-    /// [`LaneError::Io`] on spawn/wait failure, [`LaneError::Timeout`]
-    /// on budget exhaustion, [`LaneError::OutputLimitExceeded`] or
-    /// [`LaneError::PipeUnavailable`] on capture failure.
     pub fn run_capture_raw(&self) -> Result<CommandOutput, LaneError> {
         let started = Instant::now();
         let mut cmd = self.base_command();
@@ -57,12 +40,6 @@ impl CommandIn<'_> {
         capture_to_completion(&mut child, stdout_reader, stderr_reader, started, self)
     }
 
-    /// Run the subprocess with inherited stdout/stderr and enforce the
-    /// execution budget without checking the exit status.
-    ///
-    /// # Errors
-    /// [`LaneError::Io`] on spawn/wait failure or [`LaneError::Timeout`]
-    /// on budget exhaustion.
     pub fn run_status_raw(&self) -> Result<ExitStatus, LaneError> {
         let mut cmd = self.base_command();
         let _ = cmd.stdin(Stdio::null()).stdout(Stdio::inherit()).stderr(Stdio::inherit());
@@ -74,12 +51,6 @@ impl CommandIn<'_> {
         build_base_command(self)
     }
 
-    /// Terminate a timed-out child and drain both capture readers.
-    ///
-    /// # Errors
-    /// Returns [`LaneError::Io`] if terminating or waiting on the child fails,
-    /// propagates reader drain errors, and otherwise returns
-    /// [`LaneError::Timeout`] for the owner command.
     fn timeout_child(
         &self,
         child: &mut Child,
@@ -93,11 +64,6 @@ impl CommandIn<'_> {
         Err(self.timeout_error())
     }
 
-    /// Receive one capture reader result within the remaining command budget.
-    ///
-    /// # Errors
-    /// Returns any [`LaneError`] produced by the reader, with reader-local
-    /// timeout errors rewritten to this command's full timeout error.
     fn receive_reader(&self, reader: ReaderHandle, started: Instant) -> Result<Vec<u8>, LaneError> {
         let result = reader.recv_timeout(remaining_budget(started, self.budget.timeout));
         map_reader_result(result, self)
@@ -119,12 +85,6 @@ impl CommandIn<'_> {
     }
 }
 
-/// Wait for `child` to exit within the owner's timeout, mapping a timeout to
-/// the owner's [`LaneError::Timeout`] after terminating the process tree.
-///
-/// # Errors
-/// Returns [`LaneError::Io`] if waiting for or terminating the child fails, or
-/// [`LaneError::Timeout`] when the child exceeds the owner's execution budget.
 fn wait_status_or_timeout(
     child: &mut Child,
     owner: &CommandIn<'_>,
@@ -140,9 +100,6 @@ fn wait_status_or_timeout(
     }
 }
 
-/// Build the base `Command` (program, cwd, env policy, args, env, `env_remove`)
-/// rooted at `owner`. Free-function body of [`CommandIn::base_command`] so the
-/// env-remove loop sits at module depth.
 fn build_base_command(owner: &CommandIn<'_>) -> Command {
     let mut cmd = Command::new(owner.program.as_ref());
     configure_process_group(&mut cmd);
@@ -160,13 +117,6 @@ fn build_base_command(owner: &CommandIn<'_>) -> Command {
     cmd
 }
 
-/// Drive a captured subprocess to completion, handling the timeout branch by
-/// terminating the tree and draining the reader threads.
-///
-/// # Errors
-/// Returns [`LaneError::Io`] for wait failures, [`LaneError::Timeout`] when the
-/// command exceeds its execution budget, or any [`LaneError`] produced by the
-/// stdout/stderr reader threads.
 fn capture_to_completion(
     child: &mut Child,
     stdout_reader: ReaderHandle,
@@ -184,11 +134,6 @@ fn capture_to_completion(
     Ok(CommandOutput::new(status, stdout, stderr, owner.program_name()))
 }
 
-/// Map a reader result, rewriting a [`LaneError::Timeout`] to the owner's.
-///
-/// # Errors
-/// Returns the original [`LaneError`] from `result`, except that reader-local
-/// [`LaneError::Timeout`] values are replaced with the owner's timeout error.
 fn map_reader_result(
     result: Result<Vec<u8>, LaneError>,
     owner: &CommandIn<'_>,

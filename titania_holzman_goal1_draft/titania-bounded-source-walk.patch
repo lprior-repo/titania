@@ -1,0 +1,517 @@
+diff --git a/crates/titania-lanes/src/run_lane_sources.rs b/crates/titania-lanes/src/run_lane_sources.rs
+--- a/crates/titania-lanes/src/run_lane_sources.rs
++++ b/crates/titania-lanes/src/run_lane_sources.rs
+@@ -1,5 +1,12 @@
+-//! Source discovery for embedded run-lane implementations.
+-
++//! Bounded source discovery for embedded run-lane implementations.
++//!
++//! Production supplies fixed policy limits. One traversal step polls at most
++//! one directory entry; rejected entries and directory exhaustion consume work
++//! too. No recursive call or partial-success truncation is used. These are
++//! application work bounds, not deadlines for filesystem calls or an RSS cap.
++
++use std::collections::TryReserveError;
++use std::fs::{DirEntry, ReadDir};
+ use std::path::{Path, PathBuf};
+ 
+ use thiserror::Error;
+@@ -18,6 +25,31 @@
+     "tests",
+ ];
+ 
++/// Fixed production limits; changing these is a reviewed policy change.
++/// Root counts as one directory level. Path bytes use the OS representation.
++const SOURCE_WALK_LIMITS: WalkLimits = WalkLimits {
++    steps: 250_000,
++    depth: 64,
++    files: 50_000,
++    path_bytes: 4_096,
++    admitted_path_bytes: 67_108_864,
++};
++
++/// Source-discovery resource whose configured limit was exhausted.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum SourceWalkResource {
++    /// Directory-entry polls, including rejected entries and end-of-directory.
++    Steps,
++    /// Simultaneously open directory frames, including the root.
++    DirectoryDepth,
++    /// Collected production Rust paths.
++    SourceFiles,
++    /// Bytes in one discovered absolute or root-relative path.
++    PathBytes,
++    /// Cumulative path bytes admitted to directory frames and source results.
++    AdmittedPathBytes,
++}
++
+ /// Filesystem traversal failures from source discovery.
+ #[derive(Debug, Error)]
+ pub enum SourceWalkError {
+@@ -45,71 +77,226 @@
+         /// Underlying prefix-stripping error.
+         source: std::path::StripPrefixError,
+     },
++    /// Traversal stopped without returning a partial source inventory.
++    #[error("source walk exhausted {resource:?} limit {limit}; inventory is incomplete")]
++    LimitExceeded {
++        /// Resource that reached its policy limit.
++        resource: SourceWalkResource,
++        /// Configured maximum for that resource.
++        limit: usize,
++    },
++    /// Reserving collection storage failed.
++    #[error("source walk could not reserve collection storage: {source}")]
++    Allocation {
++        /// Allocation failure reported by the collection.
++        source: TryReserveError,
++    },
++    /// An exhausted directory disappeared from the owned traversal stack.
++    #[error("source walk stack invariant violated")]
++    InvalidTraversalStack,
++}
++
++#[derive(Debug, Clone, Copy)]
++struct WalkLimits {
++    steps: usize,
++    depth: usize,
++    files: usize,
++    path_bytes: usize,
++    admitted_path_bytes: usize,
++}
++
++#[derive(Debug)]
++struct DirectoryFrame {
++    path: PathBuf,
++    entries: ReadDir,
++}
++
++#[derive(Debug)]
++struct SourceWalk {
++    frames: Vec<DirectoryFrame>,
++    files: Vec<PathBuf>,
++    remaining_path_bytes: usize,
++}
++
++#[derive(Debug)]
++enum WalkProgress {
++    Continue,
++    Complete,
+ }
+ 
+ /// Collect production Rust sources relative to the target root.
+ ///
+ /// # Errors
+-/// Returns [`SourceWalkError`] when traversal or path relativization fails.
++/// Returns [`SourceWalkError`] for I/O, allocation, invalid paths, or exhausted
++/// policy limits. A limit failure never returns a partial successful inventory.
+ pub fn collect_rust_sources(root: &Path) -> Result<Vec<PathBuf>, SourceWalkError> {
+-    let mut files = Vec::new();
+-    collect_rust_sources_into(root, root, &mut files)?;
+-    files.sort();
+-    Ok(files)
+-}
+-
+-/// Recursively collect Rust sources under one directory.
++    collect_with_limits(root, SOURCE_WALK_LIMITS)
++}
++
++/// Run the fixed-work traversal; tests may supply small boundary limits.
+ ///
+ /// # Errors
+-/// Returns [`SourceWalkError`] when traversal or path relativization fails.
+-fn collect_rust_sources_into(
+-    root: &Path,
+-    dir: &Path,
+-    files: &mut Vec<PathBuf>,
+-) -> Result<(), SourceWalkError> {
+-    std::fs::read_dir(dir)
+-        .map_err(|source| SourceWalkError::ReadDir { path: dir.to_path_buf(), source })?
+-        .try_for_each(|entry| visit_source_entry(root, entry, files))
+-}
+-
+-/// Visit one source directory entry.
++/// Returns a typed source-walk failure instead of a partial inventory.
++fn collect_with_limits(root: &Path, limits: WalkLimits) -> Result<Vec<PathBuf>, SourceWalkError> {
++    require_room(0, limits.steps, SourceWalkResource::Steps)?;
++    let mut walk = SourceWalk {
++        frames: Vec::new(),
++        files: Vec::new(),
++        remaining_path_bytes: limits.admitted_path_bytes,
++    };
++    walk.enter_directory(root, limits)?;
++    // The range bounds raw polls, not the number of matching Rust files.
++    let completion = (0..limits.steps).find_map(|_| match walk.advance(root, limits) {
++        Ok(WalkProgress::Continue) => None,
++        Ok(WalkProgress::Complete) => Some(Ok(())),
++        Err(error) => Some(Err(error)),
++    });
++    match completion {
++        Some(result) => result?,
++        None => return Err(limit_error(SourceWalkResource::Steps, limits.steps)),
++    }
++    walk.files.sort();
++    Ok(walk.files)
++}
++
++impl SourceWalk {
++    /// Poll one frame; filesystem blocking time is outside this work bound.
++    ///
++    /// # Errors
++    /// Returns entry, resource, or traversal-state failures.
++    fn advance(&mut self, root: &Path, limits: WalkLimits) -> Result<WalkProgress, SourceWalkError> {
++        let entry = match self.frames.last_mut() {
++            None => return Ok(WalkProgress::Complete),
++            Some(frame) => match frame.entries.next() {
++                Some(entry) => Some(entry.map_err(|source| SourceWalkError::Entry {
++                    path: frame.path.clone(),
++                    source,
++                })?),
++                None => None,
++            },
++        };
++        match entry {
++            Some(entry) => {
++                self.visit(root, &entry, limits)?;
++                Ok(WalkProgress::Continue)
++            }
++            None => self.finish_directory(),
++        }
++    }
++
++    /// Close a completed frame without recursive unwinding.
++    ///
++    /// # Errors
++    /// Returns an invariant error if no owned directory frame exists.
++    fn finish_directory(&mut self) -> Result<WalkProgress, SourceWalkError> {
++        match self.frames.pop() {
++            Some(_completed) if self.frames.is_empty() => Ok(WalkProgress::Complete),
++            Some(_completed) => Ok(WalkProgress::Continue),
++            None => Err(SourceWalkError::InvalidTraversalStack),
++        }
++    }
++
++    /// Classify an entry only after checking its path length.
++    ///
++    /// # Errors
++    /// Returns metadata, resource, or path errors.
++    fn visit(
++        &mut self,
++        root: &Path,
++        entry: &DirEntry,
++        limits: WalkLimits,
++    ) -> Result<(), SourceWalkError> {
++        let path = entry.path();
++        let _path_bytes = check_path_length(&path, limits)?;
++        let kind = entry
++            .file_type()
++            .map_err(|source| SourceWalkError::Entry { path: path.clone(), source })?;
++        if kind.is_dir() && !skip_dir(&path) {
++            return self.enter_directory(&path, limits);
++        }
++        if kind.is_file() && !skip_file(&path) && path.extension().is_some_and(|ext| ext == "rs") {
++            self.push_source(root, &path, limits)?;
++        }
++        Ok(())
++    }
++
++    /// Admit one directory, bounding both stack depth and path storage.
++    ///
++    /// # Errors
++    /// Returns policy, allocation, or directory-open errors.
++    fn enter_directory(&mut self, path: &Path, limits: WalkLimits) -> Result<(), SourceWalkError> {
++        require_room(self.frames.len(), limits.depth, SourceWalkResource::DirectoryDepth)?;
++        self.admit_path(path, limits)?;
++        self.frames.try_reserve(1).map_err(|source| SourceWalkError::Allocation { source })?;
++        let entries = std::fs::read_dir(path)
++            .map_err(|source| SourceWalkError::ReadDir { path: path.to_path_buf(), source })?;
++        self.frames.push(DirectoryFrame { path: path.to_path_buf(), entries });
++        Ok(())
++    }
++
++    /// Retain a relative Rust path only when all inventory budgets allow it.
++    ///
++    /// # Errors
++    /// Returns path, resource, or collection-allocation failures.
++    fn push_source(
++        &mut self,
++        root: &Path,
++        path: &Path,
++        limits: WalkLimits,
++    ) -> Result<(), SourceWalkError> {
++        require_room(self.files.len(), limits.files, SourceWalkResource::SourceFiles)?;
++        let relative = path
++            .strip_prefix(root)
++            .map_err(|source| SourceWalkError::OutsideRoot { path: path.to_path_buf(), source })?;
++        self.admit_path(relative, limits)?;
++        self.files.try_reserve(1).map_err(|source| SourceWalkError::Allocation { source })?;
++        self.files.push(relative.to_path_buf());
++        Ok(())
++    }
++
++    /// Charge path storage cumulatively; exiting directories does not refund it.
++    ///
++    /// # Errors
++    /// Returns a per-path or cumulative path-byte limit failure.
++    fn admit_path(&mut self, path: &Path, limits: WalkLimits) -> Result<(), SourceWalkError> {
++        let bytes = check_path_length(path, limits)?;
++        self.remaining_path_bytes = self.remaining_path_bytes.checked_sub(bytes).ok_or_else(|| {
++            limit_error(SourceWalkResource::AdmittedPathBytes, limits.admitted_path_bytes)
++        })?;
++        Ok(())
++    }
++}
++
++/// Check OS-encoded path bytes, not Unicode characters.
+ ///
+ /// # Errors
+-/// Returns [`SourceWalkError`] when entry metadata or recursion fails.
+-fn visit_source_entry(
+-    root: &Path,
+-    entry: std::io::Result<std::fs::DirEntry>,
+-    files: &mut Vec<PathBuf>,
+-) -> Result<(), SourceWalkError> {
+-    let entry =
+-        entry.map_err(|source| SourceWalkError::Entry { path: root.to_path_buf(), source })?;
+-    let path = entry.path();
+-    let file_type = entry
+-        .file_type()
+-        .map_err(|source| SourceWalkError::Entry { path: path.clone(), source })?;
+-    if file_type.is_dir() && !skip_dir(&path) {
+-        return collect_rust_sources_into(root, &path, files);
+-    }
+-    if file_type.is_file() && !skip_file(&path) && path.extension().is_some_and(|ext| ext == "rs") {
+-        push_relative_source(root, &path, files)?;
+-    }
+-    Ok(())
+-}
+-
+-/// Append a source path relative to the target root.
++/// Returns a limit error if the path is too large for the policy.
++fn check_path_length(path: &Path, limits: WalkLimits) -> Result<usize, SourceWalkError> {
++    let bytes = path.as_os_str().as_encoded_bytes().len();
++    if bytes > limits.path_bytes {
++        return Err(limit_error(SourceWalkResource::PathBytes, limits.path_bytes));
++    }
++    Ok(bytes)
++}
++
++/// Ensure a collection has room before adding a resource.
+ ///
+ /// # Errors
+-/// Returns [`SourceWalkError::OutsideRoot`] when the path escapes root.
+-fn push_relative_source(
+-    root: &Path,
+-    path: &Path,
+-    files: &mut Vec<PathBuf>,
++/// Returns the exact resource whose next item would exceed its bound.
++fn require_room(
++    current: usize,
++    limit: usize,
++    resource: SourceWalkResource,
+ ) -> Result<(), SourceWalkError> {
+-    let relative = path
+-        .strip_prefix(root)
+-        .map_err(|source| SourceWalkError::OutsideRoot { path: path.to_path_buf(), source })?;
+-    files.push(relative.to_path_buf());
++    if current >= limit {
++        return Err(limit_error(resource, limit));
++    }
+     Ok(())
++}
++
++/// Build a typed limit error without fabricating an observed count.
++const fn limit_error(resource: SourceWalkResource, limit: usize) -> SourceWalkError {
++    SourceWalkError::LimitExceeded { resource, limit }
+ }
+ 
+ /// Return true when *path* points at a directory excluded from source discovery.
+@@ -121,3 +308,7 @@
+ fn skip_file(path: &Path) -> bool {
+     path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name == "build.rs")
+ }
++
++#[cfg(test)]
++#[path = "run_lane_sources/tests.rs"]
++mod tests;
+diff --git a/crates/titania-lanes/src/run_lane_sources/tests.rs b/crates/titania-lanes/src/run_lane_sources/tests.rs
+new file mode 100644
+--- /dev/null
++++ b/crates/titania-lanes/src/run_lane_sources/tests.rs
+@@ -0,0 +1,176 @@
++//! Boundary tests for the actual source-discovery implementation.
++
++use super::{SOURCE_WALK_LIMITS, SourceWalkError, SourceWalkResource, WalkLimits, collect_with_limits};
++use std::path::PathBuf;
++
++type TestResult = Result<(), Box<dyn std::error::Error>>;
++
++fn assert_limit(
++    result: Result<Vec<PathBuf>, SourceWalkError>,
++    expected_resource: SourceWalkResource,
++    expected_limit: usize,
++) {
++    match result {
++        Err(SourceWalkError::LimitExceeded { resource, limit }) => {
++            assert_eq!(resource, expected_resource);
++            assert_eq!(limit, expected_limit);
++        }
++        other => panic!("expected {expected_resource:?} limit {expected_limit}, got {other:?}"),
++    }
++}
++
++#[test]
++fn sources_are_complete_sorted_and_keep_existing_exclusions() -> TestResult {
++    let root = tempfile::tempdir()?;
++    std::fs::create_dir(root.path().join("src"))?;
++    std::fs::create_dir(root.path().join("tests"))?;
++    std::fs::create_dir(root.path().join("target"))?;
++    std::fs::write(root.path().join("z.rs"), "")?;
++    std::fs::write(root.path().join("src/a.rs"), "")?;
++    std::fs::write(root.path().join("tests/excluded.rs"), "")?;
++    std::fs::write(root.path().join("target/excluded.rs"), "")?;
++    std::fs::write(root.path().join("build.rs"), "")?;
++    std::fs::write(root.path().join("other.txt"), "")?;
++
++    let actual = collect_with_limits(root.path(), SOURCE_WALK_LIMITS)?;
++    assert_eq!(actual, vec![PathBuf::from("src/a.rs"), PathBuf::from("z.rs")]);
++    Ok(())
++}
++
++#[test]
++fn empty_root_completes_with_exactly_one_poll() -> TestResult {
++    let root = tempfile::tempdir()?;
++    let limits = WalkLimits { steps: 1, ..SOURCE_WALK_LIMITS };
++    assert_eq!(collect_with_limits(root.path(), limits)?, Vec::<PathBuf>::new());
++    Ok(())
++}
++
++#[test]
++fn zero_poll_budget_rejects_before_opening_the_root() -> TestResult {
++    let root = tempfile::tempdir()?;
++    let missing = root.path().join("missing");
++    let limits = WalkLimits { steps: 0, ..SOURCE_WALK_LIMITS };
++    assert_limit(collect_with_limits(&missing, limits), SourceWalkResource::Steps, 0);
++    Ok(())
++}
++
++#[test]
++fn nonmatching_entries_still_exhaust_the_poll_budget() -> TestResult {
++    let root = tempfile::tempdir()?;
++    std::fs::write(root.path().join("a.txt"), "")?;
++    std::fs::write(root.path().join("b.txt"), "")?;
++    std::fs::write(root.path().join("c.txt"), "")?;
++    let limits = WalkLimits { steps: 2, ..SOURCE_WALK_LIMITS };
++    assert_limit(collect_with_limits(root.path(), limits), SourceWalkResource::Steps, 2);
++    Ok(())
++}
++
++#[test]
++fn collecting_the_last_file_is_not_evidence_of_end_of_directory() -> TestResult {
++    let root = tempfile::tempdir()?;
++    std::fs::write(root.path().join("a.rs"), "")?;
++    let limits = WalkLimits { steps: 1, ..SOURCE_WALK_LIMITS };
++    assert_limit(collect_with_limits(root.path(), limits), SourceWalkResource::Steps, 1);
++    Ok(())
++}
++
++#[test]
++fn one_file_and_the_final_eof_fit_exactly_two_polls() -> TestResult {
++    let root = tempfile::tempdir()?;
++    std::fs::write(root.path().join("a.rs"), "")?;
++    let limits = WalkLimits { steps: 2, files: 1, ..SOURCE_WALK_LIMITS };
++    assert_eq!(collect_with_limits(root.path(), limits)?, vec![PathBuf::from("a.rs")]);
++    Ok(())
++}
++
++#[test]
++fn file_limit_returns_error_instead_of_a_partial_inventory() -> TestResult {
++    let root = tempfile::tempdir()?;
++    std::fs::write(root.path().join("a.rs"), "")?;
++    std::fs::write(root.path().join("b.rs"), "")?;
++    let limits = WalkLimits { files: 1, ..SOURCE_WALK_LIMITS };
++    assert_limit(collect_with_limits(root.path(), limits), SourceWalkResource::SourceFiles, 1);
++    Ok(())
++}
++
++#[test]
++fn directory_depth_includes_root_and_allows_its_exact_limit() -> TestResult {
++    let root = tempfile::tempdir()?;
++    std::fs::create_dir(root.path().join("src"))?;
++    std::fs::write(root.path().join("src/a.rs"), "")?;
++    let limits = WalkLimits { depth: 2, steps: 4, ..SOURCE_WALK_LIMITS };
++    assert_eq!(collect_with_limits(root.path(), limits)?, vec![PathBuf::from("src/a.rs")]);
++    Ok(())
++}
++
++#[test]
++fn one_extra_directory_level_is_refused() -> TestResult {
++    let root = tempfile::tempdir()?;
++    std::fs::create_dir_all(root.path().join("a/b"))?;
++    let limits = WalkLimits { depth: 2, ..SOURCE_WALK_LIMITS };
++    assert_limit(collect_with_limits(root.path(), limits), SourceWalkResource::DirectoryDepth, 2);
++    Ok(())
++}
++
++#[test]
++fn zero_depth_is_refused_before_opening_the_root() -> TestResult {
++    let root = tempfile::tempdir()?;
++    let missing = root.path().join("missing");
++    let limits = WalkLimits { depth: 0, ..SOURCE_WALK_LIMITS };
++    assert_limit(collect_with_limits(&missing, limits), SourceWalkResource::DirectoryDepth, 0);
++    Ok(())
++}
++
++#[test]
++fn path_byte_limit_accepts_the_boundary_and_rejects_one_less() -> TestResult {
++    let root = tempfile::tempdir()?;
++    let file = root.path().join("a.rs");
++    std::fs::write(&file, "")?;
++    let bytes = file.as_os_str().as_encoded_bytes().len();
++    let exact = WalkLimits { path_bytes: bytes, ..SOURCE_WALK_LIMITS };
++    assert_eq!(collect_with_limits(root.path(), exact)?, vec![PathBuf::from("a.rs")]);
++    let smaller = WalkLimits { path_bytes: bytes - 1, ..exact };
++    assert_limit(collect_with_limits(root.path(), smaller), SourceWalkResource::PathBytes, bytes - 1);
++    Ok(())
++}
++
++#[test]
++fn cumulative_path_budget_is_checked_without_saturation() -> TestResult {
++    let root = tempfile::tempdir()?;
++    std::fs::write(root.path().join("a.rs"), "")?;
++    let bytes = root.path().as_os_str().as_encoded_bytes().len() + "a.rs".len();
++    let exact = WalkLimits { admitted_path_bytes: bytes, ..SOURCE_WALK_LIMITS };
++    assert_eq!(collect_with_limits(root.path(), exact)?, vec![PathBuf::from("a.rs")]);
++    let smaller = WalkLimits { admitted_path_bytes: bytes - 1, ..exact };
++    assert_limit(
++        collect_with_limits(root.path(), smaller),
++        SourceWalkResource::AdmittedPathBytes,
++        bytes - 1,
++    );
++    Ok(())
++}
++
++#[test]
++fn missing_directory_preserves_its_io_failure() -> TestResult {
++    let root = tempfile::tempdir()?;
++    let missing = root.path().join("missing");
++    match collect_with_limits(&missing, SOURCE_WALK_LIMITS) {
++        Err(SourceWalkError::ReadDir { path, source }) => {
++            assert_eq!(path, missing);
++            assert_eq!(source.kind(), std::io::ErrorKind::NotFound);
++        }
++        other => panic!("expected a typed directory-open failure, got {other:?}"),
++    }
++    Ok(())
++}
++
++#[cfg(unix)]
++#[test]
++fn stable_symlink_entries_are_not_followed() -> TestResult {
++    let root = tempfile::tempdir()?;
++    let outside = tempfile::tempdir()?;
++    std::fs::write(outside.path().join("outside.rs"), "")?;
++    std::os::unix::fs::symlink(outside.path(), root.path().join("linked"))?;
++    assert_eq!(collect_with_limits(root.path(), SOURCE_WALK_LIMITS)?, Vec::<PathBuf>::new());
++    Ok(())
++}

@@ -1,5 +1,3 @@
-// Fixture: allowed — no wall-clock imports in core/domain.
-// Core code receives time as a parameter or uses an abstracted clock.
 
 pub trait Clock {
     fn now(&self) -> u64;

@@ -1,10 +1,3 @@
-//! Property tests using `proptest`. Each property is a hypothesis about
-//! the invariants of the primitive types — exercised at scale.
-//!
-//! Test files are exempt from the strict production code lint policy;
-//! they may use `as`, assertions, and complex types. The Holzman gate
-//! ensures these never leak into crate source.
-
 #![allow(clippy::as_conversions)]
 #![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::type_complexity)]
@@ -24,7 +17,6 @@ proptest! {
 
     #[test]
     fn digest_is_always_64_lowercase_hex(_seed in any::<u32>()) {
-        // Any random input should yield a 64-char lowercase-hex string.
         let d = Digest::from_bytes(&_seed.to_le_bytes());
         let s = d.as_hex();
         prop_assert_eq!(s.len(), 64);
@@ -36,8 +28,6 @@ proptest! {
 
     #[test]
     fn digest_sampled_injective(a in any::<[u8; 32]>(), b in any::<[u8; 32]>()) {
-        // Two random 32-byte inputs collide with negligible probability.
-        // If `a == b` skip; otherwise the digests must differ.
         if a != b {
             prop_assert_ne!(Digest::from_bytes(&a), Digest::from_bytes(&b));
         }
@@ -51,11 +41,9 @@ proptest! {
         prop_assert_eq!(d, back);
     }
 
-    // ---- RuleId ----
 
     #[test]
     fn rule_id_display_round_trip(s in "[A-Z][A-Z0-9_]*_[A-Z0-9_]+") {
-        // Strategy: an uppercase-only string with at least one underscore.
         let id = RuleId::new(&s).unwrap();
         prop_assert_eq!(id.as_str(), s.as_str());
         let displayed = id.to_string();
@@ -67,7 +55,6 @@ proptest! {
         let result = RuleId::normalize(&s);
         match result {
             Ok(id) => {
-                // All chars in the produced id must be uppercase ASCII or '_'.
                 for c in id.as_str().chars() {
                     prop_assert!(
                         matches!(c, 'A'..='Z' | '0'..='9' | '_'),
@@ -77,15 +64,12 @@ proptest! {
                 prop_assert!(id.as_str().contains('_'), "id {id} has no underscore");
             }
             Err(_) => {
-                // Acceptable: every non-uppercase char was a non-`_` and
-                // was dropped, leaving no underscore. That's documented.
             }
         }
     }
 
     #[test]
     fn rule_id_rejects_lowercase(s in "[a-z][a-zA-Z0-9]*_[a-zA-Z0-9_]*") {
-        // Strings with an underscore and at least one lowercase letter must fail uppercase validation.
         let result = RuleId::new(&s);
         prop_assert!(
             matches!(result, Err(titania_core::RuleIdError::NotUppercase(..))),
@@ -101,14 +85,12 @@ proptest! {
         prop_assert_eq!(id, back);
     }
 
-    // ---- WorkspacePath ----
 
     #[test]
     fn workspace_path_accepts_no_backslash_no_dotdot_no_leading(
         a in "[a-z][a-z0-9_-]{0,15}",
         b in "[a-z][a-z0-9_-]{0,15}",
     ) {
-        // Two segments, no '..', no leading slash, no backslash, no control.
         let candidate = format!("{a}/{b}");
         let result = WorkspacePath::new(&candidate);
         prop_assert!(result.is_ok(), "expected ok for {candidate}, got {result:?}");
@@ -153,7 +135,6 @@ proptest! {
 
     #[test]
     fn workspace_path_serde_round_trip(s in "[a-z][a-z0-9_/-]{0,15}") {
-        // Some inputs may have leading slash, control, etc. Filter them.
         if WorkspacePath::new(&s).is_ok() {
             let p = WorkspacePath::new(&s).unwrap();
             let json = serde_json::to_string(&p).unwrap();
@@ -162,7 +143,6 @@ proptest! {
         }
     }
 
-    // ---- TextRange ----
 
     #[test]
     fn text_range_width_is_end_minus_start(start in any::<u32>(), end in any::<u32>()) {
@@ -184,7 +164,6 @@ proptest! {
         width in 0u32..1000,
         probe in any::<i32>(),
     ) {
-        // Map probe into a wider range than the text range so we exercise both sides.
         let p = if probe < 0 { 0u32 } else { probe as u32 };
         let end = start.saturating_add(width);
         let r = TextRange::new(start, end).unwrap();
@@ -217,15 +196,12 @@ proptest! {
         }
     }
 
-    // ---- OutcomeError display ----
 
     #[test]
     fn outcome_argv0_mismatch_display_is_bounded_and_sanitized(
         expected in ".*",
         found in ".*",
     ) {
-        // Invariant: hostile payloads render short, printable, and
-        // panic-free; short clean payloads render verbatim.
         let rendered = OutcomeError::Argv0Mismatch {
             expected: expected.clone(),
             found: found.clone(),

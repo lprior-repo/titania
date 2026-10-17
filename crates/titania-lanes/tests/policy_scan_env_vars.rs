@@ -1,5 +1,3 @@
-//! Behavior tests for the environment-variable policy scanner.
-
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -18,7 +16,6 @@ use titania_lanes::policy_scan::env_vars::scan_env_vars_with;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-/// Build a `PathBuf` from a controlled-home suffix without panicking.
 fn expected_home(root: &Path, suffix: &str) -> PathBuf {
     controlled_home_path(root, suffix)
 }
@@ -178,10 +175,6 @@ fn workspace_wrapper_and_bootstrap_have_exact_rules() -> TestResult {
     Ok(())
 }
 
-/// Strict controlled-home contract: an absent `CARGO_HOME` / `RUSTUP_HOME`
-/// must emit one finding per variable, tagged with the v1-spec §8 rule ids
-/// `BYPASS_ENV_CARGO_HOME` and `BYPASS_ENV_RUSTUP_HOME`, and must name the
-/// controlled path so callers can fix the environment.
 #[test]
 fn absent_cargo_home_and_rustup_home_emit_controlled_findings() -> TestResult {
     let tmp = tempdir()?;
@@ -232,8 +225,6 @@ fn absent_cargo_home_and_rustup_home_emit_controlled_findings() -> TestResult {
     Ok(())
 }
 
-/// Empty string values are still violations — they pass `AnyNonEmptyForbidden`
-/// (set) but fail the strict controlled-home equality check.
 #[test]
 fn empty_cargo_home_and_rustup_home_emit_controlled_findings() -> TestResult {
     let tmp = tempdir()?;
@@ -267,9 +258,6 @@ fn empty_cargo_home_and_rustup_home_emit_controlled_findings() -> TestResult {
     Ok(())
 }
 
-/// A value that points anywhere other than `<root>/.titania/hermetic/<suffix>`
-/// is a violation; the finding must surface both the expected controlled path
-/// and the offending value so the operator can correct it.
 #[test]
 fn wrong_rooted_cargo_home_and_rustup_home_emit_controlled_findings() -> TestResult {
     let tmp = tempdir()?;
@@ -310,9 +298,6 @@ fn wrong_rooted_cargo_home_and_rustup_home_emit_controlled_findings() -> TestRes
     Ok(())
 }
 
-/// Setting both `CARGO_HOME` and `RUSTUP_HOME` to the strict target-root
-/// controlled paths — and leaving every other lane-bypass variable unset —
-/// must produce a clean report.
 #[test]
 fn exact_controlled_paths_pass_strict_check() -> TestResult {
     let tmp = tempdir()?;
@@ -335,9 +320,6 @@ fn exact_controlled_paths_pass_strict_check() -> TestResult {
     Ok(())
 }
 
-/// Controlled-home correctness must not mask the standalone
-/// `RUSTC_BOOTSTRAP` ban. Even when the homes are exactly right, an empty
-/// `RUSTC_BOOTSTRAP` is still a finding.
 #[test]
 fn empty_bootstrap_remains_a_finding_under_strict_homes() -> TestResult {
     let tmp = tempdir()?;
@@ -364,9 +346,6 @@ fn empty_bootstrap_remains_a_finding_under_strict_homes() -> TestResult {
     Ok(())
 }
 
-/// Each controlled-home check is independent: a wrong `CARGO_HOME` alone
-/// must produce exactly one finding, leaving the rustup-side clean. This
-/// guards against the two checks accidentally sharing state.
 #[test]
 fn wrong_cargo_home_with_correct_rustup_home_is_singular() -> TestResult {
     let tmp = tempdir()?;

@@ -1,42 +1,7 @@
-//! Cargo-mutants operator classification and per-mutation geometry.
-//!
-//! The lane keeps its own operator classifier because the v1.5 contract
-//! fails *closed* on any `BinaryOperator` / `UnaryOperator` whose textual
-//! name does not match a recognised pattern. The core
-//! [`titania_core::MutantRecord::classify_operator`] is permissive by
-//! construction (it defaults to `ArithmeticOpFlip`); the lane must
-//! surface a typed [`MutantsLaneError::UnknownOperator`] instead so the
-//! gate fails loud when cargo-mutants evolves past the closed set.
-
 use titania_core::MutantOperator;
 
 use super::error::MutantsLaneError;
 
-/// Resolve a cargo-mutants record to its typed [`MutantOperator`] or
-/// fail with [`MutantsLaneError::UnknownOperator`] when the genre ↔
-/// name combination is outside the v1.5 closed set.
-///
-/// Recognised mappings (v1.5 spec §3 — closed [`MutantOperator`] set):
-///
-/// - `BinaryOperator` + `replace == with !=` → `EqualReplace`
-/// - `BinaryOperator` + `replace != with ==` → `NotInserted`
-/// - `BinaryOperator` + `replace && with ||` / `replace || with &&` →
-///   `AndOr`
-/// - `BinaryOperator` + arithmetic flip keyword (`+ ↔ -` or `* ↔ /`) →
-///   `ArithmeticOpFlip`
-/// - `UnaryOperator` + `delete ! in <name>` → `RemoveNegation`
-/// - `FnValue` + integer literal replacement → `IntegerPlusOne` /
-///   `IntegerMinusOne` when the cargo-mutants `replacement` field
-///   carries the literal `1` or `-1`.
-/// - `FnValue` + any other textual replacement → `DefaultReplace`.
-/// - Everything else → [`MutantsLaneError::UnknownOperator`].
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::UnknownOperator`] for recognised
-/// `BinaryOperator` / `UnaryOperator` records whose textual name does
-/// not match a v1.5 closed-set pattern, and for unknown genre tags that
-/// do not fall into the `FnValue` default-replace bucket.
 pub(super) fn operator_for_raw(
     genre: &str,
     name: &str,
@@ -54,17 +19,6 @@ pub(super) fn operator_for_raw(
     }
 }
 
-/// Classify a textual cargo-mutants `BinaryOperator` mutation name.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::UnknownOperator`] when the textual name
-/// does not match a v1.5 closed-set binary pattern. The previous
-/// coercion to [`MutantOperator::ArithmeticOpFlip`] is removed; an
-/// unrecognised binary mutation now fails closed instead of silently
-/// sticking a typed `ArithmeticOpFlip` id on the survivor.
-/// Closed-set binary patterns in first-match order; anything else fails
-/// closed via [`MutantsLaneError::UnknownOperator`].
 const BINARY_OPERATOR_PATTERNS: &[(&str, MutantOperator)] = &[
     ("replace == with !=", MutantOperator::EqualReplace),
     ("replace != with ==", MutantOperator::NotInserted),
@@ -76,14 +30,6 @@ const BINARY_OPERATOR_PATTERNS: &[(&str, MutantOperator)] = &[
     ("replace / with *", MutantOperator::ArithmeticOpFlip),
 ];
 
-/// Classify a textual cargo-mutants `BinaryOperator` mutation name.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::UnknownOperator`] when the textual name
-/// does not match a v1.5 closed-set binary pattern. An unrecognised
-/// binary mutation fails closed instead of silently sticking a typed
-/// `ArithmeticOpFlip` id on the survivor.
 fn binary_operator(name: &str) -> Result<MutantOperator, MutantsLaneError> {
     BINARY_OPERATOR_PATTERNS.iter().find(|(pattern, _)| name.contains(pattern)).map_or_else(
         || {
@@ -97,14 +43,6 @@ fn binary_operator(name: &str) -> Result<MutantOperator, MutantsLaneError> {
     )
 }
 
-/// Classify a textual cargo-mutants `UnaryOperator` mutation name.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::UnknownOperator`] when the textual name
-/// does not match a recognised `!`-removal pattern. We deliberately
-/// keep this conservative — any new cargo-mutants unary shape must
-/// trigger a contract amendment before the lane accepts it.
 fn unary_operator(name: &str) -> Result<MutantOperator, MutantsLaneError> {
     if name.contains("delete !") {
         Ok(MutantOperator::RemoveNegation)
@@ -117,14 +55,6 @@ fn unary_operator(name: &str) -> Result<MutantOperator, MutantsLaneError> {
     }
 }
 
-/// Classify a cargo-mutants `FnValue` record by its textual
-/// `replacement` value.
-///
-/// Integer literal replacements of `+1` / `-1` map to the dedicated
-/// operators; everything else (default values such as `0`, `Default
-/// ::default()`, `true`, `false`, …) collapses to
-/// [`MutantOperator::DefaultReplace`]. We never error here because
-/// `FnValue` surfacing is forward-compat by construction.
 fn fn_value_operator(replacement: &str) -> MutantOperator {
     if replacement == "1" {
         MutantOperator::IntegerPlusOne
@@ -135,13 +65,6 @@ fn fn_value_operator(replacement: &str) -> MutantOperator {
     }
 }
 
-/// Convert a workspace-relative cargo-mutants file to a package-relative
-/// path that [`titania_core::MutantId::new`] accepts.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::PathOutsidePackage`] when a
-/// `crates/<other>/...` file is reported under a different package.
 pub(super) fn relative_mutant_path<'a>(
     package: &str,
     file: &'a str,
@@ -209,10 +132,6 @@ mod tests {
 
     #[test]
     fn binary_operator_does_not_coerce_unknown_to_arithmetic_op_flip() {
-        // Prior implementations silently coerced anything that did
-        // not match == / != / &&-|| into ArithmeticOpFlip. Verify
-        // we never silently pick that branch by failing closed with
-        // the typed `UnknownOperator` variant.
         let result = binary_operator("replace Foo with Bar");
         let Err(error) = result else {
             panic!("unknown binary pattern must fail closed");

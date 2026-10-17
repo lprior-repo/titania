@@ -1,4 +1,3 @@
-// Fixture: real imperative for-loop — should trigger FUNC_LOOPS_FOR.
 
 pub fn sum_items(items: &[i32]) -> i32 {
     let mut total = 0;

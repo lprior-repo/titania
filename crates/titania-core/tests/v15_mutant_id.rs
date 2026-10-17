@@ -1,13 +1,3 @@
-//! v1.5 contract tests for `MutantId` invariants and parsing.
-//!
-//! Covers:
-//! - canonical string construction and round-trip with `parse`,
-//! - bounded package / path validation (NUL, control, backslash, embedded
-//!   `:`, drive prefix, UNC form, `..`, length cap),
-//! - 1-based line / column enforcement with `u32::MAX` boundary,
-//! - all 8 [`MutantOperator`] variants as exact serde wire forms,
-//! - typed [`MutantOperatorError`] from [`MutantOperator::from_str`].
-
 use titania_core::{
     MUTANT_PATH_MAX_LEN, MUTANT_PKG_MAX_LEN, MutantId, MutantIdError, MutantOperator,
     MutantOperatorError, PathSegmentError,
@@ -87,7 +77,6 @@ fn accepts_u32_max_column_via_parse() {
 
 #[test]
 fn parse_rejects_line_overflow() {
-    // 4294967296 == u32::MAX + 1; checked arithmetic in parse_u32 returns None.
     let err = MutantId::parse("pkg::src/a.rs:4294967296:1:equal_replace").unwrap_err();
     assert_eq!(err, MutantIdError::LineNotAnInteger);
 }
@@ -130,41 +119,24 @@ fn parse_rejects_missing_pkg_separator() {
 
 #[test]
 fn parse_rejects_missing_operator() {
-    // No `:` separator at all after `<pkg>::`, so the operator suffix is
-    // genuinely absent (we need three `:` to fix operator / col / line /
-    // path).
     let err = MutantId::parse("pkg::path").unwrap_err();
     assert!(matches!(err, MutantIdError::MissingOperator(_)));
 }
 
 #[test]
 fn parse_rejects_too_few_colons() {
-    // Only one `:` in `rest` is short of the required three positional
-    // separators, so the rsplit_once cascade can place the operator
-    // (`equal_replace`, a real closed-set value) but `before_op` has no
-    // further `:` to split on for the col value — rejected as
-    // `MissingOperator`.
     let err = MutantId::parse("pkg::path:equal_replace").unwrap_err();
     assert!(matches!(err, MutantIdError::MissingOperator(_)), "got {err:?}");
 }
 
 #[test]
 fn parse_rejects_too_many_colons() {
-    // Four `:` in `rest` is excessive; under the canonical positional
-    // parser the leftmost `:` must belong to the path, so the form is
-    // ambiguous and rejected as `PathContainsColon` rather than as
-    // `MissingOperator`.
     let err = MutantId::parse("pkg::path:1:2:3:equal_replace").unwrap_err();
     assert!(matches!(err, MutantIdError::PathContainsColon(_)), "got {err:?}");
 }
 
 #[test]
 fn parse_rejects_colon_in_path() {
-    // `pkg::src/foo:bar.rs:1:1:equal_replace` carries an extra `:` in the
-    // path segment. Under the canonical right-edge parser the four
-    // rightmost colons are line / col / (line replacement colons) /
-    // operator, so the recovered path contains `:` and the form is
-    // rejected outright.
     let err = MutantId::parse("pkg::src/foo:bar.rs:1:1:equal_replace").unwrap_err();
     let s = format!("{err:?}");
     assert!(matches!(err, MutantIdError::PathContainsColon(_)), "got {s}");
@@ -217,9 +189,6 @@ fn parse_rejects_absolute_path() {
     let err = MutantId::parse("pkg::/abs:1:1:equal_replace").unwrap_err();
     assert_eq!(err, MutantIdError::PathAbsolute);
 }
-
-// ---- Bounded package / path validation (NUL / control / backslash /
-//      absolute / colon policy) ----------------------------------------
 
 #[test]
 fn new_rejects_package_with_nul_byte() {
@@ -359,8 +328,6 @@ fn new_accepts_path_at_max_len() {
     let result = MutantId::new("pkg", &at_cap, 1, 1, MutantOperator::EqualReplace);
     assert!(result.is_ok(), "got {result:?}");
 }
-
-// ---- All 8 operator round-trips and exact serde wire forms ------------
 
 const ALL_OPERATORS: &[(MutantOperator, &str)] = &[
     (MutantOperator::EqualReplace, "equal_replace"),

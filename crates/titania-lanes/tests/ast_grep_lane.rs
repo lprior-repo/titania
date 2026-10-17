@@ -1,15 +1,3 @@
-//! Contract tests for the embedded ast-grep lane runner.
-//!
-//! These tests assert the public API of `titania_lanes::ast_grep_lane` — the
-//! module that runs embedded ast-grep rules against a project and emits typed
-//! `LaneOutcome::Findings` with exact rule IDs.
-//!
-//! Bead: tn-37r.4
-//!
-//! The tests below reference the *intended* public API.  Because
-//! `titania_lanes::ast_grep_lane` does not yet exist, the compiler errors
-//! are the RED signal: they prove which symbols the lane runner must expose.
-
 use std::{
     error::Error,
     path::{Path, PathBuf},
@@ -24,40 +12,14 @@ fn fixture_root(dir: &str, name: &str) -> PathBuf {
     Path::new(base).join("tests").join("fixtures").join(dir).join(name)
 }
 
-// ===========================================================================
-// Test 1: Multi-rule-family fixture produces typed Findings with exact rule IDs
-// ===========================================================================
-
-/// **Contract:** Running the ast-grep lane runner against a fixture project
-/// that contains violations from the functional, bypass, and architecture
-/// rule families yields a `LaneOutcome::Findings` whose `findings` contain
-/// `Finding` entries with the exact rule IDs from each family.
-///
-/// This test asserts:
-/// 1. The return type is `Result<LaneOutcome, ast_grep_lane::AstGrepLaneError>`.
-/// 2. The outcome variant is `LaneOutcome::Findings { .. }`.
-/// 3. Each finding carries a `RuleId` whose prefix matches one of
-///    `FUNC`, `BYPASS`, or `ARCHITECTURE`.
-/// 4. The number of findings is at least the count of known violations
-///    in the fixture.
 #[test]
 fn ast_grep_lane_multi_family_fixture_emits_findings_with_exact_rule_ids() -> TestResult {
-    // The production module MUST provide a function like:
-    //   pub fn run(
-    //       rules_yaml: &'static [ &'static str ],
-    //       fixture_paths: &[std::path::Path],
-    //       exceptions: &ast_grep_lane::Exceptions,
-    //   ) -> Result<LaneOutcome, ast_grep_lane::LaneError>;
-
-    // Load the embedded rule YAMLs.
     let rules_yaml = [
         include_str!("../rules/functional.yml"),
         include_str!("../rules/bypass.yml"),
         include_str!("../rules/architecture.yml"),
     ];
 
-    // Collect fixture paths for a functional violation, a bypass violation,
-    // and an architecture violation.
     let fixture_paths: Vec<PathBuf> = [
         "functional/func_nesting_depth_violation.rs",
         "bypass/bypass_allow_attr_violation.rs",
@@ -66,11 +28,8 @@ fn ast_grep_lane_multi_family_fixture_emits_findings_with_exact_rule_ids() -> Te
     .map(|p| fixture_root("ast_grep", p))
     .to_vec();
 
-    // Invoke the (not yet implemented) lane runner.
-    // This line MUST compile once the module exists.
     let result = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[]);
 
-    // Assert the outcome variant and findings.
     match result {
         Ok(outcome) => {
             assert!(
@@ -79,10 +38,8 @@ fn ast_grep_lane_multi_family_fixture_emits_findings_with_exact_rule_ids() -> Te
                 outcome
             );
             if let LaneOutcome::Findings { findings } = outcome {
-                // Must have at least 3 findings (one per rule family).
                 assert!(findings.len() >= 3, "expected >= 3 findings, got {}", findings.len());
 
-                // Collect rule prefixes and assert all three families are represented.
                 let prefixes: std::collections::BTreeSet<&str> =
                     findings.iter().map(|f| f.rule_id().prefix()).collect();
                 assert!(prefixes.contains("FUNC"), "must contain FUNC prefix rule",);
@@ -96,31 +53,8 @@ fn ast_grep_lane_multi_family_fixture_emits_findings_with_exact_rule_ids() -> Te
     Ok(())
 }
 
-// ===========================================================================
-// Test 2: Exception suppresses only the matching rule/path pair
-// ===========================================================================
-
-/// **Contract:** When an exception is provided that matches one rule ID and
-/// one fixture path, only that specific finding is suppressed; violations
-/// from the same rule family on OTHER paths, and violations from OTHER rule
-/// families on the same path, remain present in the findings.
-///
-/// This test asserts:
-/// 1. The exception API accepts `(rule_id, path)` pairs.
-/// 2. Only the exact (rule_id, path) combination is suppressed.
-/// 3. Other findings from the same rule family on different paths survive.
 #[test]
 fn ast_grep_lane_exception_suppresses_only_matching_rule_path_pair() -> TestResult {
-    // The production module MUST provide an exception type like:
-    //   pub fn run(
-    //       rules_yaml: &'static [ &'static str ],
-    //       fixture_paths: &[std::path::Path],
-    //       exceptions: &[(RuleId, String)],  // or a dedicated Exceptions struct
-    //   ) -> Result<LaneOutcome, ast_grep_lane::LaneError>;
-    //
-    // An exception pair (rule_id, file_path) suppresses only that exact
-    // finding; all other findings remain.
-
     let rules_yaml = [
         include_str!("../rules/functional.yml"),
         include_str!("../rules/bypass.yml"),
@@ -135,9 +69,6 @@ fn ast_grep_lane_exception_suppresses_only_matching_rule_path_pair() -> TestResu
     .map(|p| fixture_root("ast_grep", p))
     .to_vec();
 
-    // Exception: suppress only FUNC_PRINT_STDOUT in func_print_stdout_violation.rs
-    // This should leave func_nesting_depth_violation.rs and bypass_allow_attr_violation.rs
-    // findings intact.
     let exceptions: [(RuleId, String); 1] = [(
         RuleId::new("FUNC_PRINT_STDOUT").unwrap(),
         "functional/func_print_stdout_violation.rs".to_owned(),
@@ -153,8 +84,6 @@ fn ast_grep_lane_exception_suppresses_only_matching_rule_path_pair() -> TestResu
                 outcome
             );
             if let LaneOutcome::Findings { findings } = outcome {
-                // Must have at least 2 findings (the suppressed one should be gone).
-                // Original 3 fixtures - 1 suppressed = 2.
                 let suppressed_count = findings
                     .iter()
                     .filter(|f| {
@@ -165,7 +94,6 @@ fn ast_grep_lane_exception_suppresses_only_matching_rule_path_pair() -> TestResu
                     .count();
                 assert_eq!(suppressed_count, 0, "suppressed finding should not be present",);
 
-                // The other findings must be present.
                 let nesting_present =
                     findings.iter().any(|f| f.rule_id().as_str() == "FUNC_NESTING_DEPTH");
                 let bypass_present =
@@ -180,87 +108,52 @@ fn ast_grep_lane_exception_suppresses_only_matching_rule_path_pair() -> TestResu
     Ok(())
 }
 
-// ===========================================================================
-// Test 3: Runner uses embedded rules / no external binary dependency
-// ===========================================================================
-
-/// **Contract:** The lane runner sources its rule set from embedded YAML
-/// strings (via `include_str!`) and does NOT depend on an external `ast-grep`
-/// binary.  This is proved by the public API shape: the `run()` function
-/// takes `&'static str` YAML data as a parameter, not a binary path or
-/// subprocess handle.
 #[test]
 fn ast_grep_lane_runner_uses_embedded_rules_no_external_binary() -> TestResult {
-    // The function signature must accept `&'static [ &'static str ]` for
-    // rules_yaml — proving rules are embedded at compile time.
     let rules_yaml = [
         include_str!("../rules/functional.yml"),
         include_str!("../rules/bypass.yml"),
         include_str!("../rules/architecture.yml"),
     ];
 
-    // Verify the YAML is loadable at compile time and contains the expected
-    // structure (id, language, pattern, effect).
     for yml in &rules_yaml {
         assert!(yml.contains("id:"), "YAML must contain rule id");
         assert!(yml.contains("language: Rust"), "YAML must declare language Rust");
         assert!(yml.contains("pattern:"), "YAML must contain pattern");
     }
 
-    // Run with no fixtures — the lane should return a clean outcome (no
-    // files to scan) or an empty findings list, proving no binary is needed.
     let result = titania_lanes::ast_grep_lane::run(&rules_yaml, &[], &[]);
 
     match result {
-        Ok(outcome) => {
-            // With no fixtures, the lane should produce Clean (no files to check)
-            // or Findings with zero findings.
-            match outcome {
-                LaneOutcome::Clean { .. } => {}
-                LaneOutcome::Findings { findings } => {
-                    assert!(findings.is_empty(), "no fixtures => no findings");
-                }
-                other => panic!("unexpected outcome with empty fixtures: {:?}", other),
+        Ok(outcome) => match outcome {
+            LaneOutcome::Clean { .. } => {}
+            LaneOutcome::Findings { findings } => {
+                assert!(findings.is_empty(), "no fixtures => no findings");
             }
-        }
+            other => panic!("unexpected outcome with empty fixtures: {:?}", other),
+        },
         Err(e) => panic!("run() returned error with empty fixtures: {}", e),
     }
 
     Ok(())
 }
 
-// ===========================================================================
-// Test 4: Lane::AstGrep maps to correct lane name in artifact
-// ===========================================================================
-
-/// **Contract:** When the ast-grep lane writes its artifact, the `lane` field
-/// in the JSON artifact is `"AstGrep"` (PascalCase, matching `Lane::AstGrep`).
 #[test]
 fn ast_grep_lane_artifact_lane_field_is_astgrep() -> TestResult {
     use titania_core::Lane;
 
-    // The Lane::AstGrep serialization must produce "AstGrep" in PascalCase.
     assert_eq!(Lane::AstGrep.name(), "AstGrep");
 
-    // Verify Lane::AstGrep serializes correctly via serde.
     let json = serde_json::to_string(&Lane::AstGrep).expect("Lane::AstGrep must serialize to JSON");
     assert_eq!(json, "\"AstGrep\"");
 
     Ok(())
 }
 
-// ===========================================================================
-// Test 5: LaneOutcome::Findings with ast-grep findings serializes correctly
-// ===========================================================================
-
-/// **Contract:** A `LaneOutcome::Findings` containing `Finding` entries for
-/// ast-grep rules serializes to JSON with `variant: "findings"` and the
-/// correct `rule`, `path`, `line`, and `message` fields.
 #[test]
 fn ast_grep_lane_findings_outcome_serializes_with_variant_and_findings() -> TestResult {
     use titania_core::{Finding, Lane, Location, RepairHint, RuleId, WorkspacePath};
 
-    // Build findings that would come from the ast-grep lane.
     let finding_1 = Finding::reject(
         Lane::AstGrep,
         RuleId::new("FUNC_PRINT_STDOUT").unwrap(),
@@ -277,24 +170,20 @@ fn ast_grep_lane_findings_outcome_serializes_with_variant_and_findings() -> Test
         RepairHint::remove_allow_attribute("allow(clippy::unwrap_used)".into()),
     );
 
-    // Construct a LaneOutcome::Findings manually to verify the shape.
     let outcome = LaneOutcome::Findings { findings: Box::new([finding_1, finding_2]) };
 
     assert!(outcome.is_findings());
     assert!(!outcome.is_pass());
 
-    // Pattern-match to extract findings and assert on their RuleId prefixes.
     let findings_count = match &outcome {
         LaneOutcome::Findings { findings } => findings.len(),
         _ => panic!("expected Findings variant"),
     };
     assert_eq!(findings_count, 2);
 
-    // Verify rule ID prefixes by pattern matching on the findings.
     if let LaneOutcome::Findings { findings } = &outcome {
         assert!(findings[0].rule_id().has_prefix("FUNC"));
         assert!(findings[1].rule_id().has_prefix("BYPASS"));
-        // Both findings should be Reject effect.
         assert!(findings[0].is_reject());
         assert!(findings[1].is_reject());
     }
@@ -481,8 +370,6 @@ fn ast_grep_lane_rejects_pub_and_multiline_architecture_imports() -> TestResult 
     Ok(())
 }
 
-/// **tn-bvv7:** Fully-qualified effect paths with no `use` import are still
-/// rejected in core scope: the alias/re-export bypass is closed.
 #[test]
 fn ast_grep_lane_rejects_fq_effect_paths_without_imports() -> TestResult {
     let rules_yaml = [include_str!("../rules/architecture.yml")];
@@ -512,8 +399,6 @@ fn ast_grep_lane_rejects_fq_effect_paths_without_imports() -> TestResult {
     Ok(())
 }
 
-/// **tn-bvv7:** The three new effect boundaries fire through the lane:
-/// process spawning, async execution, and ambient mutable state.
 #[test]
 fn ast_grep_lane_rejects_new_core_effect_boundaries() -> TestResult {
     let rules_yaml = [include_str!("../rules/architecture.yml")];
@@ -548,9 +433,6 @@ fn ast_grep_lane_rejects_new_core_effect_boundaries() -> TestResult {
     Ok(())
 }
 
-/// **tn-bvv7:** Clean core controls stay clean through the lane: a typed-port
-/// shell description, synchronous calculation, and frozen-catalog
-/// memoization (LazyLock) are not violations.
 #[test]
 fn ast_grep_lane_accepts_clean_core_effect_controls() -> TestResult {
     let rules_yaml = [include_str!("../rules/architecture.yml")];
@@ -571,12 +453,6 @@ fn ast_grep_lane_accepts_clean_core_effect_controls() -> TestResult {
     Ok(())
 }
 
-// ===========================================================================
-// Tests: ast-grep functional detector false positives (comments, strings)
-// ===========================================================================
-
-/// **Contract:** A whole-line comment containing `for x in y` must NOT
-/// trigger FUNC_LOOPS_FOR. The code scanner ignores line comments.
 #[test]
 fn ast_grep_functional_for_loop_in_line_comment_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -593,9 +469,6 @@ fn ast_grep_functional_for_loop_in_line_comment_not_detected() -> TestResult {
     Ok(())
 }
 
-/// **Contract:** Loop keywords inside a block-comment body must NOT trigger
-/// any FUNC_LOOPS_* finding, including plain block-comment bodies that do not
-/// start with `*`.
 #[test]
 fn ast_grep_functional_for_loop_in_block_comment_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -612,8 +485,6 @@ fn ast_grep_functional_for_loop_in_block_comment_not_detected() -> TestResult {
     Ok(())
 }
 
-/// **Contract:** Nested Rust block comments containing loop keywords must NOT
-/// trigger FUNC_LOOPS_* findings before the outer comment closes.
 #[test]
 fn ast_grep_functional_loop_keywords_in_nested_block_comment_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -630,8 +501,6 @@ fn ast_grep_functional_loop_keywords_in_nested_block_comment_not_detected() -> T
     Ok(())
 }
 
-/// **Contract:** A trailing `// while ` comment must NOT trigger
-/// FUNC_LOOPS_WHILE. The code scanner ignores text after line comments.
 #[test]
 fn ast_grep_functional_while_in_trailing_comment_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -648,7 +517,6 @@ fn ast_grep_functional_while_in_trailing_comment_not_detected() -> TestResult {
     Ok(())
 }
 
-/// **Contract:** Loop keywords in line comments only must stay clean.
 #[test]
 fn ast_grep_functional_loop_keywords_in_line_comments_only_are_clean() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -665,9 +533,6 @@ fn ast_grep_functional_loop_keywords_in_line_comments_only_are_clean() -> TestRe
     Ok(())
 }
 
-/// **Contract:** String literals containing `loop {`, `for ... in`, or
-/// `while ` must stay clean. The scanner must ignore delimiters and loop
-/// keywords inside strings.
 #[test]
 fn ast_grep_functional_loop_in_string_literal_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -684,8 +549,6 @@ fn ast_grep_functional_loop_in_string_literal_not_detected() -> TestResult {
     Ok(())
 }
 
-/// **Contract:** Raw string literals containing quote characters and loop
-/// keywords must stay clean.
 #[test]
 fn ast_grep_functional_loop_in_raw_string_literal_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -702,10 +565,6 @@ fn ast_grep_functional_loop_in_raw_string_literal_not_detected() -> TestResult {
     Ok(())
 }
 
-/// **Contract:** A bounded `for` loop after a string containing `//` stays
-/// clean. Finite-input iteration is permitted under the bounded-execution
-/// contract; the scanner still parses the code after the string delimiter
-/// (a scanner regression would surface as a parse failure, not a finding).
 #[test]
 fn ast_grep_functional_for_after_line_comment_delimiter_string_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -745,10 +604,6 @@ fn ast_grep_functional_while_after_block_comment_delimiter_string_detected() -> 
     Ok(())
 }
 
-/// **Contract:** A real bounded `for` loop in code stays clean under the
-/// bounded-execution contract (Bound::FiniteInput). This is the positive
-/// control proving finite-input iteration is permitted, while the
-/// `while`-after-delimiter test above proves unbounded retries still fire.
 #[test]
 fn ast_grep_functional_real_for_loop_still_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -764,10 +619,6 @@ fn ast_grep_functional_real_for_loop_still_detected() -> TestResult {
     Ok(())
 }
 
-/// **Contract:** A real unbounded retry in code MUST trigger
-/// BOUNDED_EXECUTION_UNBOUNDED_LOOP, and a real unbounded iterator source
-/// MUST trigger BOUNDED_EXECUTION_UNBOUNDED_ITERATOR. These are the
-/// negative controls proving the bound policy fires on genuine violations.
 #[test]
 fn ast_grep_functional_real_unbounded_violations_still_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];

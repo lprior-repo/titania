@@ -1,5 +1,3 @@
-// Fixture: triggers ARCHITECTURE_IMPORT_CORE_TIME for fully-qualified paths.
-// Core/domain code reading the wall clock with no `use` import.
 
 pub fn now_secs() -> u64 {
     std::time::SystemTime::now()

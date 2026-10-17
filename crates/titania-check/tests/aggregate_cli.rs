@@ -1,8 +1,3 @@
-//! Behavior tests for aggregate dispatch wiring.
-//!
-//! Bead: tn-cgk.2. These tests prove that the CLI reads existing lane
-//! artifacts and emits a typed report instead of returning MissingImplementation.
-
 use std::{env, fs, path::Path, process::Command};
 
 use serde_json::Value;
@@ -15,14 +10,6 @@ fn binary() -> std::path::PathBuf {
 }
 
 fn run_in(root: &Path, args: &[&str]) -> std::process::Output {
-    // Stub Moon via TITANIA_MOON_BIN so `Command::Check` does not invoke the
-    // real moon binary (which would error on tempdirs without `.moon/`).
-    // `/bin/true` exits 0 with any args, leaving the aggregate to classify the
-    // pre-baked lane artifacts. Tests that exercise real Moon dispatch set
-    // their own stub or clear this variable. `/bin/true` is Unix-only, so the
-    // stub is set only on `cfg(unix)`; on Windows the production code falls
-    // back to PATH, and tests that go through Command::Check are themselves
-    // gated to Unix below.
     let mut cmd = Command::new(binary());
     let _ = cmd.args(args);
     let _ = cmd.current_dir(root);

@@ -1,52 +1,27 @@
-//! Execution lanes in the titania-check pipeline.
-//!
-//! Each lane corresponds to a single tool or analysis pass. The set of lanes
-//! is fixed for v1.5 and serialised to `PascalCase` JSON.
-//!
-//! Construction is total: [`Lane::from_str`] parses a `PascalCase` string into
-//! the matching variant, or returns a [`LaneError`].
-
 use core::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::LaneError;
 
-/// Execution lane in the titania-check pipeline.
-///
-/// Each variant names a single tool or analysis pass. Serialized to
-/// `PascalCase` JSON.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum Lane {
-    /// Format-check lane (`cargo fmt --check`).
     Fmt,
-    /// Compile-check lane (`cargo check --workspace --frozen`).
     Compile,
-    /// Clippy lint lane (`cargo clippy --workspace --lib --bins`).
     Clippy,
-    /// Structural ast-grep lane (embedded rules).
     AstGrep,
-    /// Type-aware dylint lane (`cargo dylint titania`).
     Dylint,
-    /// Retired panic-macro compatibility lane; Dylint owns Rust panic policy.
     PanicScan,
-    /// Policy-violation scan lane (native TOML + env scanner).
     PolicyScan,
-    /// Test lane (`cargo test --workspace --frozen`).
     Test,
-    /// Supply-chain deny lane (`cargo deny check`).
     Deny,
-    /// Release build lane (`cargo build --workspace --release`).
     Build,
-    /// Kani bounded model-check lane (`cargo kani -p <pkg>`).
     Kani,
-    /// Cargo mutants test-survivor lane (`cargo mutants -o mutants.out`).
     Mutants,
 }
 
 impl Lane {
-    /// Uppercase-Pascal display name matching the serde representation.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -65,8 +40,6 @@ impl Lane {
         }
     }
 
-    /// Lowercase stem used for the lane artifact filename under
-    /// `.titania/out/<scope>/<stem>.json`.
     #[must_use]
     pub const fn file_stem(self) -> &'static str {
         match self {

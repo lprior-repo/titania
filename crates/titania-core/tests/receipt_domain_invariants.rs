@@ -1,8 +1,3 @@
-//! Production-bound behavior checks for the receipt domain (tn-c6n).
-//!
-//! Every check calls a production constructor directly; no mirrors, no
-//! reimplementations. Exact error variants and messages throughout.
-
 use std::error::Error;
 
 use titania_core::{

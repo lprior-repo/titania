@@ -1,22 +1,6 @@
-//! Focused contract test for `ProcessTermination::signaled`.
-//!
-//! Pins the validator behaviour for the constructor:
-//!
-//! * any positive `i32` (including real-time signals >= 32 on glibc)
-//!   must be accepted and round-trip through the `Signaled` variant,
-//! * zero and any negative `i32` must be rejected with
-//!   `FailureError::InvalidSignal` carrying the offending value,
-//! * the typed error path `serde_json` routes through `signaled()` for
-//!   `Signaled` deserialization, so a wire payload with `signal: 0`
-//!   must FAIL deserialization (no bypass into the domain layer).
-//!
-//! These tests cover boundary behaviour only; they do not cover the
-//! full receipt/replay pipeline owned by other tests.
-
 use serde_json::json;
 use titania_core::{FailureError, LaneFailure, ProcessTermination};
 
-/// All positive `i32` values, including real-time signals, must build.
 #[test]
 fn signaled_accepts_every_positive_value() {
     for signal in 1..=64 {
@@ -29,8 +13,6 @@ fn signaled_accepts_every_positive_value() {
     }
 }
 
-/// The Unix signal endpoints from the spec (SIGHUP=1, SIGSYS=31) plus a
-/// real-time glibc signal must all round-trip identically.
 #[test]
 fn signaled_accepts_positive_representatives() {
     assert_eq!(
@@ -41,7 +23,6 @@ fn signaled_accepts_positive_representatives() {
         ProcessTermination::signaled(31).expect("SIGSYS must be valid"),
         ProcessTermination::Signaled { signal: 31 },
     );
-    // glibc real-time signal example
     assert_eq!(
         ProcessTermination::signaled(64).expect("SIGRTMAX default is valid"),
         ProcessTermination::Signaled { signal: 64 },
@@ -52,8 +33,6 @@ fn signaled_accepts_positive_representatives() {
     );
 }
 
-/// Zero and every negative value must be rejected. Signal `0` is reserved
-/// (`waitpid(2)` "no signal" sentinel); negative values are kernel-internal.
 #[test]
 fn signaled_rejects_zero_and_negatives() {
     assert!(ProcessTermination::signaled(0).is_err(), "signal 0 must be rejected");
@@ -62,8 +41,6 @@ fn signaled_rejects_zero_and_negatives() {
     assert!(ProcessTermination::signaled(i32::MIN).is_err(), "signal i32::MIN must be rejected");
 }
 
-/// On rejection, the error variant MUST carry the offending signal value
-/// so downstream callers can report it without losing information.
 #[test]
 fn signaled_error_carries_offending_value() {
     for &offending in &[0, -1, -9, i32::MIN] {
@@ -76,9 +53,6 @@ fn signaled_error_carries_offending_value() {
     }
 }
 
-/// `#[derive(Deserialize)]` on `ProcessTermination` routes `Signaled`
-/// payloads through `signaled()`. A wire `{"Signaled":{"signal":0}}` must
-/// therefore FAIL to deserialize, closing the prior P2 bypass.
 #[test]
 fn deserialize_rejects_signaled_zero() {
     let payload = json!({"Signaled": {"signal": 0}});
@@ -89,7 +63,6 @@ fn deserialize_rejects_signaled_zero() {
     );
 }
 
-/// Negative-signal wire payloads must also fail deserialization.
 #[test]
 fn deserialize_rejects_signaled_negative() {
     let payload = json!({"Signaled": {"signal": -1}});
@@ -100,9 +73,6 @@ fn deserialize_rejects_signaled_negative() {
     );
 }
 
-/// The wire-side `LaneFailure::Tool` ingest path carries a
-/// `ProcessTermination` and must surface an invalid-signal payload as a
-/// serde error (not silently accept it).
 #[test]
 fn lane_failure_tool_deserialize_rejects_signaled_zero() {
     let payload = json!({

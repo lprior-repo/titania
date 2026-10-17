@@ -1,5 +1,3 @@
-//! Scanner state enums.
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum ScanMode {
     #[default]

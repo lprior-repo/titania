@@ -1,22 +1,15 @@
-//! Library wrapper for Cargo-backed v1 lanes.
-//!
-//! The public `titania-check run-lane` dispatcher uses this module to execute
-//! cargo-native lanes without depending on the compatibility `run-cargo` binary.
-
 use super::run_cargo::{
     CargoLane, RunCargoError, args_for_lane, clean_outcome, findings_outcome, process_termination,
 };
 use crate::{LaneExit, discover::discover_target};
 use titania_core::{Lane, LaneFailure, LaneOutcome, TargetProject};
 
-/// Cargo-backed lane dispatch result.
 pub(super) enum CargoRun {
     Unsupported,
     Complete(LaneOutcome),
     Error { exit: LaneExit, message: String },
 }
 
-/// Run the Cargo-backed implementation for known Cargo lanes.
 pub(super) fn run(lane: Lane) -> CargoRun {
     let Some(lane_name) = cargo_lane_name(lane) else {
         return CargoRun::Unsupported;
@@ -27,7 +20,6 @@ pub(super) fn run(lane: Lane) -> CargoRun {
     }
 }
 
-/// Map an outer [`Lane`] to its cargo sub-lane name.
 const fn cargo_lane_name(lane: Lane) -> Option<&'static str> {
     match lane {
         Lane::Fmt => Some("fmt"),
@@ -69,12 +61,6 @@ fn usage_message() -> String {
     String::from("usage: run-lane <fmt|compile|clippy|test|build>")
 }
 
-/// Resolve target state and run the selected Cargo lane.
-///
-/// # Errors
-/// Returns [`RunCargoError`] when the sub-command is unrecognised, the CWD
-/// cannot be read, no Cargo target project is discoverable, or the lane
-/// execution fails.
 fn run_checked(lane_name: &str) -> Result<LaneOutcome, RunCargoError> {
     let cargo_lane = CargoLane::parse(lane_name)
         .map_err(|_parse_error| RunCargoError::Usage(usage_message()))?;
@@ -83,17 +69,6 @@ fn run_checked(lane_name: &str) -> Result<LaneOutcome, RunCargoError> {
     run_lane(&target, cargo_lane, &[])
 }
 
-/// Execute a single cargo lane and build its [`LaneOutcome`].
-///
-/// Per v1-spec §5, the Fmt/Compile/Test/Build lanes do not produce typed
-/// `Finding` values — a nonzero exit is a gate failure
-/// (`LaneOutcome::Failed { LaneFailure::Tool }`), not a code finding. Only
-/// Clippy normalizes its JSON output into `CLIPPY_*` findings.
-///
-/// # Errors
-/// Returns [`RunCargoError::Policy`] when `extra_args` carries a lint
-/// ceiling, [`RunCargoError::Command`] on cargo execution failure, or any
-/// outcome-construction error from [`lane_outcome`].
 fn run_lane(
     target: &TargetProject,
     lane: CargoLane,
@@ -108,13 +83,6 @@ fn run_lane(
     lane_outcome(target, lane, extra_args, &output)
 }
 
-/// Dispatch to clean / failure path based on output status.
-///
-/// Per v1-spec §5, non-clippy cargo lanes produce `Clean` on exit 0 and
-/// `Failed { LaneFailure::Tool }` on nonzero exit — never `Findings`.
-///
-/// # Errors
-/// Returns [`RunCargoError::Outcome`] when clean-outcome construction fails.
 fn lane_outcome(
     target: &TargetProject,
     lane: CargoLane,
@@ -127,8 +95,6 @@ fn lane_outcome(
     Ok(LaneOutcome::Failed { failure: tool_failure(lane, output) })
 }
 
-/// Construct a `LaneFailure::Tool` with the lane-specific tool name
-/// per v1-spec §11.2.
 fn tool_failure(lane: CargoLane, output: &crate::CommandOutput) -> LaneFailure {
     LaneFailure::Tool {
         tool: String::from(lane.tool_name()),
@@ -136,10 +102,6 @@ fn tool_failure(lane: CargoLane, output: &crate::CommandOutput) -> LaneFailure {
     }
 }
 
-/// Run cargo for *lane* with the appropriate flags.
-///
-/// # Errors
-/// Returns [`crate::LaneError`] on command construction or execution failure.
 fn cargo_output(
     target: &TargetProject,
     lane: CargoLane,
@@ -151,11 +113,6 @@ fn cargo_output(
     let _ = command.args_strings(extra_args);
     command.run_capture_raw()
 }
-/// Normalize clippy JSONL output into a typed lane outcome.
-///
-/// # Errors
-/// Returns [`RunCargoError`] when the clippy JSONL cannot be parsed or the
-/// lane execution fails unexpectedly.
 fn normalize_clippy_output(
     target: &TargetProject,
     lane: CargoLane,
@@ -208,7 +165,6 @@ mod tests {
         Ok(line_start)
     }
 
-    /// Regression: nonzero clippy exit + empty stdout → Failed, not Clean.
     #[test]
     fn nonzero_exit_empty_stdout_becomes_failed_not_clean() -> Result<(), Box<dyn Error>> {
         let (_dir, target) = make_target()?;
@@ -222,7 +178,6 @@ mod tests {
         Ok(())
     }
 
-    /// Nonzero clippy exit + clean JSON (no findings) → Failed.
     #[test]
     fn nonzero_exit_clean_json_becomes_failed_not_clean() -> Result<(), Box<dyn Error>> {
         let (_dir, target) = make_target()?;
@@ -236,7 +191,6 @@ mod tests {
         Ok(())
     }
 
-    /// Nonzero clippy exit + valid JSON with unwrap findings → CLIPPY_UNWRAP_USED.
     #[test]
     fn nonzero_exit_with_unwrap_json_becomes_findings() -> Result<(), Box<dyn Error>> {
         let (_dir, target) = make_target()?;
@@ -274,8 +228,6 @@ mod tests {
         Ok(())
     }
 
-    /// A ceiling in extra args is rejected before any child process starts:
-    /// no spawn, no outcome, no trusted receipt — just a policy error.
     #[test]
     fn run_lane_rejects_cap_lints_before_spawn() -> Result<(), Box<dyn Error>> {
         let (_dir, target) = make_target()?;
@@ -299,7 +251,6 @@ mod tests {
         }
     }
 
-    /// Zero exit + clean JSON → Clean (sanity check, existing behavior preserved).
     #[test]
     fn zero_exit_clean_json_becomes_clean() -> Result<(), Box<dyn Error>> {
         let (_dir, target) = make_target()?;

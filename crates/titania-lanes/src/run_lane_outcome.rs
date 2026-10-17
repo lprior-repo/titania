@@ -1,5 +1,3 @@
-//! Artifact and outcome helpers for the public run-lane dispatcher.
-
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
@@ -22,10 +20,6 @@ pub(super) enum OutcomeBuildError {
     Artifact(#[from] ArtifactWriterError),
 }
 
-/// Convert a legacy lane report into a v1 lane outcome.
-///
-/// # Errors
-/// Returns [`OutcomeBuildError`] when clean command evidence cannot be built.
 pub(super) fn outcome_from_report(
     lane: Lane,
     report: &LaneReport,
@@ -58,10 +52,6 @@ pub(super) fn clean_outcome_unchecked(
     }
 }
 
-/// Write one lane outcome to every gate scope that contains the lane.
-///
-/// # Errors
-/// Returns [`OutcomeBuildError`] when any artifact write fails.
 pub(super) fn write_artifacts(
     target: &TargetProject,
     lane: Lane,
@@ -96,12 +86,6 @@ fn termination_from_signal(_status: std::process::ExitStatus) -> ProcessTerminat
 }
 
 fn core_finding(lane: Lane, finding: &Finding) -> CoreFinding {
-    // Repair hint comes from the lane Finding, which is auto-populated
-    // by `RepairHint::for_rule(rule.as_str())` at construction time and
-    // optionally overridden by `Finding::with_repair` for normalizers
-    // with richer context. The legacy `requires_human_review` fallback
-    // path is preserved by that catalog lookup (empty / unknown /
-    // dynamic rule ids return that class).
     CoreFinding::reject(
         lane,
         finding.rule().clone(),
@@ -126,10 +110,6 @@ fn legacy_span(path: WorkspacePath, line: u32) -> Location {
     location
 }
 
-/// Build clean lane evidence for a successful lane run.
-///
-/// # Errors
-/// Returns [`OutcomeBuildError`] when command or lane evidence is invalid.
 fn clean_outcome(
     lane: Lane,
     tool_version: &'static str,

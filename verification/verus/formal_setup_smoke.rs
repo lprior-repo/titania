@@ -1,4 +1,3 @@
-// titania-verus-binding: fixture-smoke
 use vstd::prelude::*;
 
 verus! {

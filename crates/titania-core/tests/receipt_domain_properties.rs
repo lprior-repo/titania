@@ -1,8 +1,3 @@
-//! Executable property checks for the receipt domain (tn-c6n).
-//!
-//! Each property asserts accept/reject equivalence between a production
-//! constructor and its documented predicate over a full input class.
-
 use std::collections::BTreeSet;
 
 use proptest::prelude::*;

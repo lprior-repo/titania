@@ -1,5 +1,3 @@
-//! Path-scope filters mirroring embedded YAML `files` and `ignores` selectors.
-
 use std::path::Path;
 
 use titania_core::WorkspacePath;
@@ -37,7 +35,6 @@ fn is_meta_code_path(path: &str) -> bool {
 }
 
 fn is_rule_ignored(rule_id: &str, path: &str) -> bool {
-    // Exclude Verus proof files from FUNC_WILDCARD_IMPORT (prelude is Verus std)
     if rule_id == "FUNC_WILDCARD_IMPORT" && path.starts_with("verification/verus/") {
         return true;
     }

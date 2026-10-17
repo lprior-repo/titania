@@ -1,5 +1,3 @@
-// Fixture: triggers ARCHITECTURE_IMPORT_CORE_RANDOM
-// Core/domain code using entropy sources directly.
 
 use rand::thread_rng;
 

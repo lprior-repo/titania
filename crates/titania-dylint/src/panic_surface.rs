@@ -1,5 +1,3 @@
-//! Panic-surface Dylint rules replacing brittle Rust text scans.
-
 use rustc_ast::{Item, ItemKind, MacCall, MetaItemInner};
 use rustc_errors::DiagDecorator;
 use rustc_lint::{EarlyContext, EarlyLintPass, LintContext, LintStore};
@@ -7,56 +5,48 @@ use rustc_session::{declare_lint, impl_lint_pass};
 use rustc_span::{Span, sym};
 
 declare_lint! {
-    /// Detects `panic!` in production Rust.
     pub HOLZMAN_PANIC_PANIC,
     Forbid,
     "HOLZMAN_PANIC_PANIC: replace panic! with typed failure"
 }
 
 declare_lint! {
-    /// Detects production `assert!` panic paths.
     pub HOLZMAN_PANIC_ASSERT,
     Forbid,
     "HOLZMAN_PANIC_ASSERT: replace assert! with typed validation"
 }
 
 declare_lint! {
-    /// Detects production `assert_eq!` panic paths.
     pub HOLZMAN_PANIC_ASSERT_EQ,
     Forbid,
     "HOLZMAN_PANIC_ASSERT_EQ: replace assert_eq! with typed validation"
 }
 
 declare_lint! {
-    /// Detects production `assert_ne!` panic paths.
     pub HOLZMAN_PANIC_ASSERT_NE,
     Forbid,
     "HOLZMAN_PANIC_ASSERT_NE: replace assert_ne! with typed validation"
 }
 
 declare_lint! {
-    /// Detects production `todo!` placeholders.
     pub HOLZMAN_PANIC_TODO,
     Forbid,
     "HOLZMAN_PANIC_TODO: replace todo! with implemented behavior"
 }
 
 declare_lint! {
-    /// Detects production `unimplemented!` placeholders.
     pub HOLZMAN_PANIC_UNIMPLEMENTED,
     Forbid,
     "HOLZMAN_PANIC_UNIMPLEMENTED: replace unimplemented! with implemented behavior"
 }
 
 declare_lint! {
-    /// Detects production `unreachable!` panic paths.
     pub HOLZMAN_PANIC_UNREACHABLE,
     Forbid,
     "HOLZMAN_PANIC_UNREACHABLE: replace unreachable! with typed impossible-state modeling"
 }
 
 declare_lint! {
-    /// Detects production `dbg!` debug surface.
     pub HOLZMAN_PANIC_DBG,
     Forbid,
     "HOLZMAN_PANIC_DBG: remove dbg! debug surface"
@@ -95,7 +85,6 @@ impl EarlyLintPass for PanicSurface {
     }
 }
 
-/// Register panic-surface lints and pass.
 pub(crate) fn register(lint_store: &mut LintStore) {
     lint_store.register_lints(&[
         HOLZMAN_PANIC_PANIC,

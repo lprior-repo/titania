@@ -1,15 +1,3 @@
-//! Runtime dispatch table for embedded ast-grep YAML rules.
-//!
-//! Each [`RuleDef`] pairs a rule id with a [`Detector`] closure. Real
-//! ast-grep patterns power every structural rule (FUNC_*). The bypass
-//! attribute rules also use ast-grep. Architecture import/effect rules
-//! (`ARCHITECTURE_IMPORT_CORE_*`, `ARCHITECTURE_EFFECT_CORE_*`) keep
-//! their hand-rolled string detectors because the path-scope filter,
-//! grouped-import boundary logic, fully-qualified-path coverage, and
-//! comment/string blindness are not naturally expressible as a single
-//! ast-grep pattern — see the bead report for the residual
-//! (resolved-identity HIR lint remains future work).
-
 #[cfg(test)]
 mod detector_tests;
 mod detectors;
@@ -22,47 +10,25 @@ use super::{
     span::{FILE_LEVEL_SITE, MatchSite},
 };
 
-/// Detector function pointer over the parsed ast-grep engine.
 type EngineDetector = fn(&AstEngine) -> Option<MatchSite>;
 
-/// Runtime rule definition corresponding to one embedded YAML document.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct RuleDef {
-    /// YAML rule id.
     pub(super) id: &'static str,
-    /// Finding message copied from YAML.
     pub(super) message: &'static str,
-    /// Finding effect copied from YAML metadata.
     pub(super) effect: FindingEffect,
-    /// Repair hint kind copied from YAML metadata.
     pub(super) repair: RepairKind,
-    /// Path scope copied from YAML `files` and `ignores` selectors.
     scope: RuleScope,
-    /// Engine-or-string detector producing the first match line.
     pub(super) detect: Detector,
 }
 
-/// Engine-vs-string detector selector.
-///
-/// The engine path runs against the real ast-grep parse tree. The string
-/// path is reserved for rules that ast-grep cannot express (path-scope
-/// filter + grouped imports, inline-suppression comments).
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Detector {
-    /// Real ast-grep engine detector.
     Engine(EngineDetector),
-    /// Legacy hand-rolled string detector.
     String(fn(&str) -> bool),
 }
 
 impl Detector {
-    /// Run the detector against the parsed engine and the raw source.
-    ///
-    /// Engine detectors delegate to ast-grep and return the byte range of the
-    /// first match (translated to a v1-spec §10 `Location::Span` by the lane).
-    /// String detectors cannot pin a precise AST token — they report a
-    /// file-level site anchored at the first byte, preserving the pre-H3
-    /// `line 1, col 0..1` wire output for any non-empty source.
     pub(super) fn run(self, engine: &AstEngine, source: &str) -> Option<MatchSite> {
         match self {
             Self::Engine(detect) => detect(engine),
@@ -71,7 +37,6 @@ impl Detector {
     }
 }
 
-/// Internal repair hint selector.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum RepairKind {
     RemoveAllowAttribute,

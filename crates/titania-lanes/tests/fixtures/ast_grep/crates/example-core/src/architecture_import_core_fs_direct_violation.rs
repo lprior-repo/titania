@@ -1,5 +1,3 @@
-// Fixture: triggers ARCHITECTURE_IMPORT_CORE_FS for direct imports.
-// Core/domain code importing concrete filesystem/network/environment APIs.
 
 use std::env::var;
 use std::fs::read_to_string;

@@ -1,5 +1,3 @@
-//! Coverage for v1 run-lane source discovery.
-
 use std::path::PathBuf;
 
 use titania_lanes::collect_rust_sources;

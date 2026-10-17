@@ -1,5 +1,3 @@
-//! v1.5 contract tests for `Lane` serde round-trip across all 12 variants.
-
 use std::str::FromStr;
 
 use titania_core::Lane;

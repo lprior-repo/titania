@@ -1,13 +1,3 @@
-//! Failing-first CLI emit-restriction tests for bead tn-ulrv.
-//!
-//! Verifies the v1 §12 grammar requirement: primary `check` and `aggregate`
-//! commands accept `--emit json` only (and default to JSON). They must reject
-//! `--emit human` as an `InputError`. Doctor retains both human and JSON
-//! modes with human as its documented default.
-//!
-//! Uses `std::process::Command` and the `CARGO_BIN_EXE_titania-check`
-//! environment variable set by `cargo test`.
-
 use std::{
     env,
     path::Path,
@@ -32,7 +22,6 @@ fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     let _ = cmd.stdout(Stdio::piped());
     let _ = cmd.stderr(Stdio::piped());
 
-    // Real binary needs no extra env setup; tests rely on default behavior.
     #[cfg(unix)]
     let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
 
@@ -59,8 +48,6 @@ fn check_rejects_emit_human() {
 
 #[test]
 fn default_check_command_rejects_emit_human() {
-    // `titania-check` with no subcommand dispatches to `check`. The same
-    // restriction must apply.
     let (code, _stdout, stderr) = run(&["--emit", "human"]);
     assert_input_error(code, &stderr, "human");
 }
@@ -71,23 +58,13 @@ fn aggregate_rejects_emit_human() {
     assert_input_error(code, &stderr, "human");
 }
 
-// `titania-check check` dispatches through Moon; on Windows the production
-// PATH lookup for `moon` (or the test stub of `/bin/true`) has no equivalent,
-// so this scenario is exercised on Unix only. The portable scenarios above
-// (check/aggregate --emit human rejection, aggregate --scope edit, and the
-// doctor defaults) still run everywhere.
 #[cfg(unix)]
 #[test]
 fn check_default_emits_json_without_explicit_flag() {
-    // v1 §12 grammar: check defaults to JSON. We can't easily run a real
-    // check here, but a workspace lacking lanes must surface a JSON report
-    // matching the aggregate report schema. Failing this test means the
-    // default drifted to a human renderer.
     let workspace = tempfile::tempdir().expect("tempdir must be created");
     let (code, stdout, stderr) = run_in(workspace.path(), &["check"]);
     assert!(stderr.is_empty(), "check default JSON path must not write stderr: {stderr}");
     assert_eq!(code, 1, "empty workspace check must reject (exit 1): {stderr}");
-    // The empty report shape is produced by the aggregate layer.
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).expect("check default stdout must be JSON: {stdout}");
     assert_eq!(parsed["variant"], "Reject", "default JSON must include report variant: {parsed}");
@@ -108,7 +85,6 @@ fn aggregate_default_emits_json_without_explicit_flag() {
 
 #[test]
 fn doctor_retains_emit_human_default() {
-    // Doctor must NOT regress: human output stays its documented default.
     let (code, stdout, stderr) = run(&["doctor", "--scope", "edit"]);
     assert!(stderr.is_empty(), "doctor default human must not write stderr: {stderr}");
     assert!(code == 0 || code == 3, "doctor must exit 0 or 3, got: {code}");

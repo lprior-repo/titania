@@ -1,5 +1,3 @@
-// Fixture: triggers BYPASS_EXPECT_ATTR
-// An #[expect(...)] attribute (RFC-641) suppresses a future lint.
 
 use std::fmt;
 

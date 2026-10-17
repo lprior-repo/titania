@@ -1,13 +1,3 @@
-//! Round-trip tests for the canonical on-disk lane artifact format.
-//!
-//! These prove every [`LaneOutcome`] variant serializes through the shared
-//! [`LaneArtifact`] / [`ArtifactOutcome`] projection and parses back into an
-//! equal [`LaneOutcome`]. The `dylint_infra_failure_*` cases are the direct
-//! regression for the aggregator parse bug: a lane that fails because its tool
-//! binary is missing must remain aggregator-parseable end to end.
-//!
-//! Beads: tn-6qv
-
 use serde_json::Value;
 use titania_core::{
     ArtifactOutcome, CommandEvidence, Digest, Finding, Lane, LaneArtifact, LaneEvidence,
@@ -68,9 +58,6 @@ fn skipped_outcome_round_trips() {
 
 #[test]
 fn dylint_infra_failure_outcome_round_trips() {
-    // Regression for the aggregator parse error: a dylint lane that fails
-    // because cargo-dylint is missing must serialize to the canonical v1
-    // artifact shape and parse back into LaneOutcome::Failed { failure: ... }.
     let original = LaneOutcome::Failed {
         failure: LaneFailure::Infra {
             tool: String::from("cargo-dylint"),
@@ -82,9 +69,6 @@ fn dylint_infra_failure_outcome_round_trips() {
 
 #[test]
 fn dylint_infra_failure_on_disk_shape_is_aggregator_parseable() {
-    // The on-disk shape must use the v1 external lane tag and the inner
-    // LaneFailure tag. This is the exact shape `.titania/out/edit/dylint.json`
-    // must hold.
     let outcome = LaneOutcome::Failed {
         failure: LaneFailure::Infra {
             tool: String::from("cargo-dylint"),

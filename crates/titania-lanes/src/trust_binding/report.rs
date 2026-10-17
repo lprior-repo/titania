@@ -1,8 +1,3 @@
-//! Blocked-obligation findings: rendering the audit verdict into lane output.
-//!
-//! Every [`BlockReason`] maps to exactly one typed [`Finding`] with a stable
-//! `TRUST_*` rule id. Pass states record nothing.
-
 use super::{
     audit::{Obligation, VerifierEvidence, Waiver},
     classify::{BlockReason, TrustMarker},
@@ -11,26 +6,15 @@ use super::{
 };
 use crate::{Finding, LaneReport, RuleId, RuleIdError};
 
-/// Bundled inputs for emitting one blocked-obligation finding.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BlockedCtx<'a> {
-    /// Obligation that failed closed.
     pub(crate) obligation: &'a Obligation,
-    /// Registered proof file, when present.
     pub(crate) file: Option<&'a ScannedFile>,
-    /// Machine-readable block reason.
     pub(crate) reason: BlockReason,
-    /// Recorded verifier evidence, when present.
     pub(crate) evidence: Option<&'a VerifierEvidence>,
-    /// Independent explicit waivers.
     pub(crate) waivers: &'a [Waiver],
 }
 
-/// Push the lane finding for a blocked verdict; pass verdicts are silent.
-///
-/// # Errors
-///
-/// Returns [`RuleIdError`] when the embedded lane rule identifier is invalid.
 pub(crate) fn push_blocked_finding(
     ctx: &BlockedCtx<'_>,
     report: &mut LaneReport,
@@ -44,14 +28,6 @@ pub(crate) fn push_blocked_finding(
     Ok(())
 }
 
-/// Build the lane finding for a blocked obligation.
-///
-/// Returns `Ok(None)` only for non-blocked reasons, which never happens for
-/// [`BlockReason`] inputs; every block reason maps to exactly one finding.
-///
-/// # Errors
-///
-/// Returns [`RuleIdError`] when the embedded lane rule identifier is invalid.
 pub fn finding_for_blocked(
     obligation: &Obligation,
     file: Option<&ScannedFile>,
@@ -65,7 +41,6 @@ pub fn finding_for_blocked(
     Ok(Some(Finding::new(rule, path, 0, message)))
 }
 
-/// Render the human-readable finding message for a blocked obligation.
 fn blocked_message(
     obligation: &Obligation,
     file: Option<&ScannedFile>,
@@ -83,15 +58,12 @@ fn blocked_message(
     }
 }
 
-/// Render the smoke-fixture finding message.
 fn smoke_message(obligation: &Obligation, file: Option<&ScannedFile>) -> String {
     let path: &str = file.map_or_else(|| obligation.proof_file(), ScannedFile::path);
     ["smoke fixture '", path, "' cannot satisfy production obligation '", obligation.id(), "'"]
         .concat()
 }
 
-/// Render the unapproved-trust finding message, naming every uncovered
-/// marker with its first line.
 fn trust_message(
     obligation: &Obligation,
     file: Option<&ScannedFile>,
@@ -119,13 +91,11 @@ fn trust_message(
     .concat()
 }
 
-/// Render one `name@first-line` marker detail entry.
 fn marker_detail(file: &ScannedFile, marker: TrustMarker) -> String {
     let first: u32 = file.signals().marker_lines(marker).first().map_or(0, |line| *line);
     [marker.name(), "@", &first.to_string()].concat()
 }
 
-/// Render the missing-binding finding message.
 fn binding_message(obligation: &Obligation) -> String {
     [
         "obligation '",
@@ -137,7 +107,6 @@ fn binding_message(obligation: &Obligation) -> String {
     .concat()
 }
 
-/// Render the mirror-drift finding message.
 fn drift_message(obligation: &Obligation, evidence: Option<&VerifierEvidence>) -> String {
     let recorded: &str = evidence.map_or("<none>", VerifierEvidence::revision);
     [
@@ -150,7 +119,6 @@ fn drift_message(obligation: &Obligation, evidence: Option<&VerifierEvidence>) -
     .concat()
 }
 
-/// Render the vacuous-proof finding message.
 fn vacuous_message(obligation: &Obligation, file: Option<&ScannedFile>) -> String {
     let path: &str = file.map_or_else(|| obligation.proof_file(), ScannedFile::path);
     [
@@ -165,7 +133,6 @@ fn vacuous_message(obligation: &Obligation, file: Option<&ScannedFile>) -> Strin
     .concat()
 }
 
-/// Render the missing-evidence finding message.
 fn evidence_message(obligation: &Obligation, evidence: Option<&VerifierEvidence>) -> String {
     let status: String =
         evidence.map_or_else(|| "<absent>".to_owned(), |record| record.exit_code().to_string());

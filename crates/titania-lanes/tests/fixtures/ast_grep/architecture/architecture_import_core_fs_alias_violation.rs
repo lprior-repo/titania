@@ -1,5 +1,3 @@
-// Fixture: triggers ARCHITECTURE_IMPORT_CORE_FS for `as`-aliased imports.
-// Aliasing the import does not launder the capability.
 
 use std::fs as filesystem;
 use std::{env as environment, net};

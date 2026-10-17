@@ -1,10 +1,3 @@
-//! Failing-first explain CLI tests for bead tn-ja8.1.
-//!
-//! Covers: known-rule metadata, unknown-rule exit-3, parser-invalid lowercase.
-//!
-//! Selective acceptance filter:
-//! `cargo test -p titania-check explain`
-
 use std::{
     env,
     path::Path,
@@ -39,10 +32,6 @@ fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
 fn assert_stderr_contains(stderr: &str, needle: &str) {
     assert!(stderr.contains(needle), "stderr should contain {needle:?}, got: {stderr}");
 }
-
-// ---------------------------------------------------------------------------
-// Known rule: BOUNDED_EXECUTION_UNBOUNDED_LOOP must exit 0 and print metadata.
-// ---------------------------------------------------------------------------
 
 #[test]
 fn explain_known_rule_exits_zero() {
@@ -131,10 +120,6 @@ fn explain_dynamic_clippy_rule_is_explainable() {
     assert!(stdout.contains("clippy::needless_bool"), "stdout must name lint: {stdout}");
 }
 
-// ---------------------------------------------------------------------------
-// Unknown syntactically valid rule: must exit 3 with "unknown rule ID".
-// ---------------------------------------------------------------------------
-
 #[test]
 fn explain_unknown_rule_exits_three() {
     let (code, stdout, stderr) = run(&["explain", "DOES_NOT_EXIST"]);
@@ -149,17 +134,11 @@ fn explain_unknown_rule_stderr_contains_unknown_rule_id() {
     assert_stderr_contains(&stderr, "unknown rule ID");
 }
 
-// ---------------------------------------------------------------------------
-// Lowercase rule id is parser-invalid (RuleId requires uppercase).
-// Must exit 3 with parser-error text (not the catalog unknown path).
-// ---------------------------------------------------------------------------
-
 #[test]
 fn explain_lowercase_rule_id_is_parser_invalid() {
     let (code, stdout, stderr) = run(&["explain", "does_not_exist"]);
     assert_eq!(code, 3, "lowercase rule id must exit 3, got {code}. stderr: {stderr}");
     assert!(stdout.is_empty(), "parser-invalid path must not write stdout, got: {stdout}");
-    // Should report the RuleId validation error, not "unknown rule ID".
     assert_stderr_contains(&stderr, "InputError:");
 }
 

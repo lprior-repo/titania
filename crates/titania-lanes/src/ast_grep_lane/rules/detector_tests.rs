@@ -1,4 +1,3 @@
-//! Unit and property tests for the architecture string detectors.
 use super::detectors::{
     detect_core_async_effect, detect_core_fs_import, detect_core_infra_import,
     detect_core_process_import, detect_core_random_import, detect_core_state_effect,
@@ -150,9 +149,6 @@ fn tn_bvv7_state_effect_allows_frozen_catalog_pattern() {
 
 use proptest::prelude::*;
 
-/// Padding alphabet that cannot spell any effect marker: only `a`,
-/// `b`, blanks, and newlines. No marker (`std::`, `tokio::`, `async`,
-/// `static`, `.await`, ...) is spellable, so padding alone never fires.
 fn padding() -> impl Strategy<Value = String> {
     prop::collection::vec("[ab \n;]{0,24}", 0..3).prop_map(|chunks| chunks.join("\n"))
 }
@@ -164,8 +160,6 @@ fn embed(pad: &str, line: &str) -> String {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(64))]
 
-    /// Seed S1: every fully-qualified / aliased / macro-hidden legacy
-    /// effect still fires when buried in benign noise.
     #[test]
     fn tn_bvv7_fq_bypass_property(pad in padding(), pick in 0..8usize) {
         type Detector = fn(&str) -> bool;
@@ -187,9 +181,6 @@ proptest! {
         prop_assert!(detect(&embed(&pad, line)));
     }
 
-    /// Seed S2: new process/async/state boundaries fire under noise,
-    /// while the frozen-catalog allowance (LazyLock, include_str!)
-    /// stays silent under the same noise.
     #[test]
     fn tn_bvv7_effect_boundary_property(pad in padding(), pick in 0..9usize) {
         type Detector = fn(&str) -> bool;

@@ -1,65 +1,31 @@
-//! Integration test for `.moon/tasks/all.yml` — v1/v1.5 task DAG.
-//!
-//! Asserts the exact task contract for all 16 required tasks (12 lane +
-//! 4 gate composites) co-exist with legacy cargo-native tasks. The test
-//! intentionally fails RED when v1 tasks are absent, proving the parser and
-//! assertion logic work (not a silent pass).
-//!
-//! Key contracts:
-//!   • deps use `~:name` (Moon local task dep syntax)
-//!   • gate tasks have NO toolchains key
-//!   • compile fan-out: clippy, test, build depend on `~:titania-compile`
-//!   • every Full lane declares `.titania/out/full/<lane>.json`
-//!   • heavy build/dylint/Kani/mutants lanes use distinct target dirs
-//!   • env/inputs/outputs are declared exactly
-
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 
-// The YAML file is at the workspace root; from tests/ go up 3 dirs.
 const MOON_TASKS: &str = include_str!("../../../.moon/tasks/all.yml");
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Minimal YAML line-scanner — sufficient for v1 §13 forms.
-// ──────────────────────────────────────────────────────────────────────────────
-
-/// A parsed task entry extracted from the `tasks:` map of all.yml.
 #[derive(Debug)]
 struct ParsedTask {
-    /// Top-level key under `tasks:` (e.g. "titania-fmt").
     name: String,
-    /// The `command:` scalar value (trimmed).
     command: Option<String>,
-    /// Elements of `toolchains: [rust]`.
     toolchains: Vec<String>,
-    /// Whether a `toolchains:` key was present in the YAML (even if empty).
-    /// Distinguishes "key absent" from "key present but empty".
     toolchains_key: bool,
-    /// Elements of `deps:` (both flow and block list formats).
     deps: Vec<String>,
-    /// `env:` block key-value pairs.
     env: HashMap<String, String>,
-    /// `script:` scalar or folded block value.
     script: Option<String>,
-    /// `inputs:` block-list entries.
     inputs: Vec<String>,
-    /// `outputs:` block-list entries.
     outputs: Vec<String>,
-    /// `runInCI: true` inside `options:` block.
     run_in_ci: Option<bool>,
 }
 fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
     let lines: Vec<&str> = text.lines().collect();
     let mut tasks = Vec::new();
 
-    // Find the `tasks:` line at column 0.
     let tasks_start = match (0..lines.len()).find(|&i| lines[i].trim() == "tasks:") {
         Some(idx) => idx + 1,
         None => return tasks,
     };
 
-    // Collect the task-map block: lines indented > 0 after `tasks:`.
     let mut block_lines: Vec<(usize, &str)> = Vec::new();
     for idx in tasks_start..lines.len() {
         let line = lines[idx];
@@ -73,30 +39,24 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
         block_lines.push((idx, line));
     }
 
-    // Split block_lines into task sub-blocks.
-    // Tasks start at indent 2; sub-keys at indent 4+.
     let mut sub_blocks: Vec<Vec<(usize, &str)>> = Vec::new();
     for &(idx, line) in &block_lines {
         let trimmed = line.trim();
         let indent = line.chars().take_while(|c| *c == ' ').count();
-        // Skip YAML comments and blank lines at task indent.
         if trimmed.starts_with('#') {
             continue;
         }
         if indent == 2 {
-            // Start of a new task entry.
             sub_blocks.push(vec![(idx, line)]);
         } else if let Some(last) = sub_blocks.last_mut() {
             last.push((idx, line));
         }
     }
 
-    // Parse each sub-block into a ParsedTask.
     for sub in &sub_blocks {
         let first_line = sub[0].1;
         let name = first_line.trim().strip_suffix(':').unwrap_or(first_line.trim()).to_string();
 
-        // Scan sub-lines collecting fields; handle block-format fields inline.
         let mut command: Option<String> = None;
         let mut toolchains: Vec<String> = Vec::new();
         let mut toolchains_key: bool = false;
@@ -119,7 +79,6 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
                 continue;
             }
 
-            // Detect options: block start.
             if trimmed == "options:" {
                 in_options = true;
                 i += 1;
@@ -137,24 +96,17 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
                 continue;
             }
             if in_options && !trimmed.starts_with("runInCI:") {
-                // Left the options block.
                 in_options = false;
             }
 
-            // `command: '...'`
             if let Some(val) = trimmed.strip_prefix("command:") {
                 command = Some(val.trim().trim_matches('\'').trim_matches('"').to_string());
-            }
-            // `toolchains:` key present — set flag
-            // Flow array: `toolchains: [rust]` or block list: indented `- '...'` lines
-            else if trimmed.starts_with("toolchains:") {
+            } else if trimmed.starts_with("toolchains:") {
                 toolchains_key = true;
                 let val = trimmed.strip_prefix("toolchains:").unwrap_or("").trim();
                 if val.starts_with('[') || !val.is_empty() {
-                    // Flow array
                     toolchains = parse_flow_array(val);
                 } else {
-                    // Block list — read indented `- '...'` lines
                     i += 1;
                     while i < sub.len() {
                         let (_, next_line) = sub[i];
@@ -183,9 +135,7 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
                     }
                     continue;
                 }
-            }
-            // `deps: ['~:foo', ...]` (flow array)
-            else if let Some(val) = trimmed.strip_prefix("deps:") {
+            } else if let Some(val) = trimmed.strip_prefix("deps:") {
                 let value = val.trim();
                 if !value.is_empty() {
                     deps = parse_flow_deps(value);
@@ -216,9 +166,7 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
                     }
                     continue;
                 }
-            }
-            // `script: >-` folded block or scalar script.
-            else if let Some(val) = trimmed.strip_prefix("script:") {
+            } else if let Some(val) = trimmed.strip_prefix("script:") {
                 let raw_value = val.trim();
                 if matches!(raw_value, ">-" | ">" | "|-" | "|") {
                     let (block_script, next_index) = parse_block_scalar(sub, i + 1, field_indent);
@@ -227,9 +175,7 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
                     continue;
                 }
                 script = Some(raw_value.trim_matches('\'').trim_matches('"').to_string());
-            }
-            // `env:` block (key: value lines)
-            else if trimmed == "env:" {
+            } else if trimmed == "env:" {
                 let _block_indent = field_indent + 2;
                 i += 1;
                 while i < sub.len() {
@@ -251,9 +197,7 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
                     i += 1;
                 }
                 continue;
-            }
-            // `inputs:` block list
-            else if trimmed == "inputs:" {
+            } else if trimmed == "inputs:" {
                 i += 1;
                 while i < sub.len() {
                     let (_, next_line) = sub[i];
@@ -279,9 +223,7 @@ fn parse_task_yaml_clean(text: &str) -> Vec<ParsedTask> {
                     i += 1;
                 }
                 continue;
-            }
-            // `outputs:` block list
-            else if trimmed == "outputs:" {
+            } else if trimmed == "outputs:" {
                 i += 1;
                 while i < sub.len() {
                     let (_, next_line) = sub[i];
@@ -349,7 +291,6 @@ fn parse_block_scalar(sub: &[(usize, &str)], start: usize, field_indent: usize) 
     (lines.join("\n"), index)
 }
 
-/// Parse `toolchains: [rust]` or `toolchains: [rust, ...]` flow array.
 fn parse_flow_array(s: &str) -> Vec<String> {
     let inner = s.trim().strip_prefix('[').unwrap_or(s).strip_suffix(']').unwrap_or(s);
     inner
@@ -359,7 +300,6 @@ fn parse_flow_array(s: &str) -> Vec<String> {
         .collect()
 }
 
-/// Parse `deps: ['dep1', 'dep2']` flow array, returning dep strings.
 fn parse_flow_deps(s: &str) -> Vec<String> {
     let inner = s.trim().strip_prefix('[').unwrap_or(s).strip_suffix(']').unwrap_or(s);
     inner
@@ -369,16 +309,10 @@ fn parse_flow_deps(s: &str) -> Vec<String> {
         .collect()
 }
 
-/// Parse a boolean string.
 fn parse_bool(s: &str) -> bool {
     matches!(s.to_lowercase().as_str(), "true" | "yes" | "1")
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// v1 §13 task contract assertions.
-// ──────────────────────────────────────────────────────────────────────────────
-
-/// All required v1/v1.5 tasks (12 lane + 4 gate composites).
 const REQUIRED_TASKS: &[&str] = &[
     "titania-fmt",
     "titania-compile",
@@ -444,7 +378,6 @@ const HEAVY_TARGET_DIRS: &[(&str, &str)] = &[
     ("titania-mutants", ".titania/cache/mutants"),
 ];
 
-/// Expected commands for each gate composite.
 const GATE_COMMANDS: &[(&str, &str)] = &[
     ("gate-edit", "edit"),
     ("gate-prepush", "prepush"),
@@ -452,7 +385,6 @@ const GATE_COMMANDS: &[(&str, &str)] = &[
     ("gate-full", "full"),
 ];
 
-/// Lane tasks that MUST have `toolchains: [rust]` (§13).
 const RUST_TOOLCHAIN_TASKS: &[&str] = &[
     "titania-fmt",
     "titania-compile",
@@ -464,18 +396,14 @@ const RUST_TOOLCHAIN_TASKS: &[&str] = &[
     "titania-mutants",
 ];
 
-/// Lane tasks that MUST NOT have a `toolchains` key (§13).
 const NO_TOOLCHAIN_TASKS: &[&str] =
     &["titania-ast-grep", "titania-panic-scan", "titania-policy-scan", "titania-deny"];
 
-/// Gate tasks that MUST NOT have a `toolchains` key.
 const GATE_NO_TOOLCHAIN_TASKS: &[&str] =
     &["gate-edit", "gate-prepush", "gate-release", "gate-full"];
 
-/// Tasks that depend on `~:titania-compile` (§13, compile fan-out).
 const COMPILE_DEPS: &[&str] = &["titania-clippy", "titania-test", "titania-build"];
 
-/// Gate dependency maps: gate → [dep task names] (for building `~:name` strings).
 const GATE_DEPS: &[(&str, &[&str])] = &[
     (
         "gate-edit",
@@ -494,7 +422,6 @@ const GATE_DEPS: &[(&str, &[&str])] = &[
     ("gate-full", &["gate-release", "titania-kani", "titania-mutants"]),
 ];
 
-/// Expected inputs per v1 lane task (§13).
 const LANE_INPUTS: &[(&str, &[&str])] = &[
     (
         "titania-fmt",
@@ -559,7 +486,6 @@ const LANE_INPUTS: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// Expected outputs per lane task.
 const LANE_OUTPUTS: &[(&str, &[&str])] = &[
     (
         "titania-fmt",
@@ -645,8 +571,6 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
     ("titania-mutants", &[".titania/out/full/mutants.json"]),
 ];
 
-/// Lane tasks keep cache/PATH exports inline so Moon shell expansion, not YAML
-/// env interpolation, controls target directories and rustup availability.
 const LANE_EMPTY_ENV: &[&str] = &[
     "titania-compile",
     "titania-clippy",
@@ -670,33 +594,22 @@ const GEIGER_FIRST_PARTY_MANIFESTS: &[&str] = &[
 
 #[test]
 fn v1_moon_tasks() -> Result<()> {
-    // ── 0. Verify the include_str! loaded something ────────────────────────
     assert!(
         !MOON_TASKS.is_empty(),
         "include_str!(../../../.moon/tasks/all.yml) returned empty string"
     );
 
-    // ── 1. Parse the task map ──────────────────────────────────────────────
     let tasks = parse_task_yaml_clean(MOON_TASKS);
 
-    // ── 2. Assert file-level structure ─────────────────────────────────────
     assert!(MOON_TASKS.contains("\ntasks:\n"), "all.yml must define the top-level `tasks:` map");
     assert!(
         MOON_TASKS.contains("    - '.titania/profiles/**'"),
         "sources fileGroup must hash stable Titania policy profiles"
     );
-    // Inputs must NOT hash runtime cache/output paths (they are generated
-    // by lane runs, not sources). Negative globs like `!.titania/cache/**`
-    // are allowed because they EXCLUDE the path from input hashing.
-    // Outputs MAY reference runtime paths so Moon can cache the produced
-    // artifacts. Distinguish inputs from outputs by tracking the
-    // current section under each task, resetting on a new task or a
-    // top-level key.
     let mut in_outputs_section = false;
     let mut in_inputs_section = false;
     for line in MOON_TASKS.lines() {
         let trimmed = line.trim_start();
-        // A new task (2-space indent + "name:") resets section state.
         if line.starts_with("  ")
             && !line.starts_with("    ")
             && trimmed.ends_with(":")
@@ -732,7 +645,6 @@ fn v1_moon_tasks() -> Result<()> {
             "Moon fileGroups/task inputs must not include Titania runtime paths: {trimmed}"
         );
     }
-    // ── 3. Assert every required v1 task name exists in the parsed map ────
     let parsed_names: Vec<&str> = tasks.iter().map(|t| t.name.as_str()).collect();
     for required in REQUIRED_TASKS {
         assert!(
@@ -741,7 +653,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 4. Build lookup and assert lane commands ───────────────────────────
     let task_map: std::collections::HashMap<&str, &ParsedTask> =
         tasks.iter().map(|t| (t.name.as_str(), t)).collect();
 
@@ -862,7 +773,6 @@ fn v1_moon_tasks() -> Result<()> {
         "unsupported workspace.root interpolation must not appear"
     );
 
-    // ── 5. Assert gate commands ────────────────────────────────────────────
     for (gate_name, scope) in GATE_COMMANDS {
         let task = task_map
             .get(*gate_name)
@@ -877,7 +787,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 6. Assert toolchains: [rust] for lane tasks that require it ────────
     for task_name in RUST_TOOLCHAIN_TASKS {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;
@@ -894,7 +803,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 7. Assert lane tasks that must NOT have toolchains key ──────────────
     for task_name in NO_TOOLCHAIN_TASKS {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;
@@ -904,7 +812,6 @@ fn v1_moon_tasks() -> Result<()> {
             task.toolchains
         );
     }
-    // ── 8. Assert gate tasks have NO toolchains key ────────────────────────
     for task_name in GATE_NO_TOOLCHAIN_TASKS {
         let task = task_map
             .get(*task_name)
@@ -916,7 +823,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 9. Assert compile fan-out: clippy/test/build depend on exactly `~:titania-compile` ──
     for task_name in COMPILE_DEPS {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;
@@ -928,7 +834,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 10. Assert gate deps use `~:name` prefix (Moon local dep syntax) ──
     for (gate_name, expected_deps) in GATE_DEPS {
         let task = task_map
             .get(*gate_name)
@@ -951,7 +856,6 @@ fn v1_moon_tasks() -> Result<()> {
             task.deps
         );
     }
-    // ── 11. Assert gate tasks have empty env, inputs, outputs ──────────────
     for task_name in GATE_NO_TOOLCHAIN_TASKS {
         let task = task_map
             .get(*task_name)
@@ -973,7 +877,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 12. Assert every required task has a command or script ─────────────
     for task_name in REQUIRED_TASKS {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;
@@ -983,7 +886,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 13. Assert cache/PATH exports are inline, not unexpanded YAML env ───
     for task_name in LANE_EMPTY_ENV {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;
@@ -994,7 +896,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 14. Assert inputs per lane task (§13) ──────────────────────────────
     for (task_name, expected_inputs) in LANE_INPUTS {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;
@@ -1023,7 +924,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 15. Assert outputs per lane task (§13) ─────────────────────────────
     for (task_name, expected_outputs) in LANE_OUTPUTS {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;
@@ -1044,7 +944,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    // ── 16. Assert runInCI: true for every required task ───────────────────
     for task_name in REQUIRED_TASKS {
         let task =
             task_map.get(*task_name).with_context(|| format!("task '{task_name}' not found"))?;

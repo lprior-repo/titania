@@ -1,39 +1,13 @@
-//! Lane failure classification and process termination reasons.
-//!
-//! When a lane does not produce a clean or finding outcome, the failure is
-//! categorized so that the aggregator can decide how to report it.
-
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::FailureError;
 
-/// Why a process terminated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum ProcessTermination {
-    /// Process exited with a specific exit code.
-    Exited {
-        /// Process exit code reported by the operating system.
-        code: i32,
-    },
-    /// Process was terminated by a signal (Unix only).
-    ///
-    /// Signal numbers are positive integers. Values 1–31 are the standard
-    /// POSIX signals (SIGHUP through SIGSYS). Values >= 32 are real-time
-    /// signals (SIGRTMIN..SIGRTMAX on glibc, e.g. 34 = SIGRTMIN+2).
-    /// Non-positive values are rejected because no Unix signal has number
-    /// zero or negative — `0` is reserved for "no signal" in `waitpid(2)`
-    /// status words and negative values are kernel-internal sentinels.
-    /// Windows processes killed via `TerminateProcess` appear as
-    /// `Exited { code: 1 }` — there is no signal concept on Windows.
-    Signaled {
-        /// Unix signal number that terminated the process.
-        signal: i32,
-    },
-    /// Process exceeded its configured timeout.
+    Exited { code: i32 },
+    Signaled { signal: i32 },
     TimedOut,
-    /// Process exceeded its memory limit.
     MemoryLimitExceeded,
-    /// The process could not be spawned (e.g. binary not found).
     SpawnFailed,
 }
 
@@ -64,26 +38,15 @@ impl<'de> Deserialize<'de> for ProcessTermination {
 }
 
 impl ProcessTermination {
-    /// Construct a signal-based termination.
-    ///
-    /// Accepts any positive Unix signal number, including real-time signals
-    /// (>= 32 on glibc, e.g. 34 = SIGRTMIN+2). Non-positive values are
-    /// rejected — signal `0` is reserved and negative values are not
-    /// meaningful signal identifiers.
-    ///
-    /// # Errors
-    /// - [`FailureError::InvalidSignal`] if the signal is not positive.
     pub fn signaled(signal: i32) -> Result<Self, FailureError> {
         (signal > 0).then_some(Self::Signaled { signal }).ok_or(FailureError::InvalidSignal(signal))
     }
 
-    /// Whether this represents a normal (non-error) exit.
     #[must_use]
     pub const fn is_success(self) -> bool {
         matches!(self, Self::Exited { code } if code == 0)
     }
 
-    /// If this is an `Exited` variant, return the exit code.
     #[must_use]
     pub const fn exit_code(self) -> Option<i32> {
         match self {
@@ -93,46 +56,19 @@ impl ProcessTermination {
     }
 }
 
-/// Classification of a lane failure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LaneFailure {
-    /// Infrastructure problem — tool binary missing, ABI mismatch, etc.
     #[serde(rename = "InfraFailure")]
-    Infra {
-        /// Tool that could not be invoked or trusted.
-        tool: String,
-        /// Stable reason explaining the infrastructure failure.
-        reason: String,
-    },
-    /// Tool ran but terminated abnormally.
+    Infra { tool: String, reason: String },
     #[serde(rename = "ToolFailure")]
-    Tool {
-        /// Tool that ran and returned an abnormal termination.
-        tool: String,
-        /// Termination status observed from the tool process.
-        termination: ProcessTermination,
-    },
-    /// Resource constraint hit — memory limit, file descriptor limit, etc.
+    Tool { tool: String, termination: ProcessTermination },
     #[serde(rename = "ResourceFailure")]
-    Resource {
-        /// Tool that exceeded a resource limit.
-        tool: String,
-        /// Resource limit that was exceeded.
-        limit: String,
-    },
-    /// Tool failed but the cause is suspicious (e.g. intermittent,
-    /// non-reproducible). The `evidence` field contains additional context.
+    Resource { tool: String, limit: String },
     #[serde(rename = "SuspiciousFailure")]
-    Suspicious {
-        /// Tool that produced suspicious failure evidence.
-        tool: String,
-        /// Additional evidence explaining why the failure is suspicious.
-        evidence: String,
-    },
+    Suspicious { tool: String, evidence: String },
 }
 
 impl LaneFailure {
-    /// The tool that failed.
     #[must_use]
     pub fn tool(&self) -> &str {
         match self {
@@ -143,13 +79,11 @@ impl LaneFailure {
         }
     }
 
-    /// Whether this is an infrastructure issue (not a code problem).
     #[must_use]
     pub const fn is_infra(&self) -> bool {
         matches!(self, Self::Infra { .. })
     }
 
-    /// Whether this is a resource constraint.
     #[must_use]
     pub const fn is_resource(&self) -> bool {
         matches!(self, Self::Resource { .. })

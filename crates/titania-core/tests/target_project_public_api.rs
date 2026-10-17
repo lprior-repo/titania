@@ -1,10 +1,3 @@
-//! Public API tests for target project discovery.
-//!
-//! These tests cover the pure core boundary: every constructor validates
-//! typed observations supplied by the caller. The shell layer (in
-//! `titania-lanes`) owns the filesystem reads and feeds observations into
-//! the same selectors these tests exercise directly.
-
 use std::path::{Path, PathBuf};
 
 use camino::Utf8Path;
@@ -88,10 +81,6 @@ fn target_project_public_api_json_rejects_relative_root() {
     let err: Result<TargetProject, _> = serde_json::from_str(relative);
     assert!(err.is_err());
 }
-
-// ---------------------------------------------------------------------------
-// Pure selector tests
-// ---------------------------------------------------------------------------
 
 #[test]
 fn select_target_root_returns_workspace_when_present() {
@@ -206,8 +195,6 @@ fn classify_manifest_detects_workspace_and_package() {
     );
 }
 
-// Reference the unused `cargo_manifest` helper so unused-warnings stay quiet
-// when individual tests below are added.
 #[allow(dead_code)]
 fn _force_use_cargo_manifest() -> String {
     cargo_manifest("noop")

@@ -17,9 +17,6 @@ impl ParseStrategy {
     }
 }
 
-/// The line needs transformation iff it contains a string-literal
-/// opener (including raw strings), a comment starter, or a line comment.
-/// A bare `/` (division) is harmless.
 fn can_borrow(raw: &str) -> bool {
     !raw.contains('"')
         && !raw.contains("//")

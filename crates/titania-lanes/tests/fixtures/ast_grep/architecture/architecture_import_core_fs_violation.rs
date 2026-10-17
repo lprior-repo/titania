@@ -1,5 +1,3 @@
-// Fixture: triggers ARCHITECTURE_IMPORT_CORE_FS
-// Core/domain code performing direct filesystem I/O.
 
 use std::fs::*;
 

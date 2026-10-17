@@ -1,7 +1,3 @@
-//! Cargo lane argument construction.
-//!
-//! Holds static argument tables that drive every cargo sub-command invocation.
-
 use super::CargoLane;
 
 const FMT_ARGS: &[&str] = &["fmt", "--all", "--check"];
@@ -91,7 +87,6 @@ const BUILD_ARGS: &[&str] = &["build", "--workspace", "--release", "--frozen"];
 const FMT_VERSION_ARGS: &[&str] = &["fmt", "--version"];
 const CARGO_VERSION_ARGS: &[&str] = &["--version"];
 
-/// Return the static cargo sub-command arguments for *lane*.
 pub(super) const fn args_for_lane(lane: CargoLane) -> &'static [&'static str] {
     match lane {
         CargoLane::Fmt => FMT_ARGS,
@@ -102,7 +97,6 @@ pub(super) const fn args_for_lane(lane: CargoLane) -> &'static [&'static str] {
     }
 }
 
-/// Version-query args for *lane*.
 pub(super) const fn version_args(lane: CargoLane) -> &'static [&'static str] {
     match lane {
         CargoLane::Fmt => FMT_VERSION_ARGS,
@@ -112,7 +106,6 @@ pub(super) const fn version_args(lane: CargoLane) -> &'static [&'static str] {
     }
 }
 
-/// Map a [`CargoLane`] back to the outer [`titania_core::Lane`].
 pub(super) const fn core_lane(lane: CargoLane) -> titania_core::Lane {
     match lane {
         CargoLane::Fmt => titania_core::Lane::Fmt,
@@ -127,8 +120,6 @@ pub(super) const fn core_lane(lane: CargoLane) -> titania_core::Lane {
 mod tests {
     use super::{CargoLane, args_for_lane, core_lane, version_args};
 
-    /// Confirm every high-signal v1 §9.2 deny lint is paired with a `-D` flag
-    /// in the supplied clippy argv.
     fn assert_deny_pair(argv: &[&str], lint: &str) {
         let marker = argv.iter().enumerate().find_map(|(idx, arg)| {
             if *arg == lint && idx > 0 { argv.get(idx - 1).copied() } else { None }
@@ -330,17 +321,11 @@ mod tests {
     #[test]
     fn clippy_args_have_exact_section_9_2_length() {
         let argv = args_for_lane(CargoLane::Clippy);
-        // 9 cargo flag tokens (incl. `--` separator) + 2 tokens per deny pair.
-        // §9.2 mandates exactly 34 deny entries; both `warnings` and
-        // `unsafe_code` are plain denies, so all 34 are `-D` pairs.
         const DENY_PAIRS: usize = 34;
         const CARGO_PREFIX: usize = 9;
         assert_eq!(argv.len(), CARGO_PREFIX + 2 * DENY_PAIRS);
     }
 
-    /// Negative property: no static lane argv may carry a lint ceiling.
-    /// A `--cap-lints` token anywhere in the effective rustc invocation
-    /// would ceiling every `-D` deny the lane relies on.
     #[test]
     fn no_lane_argv_carries_cap_lints() {
         for lane in [

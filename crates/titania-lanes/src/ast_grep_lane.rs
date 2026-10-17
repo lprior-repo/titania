@@ -1,10 +1,3 @@
-//! Embedded ast-grep lane runner.
-//!
-//! The v1 lane parses every source file with the real ast-grep Rust
-//! engine, the embedded ast-grep Rust driver, runs the embedded rule YAML catalog,
-//! and emits typed [`LaneOutcome`] values. It does not shell out to an
-//! `ast-grep` binary.
-
 mod engine;
 mod rules;
 mod span;
@@ -22,79 +15,38 @@ use titania_core::{
     WorkspacePathError,
 };
 
-/// Errors returned by the embedded ast-grep lane.
 #[derive(Debug, Error)]
 pub enum AstGrepLaneError {
-    /// A fixture or target source file path was not UTF-8.
     #[error("path is not valid UTF-8: {path}")]
-    NonUtf8Path {
-        /// Path that could not be rendered as UTF-8.
-        path: String,
-    },
-    /// An absolute path could not be made workspace-relative without a target root.
+    NonUtf8Path { path: String },
     #[error("absolute path requires a target root or known fixture marker: {path}")]
-    AbsolutePathWithoutRoot {
-        /// Absolute path that cannot safely become a workspace path.
-        path: String,
-    },
-    /// A source line number exceeded the supported u32 range.
+    AbsolutePathWithoutRoot { path: String },
     #[error("source line index does not fit in u32: {index}")]
-    LineNumberOverflow {
-        /// Zero-based line index that could not be represented.
-        index: usize,
-    },
-    /// A source column (0-based codepoint offset) exceeded the u32 range.
+    LineNumberOverflow { index: usize },
     #[error("source column does not fit in u32: {column}")]
-    ColumnOverflow {
-        /// Zero-based codepoint column that could not be represented.
-        column: usize,
-    },
-    /// A source file could not be read.
+    ColumnOverflow { column: usize },
     #[error("failed to read {path}: {source}")]
     ReadFile {
-        /// Source file path.
         path: String,
-        /// Filesystem failure.
         #[source]
         source: io::Error,
     },
-    /// A catalog document declared a rule id not present in the embedded runtime table.
     #[error("unknown ast-grep rule id: {id}")]
-    UnknownRuleId {
-        /// Unknown identifier from the catalog document.
-        id: String,
-    },
-    /// Rule id validation failed.
+    UnknownRuleId { id: String },
     #[error(transparent)]
     RuleId(#[from] RuleIdError),
-    /// Finding workspace path validation failed.
     #[error(transparent)]
     WorkspacePath(#[from] WorkspacePathError),
-    /// Finding source span validation failed.
     #[error(transparent)]
     Location(#[from] LocationError),
-    /// Clean-lane evidence validation failed.
     #[error(transparent)]
     Outcome(#[from] OutcomeError),
 }
 
-/// Return the embedded runtime rule IDs in dispatch order.
-///
-/// Tests use this to prove the runtime dispatch table stays in parity with the
-/// YAML files supplied to [`run`].
 pub fn embedded_rule_ids() -> impl Iterator<Item = &'static str> {
     RULES.iter().map(|rule| rule.id)
 }
 
-/// Run the embedded ast-grep rule catalog over the supplied source paths.
-///
-/// `rules_yaml` is the compile-time embedded catalog. `fixture_paths` are read
-/// directly; unreadable paths are errors, not fabricated findings. `exceptions`
-/// suppress only exact `(rule_id, workspace_path)` pairs.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError`] when a source file cannot be read, path/rule
-/// identifiers fail validation, or clean-lane evidence cannot be constructed.
 pub fn run(
     rules_yaml: &[&'static str],
     fixture_paths: &[PathBuf],
@@ -113,16 +65,6 @@ pub fn run(
     if findings.is_empty() { clean_outcome() } else { Ok(LaneOutcome::Findings { findings }) }
 }
 
-/// Scan one source file against all enabled rule definitions.
-///
-/// The file is parsed once by the real ast-grep engine; every rule whose
-/// YAML id is enabled is asked to detect against the parsed [`AstEngine`].
-/// Rules that the engine cannot yet express (architecture import paths,
-/// inline-suppression comments) fall back to the legacy string detectors.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError`] when the source path cannot be read or converted
-/// to a workspace path, or when a finding cannot be constructed.
 fn scan_path(
     path: &Path,
     catalog: &str,
@@ -143,25 +85,11 @@ fn scan_path(
         .map(|findings| suppress_exceptions(findings, exceptions))
 }
 
-/// Read a source file as UTF-8 text.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError::ReadFile`] when the file cannot be read.
 fn read_source(path: &Path) -> Result<String, AstGrepLaneError> {
     fs::read_to_string(path)
         .map_err(|source| AstGrepLaneError::ReadFile { path: path_display(path), source })
 }
 
-/// Convert a caller path into a validated workspace path for findings.
-///
-/// Relative paths are accepted as workspace-relative. Absolute fixture paths may
-/// be stripped at the checked-in `ast_grep` fixture root; other absolute paths
-/// need a future target-root aware API and are rejected.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError::NonUtf8Path`],
-/// [`AstGrepLaneError::AbsolutePathWithoutRoot`], or
-/// [`AstGrepLaneError::WorkspacePath`].
 fn workspace_path(path: &Path) -> Result<WorkspacePath, AstGrepLaneError> {
     let rendered = path_to_str(path)?;
     let relative = match (path.is_absolute(), fixture_relative_path(&rendered)) {
@@ -181,27 +109,12 @@ fn fixture_relative_path(rendered: &str) -> Option<String> {
         .map(|start| parts.into_iter().skip(start).collect::<Vec<_>>().join("/"))
 }
 
-/// Render a path as UTF-8.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError::NonUtf8Path`] when `path` is not valid UTF-8.
 fn path_to_str(path: &Path) -> Result<String, AstGrepLaneError> {
     path.to_str()
         .map(ToOwned::to_owned)
         .ok_or_else(|| AstGrepLaneError::NonUtf8Path { path: path_display(path) })
 }
 
-/// Build a typed finding for a matching rule at the given byte-range site.
-///
-/// The site's `[start_byte, end_byte)` is translated into a v1-spec §10
-/// `Location::Span` whose line/column fields are computed from the raw
-/// source via [`span::line_col`]: 1-based lines, 0-based Unicode-scalar
-/// columns. This replaces the pre-H3 placeholder span `(line, 0, line, 1)`
-/// that reported a fixed column 0 for every finding.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError`] when rule id, line/column, or source span
-/// validation fails.
 fn finding(
     rule: RuleDef,
     site: span::MatchSite,
@@ -233,13 +146,6 @@ fn finding(
     })
 }
 
-/// Run a rule's detector and return the byte-range site of its first match.
-///
-/// `None` when the rule does not apply. Engine-aware: the ast-grep parse
-/// always succeeds (syntax errors surface as error nodes inside the tree),
-/// so engine detectors run unconditionally and string detectors fall back
-/// only for the few rules ast-grep cannot express (inline-suppression
-/// comments, path-filtered architecture imports).
 fn detect_match(
     rule: RuleDef,
     engine: &engine::AstEngine,
@@ -248,11 +154,6 @@ fn detect_match(
     rule.detect.run(engine, source)
 }
 
-/// Convert a zero-based line index into a one-based `u32` line number.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError::LineNumberOverflow`] when the index or one-based
-/// result cannot be represented as `u32`.
 fn checked_line_number(index: usize) -> Result<u32, AstGrepLaneError> {
     u32::try_from(index)
         .ok()
@@ -260,12 +161,6 @@ fn checked_line_number(index: usize) -> Result<u32, AstGrepLaneError> {
         .ok_or(AstGrepLaneError::LineNumberOverflow { index })
 }
 
-/// Convert a zero-based codepoint column into a `u32`.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError::ColumnOverflow`] when the column cannot be
-/// represented as `u32` (only possible for a single source line with more
-/// than `u32::MAX` Unicode scalar values — far beyond any realistic file).
 fn checked_column(column: usize) -> Result<u32, AstGrepLaneError> {
     u32::try_from(column).ok().ok_or(AstGrepLaneError::ColumnOverflow { column })
 }
@@ -288,16 +183,7 @@ fn exception_matches(
     })
 }
 
-/// Construct clean evidence for an empty ast-grep run.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError::Outcome`] when command or evidence invariants
-/// fail validation.
 fn clean_outcome() -> Result<LaneOutcome, AstGrepLaneError> {
-    // Bead tn-e65p: ast-grep is embedded in-process; record the real
-    // `titania-check` argv (which binary exists on PATH) and mark
-    // `mode: embedded` so receipt auditors don't trust a fictional
-    // `titania-ast-grep` binary.
     let command = CommandEvidence::embedded(
         "titania-check".to_owned(),
         Box::from(["titania-check".to_owned(), "run-lane".to_owned(), "ast-grep".to_owned()]),
@@ -311,11 +197,6 @@ fn clean_outcome() -> Result<LaneOutcome, AstGrepLaneError> {
     Ok(LaneOutcome::Clean { evidence })
 }
 
-/// Concatenate the supplied rule YAML fragments into one catalog string.
-///
-/// # Errors
-/// Returns [`AstGrepLaneError::UnknownRuleId`] when the concatenated catalog
-/// declares a top-level `id:` that is not present in the embedded `RULES` table.
 fn catalog_text(rules_yaml: &[&'static str]) -> Result<String, AstGrepLaneError> {
     let catalog = rules_yaml.join("\n");
     let unknown = catalog_ids(&catalog)

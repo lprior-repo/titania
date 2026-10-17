@@ -1,5 +1,3 @@
-//! Behavior tests for the `.cargo/config` policy scanner.
-
 use std::path::Path;
 
 use tempfile::TempDir;
@@ -283,8 +281,6 @@ fn unreadable_cargo_config_emits_read_error_finding() -> TestResult {
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    // Invalid UTF-8 bytes force `read_to_string` to fail with `InvalidData`,
-    // which is a deterministic, cross-platform read error.
     std::fs::write(&config_path, [0xFF_u8, 0xFE, 0xFD])?;
     let report = scan_from(tmp.path())?;
     assert_eq!(report.finding_count(), 1);
@@ -297,7 +293,6 @@ fn unreadable_cargo_config_emits_read_error_finding() -> TestResult {
 #[test]
 fn absent_cargo_config_stays_clean_when_siblings_are_present() -> TestResult {
     let tmp = fixture()?;
-    // Empty `.cargo/` directory: no `config` or `config.toml` present.
     std::fs::create_dir_all(tmp.path().join(".cargo"))?;
     let report = scan_from(tmp.path())?;
     assert!(report.is_clean(), "expected clean report, got: {}", report.render());

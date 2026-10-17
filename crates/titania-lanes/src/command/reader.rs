@@ -7,7 +7,6 @@ use std::{
 
 use super::{LaneError, OutputStream, TERMINATION_GRACE};
 
-/// Result delivered by a reader thread: captured bytes or a typed lane error.
 type ReaderResult = Result<Vec<u8>, LaneError>;
 
 pub(super) struct ReaderHandle {
@@ -18,24 +17,11 @@ pub(super) struct ReaderHandle {
 }
 
 impl ReaderHandle {
-    /// Receive the reader result within `timeout` and join the reader thread.
-    ///
-    /// # Errors
-    /// Returns [`LaneError::Timeout`] if the reader does not respond before
-    /// `timeout`, [`LaneError::ReaderThread`] if the reader disconnects or
-    /// panics, or the [`LaneError`] produced while reading the pipe.
     pub(super) fn recv_timeout(self, timeout: Duration) -> ReaderResult {
         recv_with_timeout(self.thread, &self.rx, self.program, self.stream, timeout)
     }
 }
 
-/// Free-function body of [`ReaderHandle::recv_timeout`] so the receive
-/// dispatch sits at module depth rather than inside the `impl`.
-///
-/// # Errors
-/// Returns [`LaneError::Timeout`] if no reader result arrives within `timeout`,
-/// [`LaneError::ReaderThread`] if the reader disconnects or panics, or the
-/// [`LaneError`] sent by the reader thread.
 fn recv_with_timeout(
     thread: thread::JoinHandle<()>,
     rx: &Receiver<ReaderResult>,
@@ -58,11 +44,6 @@ fn recv_with_timeout(
     }
 }
 
-/// Take an owned pipe handle from a child-process stream slot.
-///
-/// # Errors
-/// Returns [`LaneError::PipeUnavailable`] when the child process did not expose
-/// the requested stream pipe.
 pub(super) fn take_pipe<T>(
     pipe: &mut Option<T>,
     program: String,
@@ -89,12 +70,6 @@ where
     ReaderHandle { thread, rx, program, stream }
 }
 
-/// Drain a reader after terminating its subprocess.
-///
-/// # Errors
-/// Returns `timeout_error` if the reader still does not finish within the
-/// termination grace period, or propagates any non-timeout [`LaneError`] from
-/// the reader.
 pub(super) fn drain_after_termination(
     reader: ReaderHandle,
     timeout_error: LaneError,
@@ -114,12 +89,6 @@ pub(super) fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).map_or(u64::MAX, |millis| millis)
 }
 
-/// Read a pipe into memory while enforcing `limit` bytes.
-///
-/// # Errors
-/// Returns [`LaneError::OutputLimitExceeded`] if the capture budget cannot be
-/// represented or the pipe produces more than `limit` bytes. Returns
-/// [`LaneError::Io`] if reading from the pipe fails.
 fn read_limited<R: Read>(
     pipe: R,
     limit: usize,
@@ -141,10 +110,6 @@ fn read_limited<R: Read>(
     }
 }
 
-/// Join a reader thread that has already sent or disconnected.
-///
-/// # Errors
-/// Returns [`LaneError::ReaderThread`] if the reader thread panicked.
 fn join_finished_reader(
     thread: thread::JoinHandle<()>,
     program: String,

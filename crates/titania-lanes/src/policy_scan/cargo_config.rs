@@ -1,9 +1,3 @@
-//! Cargo configuration policy scanner.
-//!
-//! Detects `.cargo/config` and `.cargo/config.toml` entries that can bypass
-//! the lane build discipline. `rustflags` values are always violations;
-//! `rustc-wrapper` and `workspace-wrapper` must be absent or `sccache`.
-
 use std::path::Path;
 
 use toml_edit::{DocumentMut, Item, Value};
@@ -27,10 +21,6 @@ struct CargoConfigRules {
 }
 
 impl CargoConfigRules {
-    /// Construct validated Cargo-config rule identifiers.
-    ///
-    /// # Errors
-    /// Returns [`RuleIdError`] if an embedded rule literal is invalid.
     fn new() -> Result<Self, RuleIdError> {
         Ok(Self {
             flags: RuleId::new(RULE_FLAGS)?,
@@ -42,23 +32,10 @@ impl CargoConfigRules {
     }
 }
 
-/// Scan Cargo configuration files affecting the process current directory.
-///
-/// # Errors
-/// Returns [`RuleIdError`] if an embedded rule identifier is invalid.
 pub fn scan_cargo_config(report: &mut LaneReport) -> Result<(), RuleIdError> {
     std::env::current_dir().map_or(Ok(()), |cwd| scan_cargo_config_from(&cwd, report))
 }
 
-/// Scan Cargo configuration files from the resolved target root.
-///
-/// The target root's own `.cargo/config` and `.cargo/config.toml` files are
-/// checked for forbidden values. Cargo config files in ancestor directories are
-/// rejected outright because Cargo would apply them outside the checked-in
-/// target project policy boundary.
-///
-/// # Errors
-/// Returns [`RuleIdError`] if an embedded rule identifier is invalid.
 pub fn scan_cargo_config_from(start: &Path, report: &mut LaneReport) -> Result<(), RuleIdError> {
     let rules = CargoConfigRules::new()?;
     let findings = scan_target_config(start, &rules)
@@ -144,7 +121,6 @@ fn target_findings(document: &DocumentMut, path: &str, rules: &CargoConfigRules)
     })
 }
 
-/// Flatten every `[target.*]` table's rustflag values into [`Finding`]s.
 fn collect_inline_rustflags(item: &Item, path: &str, rules: &CargoConfigRules) -> Vec<Finding> {
     rustflags_values(item).into_iter().map(|flag| rustflag_finding(&flag, path, rules)).collect()
 }

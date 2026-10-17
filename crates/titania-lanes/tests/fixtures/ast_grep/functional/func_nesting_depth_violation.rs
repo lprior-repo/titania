@@ -1,5 +1,3 @@
-// Fixture: triggers FUNC_NESTING_DEPTH
-// Function body nests blocks deeper than the allowed depth (max 2).
 
 pub fn classify(values: &[i32]) -> Vec<&'static str> {
     let mut out = Vec::new();

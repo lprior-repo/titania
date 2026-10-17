@@ -1,4 +1,3 @@
-// Fixture: allowed — uses iterator pipeline instead of for-loop.
 
 pub fn process_items(items: &[i32]) -> i32 {
     items.iter().sum()

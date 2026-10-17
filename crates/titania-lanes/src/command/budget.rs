@@ -4,25 +4,16 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
 const DEFAULT_MAX_STDOUT: usize = 1024 * 1024;
 const DEFAULT_MAX_STDERR: usize = 1024 * 1024;
 
-/// Environment policy for a spawned command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvPolicy {
-    /// Clear the process environment, then apply explicitly supplied env
-    /// pairs. This is the default for deterministic target judgment.
     Clear,
-    /// Scrub inherited variables through the lane allowlist, then apply
-    /// explicit variables and the target's controlled tool homes.
     Inherit,
 }
 
-/// Bounded execution policy for a spawned command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommandBudget {
-    /// Maximum wall-clock execution time for the spawned command.
     pub timeout: Duration,
-    /// Maximum captured stdout size, in bytes.
     pub max_stdout: usize,
-    /// Maximum captured stderr size, in bytes.
     pub max_stderr: usize,
 }
 

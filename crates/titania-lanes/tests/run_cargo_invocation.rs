@@ -1,11 +1,3 @@
-//! Behavior tests: `--cap-lints` containment in the protected cargo invocation.
-//!
-//! The runner's static deny argv is meaningless if a lint ceiling reaches
-//! the effective compiler invocation: rustc applies `--cap-lints` as a
-//! ceiling over every `-D` deny. These tests prove, through the public
-//! [`titania_lanes::policy_scan::invocation`] API, that ceiling spellings
-//! are rejected while benign flags still pass.
-
 use titania_lanes::policy_scan::invocation::{InvocationError, validate_extra_args};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;

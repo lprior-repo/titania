@@ -1,20 +1,3 @@
-//! Outcome construction for the mutants lane.
-//!
-//! Three typed outcomes live here:
-//!
-//! - [`build_clean_outcome`] — `LaneOutcome::Clean` carrying the actual
-//!   `argv` (cgroup-wrapped or bare fallback) and the cargo-mutants
-//!   tool version.
-//! - [`baseline_missing_outcome`] — `LaneOutcome::Findings` carrying
-//!   one typed `MUTANT_BASELINE_MISSING` finding so the operator
-//!   reminder reaches the receipt directly.
-//! - [`survivor_finding`] — one typed `MUTANT_SURVIVED` reject finding
-//!   per new test-survivor, with a real source-span `Location`.
-//!
-//! [`map_outcome_error`] converts the `OutcomeError` from
-//! [`build_clean_outcome`] into the lane's own error enum so the
-//! dispatcher site can stay in the typed `Result` shape.
-
 use titania_core::{
     CommandEvidence, Digest, Finding, Lane, LaneEvidence, LaneFailure, LaneOutcome, Location,
     OutcomeError, ProcessTermination, RepairHint, RuleId, RuleIdError, WorkspacePath,
@@ -30,14 +13,10 @@ use super::{
     state::{LaneRunState, NewSurvivor},
 };
 
-/// Build the `MUTANT_BASELINE_MISSING` typed outcome that the lane
-/// emits when the baseline file is absent on disk.
 #[must_use]
 pub(super) fn baseline_missing_outcome(label: &str) -> LaneOutcome {
     let rule_id = match RuleId::new(RULE_MUTANT_BASELINE_MISSING) {
         Ok(rule) => rule,
-        // Catalog literal is statically valid; falling through to Infra
-        // keeps the lane panic-free even if the catalog drifts.
         Err(error) => {
             return LaneOutcome::Failed {
                 failure: LaneFailure::Infra {
@@ -60,18 +39,6 @@ pub(super) fn baseline_missing_outcome(label: &str) -> LaneOutcome {
     LaneOutcome::Findings { findings: vec![finding].into_boxed_slice() }
 }
 
-/// Build clean-lane evidence after every package completed successfully.
-///
-/// The `argv` matches the actual command that ran (cgroup-wrapped or
-/// bare fallback) and the executable matches `argv[0]`, so the receipt
-/// auditor can re-derive the run from `LaneEvidence::command`.
-///
-/// # Errors
-///
-/// Returns [`OutcomeError`] when `CommandEvidence::new` rejects the
-/// argv (empty argv or argv[0] mismatch) or `LaneEvidence::new` rejects
-/// the assembled evidence; both are forwarded up so [`super::outcome`]
-/// can surface a typed lane failure.
 pub(super) fn build_clean_outcome(state: &LaneRunState) -> Result<LaneOutcome, OutcomeError> {
     let (executable, argv): (String, Vec<String>) = if state.cgroup_used {
         (String::from("systemd-run"), cgroup_argv())
@@ -89,19 +56,6 @@ pub(super) fn build_clean_outcome(state: &LaneRunState) -> Result<LaneOutcome, O
     Ok(LaneOutcome::Clean { evidence })
 }
 
-/// Build one typed `MUTANT_SURVIVED` finding per new test-survivor.
-///
-/// The survivor's `Location` carries the real package-relative path
-/// and 1-based line/column (with the column converted from
-/// cargo-mutants' 1-based to the receipt's 0-based convention).
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::RuleId`] when the static
-/// `MUTANT_SURVIVED` rule literal is rejected by the workspace
-/// rule-id grammar (defensive — the literal is catalog-validated) and
-/// [`MutantsLaneError::MutantIdInvalid`] when the survivor path or span
-/// cannot be assembled into a typed `Location`.
 pub(super) fn survivor_finding(survivor: &NewSurvivor) -> Result<Finding, MutantsLaneError> {
     let rule_id = RuleId::new(RULE_MUTANT_SURVIVED).map_err(map_rule_id_error)?;
     let raw_name_box: Box<str> = Box::from(survivor.raw_name.as_str());
@@ -144,20 +98,10 @@ pub(super) fn survivor_finding(survivor: &NewSurvivor) -> Result<Finding, Mutant
     ))
 }
 
-/// Convert a [`RuleIdError`] into the lane's own
-/// [`MutantsLaneError::RuleId`] variant so the dispatcher site can stay
-/// in the typed `Result` shape without leaking `RuleIdError` upward.
 const fn map_rule_id_error(error: RuleIdError) -> MutantsLaneError {
     MutantsLaneError::RuleId(error)
 }
 
-/// Convert an evidence-construction [`OutcomeError`] into the lane's
-/// own error enum.
-///
-/// Used by [`super::outcome`] when [`build_clean_outcome`] surfaces a
-/// typed [`OutcomeError`] so the dispatch site can stay in the typed
-/// `Result` shape without leaking `OutcomeError` upward. The dispatch
-/// site maps every `MutantsLaneError` to a typed infra failure.
 pub(super) fn map_outcome_error(error: &OutcomeError) -> MutantsLaneError {
     MutantsLaneError::BaselineMalformed {
         path: Box::from("clean-outcome-evidence"),
@@ -226,10 +170,6 @@ mod tests {
 
     #[test]
     fn survivor_finding_carries_real_location_not_generic_tool_loc() {
-        // We do not execute any cargo-mutants, but we can prove that
-        // `Location::span` accepts a typical cargo-mutants 1-based
-        // line / 1-based column pair by converting the column to the
-        // receipt's 0-based convention.
         let workspace_path = WorkspacePath::new("src/foo.rs")
             .unwrap_or_else(|error| panic!("relative survivor path must validate: {error}"));
         let col_zero = 8_u32.saturating_sub(1);
@@ -284,10 +224,6 @@ mod tests {
 
     #[test]
     fn baseline_missing_skip_reason_unused_here() {
-        // SkipReason::ToolUnavailable is verified at the dispatch site
-        // (see `tool_unavailable_outcome_records_skip_reason` in
-        // `super::super::tests`). Kept here as a sentinel so the import
-        // is not pruned.
         let _ = std::mem::size_of::<SkipReason>();
     }
 }

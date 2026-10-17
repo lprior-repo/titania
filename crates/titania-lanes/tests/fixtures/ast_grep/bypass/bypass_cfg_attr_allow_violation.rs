@@ -1,5 +1,3 @@
-// Fixture: triggers BYPASS_CFG_ATTR_ALLOW
-// A #[cfg_attr(..., allow(...))] conditionally applies an allow attribute.
 
 #[cfg_attr(test, allow(unused_variables))]
 pub fn with_cfg_test(_arg: i32) -> i32 {

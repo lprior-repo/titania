@@ -1,44 +1,27 @@
-//! Shared cargo-mutants wire types and capped JSON parsing.
-
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::error::MutantsOutcomesError;
 
-/// Source-file `(line, column)` point.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawPoint {
-    /// 1-based line offset.
     pub line: u32,
-    /// 1-based column offset.
     pub column: u32,
 }
 
-/// cargo-mutants source span (start/end points).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawSpan {
-    /// Start point required to build a typed mutant identifier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start: Option<RawPoint>,
-    /// End point, which cargo-mutants may omit for single-line mutations.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end: Option<RawPoint>,
 }
 
-/// Artifact class selecting the precise typed parse and cap errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum WireArtifact {
-    /// `outcomes.json` object.
     Outcomes,
-    /// `mutants.json` record list.
     Records,
 }
 
-/// Deserialize one cargo-mutants artifact and enforce its entry cap.
-///
-/// # Errors
-/// Returns the artifact-specific parse error when serde rejects the
-/// input, or the artifact-specific cap error when `entry_count` exceeds
-/// `max_entries`.
 pub(super) fn parse_capped_wire<T, F>(
     contents: &str,
     path: &str,
@@ -66,11 +49,6 @@ impl WireArtifact {
         }
     }
 
-    /// Enforce the selected artifact's static entry cap.
-    ///
-    /// # Errors
-    /// Returns the artifact-specific cap error when `found` exceeds
-    /// `max`.
     fn reject_excess(
         self,
         found: usize,

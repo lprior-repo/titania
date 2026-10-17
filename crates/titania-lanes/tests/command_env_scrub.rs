@@ -1,19 +1,3 @@
-//! Focused integration tests for the scrubbed-inherit env policy.
-//!
-//! These tests prove the four observable behaviors of
-//! [`CommandIn::inherit_env`]:
-//!
-//! 1. Default behavior (`CmdIn::new`) starts the subprocess with an
-//!    empty environment — even if the parent process has
-//!    bypass-vulnerable vars like `RUSTFLAGS` set.
-//! 2. The keep-list of the scrubbed inherit lets `PATH` through, so
-//!    `cargo`/`rustc` can resolve binaries.
-//! 3. Explicit `.env(...)` and `.env_remove(...)` win over the
-//!    scrubbed snapshot.
-//! 4. Bypass-prone keys (`RUSTFLAGS`, `LD_PRELOAD`,
-//!    `CARGO_ENCODED_RUSTFLAGS`, `RUSTC_BOOTSTRAP`) are scrubbed even
-//!    when the parent has them set.
-
 #![cfg(unix)]
 
 use std::{error::Error, process::Command};
@@ -31,8 +15,6 @@ fn fixture_target() -> Result<(tempfile::TempDir, TargetProject), Box<dyn Error>
     Ok((tmp, target))
 }
 
-/// Spawn `/bin/sh -c "$cmd"` as a plain subprocess that DOES inherit
-/// the parent's env. Used to capture the parent env for assertions.
 fn bash_capture(cmd: &str) -> Result<String, Box<dyn Error>> {
     let output = Command::new("/bin/sh")
         .arg("-c")
@@ -42,7 +24,6 @@ fn bash_capture(cmd: &str) -> Result<String, Box<dyn Error>> {
     Ok(String::from_utf8(output.stdout)?)
 }
 
-/// Probe a `CommandIn` for the value of `$name` in the spawned shell.
 fn cmdin_value(name: &str) -> Result<String, Box<dyn Error>> {
     let (_tmp, target) = fixture_target()?;
     let probe = format!("v=${{{name}:-TITANIA_MISSING}}; printf '%s' \"$v\"", name = name);
@@ -163,8 +144,6 @@ fn scrubbed_inherit_drops_untrusted_cargo_prefix_env_var() -> TestResult {
 #[test]
 fn default_clear_policy_wins_over_inherited_parent() -> TestResult {
     let (_tmp, target) = fixture_target()?;
-    // Spawn child without inherit_env: should see TITANIA_MISSING for
-    // every parent-set var we set below because the default is Clear.
     let probe = "v=${TITANIA_SCRUB_TEST_CANARY:-TITANIA_MISSING}; printf '%s' \"$v\"";
     let mut command = CommandIn::new(&target, "/bin/sh")?;
     let _ = command.arg("-c").arg(probe);

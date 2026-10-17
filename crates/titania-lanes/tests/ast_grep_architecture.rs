@@ -1,28 +1,7 @@
-//! Contract tests for the embedded ast-grep architecture rule catalog.
-//!
-//! The rules are loaded at compile time via `include_str!` from
-//! `crates/titania-lanes/rules/architecture.yml`.  Tests assert structural
-//! properties of the YAML (rule IDs, language, severity, message, pattern,
-//! effect, path exclusion) so that any drift is caught before the
-//! `AstGrep` lane runs.
-//!
-//! Fixture files under `tests/fixtures/ast_grep/architecture/` exercise each
-//! rule in isolation; the YAML patterns are expected to match them.
-
 use std::collections::{BTreeSet, HashMap};
 
-// ---------------------------------------------------------------------------
-// Compile-time YAML load — fails if the catalog is missing or malformed.
-// ---------------------------------------------------------------------------
-
-/// Raw YAML text of the embedded ast-grep architecture rules.
 const ARCHITECTURE_YAML: &str = include_str!("../rules/architecture.yml");
 
-// ---------------------------------------------------------------------------
-// Required rule IDs and their expected metadata.
-// ---------------------------------------------------------------------------
-
-/// The seven architecture rule IDs that MUST appear in the catalog.
 const REQUIRED_RULE_IDS: &[&str] = &[
     "ARCHITECTURE_IMPORT_CORE_INFRA",
     "ARCHITECTURE_IMPORT_CORE_FS",
@@ -33,10 +12,8 @@ const REQUIRED_RULE_IDS: &[&str] = &[
     "ARCHITECTURE_EFFECT_CORE_STATE",
 ];
 
-/// Path segments that MUST be excluded from production scanning.
 const PROD_EXCLUSIONS: &[&str] = &["tests", "benches", "examples", "build.rs"];
 
-/// Fixture names that MUST exist for each rule: a violation and an allowed (clean) file.
 const FIXTURE_NAMES: &[&[&str]] = &[
     &[
         "architecture_import_core_infra_violation.rs",
@@ -77,11 +54,6 @@ const FIXTURE_NAMES: &[&[&str]] = &[
     &["architecture_effect_core_state_violation.rs", "allowed_no_core_state_effect.rs"],
 ];
 
-// ---------------------------------------------------------------------------
-// Minimal YAML helpers — no external serde dependency.
-// ---------------------------------------------------------------------------
-
-/// Returns the value string for a YAML key at a given indentation level.
 fn yaml_scalar_at<'a>(yaml: &'a str, key: &str, indent: usize) -> Option<&'a str> {
     let prefix = format!("{:indent$}{key}: ", "", indent = indent);
     for line in yaml.lines() {
@@ -93,7 +65,6 @@ fn yaml_scalar_at<'a>(yaml: &'a str, key: &str, indent: usize) -> Option<&'a str
     None
 }
 
-/// Strip optional YAML single/double quotes from a scalar value.
 fn strip_yaml_quotes(s: &str) -> &str {
     if let Some(inner) = s.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
         return inner;
@@ -104,14 +75,12 @@ fn strip_yaml_quotes(s: &str) -> &str {
     s
 }
 
-/// Extract the text block belonging to a single rule (after `id: <id>`).
 fn extract_rule_block<'a>(yaml: &'a str, rule_id: &str) -> Option<&'a str> {
     let marker = format!("\nid: {rule_id}");
     let start = yaml.find(&marker)?;
     let after_start = start + marker.len();
     let rest = &yaml[after_start..];
 
-    // Find next rule boundary (a line starting with "id: " at indent 0).
     let end_offset = rest
         .lines()
         .enumerate()
@@ -128,16 +97,11 @@ fn extract_rule_block<'a>(yaml: &'a str, rule_id: &str) -> Option<&'a str> {
     Some(&yaml[after_start..after_start + end_offset])
 }
 
-/// Extract a scalar value from the metadata subsection of a rule block.
-/// Searches only within lines indented under the top-level `metadata:` key.
-/// Returns an owned string so we never borrow a local variable.
 fn yaml_metadata_value(block: &str, key: &str) -> Option<String> {
     let lines: Vec<&str> = block.lines().collect();
 
-    // Locate the "metadata:" line (at indent 0).
     let meta_idx = lines.iter().position(|l| l.trim_start() == "metadata:")?;
 
-    // Collect metadata lines: everything after metadata: until next top-level key.
     let mut meta_lines = String::new();
     for line in &lines[meta_idx + 1..] {
         let trimmed = line.trim_start();
@@ -157,7 +121,6 @@ fn yaml_metadata_value(block: &str, key: &str) -> Option<String> {
         meta_lines.push('\n');
     }
 
-    // Search within metadata for the requested key.
     for line in meta_lines.lines() {
         if line.contains(key) {
             let value = line.splitn(2, ':').nth(1)?;
@@ -167,12 +130,6 @@ fn yaml_metadata_value(block: &str, key: &str) -> Option<String> {
     None
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-/// Every required architecture rule ID appears in the YAML exactly once, and no
-/// extra rule IDs are present.
 #[test]
 fn ast_grep_architecture_all_required_rule_ids_present_exactly_once() {
     let mut found = BTreeSet::new();
@@ -182,40 +139,33 @@ fn ast_grep_architecture_all_required_rule_ids_present_exactly_once() {
         assert!(found.insert(id.to_string()), "Duplicate rule ID '{id}'",);
     }
 
-    // No extra rule IDs: every `id:` line must be one of the required set.
     let all_ids = collect_rule_ids(ARCHITECTURE_YAML);
     for id in &all_ids {
         assert!(REQUIRED_RULE_IDS.contains(&id.as_str()), "Unexpected rule ID '{id}' in catalog",);
     }
 }
 
-/// Every rule has language: Rust, a severity, a non-empty message,
-/// and a pattern inside a rules[] array.
 #[test]
 fn ast_grep_architecture_every_rule_has_required_fields() {
     for &rule_id in REQUIRED_RULE_IDS {
         let block = extract_rule_block(ARCHITECTURE_YAML, rule_id)
             .unwrap_or_else(|| panic!("Rule block not found for '{rule_id}'"));
 
-        // language: Rust
         assert_eq!(
             yaml_scalar_at(block, "language", 0),
             Some("Rust"),
             "'{rule_id}' must have language: Rust",
         );
 
-        // severity (present, non-empty)
         assert!(
             yaml_scalar_at(block, "severity", 0).is_some(),
             "'{rule_id}' must have a severity field",
         );
 
-        // message (present, non-empty)
         let msg =
             yaml_scalar_at(block, "message", 0).expect("'{rule_id}' must have a message field");
         assert!(!msg.is_empty(), "'{rule_id}' message must be non-empty",);
 
-        // Rule body with at least one pattern.
         assert!(
             block.contains("rule:") || block.contains("rules:"),
             "'{rule_id}' must have a rule body",
@@ -227,7 +177,6 @@ fn ast_grep_architecture_every_rule_has_required_fields() {
     }
 }
 
-/// Every architecture rule carries metadata.effect == "Reject".
 #[test]
 fn ast_grep_architecture_all_rules_reject_effect() {
     for &rule_id in REQUIRED_RULE_IDS {
@@ -242,7 +191,6 @@ fn ast_grep_architecture_all_rules_reject_effect() {
     }
 }
 
-/// Per-rule repair-hint values are correct.
 #[test]
 fn ast_grep_architecture_repair_hints_per_rule() {
     let expected: HashMap<&str, &str> = [
@@ -268,8 +216,6 @@ fn ast_grep_architecture_repair_hints_per_rule() {
     }
 }
 
-/// Direct-import regexes catch non-wildcard imports such as `tokio::task`,
-/// `std::fs::read_to_string`, `std::net::TcpStream`, and `rand::Rng`.
 #[test]
 fn ast_grep_architecture_direct_import_patterns_present() {
     assert!(
@@ -306,9 +252,6 @@ fn ast_grep_architecture_direct_import_patterns_present() {
     );
 }
 
-/// Fully-qualified-path regexes close the no-import bypass: effects spelled
-/// as `std::fs::read_to_string` (or `tokio::spawn`, `std::time::SystemTime`,
-/// `rand::thread_rng`) with no `use` line must still match the catalog.
 #[test]
 fn ast_grep_architecture_fully_qualified_patterns_present() {
     assert!(
@@ -338,8 +281,6 @@ fn ast_grep_architecture_fully_qualified_patterns_present() {
     );
 }
 
-/// Production-only path exclusions are present: tests, benches, examples,
-/// and build.rs must be excluded from architecture scanning.
 #[test]
 fn ast_grep_architecture_production_only_path_exclusions_present() {
     for exclusion in PROD_EXCLUSIONS {
@@ -347,7 +288,6 @@ fn ast_grep_architecture_production_only_path_exclusions_present() {
             ARCHITECTURE_YAML.contains("ignores:") || ARCHITECTURE_YAML.contains("exclude:"),
             "Architecture catalog must contain 'ignores:' or 'exclude:' keys for path filtering",
         );
-        // The exclusion string itself must appear somewhere in the YAML.
         assert!(
             ARCHITECTURE_YAML.contains(exclusion),
             "Path exclusion '{exclusion}' must be present in architecture catalog",
@@ -355,7 +295,6 @@ fn ast_grep_architecture_production_only_path_exclusions_present() {
     }
 }
 
-/// Fixture files for each architecture rule exist under fixtures/.
 #[test]
 fn ast_grep_architecture_fixture_files_exist_for_each_rule() {
     let base = env!("CARGO_MANIFEST_DIR");
@@ -376,13 +315,11 @@ fn ast_grep_architecture_fixture_files_exist_for_each_rule() {
     }
 }
 
-/// The allowed fixtures contain no architecture-violating imports.
 #[test]
 fn ast_grep_architecture_allowed_fixtures_have_no_violations() {
     let base = env!("CARGO_MANIFEST_DIR");
     let fixtures_dir = format!("{base}/tests/fixtures/ast_grep/architecture");
 
-    // Infra imports: tokio, axum, sqlx, reqwest wildcard imports
     let allowed_infra = read_fixture(&fixtures_dir, "allowed_no_core_infra_import.rs");
     assert!(
         !allowed_infra.contains("use tokio::")
@@ -392,7 +329,6 @@ fn ast_grep_architecture_allowed_fixtures_have_no_violations() {
         "allowed_no_core_infra_import.rs must not import core infra crates",
     );
 
-    // FS/env/net wildcard imports
     let allowed_fs = read_fixture(&fixtures_dir, "allowed_no_core_fs_import.rs");
     assert!(
         !allowed_fs.contains("use std::fs::")
@@ -401,7 +337,6 @@ fn ast_grep_architecture_allowed_fixtures_have_no_violations() {
         "allowed_no_core_fs_import.rs must not import std fs/env/net",
     );
 
-    // Time imports
     let allowed_time = read_fixture(&fixtures_dir, "allowed_no_core_time_import.rs");
     assert!(
         !allowed_time.contains("use std::time::SystemTime")
@@ -409,7 +344,6 @@ fn ast_grep_architecture_allowed_fixtures_have_no_violations() {
         "allowed_no_core_time_import.rs must not import time sources",
     );
 
-    // Random/entropy imports
     let allowed_random = read_fixture(&fixtures_dir, "allowed_no_core_random_import.rs");
     assert!(
         !allowed_random.contains("use rand::thread_rng")
@@ -417,14 +351,12 @@ fn ast_grep_architecture_allowed_fixtures_have_no_violations() {
         "allowed_no_core_random_import.rs must not import rand entropy APIs",
     );
 
-    // Process imports
     let allowed_process = read_fixture(&fixtures_dir, "allowed_no_core_process_import.rs");
     assert!(
         !allowed_process.contains("std::process") && !allowed_process.contains("tokio::process"),
         "allowed_no_core_process_import.rs must not import process APIs",
     );
 
-    // Async effects
     let allowed_async = read_fixture(&fixtures_dir, "allowed_no_core_async_effect.rs");
     assert!(
         !allowed_async.contains("async fn")
@@ -433,7 +365,6 @@ fn ast_grep_architecture_allowed_fixtures_have_no_violations() {
         "allowed_no_core_async_effect.rs must stay synchronous",
     );
 
-    // Ambient mutable state
     let allowed_state = read_fixture(&fixtures_dir, "allowed_no_core_state_effect.rs");
     assert!(
         !allowed_state.contains("static mut")
@@ -444,13 +375,11 @@ fn ast_grep_architecture_allowed_fixtures_have_no_violations() {
     );
 }
 
-/// Violation fixtures actually contain the patterns they are named for.
 #[test]
 fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
     let base = env!("CARGO_MANIFEST_DIR");
     let fixtures_dir = format!("{base}/tests/fixtures/ast_grep/architecture");
 
-    // Core-infra violation: must contain a tokio/axum/sqlx/reqwest import
     let infra = read_fixture(&fixtures_dir, "architecture_import_core_infra_violation.rs");
     assert!(
         infra.contains("use tokio::")
@@ -466,7 +395,6 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
         "architecture_import_core_infra_direct_violation.rs must contain a direct infra import",
     );
 
-    // Core-fs violation: must contain a std::fs/std::env/std::net import
     let fs = read_fixture(&fixtures_dir, "architecture_import_core_fs_violation.rs");
     assert!(
         fs.contains("use std::fs::")
@@ -493,7 +421,6 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
         "architecture_import_core_fs_module_violation.rs must contain module std::fs import",
     );
 
-    // Core-time violation: must contain a SystemTime or Instant import
     let time = read_fixture(&fixtures_dir, "architecture_import_core_time_violation.rs");
     assert!(
         time.contains("SystemTime") || time.contains("Instant"),
@@ -512,7 +439,6 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
         "architecture_import_core_time_grouped_violation.rs must contain grouped time imports",
     );
 
-    // Core-random violation: must contain rand::thread_rng import
     let random = read_fixture(&fixtures_dir, "architecture_import_core_random_violation.rs");
     assert!(
         random.contains("rand::thread_rng"),
@@ -531,7 +457,6 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
         "architecture_import_core_random_grouped_violation.rs must contain grouped rand imports",
     );
 
-    // Fully-qualified bypasses: effect with no `use` import
     let infra_fq = read_fixture(&fixtures_dir, "architecture_import_core_infra_fq_violation.rs");
     assert!(
         infra_fq.contains("tokio::spawn"),
@@ -566,7 +491,6 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
         "architecture_import_core_random_fq_violation.rs must draw entropy with no import",
     );
 
-    // Process violations
     let process = read_fixture(&fixtures_dir, "architecture_import_core_process_violation.rs");
     assert!(
         process.contains("use std::process::Command"),
@@ -579,7 +503,6 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
         "architecture_import_core_process_fq_violation.rs must spawn with no import",
     );
 
-    // Async effect violation: async fn plus await plus a runtime spawn
     let async_fx = read_fixture(&fixtures_dir, "architecture_effect_core_async_violation.rs");
     assert!(
         async_fx.contains("async fn")
@@ -588,7 +511,6 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
         "architecture_effect_core_async_violation.rs must contain async effects",
     );
 
-    // Ambient-state violation: static mut plus a blocking lock
     let state_fx = read_fixture(&fixtures_dir, "architecture_effect_core_state_violation.rs");
     assert!(
         state_fx.contains("static mut") && state_fx.contains("std::sync::Mutex"),
@@ -596,9 +518,6 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
     );
 }
 
-/// The designated pure-core manifest must not depend on infrastructure or
-/// entropy crates: a `Cargo.toml` dependency would bypass every source-level
-/// capability rule, so the manifest itself is a checked boundary.
 #[test]
 fn ast_grep_architecture_core_manifest_has_no_effect_dependencies() {
     let base = env!("CARGO_MANIFEST_DIR");
@@ -619,10 +538,6 @@ fn ast_grep_architecture_core_manifest_has_no_effect_dependencies() {
         );
     }
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 fn count_occurrences(haystack: &str, needle: &str) -> usize {
     let mut count = 0;

@@ -1,23 +1,9 @@
-//! Contract tests for Titania's Dylint rules that detect internal-escape
-//! bypass patterns: `BYPASS_ATTR_CONTEXT`, `BYPASS_INTERNAL_UNSTABLE`, and
-//! `BYPASS_INTERNAL_UNSAFE`.
-//!
-//! These tests exercise the real `cargo dylint` CLI against temporary fixture
-//! crates. Passing requires a loadable Dylint library, registered lints, and
-//! diagnostics emitted by the compiler driver; symbol-table marker exports are
-//! not sufficient.
-
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
     process::Command,
 };
 
-// ── Fixture: macro generates #[allow(...)] on a pub item ──────────────
-//
-// This is the canonical `attr_context` trigger: a macro_rules! macro
-// produces `#[allow(dead_code)]` on a `pub fn`, so the allow is not
-// written directly in user code but "escapes" from the macro expansion.
 const FIXTURE_ATTR_CONTEXT: &str = r#"
 macro_rules! impl_public {
     ($name:ident) => {
@@ -42,24 +28,11 @@ macro_rules! impl_public {
 impl_public!(public_api);
 "#;
 
-// ── Fixture: plain pub fn with direct #[allow(...)] — no macro escape ─
-//
-// This should NOT trigger BYPASS_ATTR_CONTEXT because the allow is on
-// the same source line as the pub fn (no macro mediation).
 const FIXTURE_ATTR_CONTEXT_CLEAN: &str = r#"
 #[allow(dead_code)]
 pub fn public_api() {}
 "#;
 
-// ── Fixture: macro with #[allow_internal_unstable(...)] ───────────────
-//
-// The compiler attribute #[allow_internal_unstable(...)] is applied to a
-// macro definition to suppress unstable-lint warnings that originate
-// from macro expansion.  This is the canonical trigger for
-// BYPASS_INTERNAL_UNSTABLE.
-//
-// Requires the unstable feature gate because allow_internal_unstable
-// itself is an unstable attribute.
 const FIXTURE_INTERNAL_UNSTABLE: &str = r#"
 #![feature(allow_internal_unstable)]
 
@@ -87,7 +60,6 @@ macro_rules! unstable_macro {
 unstable_macro!();
 "#;
 
-// ── Fixture: macro without allow_internal_unstable — no trigger ───────
 const FIXTURE_INTERNAL_UNSTABLE_CLEAN: &str = r#"
 macro_rules! plain_macro {
     () => {
@@ -98,15 +70,6 @@ macro_rules! plain_macro {
 plain_macro!();
 "#;
 
-// ── Fixture: #[allow_internal_unsafe] on a macro ──────────────────────
-//
-// The compiler attribute #[allow_internal_unsafe] is applied to a macro
-// definition to allow unsafe blocks inside the macro even when the
-// surrounding crate forbids unsafe code.  This is the canonical trigger
-// for BYPASS_INTERNAL_UNSAFE.
-//
-// Requires the unstable feature gate because allow_internal_unsafe
-// itself is an unstable attribute.
 const FIXTURE_INTERNAL_UNSAFE: &str = r#"
 #![feature(allow_internal_unsafe)]
 
@@ -134,7 +97,6 @@ macro_rules! unsafe_macro {
 unsafe_macro!();
 "#;
 
-// ── Fixture: macro without allow_internal_unsafe — no trigger ─────────
 const FIXTURE_INTERNAL_UNSAFE_CLEAN: &str = r#"
 macro_rules! plain_macro {
     () => {
@@ -144,8 +106,6 @@ macro_rules! plain_macro {
 
 plain_macro!();
 "#;
-
-// ── Helpers (mirrored from allow_required.rs) ─────────────────────────
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -317,8 +277,6 @@ fn assert_self_suppression_rejected(
     );
 }
 
-// ── Registration tests ────────────────────────────────────────────────
-
 #[test]
 fn bypass_attr_context_is_registered_by_cargo_dylint() {
     let output = cargo_dylint_list_output();
@@ -364,8 +322,6 @@ fn bypass_internal_unsafe_is_registered_by_cargo_dylint() {
         combined_output(&output)
     );
 }
-
-// ── Diagnostic-emission tests ─────────────────────────────────────────
 
 #[test]
 fn bypass_attr_context_detects_macro_generated_allow() {

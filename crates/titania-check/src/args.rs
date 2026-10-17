@@ -1,5 +1,3 @@
-//! Argument parsing for the `titania-check` dispatch shell.
-
 mod parse;
 
 use std::{ffi::OsString, path::PathBuf};
@@ -8,163 +6,95 @@ use titania_core::{GateScope, Lane};
 
 type ValueTail<'a> = (&'a str, &'a [String]);
 
-/// Parsed CLI invocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cli {
-    /// Top-level command selected by the invocation.
     pub command: Command,
 }
 
-/// Parsed top-level command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
-    /// Default quality gate command.
     Check(CheckOptions),
-    /// Single-lane dispatch command.
-    RunLane {
-        /// Lane selected for dispatch.
-        lane: Lane,
-    },
-    /// Aggregate existing lane artifacts.
+    RunLane { lane: Lane },
     Aggregate(AggregateOptions),
-    /// Tool/version diagnostic command.
     Doctor(DoctorOptions),
-    /// Rule explanation command.
-    Explain {
-        /// Raw rule identifier to explain. Strict [`titania_core::RuleId`]
-        /// validation is intentionally skipped per spec §12.
-        rule_id: String,
-    },
-    /// Create hermetic `CARGO_HOME` / `RUSTUP_HOME` symlinks (v1-spec §9.5).
+    Explain { rule_id: String },
     SetupHermetic,
 }
 
-/// Parsed default-check options.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckOptions {
-    /// Gate scope selected for the default check command.
     pub scope: GateScope,
     emit: EmitFormat,
     out: Option<PathBuf>,
 }
 impl CheckOptions {
-    /// The render format selected by the caller.
     #[must_use]
     pub const fn emit(&self) -> EmitFormat {
         self.emit
     }
 
-    /// Optional output file path.
     #[must_use]
     pub const fn out(&self) -> Option<&PathBuf> {
         self.out.as_ref()
     }
 }
 
-/// Parsed `aggregate` options.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AggregateOptions {
-    /// Gate scope whose lane artifacts are aggregated.
     pub scope: GateScope,
     emit: EmitFormat,
     out: Option<PathBuf>,
 }
 impl AggregateOptions {
-    /// The render format selected by the caller.
     #[must_use]
     pub const fn emit(&self) -> EmitFormat {
         self.emit
     }
 
-    /// Optional output file path.
     #[must_use]
     pub const fn out(&self) -> Option<&PathBuf> {
         self.out.as_ref()
     }
 }
 
-/// Parsed `doctor` options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DoctorOptions {
-    /// Gate scope whose tool requirements are reported.
     pub scope: GateScope,
     emit: EmitFormat,
 }
 
 impl DoctorOptions {
-    /// The render format selected by the caller.
     #[must_use]
     pub const fn emit(self) -> EmitFormat {
         self.emit
     }
 }
 
-/// Render format for CLI output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmitFormat {
-    /// Human-readable table or text output.
     Human,
-    /// Machine-readable JSON output.
     Json,
 }
 
-/// Input validation failure produced by CLI parsing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliError {
-    /// Help was requested via `--help`, `-h`, or `help`. Carries the rendered
-    /// usage text. This is a success path (exit 0 with the help on stdout),
-    /// modeled as a `CliError` variant so that [`Cli::parse_from_os`] can
-    /// return it through the existing `Result` channel without a separate
-    /// outcome type.
     HelpRequested(String),
-    /// Version was requested via `--version` or `-V`. Carries the rendered
-    /// version string. Routed to stdout with exit code 0 by the dispatch
-    /// shell.
     VersionRequested(String),
-    /// An argument could not be converted to UTF-8.
     NonUtf8Argument(String),
-    /// The first positional token is not a known command.
     UnknownSubcommand(String),
-    /// A flag is not accepted by the selected command.
     UnknownFlag(String),
-    /// A flag that requires a value was missing that value.
     MissingValue(&'static str),
-    /// Scope value is not one of edit, prepush, release, or full.
     UnknownScope(String),
-    /// Emit value is not one of the supported renderers.
     UnknownEmit(String),
-    /// Lane name is not a known lane CLI name.
     UnknownLane(String),
-    /// `run-lane` was invoked without a lane name.
     MissingLaneName,
-    /// A command received an extra positional argument.
-    ExtraArgument {
-        /// Command that rejected the value.
-        command: &'static str,
-        /// Unexpected argument value.
-        value: String,
-    },
-    /// `explain` was invoked without a rule id.
+    ExtraArgument { command: &'static str, value: String },
     MissingRuleId,
-    /// `explain` received a syntactically invalid rule id.
-    InvalidRuleId {
-        /// Rejected rule-id text.
-        value: String,
-        /// Validation failure text.
-        reason: String,
-    },
-    /// `aggregate` was invoked without its required scope.
+    InvalidRuleId { value: String, reason: String },
     AggregateScopeRequired,
 }
 
 impl Cli {
-    /// Parse CLI arguments after the binary name.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`CliError`] when an argument is not UTF-8, a command or flag
-    /// is unknown, a required value is missing, or a domain value fails typed
-    /// parsing.
     pub fn parse_from_os<I>(args: I) -> Result<Self, CliError>
     where
         I: IntoIterator<Item = OsString>,
@@ -174,7 +104,6 @@ impl Cli {
 }
 
 impl CliError {
-    /// Render this input error as a stable diagnostic line.
     #[must_use]
     pub fn diagnostic(&self) -> String {
         match self {
@@ -198,14 +127,11 @@ impl CliError {
         }
     }
 
-    /// Return `true` when this error carries a help/usage payload that must be
-    /// routed to stdout with exit code 0 (instead of stderr with exit code 3).
     #[must_use]
     pub const fn is_help(&self) -> bool {
         matches!(self, Self::HelpRequested(_))
     }
 
-    /// Borrow the help text when this error is [`Self::HelpRequested`].
     #[must_use]
     pub fn help_text(&self) -> Option<&str> {
         match self {
@@ -214,13 +140,11 @@ impl CliError {
         }
     }
 
-    /// Return `true` when this error carries a version payload.
     #[must_use]
     pub const fn is_version(&self) -> bool {
         matches!(self, Self::VersionRequested(_))
     }
 
-    /// Borrow the version text when this error is [`Self::VersionRequested`].
     #[must_use]
     pub fn version_text(&self) -> Option<&str> {
         match self {
@@ -270,9 +194,6 @@ impl Default for DoctorOptions {
     }
 }
 
-/// Render the version banner printed for `--version` / `-V`.
-///
-/// Produces: `titania-check <CARGO_PKG_VERSION> (rev <GIT_SHA>, workspace=<WORKSPACE_NAME>)`.
 #[must_use]
 pub fn version_string() -> String {
     format!(
@@ -283,11 +204,6 @@ pub fn version_string() -> String {
     )
 }
 
-/// Concise top-level usage summary printed for `--help`, `-h`, and `help`.
-///
-/// Lists the six subcommands and the global flags (`--scope`, `--emit`, `--out`,
-/// `--version`). Kept as a single `&str` so the help path performs no formatting
-/// work and is trivially auditable.
 pub(crate) const USAGE: &str = "\
 titania-check — Titania quality gate CLI
 

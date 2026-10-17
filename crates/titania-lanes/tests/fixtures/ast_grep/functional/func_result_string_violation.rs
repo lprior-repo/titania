@@ -1,5 +1,3 @@
-// Fixture: triggers FUNC_RESULT_STRING
-// Result<T, String> error variant in production source — should use typed error types.
 
 pub fn parse_config(input: &str) -> Result<ConfigData, String> {
     let value = input.trim();

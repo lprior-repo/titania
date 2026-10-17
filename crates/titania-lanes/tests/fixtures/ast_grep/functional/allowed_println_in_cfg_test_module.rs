@@ -1,5 +1,3 @@
-// Fixture: println! inside #[cfg(test)] mod tests — must NOT trigger FUNC_PRINT_STDOUT.
-// Inline test modules in src/ files are exempt per v1-spec §9.10.
 
 pub fn compute(x: i32) -> i32 {
     x.saturating_add(1)

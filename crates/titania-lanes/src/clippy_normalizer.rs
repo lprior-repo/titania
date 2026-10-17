@@ -1,8 +1,3 @@
-//! Pure Clippy JSONL normalization into typed lane findings.
-//!
-//! The runner owns subprocess execution. This module owns only data conversion
-//! from Cargo/Clippy JSON lines into stable `CLIPPY_*` rule identifiers.
-
 use serde_json::Value;
 use titania_core::LaneFailure;
 
@@ -11,23 +6,18 @@ use crate::{Finding, LaneReport, RuleId};
 const TOOL: &str = "cargo clippy";
 const CLIPPY_UNKNOWN: &str = "CLIPPY_UNKNOWN";
 
-/// Result of normalizing one Clippy JSONL stream.
 #[derive(Debug, Clone)]
 pub enum ClippyNormalization {
-    /// Parsed Clippy diagnostics as typed findings.
     Findings(LaneReport),
-    /// No usable diagnostics were present and the stream itself was malformed.
     SuspiciousFailure(LaneFailure),
 }
 
 impl ClippyNormalization {
-    /// Whether the normalized stream contains no findings or failure.
     #[must_use]
     pub fn is_clean(&self) -> bool {
         matches!(self, Self::Findings(report) if report.is_clean())
     }
 
-    /// Borrow normalized findings. Suspicious failures contain no code findings.
     #[must_use]
     pub fn findings(&self) -> &[Finding] {
         match self {
@@ -36,13 +26,11 @@ impl ClippyNormalization {
         }
     }
 
-    /// Count normalized findings.
     #[must_use]
     pub fn finding_count(&self) -> usize {
         self.findings().len()
     }
 
-    /// Render normalized findings or suspicious failure evidence.
     #[must_use]
     pub fn render(&self) -> String {
         match self {
@@ -51,7 +39,6 @@ impl ClippyNormalization {
         }
     }
 
-    /// Borrow suspicious failure details when normalization failed suspiciously.
     #[must_use]
     pub const fn failure(&self) -> Option<&LaneFailure> {
         match self {
@@ -61,7 +48,6 @@ impl ClippyNormalization {
     }
 }
 
-/// Normalize Cargo/Clippy JSONL output into typed findings.
 #[must_use]
 pub fn normalize_clippy_jsonl(input: &str) -> ClippyNormalization {
     input.lines().fold(NormalizerState::default(), NormalizerState::feed).finish()

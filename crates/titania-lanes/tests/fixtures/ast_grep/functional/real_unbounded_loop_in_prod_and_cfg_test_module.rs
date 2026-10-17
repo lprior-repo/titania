@@ -1,6 +1,3 @@
-// Fixture: unbounded retry in production code AND one in #[cfg(test)]
-// mod tests. The production retry MUST trigger
-// BOUNDED_EXECUTION_UNBOUNDED_LOOP; the test retry must NOT.
 
 pub fn retry_without_bound(flag: &std::sync::atomic::AtomicBool) -> u32 {
     let mut attempts = 0;

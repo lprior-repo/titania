@@ -1,5 +1,3 @@
-// Fixture: triggers FUNC_PRINT_STDOUT
-// Print calls to stdout in production source.
 
 pub fn greet(name: &str) {
     println!("Hello, {name}!");

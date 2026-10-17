@@ -1,5 +1,3 @@
-//! Contract tests for Titania's Dylint rules that replace raw Rust text scans.
-
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},

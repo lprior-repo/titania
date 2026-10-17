@@ -1,12 +1,3 @@
-//! v1.5 contract tests for the pure-core kani inventory parser
-//! (`crates/titania-core/src/kani_inventory.rs`).
-//!
-//! Mirrors the spec promise in `.beads/tn-7bq2.1/boundary-map.md`:
-//! the parser accepts `&str`, returns typed thiserror errors, tolerates
-//! documented unknown top-level keys (forward compatibility for
-//! cargo-kani field evolution), rejects malformed required shapes, and
-//! performs no I/O / time / env / process access.
-
 use std::path::PathBuf;
 
 use titania_core::{
@@ -115,8 +106,6 @@ fn rejects_top_level_array() {
 
 #[test]
 fn rejects_non_array_harness_list() {
-    // A harness list that is a string instead of an array must be
-    // rejected as a malformed required shape, not silently coerced.
     let contents = r#"{ "standard-harnesses": { "file.rs": "not-an-array" } }"#;
     let err = KaniInventory::parse_str(contents, "<inline>")
         .expect_err("non-array harness list must fail");
@@ -136,7 +125,6 @@ fn empty_qualified_name_produces_no_canonical_id() {
 
 #[test]
 fn canonical_harness_id_collapses_punctuation_to_underscore() {
-    // `replace-self.with_dash` ⇒ `REPLACE_SELF_WITH_DASH`
     let canonical = canonical_harness_id("kani::replace-self.with_dash")
         .expect("punctuation must collapse to underscore");
     assert_eq!(canonical.as_str(), "REPLACE_SELF_WITH_DASH");
@@ -144,9 +132,6 @@ fn canonical_harness_id_collapses_punctuation_to_underscore() {
 
 #[test]
 fn canonical_harness_id_rejects_non_ascii_body() {
-    // UTF-8 multi-byte sequences collapse to `_`; the result is
-    // valid, but we also want to assert that names without the
-    // `kani::` prefix are still canonicalised.
     let canonical =
         canonical_harness_id("plain_name").expect("plain name without prefix must canonicalise");
     assert_eq!(canonical.as_str(), "PLAIN_NAME");

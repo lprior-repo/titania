@@ -1,16 +1,6 @@
-//! Unit tests for path and range primitives.
-//!
-//! These live in `tests/` so source-target lint and Dylint gates can stay
-//! strict while test assertions remain clear. The tests exercise the `pub` API
-//! surface end-to-end.
-
-#![allow(clippy::as_conversions)] // ASCII byte round-trip is exact in tests.
+#![allow(clippy::as_conversions)]
 
 use titania_core::{TextRange, TextRangeError, WorkspacePath, WorkspacePathError};
-
-// ====================================================================
-// WorkspacePath
-// ====================================================================
 
 #[test]
 fn workspace_path_accepts_simple_paths() {
@@ -168,7 +158,6 @@ fn workspace_path_drive_letter_alone_is_rejected_as_drive_absolute() {
 
 #[test]
 fn workspace_path_preserves_forward_slash_relative_after_drive_rejection() {
-    // Sanity: rejection must not affect a plain valid relative path.
     assert!(WorkspacePath::new("src/lib.rs").is_ok());
     assert!(WorkspacePath::new("crates/titania-core/src/lib.rs").is_ok());
 }
@@ -221,10 +210,6 @@ fn workspace_path_display_and_debug_have_stable_shape() {
     assert_eq!(format!("{p}"), "src/lib.rs");
     assert!(format!("{p:?}").starts_with("WorkspacePath("));
 }
-
-// ====================================================================
-// TextRange
-// ====================================================================
 
 #[test]
 fn text_range_accepts_zero_length_range() {

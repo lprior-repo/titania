@@ -1,11 +1,3 @@
-//! Contract tests for Titania's `libtitania_dylint` public-allow and
-//! required-lint weakening rules.
-//!
-//! These tests exercise the real `cargo dylint` CLI against temporary fixture
-//! crates. Passing requires a loadable Dylint library, registered lints, and
-//! diagnostics emitted by the compiler driver; symbol-table marker exports are
-//! not sufficient.
-
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -334,23 +326,17 @@ fn bypass_required_lint_weakening_ignores_preserved_lints() {
     );
 }
 
-// ── clippy::expect_used weakening ──────────────────────────────────────────
-
 const FIXTURE_WEAKEN_EXPECT: &str = r#"
 #![allow(clippy::expect_used)]
 
 pub fn kept() {}
 "#;
 
-// ── clippy::panic weakening ────────────────────────────────────────────────
-
 const FIXTURE_WEAKEN_PANIC: &str = r#"
 #![allow(clippy::panic)]
 
 pub fn kept() {}
 "#;
-
-// ── public associated function (struct impl) ───────────────────────────────
 
 const FIXTURE_ASSOC_PUB_ALLOW: &str = r#"
 pub struct Api;
@@ -369,7 +355,6 @@ impl Api {
     pub(crate) fn method(&self) {}
 }
 "#;
-// ── public trait method (direct allow) ────────────────────────────────────
 
 const FIXTURE_TRAIT_PUB_ALLOW: &str = r#"
 pub trait PublicTrait {
@@ -377,8 +362,6 @@ pub trait PublicTrait {
     fn trait_method(&self);
 }
 "#;
-
-// ── macro-generated public associated method ──────────────────────────────
 
 const FIXTURE_MACRO_ASSOC_PUB_ALLOW: &str = r#"
 macro_rules! impl_method {
@@ -406,8 +389,6 @@ fn bypass_required_lint_weakening_detects_panic_removal() {
     let output = run_dylint_on_fixture("weaken_panic", FIXTURE_WEAKEN_PANIC);
     assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "clippy::panic allow");
 }
-
-// ── lint-group weakening (H2: group-level allow bypass) ─────────────────
 
 const FIXTURE_WEAKEN_UNUSED: &str = r#"
 #![allow(unused)]
@@ -453,7 +434,6 @@ fn bypass_pub_allow_ignores_pub_crate_associated_fn() {
         combined_output(&output)
     );
 }
-// ── public trait method (direct allow) ────────────────────────────────────
 
 #[test]
 fn bypass_pub_allow_detects_public_trait_method() {
@@ -465,8 +445,6 @@ fn bypass_pub_allow_detects_public_trait_method() {
         combined_output(&output)
     );
 }
-
-// ── macro-generated public associated method ──────────────────────────────
 
 #[test]
 fn bypass_attr_context_detects_macro_generated_associated_method() {

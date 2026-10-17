@@ -1,0 +1,39 @@
+{
+  "status": "DRAFT_NOT_COMPILED_NOT_RUST_TESTED_NOT_APPLIED_TO_GITHUB",
+  "repository": "lprior-repo/titania",
+  "base_commit": "9a5c936e93551a778a17ccb32b671f0f8058deef",
+  "checks_executed": {
+    "original_git_blob_matches": true,
+    "git_apply_check": true,
+    "git_apply_to_exact_base": true,
+    "applied_files_byte_identical_to_edited_files": true,
+    "patch_whitespace_check": true
+  },
+  "rust_test_cases_written": 14,
+  "rust_test_cases_executed": 0,
+  "not_run": [
+    "Rust compilation",
+    "rustfmt",
+    "Clippy",
+    "Dylint",
+    "unit tests",
+    "lane integration tests",
+    "moon ci",
+    "bd tracking"
+  ],
+  "remaining_goal1_work": [
+    "Type-aware boundedness enforcement in place of blanket loop-syntax bans",
+    "Full Titania source audit and remaining bounded-execution repairs",
+    "Canonical pinned-toolchain gate execution"
+  ],
+  "files": [
+    {
+      "path": "crates/titania-lanes/src/run_lane_sources.rs",
+      "sha256": "5c77ef4df1b17e104c222c68c154c59bdfb1c08d1c5ec70b311a12ce02b0ff1b"
+    },
+    {
+      "path": "crates/titania-lanes/src/run_lane_sources/tests.rs",
+      "sha256": "a6ade386ab7984b2fcd1d8dd92ff71b0644b7b7c6eccab9c34dee25f4d874e61"
+    }
+  ]
+}

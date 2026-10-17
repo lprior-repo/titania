@@ -1,29 +1,18 @@
-//! Rule explanation catalog for `titania-check explain`.
-
 use std::borrow::Cow;
 
 use crate::OutputError;
 
 const CATALOG: &str = include_str!("../../titania-core/src/finding/repair_catalog.tsv");
 
-/// A single catalog entry for a known rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleExplanation {
-    /// Stable v1 rule identifier.
     pub rule_id: Cow<'static, str>,
-    /// Short human explanation of the violation.
     pub description: Cow<'static, str>,
-    /// Source lane or normalizer that emits the rule.
     pub source: Cow<'static, str>,
-    /// Detection pattern or trigger.
     pub pattern: Cow<'static, str>,
-    /// Gate effect.
     pub effect: Cow<'static, str>,
-    /// Suggested repair class.
     pub repair: Cow<'static, str>,
-    /// Minimal violating source sample.
     pub example_violation: Cow<'static, str>,
-    /// Minimal repaired source sample.
     pub example_repair: Cow<'static, str>,
 }
 
@@ -37,12 +26,6 @@ struct Row {
     description: &'static str,
 }
 
-/// Return a rule explanation catalog entry.
-///
-/// # Errors
-/// Returns [`OutputError::UnknownRule`] when `rule_id` is syntactically valid
-/// but absent from the finite catalog and not a dynamic `CLIPPY_*`,
-/// `PROOF_KANI_*`, or `MUTANT_*` rule.
 pub fn explain_rule(rule_id: &str) -> Result<RuleExplanation, OutputError> {
     CATALOG
         .lines()

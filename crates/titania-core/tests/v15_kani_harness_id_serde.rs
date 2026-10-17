@@ -1,5 +1,3 @@
-//! v1.5 serde round-trip tests for `KaniHarnessId`.
-
 use titania_core::KaniHarnessId;
 
 #[test]

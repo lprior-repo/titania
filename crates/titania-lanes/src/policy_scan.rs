@@ -1,8 +1,3 @@
-//! Policy-bypass scanners shared by lane binaries.
-//!
-//! These scanners detect local configuration that can weaken the repository's
-//! strict Rust lane contract before a build command executes.
-
 use std::path::{Path, PathBuf};
 
 use titania_policy::Exception;
@@ -15,14 +10,6 @@ pub mod env_vars;
 pub mod exceptions;
 pub mod invocation;
 
-/// Scan policy-bypass inputs that affect a lane invocation.
-///
-/// The composition scans Cargo config files affecting `root`, the supplied
-/// Cargo manifests for lint weakening, and the process environment for
-/// compiler/toolchain override variables.
-///
-/// # Errors
-/// Returns [`RuleIdError`] if any embedded scanner rule identifier is invalid.
 pub fn scan_policy_inputs<'a>(
     root: &Path,
     manifest_paths: impl IntoIterator<Item = &'a Path>,
@@ -31,20 +18,6 @@ pub fn scan_policy_inputs<'a>(
     scan_policy_inputs_with_exceptions(root, manifest_paths, &[], &env_vars::real_env, report)
 }
 
-/// Scan policy-bypass inputs and suppress findings with valid strict-ai exceptions.
-///
-/// Exception matching is exact on the typed rule identifier and workspace path.
-/// Expired or malformed exception files are handled by
-/// [`exceptions::load_exceptions`] before this function is called.
-///
-/// The environment-variable scanner reads through the provided
-/// environment reader so callers can drive the scan under a controlled
-/// environment. Production callers pass the process-wide reader; tests
-/// inject a `BTreeMap`-backed reader to avoid leaking host `CARGO_HOME`
-/// / `RUSTUP_HOME` into the result.
-///
-/// # Errors
-/// Returns [`RuleIdError`] if any embedded scanner rule identifier is invalid.
 pub fn scan_policy_inputs_with_exceptions<'a>(
     root: &Path,
     manifest_paths: impl IntoIterator<Item = &'a Path>,

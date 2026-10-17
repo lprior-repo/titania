@@ -1,5 +1,3 @@
-//! v1.5 contract tests for `MutantsBaseline::parse_str` error surface.
-
 use std::path::PathBuf;
 
 use titania_core::{
@@ -66,8 +64,6 @@ fn rejects_accepted_by_rule_without_owner() {
 
 #[test]
 fn rejects_accepted_by_rule_with_extra_segment() {
-    // `mutant-accept/owner/reason/expiry/extra` carries one more `/`
-    // segment than the contract family allows.
     let err = MutantsBaseline::parse_str(
         r#"{
             "schema_version": 1,
@@ -108,7 +104,6 @@ fn rejects_accepted_by_rule_with_zero_expiry() {
 
 #[test]
 fn rejects_accepted_by_rule_with_overflow_expiry() {
-    // 21 decimal digits exceeds `u64::MAX` (max 19 digits).
     let overflow = "9".repeat(21);
     let err = MutantsBaseline::parse_str(
         r#"{

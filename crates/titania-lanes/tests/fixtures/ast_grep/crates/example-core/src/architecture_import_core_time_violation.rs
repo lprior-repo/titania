@@ -1,5 +1,3 @@
-// Fixture: triggers ARCHITECTURE_IMPORT_CORE_TIME
-// Core/domain code reading the wall clock directly.
 
 use std::time::SystemTime;
 

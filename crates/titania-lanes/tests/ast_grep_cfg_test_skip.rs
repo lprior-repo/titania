@@ -1,13 +1,3 @@
-//! Contract tests for the `#[cfg(test)]` module skipping in FUNC_* rules.
-//!
-//! The ast-grep FUNC_* rules (loops, prints, unwrap_or, result_string,
-//! nesting, recursion) must skip matches inside `#[cfg(test)]` inline
-//! modules in `src/` files per v1-spec §9.10 (source/test split). The
-//! BYPASS_* rules do NOT skip test modules — `#[allow]` inside a test
-//! module is still a bypass.
-//!
-//! Bead: tn-k0rw
-
 use std::{
     error::Error,
     path::{Path, PathBuf},
@@ -45,11 +35,6 @@ fn finding_rule_ids(outcome: &LaneOutcome) -> Vec<String> {
     }
 }
 
-// ===========================================================================
-// BOUNDED_EXECUTION_* must skip #[cfg(test)] modules
-// ===========================================================================
-
-/// An unbounded retry inside `#[cfg(test)] mod tests` produces NO findings.
 #[test]
 fn func_loops_for_skipped_inside_cfg_test_module() -> TestResult {
     let outcome = run_fixture("allowed_unbounded_loop_in_cfg_test_module.rs")?;
@@ -65,8 +50,6 @@ fn func_loops_for_skipped_inside_cfg_test_module() -> TestResult {
     Ok(())
 }
 
-/// An unbounded retry in production code alongside one in `#[cfg(test)] mod tests`
-/// produces a BOUNDED_EXECUTION_UNBOUNDED_LOOP finding for the production code only.
 #[test]
 fn func_loops_for_fires_in_prod_skips_in_cfg_test_module() -> TestResult {
     let outcome = run_fixture("real_unbounded_loop_in_prod_and_cfg_test_module.rs")?;
@@ -79,7 +62,6 @@ fn func_loops_for_fires_in_prod_skips_in_cfg_test_module() -> TestResult {
     Ok(())
 }
 
-/// An unbounded retry inside `#[cfg(all(test, feature = "debug"))] mod tests` is skipped.
 #[test]
 fn func_loops_for_skipped_inside_cfg_all_test_module() -> TestResult {
     let outcome = run_fixture("allowed_unbounded_loop_in_cfg_all_test_module.rs")?;
@@ -91,11 +73,6 @@ fn func_loops_for_skipped_inside_cfg_all_test_module() -> TestResult {
     Ok(())
 }
 
-// ===========================================================================
-// FUNC_PRINT_STDOUT must skip #[cfg(test)] modules
-// ===========================================================================
-
-/// `println!` inside `#[cfg(test)] mod tests` produces NO FUNC_PRINT_STDOUT finding.
 #[test]
 fn func_print_stdout_skipped_inside_cfg_test_module() -> TestResult {
     let outcome = run_fixture("allowed_println_in_cfg_test_module.rs")?;

@@ -1,5 +1,3 @@
-//! Tests for canonical policy digest calculation.
-
 use titania_policy::{PolicyDefaults, PolicyDigest};
 
 fn embedded_defaults() -> PolicyDefaults {

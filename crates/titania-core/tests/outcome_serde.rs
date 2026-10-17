@@ -1,17 +1,3 @@
-//! Wire-format invariant tests for [`LaneOutcome`] and its evidence types.
-//!
-//! These tests pin the deserialize-time invariants that the hand-written
-//! `Deserialize` implementations now enforce on top of the smart constructors:
-//!
-//! - [`CommandEvidence`] cannot bypass `argv[0] == executable` via JSON.
-//! - [`LaneEvidence`] cannot promote a non-success termination into clean
-//!   evidence via JSON.
-//! - [`LaneOutcome::Findings`] cannot deserialize an empty findings list into
-//!   a vacuous pass.
-//!
-//! Round-trip tests prove the validated wire shapes still serialise back to
-//! the same domain value, so the public wire format is unchanged.
-
 #![allow(clippy::needless_borrow)]
 #![allow(clippy::useless_vec)]
 
@@ -51,10 +37,6 @@ fn stub_clean_evidence() -> LaneEvidence {
     .expect("clean evidence")
 }
 
-// ===========================================================================
-// CommandEvidence wire invariants
-// ===========================================================================
-
 #[test]
 fn command_evidence_round_trip_preserves_value() {
     let original = CommandEvidence::new(
@@ -85,7 +67,6 @@ fn command_evidence_deserialize_rejects_empty_argv() {
 
 #[test]
 fn command_evidence_deserialize_preserves_mode_field_when_present() {
-    // Construct an embedded evidence so the mode round-trips.
     let original = CommandEvidence::embedded(
         String::from("cargo"),
         vec![String::from("cargo"), String::from("ast-grep"), String::from("scan")]
@@ -110,10 +91,6 @@ fn command_evidence_deserialize_omits_mode_when_none() {
     let back: CommandEvidence = serde_json::from_value(value).expect("from_value");
     assert_eq!(back, original);
 }
-
-// ===========================================================================
-// LaneEvidence wire invariants
-// ===========================================================================
 
 #[test]
 fn lane_evidence_round_trip_preserves_value() {
@@ -151,9 +128,6 @@ fn lane_evidence_deserialize_rejects_signaled_exit() {
 
 #[test]
 fn lane_evidence_deserialize_rejects_argv_zero_mismatch_inside_clean() {
-    // Crafted JSON where argv[0] does not match executable. The
-    // LaneEvidence deserializer must reject it via the same
-    // OutcomeError::Argv0Mismatch error path the constructor uses.
     let json = r#"{
         "command": {"executable":"cargo","argv":["rustc","-V"]},
         "tool_version":"rustc 1.84.0",
@@ -178,10 +152,6 @@ fn lane_evidence_deserialize_rejects_empty_argv_inside_clean() {
     assert!(err.to_string().contains("argv"), "error should reference argv: {err}");
 }
 
-// ===========================================================================
-// LaneOutcome::Findings wire invariants
-// ===========================================================================
-
 #[test]
 fn lane_outcome_findings_round_trip_preserves_value() {
     let original = LaneOutcome::Findings { findings: Box::new([stub_finding()]) };
@@ -203,17 +173,10 @@ fn lane_outcome_findings_deserialize_rejects_empty_list() {
 
 #[test]
 fn lane_outcome_findings_empty_constructor_remains_allowed() {
-    // The constructor path is unchanged: in-process construction of an
-    // empty Findings variant remains the caller's responsibility. Only
-    // wire deserialization rejects the vacuous-pass shape.
     let outcome = LaneOutcome::Findings { findings: Box::new([]) };
     assert!(matches!(outcome, LaneOutcome::Findings { .. }));
     assert_eq!(outcome.is_findings(), true);
 }
-
-// ===========================================================================
-// LaneOutcome wire invariants across all variants
-// ===========================================================================
 
 #[test]
 fn lane_outcome_clean_round_trip_preserves_value() {
@@ -225,7 +188,6 @@ fn lane_outcome_clean_round_trip_preserves_value() {
 
 #[test]
 fn lane_outcome_clean_deserialize_rejects_nonzero_exit() {
-    // Clean variant with non-success exit must be rejected at deserialize.
     let json = r#"{
         "Clean": {
             "evidence": {
@@ -261,10 +223,6 @@ fn lane_outcome_skipped_round_trip_preserves_value() {
     let back: LaneOutcome = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(back, original);
 }
-
-// ===========================================================================
-// OutcomeError coverage — prove the typed error variants surface to callers.
-// ===========================================================================
 
 #[test]
 fn outcome_error_empty_argv_message() {

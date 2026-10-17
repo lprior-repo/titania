@@ -1,5 +1,3 @@
-// Fixture: clean — no bypass attributes or inline suppressions.
-// This file should NOT trigger any BYPASS_* rule.
 
 use std::collections::HashMap;
 

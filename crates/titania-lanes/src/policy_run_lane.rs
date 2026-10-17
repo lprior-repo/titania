@@ -1,5 +1,3 @@
-//! Library runner for the v1 policy-scan lane.
-
 use std::{
     ffi::OsStr,
     io,
@@ -21,10 +19,6 @@ const DATE_FORMAT: &str = "+%F";
 const MANIFEST_NAME: &str = "Cargo.toml";
 const SKIP_DIRS: &[&str] = &[".beads", ".git", ".moon", ".titania", ".worktrees", "target"];
 
-/// Run the policy scanner against all workspace manifests.
-///
-/// # Errors
-/// Returns [`PolicyRunError`] when date, manifest walk, or policy scanning fails.
 pub(super) fn run(target: &TargetProject) -> Result<LaneReport, PolicyRunError> {
     let root = target.as_std_path();
     let today = policy_date(target)?;
@@ -41,11 +35,6 @@ pub(super) fn run(target: &TargetProject) -> Result<LaneReport, PolicyRunError> 
     Ok(report)
 }
 
-/// Read the current UTC date from the platform `date` command.
-///
-/// # Errors
-///
-/// Returns [`PolicyRunError`] when the command fails or emits non-UTF-8 output.
 pub(super) fn policy_date(target: &TargetProject) -> Result<String, PolicyRunError> {
     let output = crate::command::CommandIn::new(target, DATE_TOOL)
         .and_then(|mut cmd| cmd.arg(DATE_FORMAT).run_capture_raw())
@@ -58,17 +47,6 @@ pub(super) fn policy_date(target: &TargetProject) -> Result<String, PolicyRunErr
         .map(|stdout| stdout.trim().to_owned())
 }
 
-/// Collect workspace `Cargo.toml` paths relative to the target root.
-///
-/// Discovers only manifests that belong to the target workspace. A nested
-/// directory whose own `Cargo.toml` declares a `[workspace]` table is a
-/// separate workspace boundary (for example a fixture or template
-/// standalone workspace); its own manifest and any package manifests
-/// beneath it are excluded from the target's policy-scan.
-///
-/// # Errors
-/// Returns [`PolicyRunError`] when manifest directory traversal or
-/// manifest read for boundary detection fails.
 fn collect_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, PolicyRunError> {
     let mut manifests = Vec::new();
     collect_manifest_paths_into(root, root, &mut manifests)?;
@@ -76,14 +54,6 @@ fn collect_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, PolicyRunError> {
     Ok(manifests)
 }
 
-/// Recursively collect manifest paths under one directory.
-///
-/// Stops descending when `dir` itself contains a `Cargo.toml` declaring
-/// a `[workspace]` table (a nested workspace boundary that is not the
-/// target root).
-///
-/// # Errors
-/// Returns [`PolicyRunError`] when directory traversal fails.
 fn collect_manifest_paths_into(
     root: &Path,
     dir: &Path,
@@ -97,10 +67,6 @@ fn collect_manifest_paths_into(
         .try_for_each(|entry| visit_dir_entry(root, dir, entry, manifests))
 }
 
-/// Visit one directory entry during manifest discovery.
-///
-/// # Errors
-/// Returns [`PolicyRunError`] when entry metadata or recursive walking fails.
 fn visit_dir_entry(
     root: &Path,
     parent: &Path,
@@ -125,10 +91,6 @@ fn visit_dir_entry(
     Ok(())
 }
 
-/// Append one manifest path relative to the target root.
-///
-/// # Errors
-/// Returns [`PolicyRunError::ManifestOutsideRoot`] when the path escapes root.
 fn push_manifest_path(
     root: &Path,
     path: &Path,
@@ -145,12 +107,6 @@ fn is_skipped_dir(path: &Path) -> bool {
     path.file_name().and_then(OsStr::to_str).is_some_and(|name| SKIP_DIRS.contains(&name))
 }
 
-/// Detect whether a `Cargo.toml` declares its own `[workspace]` table.
-///
-/// A manifest that opens a workspace is its own workspace boundary; a
-/// consumer workspace should not classify it (or anything beneath it) as
-/// a member of the consumer's workspace. Missing or unreadable files do
-/// not count as a boundary, so member discovery still proceeds.
 fn is_workspace_boundary(manifest_path: &Path) -> bool {
     std::fs::read_to_string(manifest_path)
         .is_ok_and(|content| matches!(classify_manifest(&content), ManifestStatus::Workspace))
@@ -180,9 +136,6 @@ pub(super) enum PolicyRunError {
     RuleId(#[from] RuleIdError),
 }
 
-/// Return `true` when `path` belongs to the target workspace rooted at
-/// `root`. The target root always belongs; nested directories that declare
-/// their own `[workspace]` boundary are excluded.
 fn belongs_to_target_workspace(parent: &Path, root: &Path, path: &Path) -> bool {
     parent == root || !is_workspace_boundary(path)
 }

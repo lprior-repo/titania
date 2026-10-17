@@ -1,10 +1,3 @@
-//! Behavior tests for policy-scan exception filtering and exception parsing.
-//!
-//! Proves:
-//! (a) A valid exception suppresses a matching Cargo.toml lint-weakening finding.
-//! (b) A non-matching path or rule does not suppress.
-//! (c) `parse_exceptions` with an expired entry yields `ExceptionError::code() == "POLICY_EXCEPTION_EXPIRED"`.
-
 use tempfile::TempDir;
 use titania_core::{RuleId, WorkspacePath};
 use titania_lanes::{
@@ -28,7 +21,6 @@ fn write_manifest(dir: &TempDir, name: &str, content: &str) -> std::io::Result<(
     std::fs::write(path, content)
 }
 
-/// Build a minimal valid [`Exception`] for testing suppression.
 fn make_exception(rule: &str, path: &str) -> Exception {
     Exception {
         rule_id: RuleId::new(rule).expect("valid rule id"),
@@ -40,10 +32,6 @@ fn make_exception(rule: &str, path: &str) -> Exception {
     }
 }
 
-/// Build a shared closure that points `CARGO_HOME` / `RUSTUP_HOME` at the
-/// hermetic path owned by `dir`, and reports every other variable as unset.
-/// Keeps host environment leaks (`/cache/cargo-shared`, the user's `~/.rustup`,
-/// ambient `RUSTFLAGS`, ...) out of the scan result.
 fn controlled_env(dir: &TempDir) -> std::sync::Arc<Box<dyn Fn(&str) -> Option<String>>> {
     let cargo = controlled_home_path(dir.path(), CONTROLLED_CARGO_HOME_SUFFIX)
         .into_os_string()
@@ -62,7 +50,6 @@ fn controlled_env(dir: &TempDir) -> std::sync::Arc<Box<dyn Fn(&str) -> Option<St
     std::sync::Arc::new(env)
 }
 
-/// Run policy scan with exceptions and return findings that remain after suppression.
 fn scan_with_exceptions(
     dir: &TempDir,
     manifest_name: &str,
@@ -80,8 +67,6 @@ fn scan_with_exceptions(
     )?;
     Ok(report)
 }
-
-// ─── (a) Valid exception suppresses a matching finding ───────────────────────
 
 #[test]
 fn matching_exception_suppresses_lint_weakening() -> TestResult {
@@ -113,8 +98,6 @@ fn matching_exception_suppresses_config_flags_finding() -> TestResult {
     Ok(())
 }
 
-// ─── (b) Non-matching path or rule does NOT suppress ─────────────────────────
-
 #[test]
 fn non_matching_rule_does_not_suppress() -> TestResult {
     let dir = TempDir::new()?;
@@ -123,7 +106,6 @@ fn non_matching_rule_does_not_suppress() -> TestResult {
         "Cargo.toml",
         "[lints.clippy]\nunwrap_used = \"allow\"\npanic = \"deny\"\n",
     )?;
-    // Exception for a different rule — should NOT suppress.
     let exception = make_exception("BYPASS_CARGO_CONFIG_FLAGS", "Cargo.toml");
     let report = scan_with_exceptions(&dir, "Cargo.toml", &[exception])?;
     assert_eq!(report.finding_count(), 1, "expected one finding, got {}", report.render());
@@ -140,7 +122,6 @@ fn non_matching_path_does_not_suppress() -> TestResult {
         "Cargo.toml",
         "[lints.clippy]\nunwrap_used = \"allow\"\npanic = \"deny\"\n",
     )?;
-    // Exception for the right rule but wrong path — should NOT suppress.
     let exception = make_exception("BYPASS_CARGO_LINTS_WEAKENING", "other/Cargo.toml");
     let report = scan_with_exceptions(&dir, "Cargo.toml", &[exception])?;
     assert_eq!(report.finding_count(), 1, "expected one finding, got {}", report.render());
@@ -177,11 +158,8 @@ fn empty_exceptions_suppress_nothing() -> TestResult {
     Ok(())
 }
 
-// ─── (c) Expired exception parsing yields POLICY_EXCEPTION_EXPIRED ───────────
-
 #[test]
 fn parse_expired_exception_returns_expired_error() -> TestResult {
-    // Today is 2026-07-04. An exception that expired on 2025-01-01 is stale.
     let today = "2026-07-04";
     let expired_content = r#"
 [[exceptions]]
@@ -206,7 +184,6 @@ review = "TICKET-42"
 
 #[test]
 fn valid_exception_does_not_expire_before_today() -> TestResult {
-    // Exception that expires tomorrow — should NOT be expired.
     let today = "2026-07-04";
     let content = r#"
 [[exceptions]]
@@ -226,7 +203,6 @@ review = "TICKET-1"
 
 #[test]
 fn same_day_expires_on_is_valid_not_expired() -> TestResult {
-    // v1: expired only when expires_on < today; same-day remains valid.
     let today = "2026-07-04";
     let content = r#"
 [[exceptions]]

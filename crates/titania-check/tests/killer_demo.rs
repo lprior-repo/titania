@@ -1,10 +1,3 @@
-//! Failing-first behavior tests for bead `tn-pdn`.
-//!
-//! Killer demo: bad code (for-loop + `.unwrap()`) is rejected with code findings;
-//! repaired code (iterator pipeline, no unwrap) passes with a v1 receipt.
-//!
-//! Selective filter: `cargo test -p titania-check --test killer_demo bad_fixture`
-
 use serde_json::Value;
 use std::{
     env,
@@ -26,30 +19,12 @@ fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     let _ = cmd.stdout(Stdio::piped());
     let _ = cmd.stderr(Stdio::piped());
 
-    // Stub Moon via TITANIA_MOON_BIN so `Command::Check` does not invoke the
-    // real moon binary (which would error on tempdirs without `.moon/`).
-    // The stub script (written by `write_moon_stub`) records its argv and,
-    // for each `run <task-id>` invocation, runs
-    // `$TITANIA_CHECK_BIN run-lane <lane>` in the inherited cwd. That writes
-    // fresh lane artifacts that `check` then aggregates — proving the
-    // check→moon→run-lane→aggregate path end to end.
-    // The standalone spawn-ordering test (`check_drives_moon_stub`) sets
-    // TITANIA_MOON_BIN to its own recording-only stub. Unix-only because the
-    // helper writes a POSIX shell script and chmod 0o755s it.
     #[cfg(unix)]
     let _ = cmd.env("TITANIA_MOON_BIN", write_moon_stub(cwd, &None));
-    // The Moon stub invokes `$TITANIA_CHECK_BIN run-lane <lane>` so we
-    // explicitly pass the test binary path (PATH lookup is unreliable
-    // inside the cargo-test deps directory).
     let _ = cmd.env("TITANIA_CHECK_BIN", binary());
     #[cfg(unix)]
     configure_killer_environment(&mut cmd, cwd);
 
-    // Pass CARGO_TARGET_DIR through as-is so that library_is_available
-    // can resolve it relative to the workspace root when walking up
-    // from CARGO_MANIFEST_DIR.  Converting to absolute here would
-    // anchor it to the parent's cwd (often a crate subdirectory),
-    // which breaks dylint library discovery.
     if let Ok(ctd) = env::var("CARGO_TARGET_DIR") {
         let _ = cmd.env("CARGO_TARGET_DIR", ctd);
     }
@@ -160,20 +135,12 @@ fn find_dylint_library(root: &Path) -> Option<PathBuf> {
     })
 }
 
-// ---------------------------------------------------------------------------
-// E2E: Bad Fixture — Report::Reject with code findings
-// ---------------------------------------------------------------------------
-
-/// AC-1: A bad fixture (unbounded `loop` + `.unwrap()`) is rejected with the required producer findings.
 #[test]
 fn bad_fixture_rejects_with_code_findings() {
-    // Given: the bad fixture workspace
     let bad = fixtures::bad_workspace();
 
-    // When: titania-check --scope edit --emit json runs against it
     let (code, stdout, stderr) = run_in(bad.path(), &["--scope", "edit", "--emit", "json"]);
 
-    // Then: exit code 1, JSON report with variant Reject
     assert_eq!(code, 1, "reject must exit 1, stderr: {stderr}");
     assert!(stderr.is_empty(), "no stderr on reject, got: {stderr}");
     let report: Value = serde_json::from_str(&stdout)
@@ -181,16 +148,12 @@ fn bad_fixture_rejects_with_code_findings() {
 
     assert_eq!(report["variant"], "Reject", "report variant must be Reject");
 
-    // Required findings from the producer lanes. Dylint independently reports
-    // the same policy surface, so this assertion deliberately does not discard
-    // those per-lane diagnostics from the aggregate.
     let findings = report["code_findings"].as_array().expect("code_findings is array");
     assert!(
         findings.len() >= 2,
         "expected required code findings, got {}: {findings:?}",
         findings.len()
     );
-    // Exactly 0 gate failures
     let gates = report["gate_failures"].as_array().expect("gate_failures is array");
     assert_eq!(
         gates.len(),
@@ -199,7 +162,6 @@ fn bad_fixture_rejects_with_code_findings() {
         gates.len()
     );
 
-    // 7 per-lane outcomes
     let per_lane = report["per_lane"].as_array().expect("per_lane is array");
     assert_eq!(
         per_lane.len(),
@@ -208,7 +170,6 @@ fn bad_fixture_rejects_with_code_findings() {
         per_lane.len()
     );
 
-    // Exact rule IDs
     let rule_ids: Vec<&str> = findings.iter().filter_map(|f| f["rule_id"].as_str()).collect();
     assert!(
         rule_ids.contains(&"BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
@@ -220,13 +181,10 @@ fn bad_fixture_rejects_with_code_findings() {
     );
 }
 
-/// AC-1 (detail): The BOUNDED_EXECUTION_UNBOUNDED_LOOP finding has the correct lane, effect, and repair hint.
 #[test]
 fn bad_fixture_has_func_loops_for_finding() {
-    // Given: the bad fixture workspace
     let bad = fixtures::bad_workspace();
 
-    // When: titania-check runs
     let (code, stdout, _stderr) = run_in(bad.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 1, "must reject");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
@@ -253,18 +211,14 @@ fn bad_fixture_has_func_loops_for_finding() {
     );
 }
 
-/// AC-1 (detail): The CLIPPY_UNWRAP_USED finding has the correct lane, effect, and repair hint.
 #[test]
 fn bad_fixture_has_clippy_unwrap_used_finding() {
-    // Given: the bad fixture workspace
     let bad = fixtures::bad_workspace();
 
-    // When: titania-check runs
     let (code, stdout, _stderr) = run_in(bad.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 1, "must reject");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
 
-    // Then: find the CLIPPY_UNWRAP_USED finding
     let findings = report["code_findings"].as_array().expect("code_findings");
     let unwrap_finding = findings
         .iter()
@@ -288,18 +242,14 @@ fn bad_fixture_has_clippy_unwrap_used_finding() {
     );
 }
 
-/// AC-2: Both findings have the correct RepairHint variant.
 #[test]
 fn bad_fixture_findings_have_correct_repair_hints() {
-    // Given: the bad fixture workspace
     let bad = fixtures::bad_workspace();
 
-    // When: titania-check runs
     let (code, stdout, _stderr) = run_in(bad.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 1, "must reject");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
 
-    // Then: each finding's repair variant matches the expected hint
     let findings = report["code_findings"].as_array().expect("code_findings");
 
     let mut found_for_hint = false;
@@ -326,22 +276,17 @@ fn bad_fixture_findings_have_correct_repair_hints() {
     assert!(found_unwrap_hint, "CLIPPY_UNWRAP_USED must have requires_human_review repair hint");
 }
 
-/// AC-4: Gate failures are empty for the bad fixture; no lane outcome is "failed".
 #[test]
 fn bad_fixture_gate_failures_empty() {
-    // Given: the bad fixture workspace
     let bad = fixtures::bad_workspace();
 
-    // When: titania-check runs
     let (code, stdout, _stderr) = run_in(bad.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 1, "must reject");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
 
-    // Then: gate_failures is empty
     let gates = report["gate_failures"].as_array().expect("gate_failures");
     assert_eq!(gates.len(), 0, "gate_failures must be empty for bad fixture, got: {gates:?}");
 
-    // All per_lane outcomes must be Clean, Findings, or Skipped — none Failed.
     let per_lane = report["per_lane"].as_array().expect("per_lane");
     for (i, outcome) in per_lane.iter().enumerate() {
         let variant = external_tag(&outcome["outcome"]).unwrap_or("missing");
@@ -349,44 +294,31 @@ fn bad_fixture_gate_failures_empty() {
     }
 }
 
-/// AC-5: RejectKind is CodeOnly for the bad fixture (code findings present, gate failures empty).
 #[test]
 fn bad_fixture_reject_kind_is_code_only() {
-    // Given: the bad fixture workspace
     let bad = fixtures::bad_workspace();
 
-    // When: titania-check runs
     let (code, stdout, _stderr) = run_in(bad.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 1, "must reject");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
 
-    // Then: code_findings non-empty AND gate_failures empty = CodeOnly
     let findings = report["code_findings"].as_array().expect("code_findings");
     let gates = report["gate_failures"].as_array().expect("gate_failures");
     assert!(!findings.is_empty(), "code_findings must be non-empty for CodeOnly");
     assert!(gates.is_empty(), "gate_failures must be empty for CodeOnly");
 
-    // Also assert the report parses as Report type and reject_kind() == CodeOnly
     let typed_report: titania_core::Report =
         serde_json::from_str(&stdout).expect("report must deserialize as Report");
     let kind = typed_report.reject_kind().expect("reject report must have reject_kind");
     assert_eq!(kind, titania_core::RejectKind::CodeOnly, "reject_kind must be CodeOnly");
 }
 
-// ---------------------------------------------------------------------------
-// E2E: Repaired Fixture — Report::Pass with v1 receipt
-// ---------------------------------------------------------------------------
-
-/// AC-3: Repaired code (iterator pipeline, no unwrap) passes with a v1 receipt.
 #[test]
 fn repaired_fixture_passes_with_receipt() {
-    // Given: the repaired fixture workspace
     let repaired = fixtures::repaired_workspace();
 
-    // When: titania-check --scope edit --emit json runs against it
     let (code, stdout, stderr) = run_in(repaired.path(), &["--scope", "edit", "--emit", "json"]);
 
-    // Then: exit code 0, report variant is Pass
     assert_eq!(code, 0, "pass must exit 0, stderr: {stderr}");
     assert!(stderr.is_empty(), "no stderr on pass, got: {stderr}");
     let report: Value = serde_json::from_str(&stdout)
@@ -395,34 +327,26 @@ fn repaired_fixture_passes_with_receipt() {
     assert_eq!(report["variant"], "Pass", "report variant must be Pass for repaired fixture");
 }
 
-/// AC-3 (detail): The pass receipt has schema_version == 1 and scope == Edit.
 #[test]
 fn repaired_fixture_receipt_has_schema_version_one() {
-    // Given: the repaired fixture workspace
     let repaired = fixtures::repaired_workspace();
 
-    // When: titania-check runs
     let (code, stdout, _stderr) = run_in(repaired.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 0, "must pass");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
 
-    // Then: schema_version == 1, scope == "Edit"
     assert_eq!(report["receipt"]["schema_version"], 1, "receipt schema_version must be 1");
     assert_eq!(report["receipt"]["scope"], "Edit", "receipt scope must be Edit");
 }
 
-/// AC-6: The pass receipt contains all four digests as 64-char hex strings.
 #[test]
 fn repaired_fixture_receipt_contains_all_digests() {
-    // Given: the repaired fixture workspace
     let repaired = fixtures::repaired_workspace();
 
-    // When: titania-check runs
     let (code, stdout, _stderr) = run_in(repaired.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 0, "must pass");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
 
-    // Then: each digest field is a non-empty string of length 64
     let receipt = &report["receipt"];
     let digests = [
         ("source_digest", receipt["source_digest"].as_str()),
@@ -445,7 +369,6 @@ fn repaired_fixture_receipt_contains_all_digests() {
         );
     }
 
-    // All four digests must be different from each other
     let values: Vec<&str> = digests.iter().filter_map(|(_, s)| *s).collect();
     for i in 0..values.len() {
         for j in (i + 1)..values.len() {
@@ -454,18 +377,14 @@ fn repaired_fixture_receipt_contains_all_digests() {
     }
 }
 
-/// AC-7 (detail): per_lane has exactly 7 entries, all Clean or Skipped.
 #[test]
 fn repaired_fixture_per_lane_has_seven_entries() {
-    // Given: the repaired fixture workspace
     let repaired = fixtures::repaired_workspace();
 
-    // When: titania-check runs
     let (code, stdout, _stderr) = run_in(repaired.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 0, "must pass");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
 
-    // Then: per_lane array length == 7
     let per_lane = report["per_lane"].as_array().expect("per_lane");
     assert_eq!(
         per_lane.len(),
@@ -474,7 +393,6 @@ fn repaired_fixture_per_lane_has_seven_entries() {
         per_lane.len()
     );
 
-    // Each outcome variant must be Clean or Skipped (no Failed or Findings).
     for (i, outcome) in per_lane.iter().enumerate() {
         let variant = external_tag(&outcome["outcome"]).unwrap_or("missing");
         assert!(
@@ -484,13 +402,8 @@ fn repaired_fixture_per_lane_has_seven_entries() {
     }
 }
 
-/// AC-8: A bounded `for` loop over finite input propagating `?` passes.
-/// Positive control for the bounded-execution contract (Bound::FiniteInput):
-/// the same `titania-check` gate that rejects the unbounded bad fixture
-/// accepts idiomatic bounded iteration with explicit error propagation.
 #[test]
 fn bounded_for_with_question_passes() {
-    // Given: the repaired workspace plus a bounded for-with-? function
     let workspace = fixtures::repaired_workspace();
     let lib = workspace.path().join("src").join("lib.rs");
     let mut source = std::fs::read_to_string(&lib).expect("repaired lib.rs must be readable");
@@ -505,10 +418,8 @@ fn bounded_for_with_question_passes() {
     );
     std::fs::write(&lib, source).expect("bounded function must be appendable");
 
-    // When: titania-check runs
     let (code, stdout, stderr) = run_in(workspace.path(), &["--scope", "edit", "--emit", "json"]);
 
-    // Then: exit code 0 with variant Pass — no BOUNDED_EXECUTION finding
     let stdout_head: String = stdout.chars().take(2000).collect();
     assert_eq!(code, 0, "bounded for must pass, stderr: {stderr}, stdout: {stdout_head}");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
@@ -523,18 +434,14 @@ fn bounded_for_with_question_passes() {
     );
 }
 
-/// AC-7 (detail): per_lane contains all 7 Edit lane names.
 #[test]
 fn repaired_fixture_per_lane_contains_all_edit_lanes() {
-    // Given: the repaired fixture workspace
     let repaired = fixtures::repaired_workspace();
 
-    // When: titania-check runs
     let (code, stdout, _stderr) = run_in(repaired.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 0, "must pass");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
 
-    // Then: all 7 Edit lane names present in per_lane
     let per_lane = report["per_lane"].as_array().expect("per_lane");
     let lane_names: Vec<&str> = per_lane.iter().filter_map(|o| o["lane"].as_str()).collect();
 
@@ -550,20 +457,12 @@ fn repaired_fixture_per_lane_contains_all_edit_lanes() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// E2E: Missing Cargo.toml — Reject Report
-// ---------------------------------------------------------------------------
-
-/// B11: An empty directory with no Cargo.toml produces exit code 1 reject report.
 #[test]
 fn missing_cargo_toml_produces_reject_report() {
-    // Given: an empty temp directory (no Cargo.toml)
     let empty = tempfile::tempdir().expect("tempdir must be created");
 
-    // When: titania-check runs against it
     let (code, stdout, stderr) = run_in(empty.path(), &["--scope", "edit", "--emit", "json"]);
 
-    // Then: exit code 1 (reject), JSON report on stdout, no stderr
     assert_eq!(
         code, 1,
         "missing Cargo.toml in empty workspace must exit 1 (reject), got {}: stdout={stdout}, stderr={stderr}",
@@ -574,14 +473,8 @@ fn missing_cargo_toml_produces_reject_report() {
     assert_eq!(report["variant"], "Reject");
 }
 
-// ---------------------------------------------------------------------------
-// Integration: RejectKind classification via JSON deserialization
-// ---------------------------------------------------------------------------
-
-/// B12: Mixed reject separates code findings from gate failures (no cross-contamination).
 #[test]
 fn mixed_report_separates_code_findings_from_gate_failures() {
-    // Given: JSON for a Reject with 2 code findings + 1 gate failure
     let json = r#"{
         "variant": "Reject",
         "code_findings": [
@@ -613,10 +506,8 @@ fn mixed_report_separates_code_findings_from_gate_failures() {
         "per_lane": [{"lane": "Fmt", "outcome": {"Skipped": "NotApplicable"}}]
     }"#;
 
-    // When: deserialize and compute reject_kind
     let report: Result<titania_core::Report, _> = serde_json::from_str(json);
 
-    // Then: reject_kind is Mixed
     let report = report.expect("must deserialize Reject from JSON");
     assert!(report.is_reject(), "must be Reject");
     let code_findings = report.code_findings().expect("Reject must have code_findings");
@@ -627,13 +518,11 @@ fn mixed_report_separates_code_findings_from_gate_failures() {
     let kind = report.reject_kind().expect("reject must have reject_kind");
     assert_eq!(kind, titania_core::RejectKind::Mixed, "reject_kind must be Mixed");
 
-    // Functional lanes only in code_findings
     let code_lanes: Vec<&str> = {
         let cf = report.code_findings().expect("Reject must have code_findings");
         cf.iter().map(|f| f.lane().name()).collect()
     };
 
-    // Functional lanes: AstGrep, Clippy (not infrastructure-only lanes)
     for lane_name in &code_lanes {
         assert!(
             matches!(*lane_name, "AstGrep" | "Clippy"),
@@ -642,10 +531,8 @@ fn mixed_report_separates_code_findings_from_gate_failures() {
     }
 }
 
-/// B13: GateOnly — zero code findings, one gate failure → RejectKind::GateOnly.
 #[test]
 fn report_reject_gate_only() {
-    // Given: JSON for a Reject with 0 code findings + 1 gate failure
     let json = r#"{
         "variant": "Reject",
         "code_findings": [],
@@ -660,11 +547,9 @@ fn report_reject_gate_only() {
         "per_lane": [{"lane": "Fmt", "outcome": {"Skipped": "NotApplicable"}}]
     }"#;
 
-    // When: deserialize and compute reject_kind
     let report: titania_core::Report =
         serde_json::from_str(json).expect("must deserialize Reject from JSON");
 
-    // Then: reject_kind is GateOnly
     let kind = report.reject_kind().expect("reject must have reject_kind");
     assert_eq!(kind, titania_core::RejectKind::GateOnly, "reject_kind must be GateOnly");
 
@@ -675,10 +560,8 @@ fn report_reject_gate_only() {
     assert_eq!(gate_failures.len(), 1, "gate_failures must have 1 entry");
 }
 
-/// B14: Mixed — one code finding + one gate failure → RejectKind::Mixed.
 #[test]
 fn report_reject_mixed() {
-    // Given: JSON for a Reject with 1 code finding + 1 gate failure
     let json = r#"{
         "variant": "Reject",
         "code_findings": [
@@ -702,11 +585,9 @@ fn report_reject_mixed() {
         "per_lane": [{"lane": "Fmt", "outcome": {"Skipped": "NotApplicable"}}]
     }"#;
 
-    // When: deserialize and compute reject_kind
     let report: titania_core::Report =
         serde_json::from_str(json).expect("must deserialize Reject from JSON");
 
-    // Then: reject_kind is Mixed
     let kind = report.reject_kind().expect("reject must have reject_kind");
     assert_eq!(kind, titania_core::RejectKind::Mixed, "reject_kind must be Mixed");
 
@@ -717,22 +598,16 @@ fn report_reject_mixed() {
     assert_eq!(gate_failures.len(), 1, "must have 1 gate failure");
 }
 
-// ---------------------------------------------------------------------------
-// Fixture helpers
-// ---------------------------------------------------------------------------
-
-/// Module grouping fixture path helpers and workspace builders.
 mod fixtures {
     use std::path::{Path, PathBuf};
 
     fn repo_root() -> PathBuf {
         let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let _ = p.pop(); // crates
-        let _ = p.pop(); // workspace root
+        let _ = p.pop();
+        let _ = p.pop();
         p
     }
 
-    /// Path to the bad fixture workspace at repo root.
     pub(super) fn bad_path() -> PathBuf {
         let mut p = repo_root();
         p.push("fixtures");
@@ -741,7 +616,6 @@ mod fixtures {
         p
     }
 
-    /// Path to the repaired fixture workspace at repo root.
     pub(super) fn repaired_path() -> PathBuf {
         let mut p = repo_root();
         p.push("fixtures");
@@ -750,7 +624,6 @@ mod fixtures {
         p
     }
 
-    /// Return a TempDir with a copy of the bad fixture (so the CLI sees the real files).
     pub(super) fn bad_workspace() -> tempfile::TempDir {
         let src = bad_path();
         assert!(
@@ -762,7 +635,6 @@ mod fixtures {
         tmp
     }
 
-    /// Return a TempDir with a copy of the repaired fixture.
     pub(super) fn repaired_workspace() -> tempfile::TempDir {
         let src = repaired_path();
         assert!(
@@ -790,23 +662,11 @@ mod fixtures {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Integration: Command::Check drives Moon (spec §12, §13)
-// ---------------------------------------------------------------------------
-/// `Command::Check` must invoke Moon before aggregating. Proven by pointing
-/// `TITANIA_MOON_BIN` at a recording stub that writes a marker file with its
-/// argv when invoked: the marker must exist and contain `moon run` plus the
-/// scope's task list. This is the central fraud fix — `check` is no longer a
-/// synonym for `aggregate`; it actually drives Moon.
-// The shell-stub + `chmod 0o755` recording stub is Unix-specific; the helper
-// already gates its `chmod` block, but the test scenario itself remains
-// Unix-only.
 #[cfg(unix)]
 #[test]
 fn check_drives_moon_stub_and_aggregates_after() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
 
-    // Write a recording stub that captures argv to a marker file.
     let marker = workspace.path().join("moon_argv.txt");
     let stub_path = write_recording_stub(workspace.path(), &marker);
 
@@ -821,16 +681,12 @@ fn check_drives_moon_stub_and_aggregates_after() {
     }
     let output = cmd.output().expect("failed to spawn titania-check");
 
-    // Moon was invoked (marker exists).
     assert!(
         marker.exists(),
         "check must invoke moon (marker file should exist at {})",
         marker.display(),
     );
 
-    // The captured argv must start with `run` and contain the edit-scope task
-    // list from spec §13 (fmt, compile, clippy, ast-grep, dylint, panic-scan,
-    // policy-scan).
     let argv = std::fs::read_to_string(&marker).expect("moon argv marker file must be readable");
     assert!(argv.contains("run"), "moon must be invoked with `run` subcommand; got argv: {argv}",);
     assert!(
@@ -842,9 +698,6 @@ fn check_drives_moon_stub_and_aggregates_after() {
         "moon must be invoked with :titania-policy-scan; got argv: {argv}",
     );
 
-    // After the (stubbed, exit-0) moon run, check must run the in-process
-    // aggregate, producing a typed report on stdout. On an empty workspace
-    // (no lane artifacts) the aggregate classifies this as Reject (exit 1).
     let code = output.status.code().unwrap_or(-1);
     assert_eq!(
         code, 1,
@@ -856,14 +709,9 @@ fn check_drives_moon_stub_and_aggregates_after() {
     assert_eq!(report["variant"], "Reject", "empty workspace aggregate must be Reject");
 }
 
-// Writes a POSIX shell stub (`/bin/sh`) and chmod 0o755s it. Unix-only.
 #[cfg(unix)]
-/// Write a tiny POSIX shell stub that captures its argv to `marker` on
-/// invocation, then exits 0. Used to prove the check→moon spawn path.
 fn write_recording_stub(dir: &Path, marker: &Path) -> String {
     let stub_path = dir.join("moon-recording-stub.sh");
-    // `"$@"` preserves argv quoting; `printf %s\\n "$@"` writes each arg on
-    // its own line so the test can assert presence of individual task IDs.
     let script = format!("#!/bin/sh\nprintf '%s\\n' \"$@\" >> '{}'\nexit 0\n", marker.display(),);
     std::fs::write(&stub_path, script).expect("recording stub script must be written");
     #[cfg(unix)]
@@ -876,35 +724,14 @@ fn write_recording_stub(dir: &Path, marker: &Path) -> String {
     }
     stub_path.to_str().expect("stub path must be valid UTF-8").to_owned()
 }
-// Writes a POSIX shell stub that records argv (best-effort) and, on
-// `run <task-id>`, runs `$TITANIA_CHECK_BIN run-lane <lane>` so Check can
-// aggregate fresh artifacts. Unix-only.
 #[cfg(unix)]
-/// Write a Moon stub for the fixture-based tests: a POSIX shell script that
-/// records its argv (when `marker` is `Some`) and dispatches `run <task-id>`
-/// to `run-lane <lane>` via the explicit `TITANIA_CHECK_BIN` env var the test
-/// passes. The stub suppresses child stderr and ignores the spawned run-lane
-/// exit code (finding lanes legitimately return 1) so Moon sees every task as
-/// successful; the resulting fresh lane artifacts are then aggregated by
-/// `check` as usual.
-///
-/// The `task-id → lane` mapping mirrors the v1 edit-scope task list in
-/// `titania-check::moon::EDIT_TASKS`; other task ids are ignored so future
-/// scope additions do not break unrelated tests.
 fn write_moon_stub(dir: &Path, marker: &Option<&Path>) -> String {
     let stub_path = dir.join("moon-fixture-stub.sh");
     let marker_redir = match marker {
         Some(path) => format!(">> '{}' 2>/dev/null || :", path.display()),
         None => String::from(">> /dev/null 2>&1 || :"),
     };
-    // The script is intentionally minimal: one argv-recording block and one
-    // `run <task-id>` dispatch. We avoid `set -u` so the script remains
-    // runnable when TITANIA_CHECK_BIN is unset (which the recording-only
-    // variant of the stub, used by `check_drives_moon_stub`, relies on).
-    //
-    // Indentation inside the heredoc-style literal uses literal tabs so the
-    // resulting shell script is readable without depending on Rust's
-    // `\x20` / `\t` escape handling.
+
     let script = format!(
         "#!/bin/sh\n\
          \n\

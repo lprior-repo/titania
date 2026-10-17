@@ -1,9 +1,3 @@
-//! v1.5 contract tests for `KaniHarnessId` validation.
-//!
-//! Mirrors the spec rule `^[a-zA-Z][a-zA-Z0-9_]*$` (max length 96). Mixed
-//! case and underscore-less ids are both accepted; an underscore is no
-//! longer required. Each test exercises one rejection or acceptance axis.
-
 use titania_core::{KANI_HARNESS_ID_MAX_LEN, KaniHarnessId, KaniHarnessIdError};
 
 #[test]
@@ -44,8 +38,6 @@ fn rejects_leading_digit() {
 
 #[test]
 fn rejects_leading_underscore() {
-    // A literal underscore is a legal body byte but illegal as the first
-    // byte — the spec requires an ASCII letter first.
     let result = KaniHarnessId::new("_FOO_BAR");
     assert_eq!(result.unwrap_err(), KaniHarnessIdError::LeadingNonLetter { byte: b'_' });
 }
@@ -58,9 +50,6 @@ fn rejects_leading_only_underscore() {
 
 #[test]
 fn rejects_leading_non_ascii_letter() {
-    // U+00C0 (`À`) starts a UTF-8 sequence with byte 0xC3; the Kani id
-    // contract requires an ASCII letter first, so the lead byte 0xC3 must
-    // surface as `LeadingNonLetter` — never as `NotAscii` with offset 0.
     let result = KaniHarnessId::new("ÀFOO");
     assert_eq!(result.unwrap_err(), KaniHarnessIdError::LeadingNonLetter { byte: 0xC3 });
 }
@@ -73,8 +62,6 @@ fn rejects_leading_symbol() {
 
 #[test]
 fn rejects_dot_after_first_letter() {
-    // A `.` is non-letter, non-digit, non-underscore and lands at offset ≥ 1,
-    // so it surfaces as `NotAscii` (not `LeadingNonLetter`).
     let result = KaniHarnessId::new("FOO_BAR.X");
     assert!(
         matches!(result, Err(KaniHarnessIdError::NotAscii { byte, offset }) if byte == b'.' && offset == 7),
@@ -84,8 +71,6 @@ fn rejects_dot_after_first_letter() {
 
 #[test]
 fn rejects_inner_non_ascii() {
-    // FOO_B is 5 ASCII bytes; the UTF-8 encoding of U+00C4 (`Ä`) starts at
-    // byte offset 5 with the lead byte 0xC3.
     let result = KaniHarnessId::new("FOO_BÄR");
     assert!(
         matches!(result, Err(KaniHarnessIdError::NotAscii { byte, offset }) if byte == 0xC3 && offset == 5),
@@ -126,12 +111,8 @@ fn display_emits_inner_string() {
     assert_eq!(id.to_string(), "Foo");
 }
 
-// ---- Serde exact wire forms -------------------------------------------
-
 #[test]
 fn serde_serializes_to_exact_wire_form() {
-    // The wire form is the inner string verbatim; no transformation,
-    // escaping, or quoting beyond JSON's normal string rules.
     let id = KaniHarnessId::new("FooBar").unwrap();
     let json = serde_json::to_string(&id).unwrap();
     assert_eq!(json, "\"FooBar\"");
@@ -165,4 +146,59 @@ fn serde_round_trips_underscore_only_body() {
     assert_eq!(json, "\"A_\"");
     let parsed: KaniHarnessId = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.as_str(), id_str);
+}
+
+#[test]
+fn body_alphabet_matches_std_byte_classes_for_all_256_bytes() {
+    for byte in 0..=255u8 {
+        let expected = byte.is_ascii_alphabetic() || byte.is_ascii_digit() || byte == b'_';
+        let bytes = [b'A', byte];
+        match core::str::from_utf8(&bytes) {
+            Ok(candidate) => match KaniHarnessId::new(candidate) {
+                Ok(identifier) => {
+                    assert!(expected, "byte {byte} accepted but outside std classes");
+                    assert_eq!(
+                        identifier.as_str(),
+                        candidate,
+                        "byte {byte} must be preserved verbatim"
+                    );
+                }
+                Err(error) => {
+                    assert!(!expected, "byte {byte} rejected but inside std classes");
+                    assert_eq!(
+                        error,
+                        KaniHarnessIdError::NotAscii { byte, offset: 1 },
+                        "body rejection must name the byte and offset"
+                    );
+                }
+            },
+            Err(_) => assert!(
+                !expected,
+                "byte {byte} is not valid UTF-8 and must fall outside the alphabet"
+            ),
+        }
+    }
+}
+
+#[test]
+fn lengths_around_maximum_are_accepted_or_rejected_exactly() {
+    for length in [33, 64, 96] {
+        let id = format!("A{}", "a".repeat(length - 1));
+        assert_eq!(id.len(), length);
+        assert_eq!(KaniHarnessId::new(&id).unwrap().as_str(), id);
+    }
+    let too_long = "A".repeat(97);
+    assert_eq!(KaniHarnessId::new(&too_long).unwrap_err(), KaniHarnessIdError::TooLong(97));
+}
+
+#[test]
+fn multibyte_body_byte_is_rejected_with_byte_offset() {
+    let error = KaniHarnessId::new("Aé").unwrap_err();
+    assert_eq!(error, KaniHarnessIdError::NotAscii { byte: 0xC3, offset: 1 });
+}
+
+#[test]
+fn invalid_second_body_byte_reports_offset_two() {
+    let error = KaniHarnessId::new("AB ").unwrap_err();
+    assert_eq!(error, KaniHarnessIdError::NotAscii { byte: b' ', offset: 2 });
 }

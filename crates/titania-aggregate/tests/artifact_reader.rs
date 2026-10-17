@@ -1,15 +1,9 @@
-//! Integration / behaviour tests for the artifact reader.
-//!
-//! These tests exercise the public API surface only:
-//! `read_lane_artifacts`, `ReaderError`, and `ReaderResult`.
-
 use std::fs;
 
 use tempfile::TempDir;
 use titania_aggregate::{ReaderError, read_lane_artifacts};
 use titania_core::{GateScope, Lane, LaneFailure, LaneOutcome};
 
-/// Helper: build a minimal clean artifact JSON string for a given lane.
 fn clean_artifact_json(lane: Lane) -> String {
     format!(
         r#"{{"lane":"{}","outcome":{{"Clean":{{"evidence":{{"command":{{"executable":"cargo","argv":["cargo","check"]}},"tool_version":"1.0","exit_status":{{"Exited":{{"code":0}}}},"parsed_result_digest":"0000000000000000000000000000000000000000000000000000000000000000"}}}}}}}}"#,
@@ -17,12 +11,10 @@ fn clean_artifact_json(lane: Lane) -> String {
     )
 }
 
-/// Helper: build a skipped-artifact JSON string.
 fn skipped_artifact_json(lane: Lane) -> String {
     format!(r#"{{"lane":"{}","outcome":{{"Skipped":"NotSelectedByScope"}}}}"#, lane.name())
 }
 
-/// Helper: create the artifact directory structure for a scope.
 fn setup_scope_dir(tmp: &TempDir, scope: GateScope) -> std::path::PathBuf {
     let scope_name = match scope {
         GateScope::Edit => "edit",
@@ -137,7 +129,6 @@ fn lane_mismatch_returns_input_error() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // Place a Compile artifact at the Fmt file path
     fs::write(dir.join("fmt.json"), clean_artifact_json(Lane::Compile)).unwrap();
 
     let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
@@ -202,7 +193,6 @@ fn unexpected_unknown_stem_returns_input_error() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // Drop a file whose stem does not name any known v1 lane.
     fs::write(dir.join("extra.json"), clean_artifact_json(Lane::Fmt)).unwrap();
 
     let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
@@ -222,7 +212,6 @@ fn unexpected_out_of_scope_lane_returns_input_error() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // Write a clean Edit scope, then drop a `build.json` artifact at the same dir.
     for lane in GateScope::Edit.lanes() {
         fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
             .unwrap();
@@ -245,7 +234,6 @@ fn non_json_files_in_scope_dir_are_ignored() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // Drop a stray non-JSON file alongside the expected artifacts.
     fs::write(dir.join("README.txt"), "this lane is fake").unwrap();
     fs::write(dir.join("notes.md"), "# scratch").unwrap();
 
@@ -267,8 +255,6 @@ fn subdirectory_under_scope_dir_is_ignored() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // A subdirectory named after a lane must not satisfy the missing-file
-    // check; the lane is still treated as missing.
     fs::create_dir_all(dir.join("fmt")).unwrap();
     fs::write(dir.join("fmt").join("placeholder"), "ignored").unwrap();
 
@@ -286,8 +272,6 @@ fn unexpected_uppercase_stem_is_rejected() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // A file with a capitalised stem is a different path on case-sensitive
-    // filesystems and must be rejected as an unknown stem.
     fs::write(dir.join("Fmt.json"), clean_artifact_json(Lane::Fmt)).unwrap();
 
     let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
@@ -306,16 +290,11 @@ fn enumeration_is_deterministic_with_sorted_extra_file() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Edit);
 
-    // Write expected files in a deliberately non-sorted order, then add an
-    // extra file whose name sorts between two lane stems. The reader must
-    // reject the extra file deterministically by its actual name, regardless
-    // of the order in which the artifacts were created on disk.
     let lane_order: Vec<Lane> = GateScope::Edit.lanes().iter().copied().rev().collect();
     for lane in &lane_order {
         fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
             .unwrap();
     }
-    // `extra.json` sorts after every Edit lane stem.
     fs::write(dir.join("extra.json"), clean_artifact_json(Lane::Fmt)).unwrap();
 
     let result = read_lane_artifacts(tmp.path(), GateScope::Edit);
@@ -332,8 +311,6 @@ fn scoped_lane_set_excludes_out_of_scope_lane() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = setup_scope_dir(&tmp, GateScope::Prepush);
 
-    // Prepush scope does not include `Build`. A `build.json` placed in the
-    // Prepush artifact directory must be rejected.
     for lane in GateScope::Prepush.lanes() {
         fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
             .unwrap();
@@ -361,7 +338,6 @@ fn assert_missing_lane(records: &[(Lane, LaneOutcome)], expected: Lane) {
     }
 }
 
-/// Return the filename stem for a lane (mirrors artifact_reader internals).
 fn lane_stem(lane: Lane) -> &'static str {
     match lane {
         Lane::Fmt => "fmt",

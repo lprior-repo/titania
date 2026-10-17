@@ -67,20 +67,8 @@ pub(super) fn outcome(target: &TargetProject) -> LaneOutcome {
     nonzero_outcome(target, &output)
 }
 
-/// Effective `--lib-path` plus an optional staging guard that owns a temp
-/// directory containing the toolchain-suffixed library copy.
 type StagedLibPath = (Option<PathBuf>, Option<DylintLibStaging>);
 
-/// Resolve the effective `--lib-path` for cargo-dylint.
-///
-/// When the resolved library path uses a plain name (no `@<toolchain>`
-/// suffix), the file is copied into a temp directory with the
-/// cargo-dylint-required filename so that `--lib-path` accepts it.
-///
-/// # Errors
-///
-/// Returns [`LaneFailure::Infra`] when staging is needed but the toolchain
-/// string cannot be determined or the temp copy fails.
 fn resolve_effective_lib_path(
     load: &DylintLoad,
     target: &TargetProject,
@@ -91,12 +79,6 @@ fn resolve_effective_lib_path(
     }
 }
 
-/// Stage a plain-named library path if it lacks the `@<toolchain>` suffix.
-///
-/// # Errors
-///
-/// Returns [`LaneFailure::Infra`] when staging is needed but the toolchain
-/// string cannot be determined or the temp copy fails.
 fn stage_if_needed(path: &Path, target: &TargetProject) -> Result<StagedLibPath, LaneFailure> {
     let staging =
         if path_needs_staging(path) { Some(DylintLibStaging::stage(path, target)?) } else { None };
@@ -105,10 +87,6 @@ fn stage_if_needed(path: &Path, target: &TargetProject) -> Result<StagedLibPath,
     Ok((Some(effective_path), staging))
 }
 
-/// Build cargo-dylint arguments for the resolved library load strategy.
-///
-/// # Errors
-/// Returns [`LaneFailure::Infra`] when a concrete library path cannot be represented as UTF-8.
 fn cargo_dylint_args(effective_path: Option<&Path>) -> Result<Vec<String>, LaneFailure> {
     let args = base_dylint_args();
     match effective_path {
@@ -121,10 +99,6 @@ fn base_dylint_args() -> Vec<String> {
     DYLINT_BASE_ARGS.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>()
 }
 
-/// Append `--lib-path <path>` to cargo-dylint args.
-///
-/// # Errors
-/// Returns [`LaneFailure::Infra`] when `path` is not valid UTF-8 for the command builder.
 fn args_with_library_path(mut args: Vec<String>, path: &Path) -> Result<Vec<String>, LaneFailure> {
     let path_text = library_path_text(path)?;
     let separator_index = args.iter().position(|arg| arg == "--").map_or(args.len(), |index| index);
@@ -133,10 +107,6 @@ fn args_with_library_path(mut args: Vec<String>, path: &Path) -> Result<Vec<Stri
     Ok(args)
 }
 
-/// Convert a library path to command text.
-///
-/// # Errors
-/// Returns [`LaneFailure::Infra`] when `path` is not valid UTF-8.
 fn library_path_text(path: &Path) -> Result<&str, LaneFailure> {
     path.to_str().ok_or_else(|| LaneFailure::Infra {
         tool: String::from(CARGO_DYLINT_TOOL),
@@ -144,10 +114,6 @@ fn library_path_text(path: &Path) -> Result<&str, LaneFailure> {
     })
 }
 
-/// Run cargo-dylint and capture raw output without treating non-zero as infrastructure.
-///
-/// # Errors
-/// Returns [`LaneError`] for spawn, timeout, pipe, or output-limit failures.
 fn dylint_output(target: &TargetProject, args: &[String]) -> Result<CommandOutput, LaneError> {
     let mut command = CommandIn::new(target, "cargo")?;
     let _ = command.inherit_env().args_strings(args);
@@ -170,10 +136,6 @@ fn nonzero_outcome(target: &TargetProject, output: &CommandOutput) -> LaneOutcom
     }
 }
 
-/// Parse cargo-dylint output into typed Dylint findings.
-///
-/// # Errors
-/// Returns [`LaneFailure::Infra`] when output is not UTF-8 or a static Dylint rule id is invalid.
 fn dylint_report(
     target: &TargetProject,
     output: &CommandOutput,
@@ -185,20 +147,12 @@ fn dylint_report(
     })
 }
 
-/// Decode stdout and stderr as one text stream.
-///
-/// # Errors
-/// Returns [`LaneFailure::Infra`] when either stream is not valid UTF-8.
 fn combined_output(output: &CommandOutput) -> Result<String, LaneFailure> {
     let stdout = output.stdout_str().map_err(|error| lane_error_failure(&error))?;
     let stderr = output.stderr_str().map_err(|error| lane_error_failure(&error))?;
     Ok(format!("{stdout}\n{stderr}"))
 }
 
-/// Add a typed finding for a Dylint output line when it names a known rule id.
-///
-/// # Errors
-/// Returns [`LaneFailure::Infra`] when constructing the typed finding fails.
 fn add_dylint_line_finding(
     target: &TargetProject,
     lines: &[&str],
@@ -225,10 +179,6 @@ const fn is_rule_id_char(ch: char) -> bool {
     matches!(ch, 'A'..='Z' | '0'..='9' | '_')
 }
 
-/// Build one legacy lane finding from a Dylint diagnostic line.
-///
-/// # Errors
-/// Returns [`LaneFailure::Infra`] if a static Dylint rule id violates the shared rule-id format.
 fn dylint_finding(
     target: &TargetProject,
     lines: &[&str],

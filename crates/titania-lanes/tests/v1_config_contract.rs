@@ -1,5 +1,3 @@
-//! Contract tests for the strict workspace lint configuration.
-
 use std::collections::BTreeMap;
 use titania_lanes::{LaneReport, policy_scan::exceptions::parse_exception_content};
 use titania_policy::{ExceptionError, parse_exceptions};
@@ -145,18 +143,11 @@ fn dylint_cargo_preserves_local_lint_policy_except_abi() {
 
 #[test]
 fn clippy_thresholds_reject_weakened_fixture() {
-    // Weaken the checked-in baseline (60) to 80 in a copy of clippy.toml.
     let weakened = CLIPPY.replace("too-many-lines-threshold = 60", "too-many-lines-threshold = 80");
     let clippy_thresholds = flat_entries(&weakened);
 
-    // The weakened fixture must actually carry the weakened value, proving the
-    // replace targeted the real baseline entry rather than silently no-op'ing.
     assert_eq!(clippy_thresholds.get("too-many-lines-threshold"), Some(&"80"));
 
-    // The contract gate requires the baseline value from
-    // REQUIRED_CLIPPY_THRESHOLDS; the weakened fixture's value must differ from
-    // it, i.e. the same `assert_entries` check used in `workspace_lints` would
-    // reject this weakened fixture as a contract violation.
     let required_threshold = REQUIRED_CLIPPY_THRESHOLDS
         .iter()
         .copied()
@@ -235,8 +226,6 @@ fn inline_table(value: &str) -> Option<BTreeMap<&str, &str>> {
     let inner = value.trim().strip_prefix('{')?.strip_suffix('}')?;
     Some(inner.split(',').filter_map(|part| split_entry(part.trim())).collect())
 }
-
-// ── strict-ai exceptions.toml contract tests ──────────────────────────
 
 const EXCEPTIONS: &str = include_str!("../../../.titania/profiles/strict-ai/exceptions.toml");
 const POLICY_TODAY: &str = "2026-07-05";

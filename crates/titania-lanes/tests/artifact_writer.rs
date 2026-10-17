@@ -1,12 +1,3 @@
-//! Atomic lane-artifact writer — failing-first tests.
-//!
-//! These tests assert the *missing* public API that the v1 spec (§11.2)
-//! requires: lane runners write a `LaneOutcome` as JSON to
-//! `.titania/out/<scope>/<lane>.json` using atomic temp-file-then-rename,
-//! creating parent directories as needed.
-//!
-//! Beads: tn-0i8.1, tn-rqo
-
 use std::path::Path;
 
 use tempfile::TempDir;
@@ -15,11 +6,8 @@ use titania_core::{
     RepairHint, RuleId, WorkspacePath,
 };
 
-/// Type alias used throughout this test module.
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
-/// Helper: build a minimal, internally-consistent `LaneEvidence` for a
-/// `LaneOutcome::Clean`.
 fn stub_evidence() -> LaneEvidence {
     let command = CommandEvidence::new(
         "cargo".into(),
@@ -35,7 +23,6 @@ fn stub_evidence() -> LaneEvidence {
     .unwrap()
 }
 
-/// Helper: build a single `Finding` for a `LaneOutcome::Findings` path.
 fn stub_finding() -> Finding {
     Finding::reject(
         Lane::Fmt,
@@ -46,8 +33,6 @@ fn stub_finding() -> Finding {
     )
 }
 
-/// Build a minimal synthetic target project inside a `TempDir` — a single
-/// Cargo package with a `Cargo.toml` and a `src/lib.rs`.
 fn make_target() -> Result<(TempDir, std::path::PathBuf), std::io::Error> {
     let tmp = TempDir::new()?;
     let root = tmp.path().to_path_buf();
@@ -68,10 +53,6 @@ edition = "2021"
     Ok((tmp, root))
 }
 
-// ---------------------------------------------------------------------------
-// 1. Clean outcome — Happy path
-// ---------------------------------------------------------------------------
-
 #[test]
 fn clean_outcome_written_to_scoped_lane_file() -> TestResult {
     let (_tmp, target) = make_target()?;
@@ -79,8 +60,6 @@ fn clean_outcome_written_to_scoped_lane_file() -> TestResult {
     let lane = Lane::Fmt;
     let outcome = LaneOutcome::Clean { evidence: stub_evidence() };
 
-    // API does not exist yet — this is the RED assertion.
-    // The call should produce the expected file path inside the target root.
     let written =
         titania_lanes::artifact_writer::write_lane_artifact(&target, scope, lane, &outcome)?;
 
@@ -91,10 +70,6 @@ fn clean_outcome_written_to_scoped_lane_file() -> TestResult {
 
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// 2. Findings outcome — Happy path
-// ---------------------------------------------------------------------------
 
 #[test]
 fn findings_outcome_written_to_scoped_lane_file() -> TestResult {
@@ -112,10 +87,6 @@ fn findings_outcome_written_to_scoped_lane_file() -> TestResult {
 
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// 3. JSON payload contains the lane name
-// ---------------------------------------------------------------------------
 
 #[test]
 fn written_artifact_json_contains_lane_name() -> TestResult {
@@ -140,15 +111,10 @@ fn written_artifact_json_contains_lane_name() -> TestResult {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// 4. Parent directories are created automatically
-// ---------------------------------------------------------------------------
-
 #[test]
 fn parent_directories_created_on_write() -> TestResult {
     let (_tmp, target) = make_target()?;
 
-    // The `.titania/out/edit/` tree does NOT exist yet.
     assert!(!target.join(".titania").exists(), ".titania/ must not exist before the write");
 
     let scope = GateScope::Edit;
@@ -169,16 +135,10 @@ fn parent_directories_created_on_write() -> TestResult {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// 5. No temporary file remains after a successful write
-// ---------------------------------------------------------------------------
-
 #[test]
 fn no_temp_file_remains_after_successful_write() -> TestResult {
     let (_tmp, target) = make_target()?;
 
-    // Walk the future output directory *before* writing to establish a
-    // baseline that no stray temp files exist.
     let pre_temp_count = |dir: &Path| {
         std::fs::read_dir(dir)
             .ok()
@@ -200,20 +160,13 @@ fn no_temp_file_remains_after_successful_write() -> TestResult {
     let written =
         titania_lanes::artifact_writer::write_lane_artifact(&target, scope, lane, &outcome)?;
 
-    // After a successful atomic write there must be zero .tmp files under
-    // the output directory.
     let temp_count = pre_temp_count(&target.join(".titania/out/edit"));
     assert_eq!(temp_count, 0, "no temporary file should remain after atomic rename");
 
-    // The final artifact must exist.
     assert!(written.exists());
 
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// 6. Lane identity matches across all edit lanes
-// ---------------------------------------------------------------------------
 
 #[test]
 fn artifact_json_lane_matches_lane_enum_for_all_edit_lanes() -> TestResult {
@@ -235,7 +188,7 @@ fn artifact_json_lane_matches_lane_enum_for_all_edit_lanes() -> TestResult {
 
         let payload = std::fs::read_to_string(&written)?;
         let json: serde_json::Value = serde_json::from_str(&payload)?;
-        let lane_name = lane.name(); // PascalCase
+        let lane_name = lane.name();
 
         assert_eq!(
             json["lane"].as_str(),
@@ -247,10 +200,6 @@ fn artifact_json_lane_matches_lane_enum_for_all_edit_lanes() -> TestResult {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// 7. Failure path — output root is a file, not a directory
-// ---------------------------------------------------------------------------
-
 #[test]
 fn write_fails_when_output_root_is_not_a_directory() -> TestResult {
     let tmp = TempDir::new()?;
@@ -261,7 +210,6 @@ fn write_fails_when_output_root_is_not_a_directory() -> TestResult {
     let lane = Lane::Fmt;
     let outcome = LaneOutcome::Clean { evidence: stub_evidence() };
 
-    // The API should return an error rather than panicking.
     let result =
         titania_lanes::artifact_writer::write_lane_artifact(&target, scope, lane, &outcome);
 
@@ -269,10 +217,6 @@ fn write_fails_when_output_root_is_not_a_directory() -> TestResult {
 
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// 8. Failure path — output root does not exist at all
-// ---------------------------------------------------------------------------
 
 #[test]
 fn write_fails_when_output_root_does_not_exist() -> TestResult {
@@ -293,10 +237,6 @@ fn write_fails_when_output_root_does_not_exist() -> TestResult {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// 9. Findings artifact includes externally tagged outcome in JSON
-// ---------------------------------------------------------------------------
-
 #[test]
 fn findings_artifact_includes_outcome_variant_in_json() -> TestResult {
     let (_tmp, target) = make_target()?;
@@ -315,10 +255,6 @@ fn findings_artifact_includes_outcome_variant_in_json() -> TestResult {
 
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// 10. Clean artifact includes externally tagged outcome in JSON
-// ---------------------------------------------------------------------------
 
 #[test]
 fn clean_artifact_includes_outcome_variant_in_json() -> TestResult {

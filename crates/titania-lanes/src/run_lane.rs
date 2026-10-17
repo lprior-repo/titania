@@ -1,4 +1,3 @@
-//! Public v1 `run-lane` dispatcher used by `titania-check`.
 #[path = "policy_run_lane.rs"]
 mod policy_run_lane;
 #[path = "run_cargo/mod.rs"]
@@ -39,23 +38,18 @@ const AST_GREP_RULES: &[&str] = &[
 ];
 const DENY_TOOL: &str = "cargo-deny";
 
-/// Result of executing one v1 lane from the `titania-check run-lane` shell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaneExecution {
-    /// Process disposition that should be returned by the CLI.
     exit: LaneExit,
-    /// Text that should be emitted to stderr by the CLI.
     stderr: String,
 }
 
 impl LaneExecution {
-    /// Return the process disposition for the lane.
     #[must_use]
     pub const fn exit(&self) -> LaneExit {
         self.exit
     }
 
-    /// Return stderr text captured or synthesized for the lane.
     #[must_use]
     pub fn stderr(&self) -> &str {
         &self.stderr
@@ -90,7 +84,6 @@ enum RunLaneError {
     Internal(String),
 }
 
-/// Execute one v1 lane and write its typed artifacts for every containing scope.
 #[must_use]
 pub fn execute_lane(lane: Lane) -> LaneExecution {
     match execute_lane_checked(lane) {
@@ -99,8 +92,6 @@ pub fn execute_lane(lane: Lane) -> LaneExecution {
     }
 }
 
-/// # Errors
-/// Target discovery, lane execution, or artifact writing can fail.
 fn execute_lane_checked(lane: Lane) -> Result<LaneExecution, RunLaneError> {
     match run_cargo_lane::run(lane) {
         run_cargo_lane::CargoRun::Complete(outcome) => execute_cargo_lane(lane, &outcome),
@@ -111,18 +102,12 @@ fn execute_lane_checked(lane: Lane) -> Result<LaneExecution, RunLaneError> {
     }
 }
 
-/// Write typed artifacts for a Cargo-backed lane outcome.
-/// # Errors
-/// Returns [`RunLaneError`] when target discovery or artifact writing fails.
 fn execute_cargo_lane(lane: Lane, outcome: &LaneOutcome) -> Result<LaneExecution, RunLaneError> {
     let target = current_target_project()?;
     write_artifacts(&target, lane, outcome)?;
     Ok(execution_from_outcome(outcome))
 }
 
-/// Execute a non-Cargo lane through its typed implementation.
-/// # Errors
-/// Returns [`RunLaneError`] when lane execution or artifact writing fails.
 fn execute_non_cargo_lane(lane: Lane) -> Result<LaneExecution, RunLaneError> {
     let target = current_target_project()?;
     let outcome = non_cargo_outcome(&target, lane)?;
@@ -130,9 +115,6 @@ fn execute_non_cargo_lane(lane: Lane) -> Result<LaneExecution, RunLaneError> {
     Ok(execution_from_outcome(&outcome))
 }
 
-/// Build the typed outcome for a non-Cargo lane.
-/// # Errors
-/// Returns [`RunLaneError`] when the lane cannot produce an outcome.
 fn non_cargo_outcome(target: &TargetProject, lane: Lane) -> Result<LaneOutcome, RunLaneError> {
     match lane {
         Lane::AstGrep => ast_grep_outcome(target),
@@ -148,27 +130,14 @@ fn non_cargo_outcome(target: &TargetProject, lane: Lane) -> Result<LaneOutcome, 
     }
 }
 
-/// Run the Kani bounded model-check lane.
-///
-/// # Errors
-/// Returns [`RunLaneError`] when the cgroup-capped `cargo kani` invocation
-/// or the harness inventory parse fails.
 fn kani_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
     run_lane_kani::outcome(target).map_err(Into::into)
 }
 
-/// Run the cargo-mutants test-survivor lane.
-///
-/// # Errors
-/// Returns [`RunLaneError`] when baseline loading, the cgroup-capped
-/// `cargo mutants` invocation, or the survivor-vs-baseline diff fails.
 fn mutants_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
     run_lane_mutants::outcome(target).map_err(Into::into)
 }
 
-/// Run the embedded ast-grep lane.
-/// # Errors
-/// Returns [`RunLaneError`] when source discovery or ast-grep outcome building fails.
 fn ast_grep_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
     let sources = collect_rust_sources(target.as_std_path())?;
     let today = policy_run_lane::policy_date(target)?;
@@ -184,7 +153,6 @@ fn ast_grep_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError>
     ast_grep_lane::run(AST_GREP_RULES, &sources, &exception_pairs).map_err(Into::into)
 }
 
-/// Run the panic-surface scanner lane.
 fn panic_scan_outcome(_target: &TargetProject) -> LaneOutcome {
     clean_outcome_unchecked(
         Lane::PanicScan,
@@ -193,17 +161,11 @@ fn panic_scan_outcome(_target: &TargetProject) -> LaneOutcome {
     )
 }
 
-/// Run the policy input scanner lane.
-/// # Errors
-/// Returns [`RunLaneError`] when policy scanning or outcome evidence fails.
 fn policy_scan_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
     let report = policy_run_lane::run(target)?;
     outcome_from_report(Lane::PolicyScan, &report, "policy-scan-v1").map_err(Into::into)
 }
 
-/// Run cargo-deny JSON normalization for the deny lane.
-/// # Errors
-/// Returns [`RunLaneError`] when output decoding or normalization fails.
 fn deny_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
     let output = match command_output(target, DENY_TOOL, &["--format", "json", "check"]) {
         Ok(output) => output,
@@ -213,9 +175,6 @@ fn deny_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
     Ok(deny_normalization_outcome(&output, &normalization))
 }
 
-/// Run one command in the target project and capture raw output.
-/// # Errors
-/// Returns [`LaneError`] when command construction or execution fails.
 fn command_output(
     target: &TargetProject,
     program: &'static str,
@@ -227,9 +186,6 @@ fn command_output(
     command.run_capture_raw()
 }
 
-/// Normalize cargo-deny stdout and stderr into typed findings.
-/// # Errors
-/// Returns [`RunLaneError`] when command output is not valid UTF-8.
 fn deny_normalization(output: &CommandOutput) -> Result<DenyNormalization, RunLaneError> {
     let stdout = output.stdout_str()?;
     let stderr = output.stderr_str()?;
@@ -285,11 +241,6 @@ fn execution_from_outcome(outcome: &LaneOutcome) -> LaneExecution {
     }
 }
 
-/// Classify a lane failure per v1-spec §12 exit codes.
-///
-/// `LaneFailure::Tool` is a gate failure (Reject, exit 1) — the tool ran and
-/// returned an abnormal termination. `Infra`/`Suspicious`/`Resource` are
-/// internal errors (exit ≥4).
 fn execution_from_failure(failure: &LaneFailure) -> LaneExecution {
     match failure {
         LaneFailure::Tool { tool, termination } => LaneExecution::new(

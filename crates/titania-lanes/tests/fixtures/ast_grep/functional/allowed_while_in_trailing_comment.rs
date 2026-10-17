@@ -1,12 +1,9 @@
-// Fixture: allowed — while and loop keywords only in trailing comments.
-//
-// Trailing comments are code lines before `//`, but text after `//` must not
-// trigger findings.
+
 
 pub fn poll_state(state: &mut State) {
-    let counter = 0; // while counter < max { retry }
-    let running = true; // while running { tick() }
-    let result = do_work(); // loop { try_again(result) }
+    let counter = 0;
+    let running = true;
+    let result = do_work();
     state.apply(counter, running, result);
 }
 

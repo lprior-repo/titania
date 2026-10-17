@@ -1,5 +1,3 @@
-//! v1.5 round-trip tests for `Lane::Kani` / `Lane::Mutants` and `GateScope::Full`.
-
 use std::str::FromStr;
 
 use titania_core::{GateScope, Lane};

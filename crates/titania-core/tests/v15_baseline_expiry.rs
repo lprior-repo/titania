@@ -1,5 +1,3 @@
-//! v1.5 contract tests for baseline expiry semantics.
-
 use titania_core::{MutantBaselineEntry, MutantId, MutantsBaseline};
 
 fn entry_for(mutation_id: &str, expires_on_unix: Option<u64>) -> MutantBaselineEntry {

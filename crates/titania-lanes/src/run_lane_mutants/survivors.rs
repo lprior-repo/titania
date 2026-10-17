@@ -1,12 +1,3 @@
-//! Per-survivor classification and baseline diff.
-//!
-//! Cross-references every survivor name from `outcomes.json` against
-//! the matching record in `mutants.json`, builds a typed
-//! [`titania_core::MutantId`] via the lane's stricter
-//! [`super::operators::operator_for_raw`] classifier, and resolves the
-//! real `<file:line:col>` location. The baseline is consulted at the
-//! end so survivors covered by an accepted entry are filtered out.
-
 use std::path::Path;
 
 use titania_core::{MutantId, MutantsBaseline};
@@ -20,22 +11,6 @@ use super::{
     state::NewSurvivor,
 };
 
-/// Build the per-survivor row using the typed operator + id pipeline.
-///
-/// Cross-references every survivor name from `outcomes.json` against
-/// the matching record in `mutants.json`, builds a typed
-/// [`MutantId`], and resolves the real `<file:line:col>` location. A
-/// survivor name that is absent from `mutants.json`, a record that
-/// fails the operator closed-set, or any geometry error bubbles up as
-/// a typed [`MutantsLaneError`] so the lane surfaces it as a clean
-/// infra failure rather than silently emitting a bogus finding.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError`] for every per-survivor failure path
-/// (artifact directory missing, malformed `mutants.json`, unknown
-/// operator, missing source span, path outside package, or invalid
-/// `MutantId::new` argument).
 pub(super) fn build_new_survivors(
     survivor_names: &[String],
     workspace_root: &Path,
@@ -51,21 +26,6 @@ pub(super) fn build_new_survivors(
         .collect()
 }
 
-/// Typed inner classifier; bubbles [`MutantsLaneError`] up to the caller.
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::ArtifactDir`] when neither the direct
-/// nor nested artifact layout exists,
-/// [`MutantsLaneError::MutantsParse`] for malformed `mutants.json`,
-/// [`MutantsLaneError::SurvivorAbsent`] when no record matches the
-/// survivor name, [`MutantsLaneError::SpanMissing`] when the record
-/// has no source span, [`MutantsLaneError::PathOutsidePackage`] when
-/// the declared file does not belong to the declared package,
-/// [`MutantsLaneError::UnknownOperator`] for an unrecognised
-/// `BinaryOperator` / `UnaryOperator` pattern, and
-/// [`MutantsLaneError::MutantIdInvalid`] for an invalid `MutantId::new`
-/// argument.
 fn classify_survivor_typed(
     mutation_id: &str,
     workspace_root: &Path,
@@ -89,15 +49,6 @@ fn classify_survivor_typed(
     Ok(if covered { None } else { Some(survivor) })
 }
 
-/// Read `mutants.json` into memory, converting I/O errors into a typed
-/// [`MutantsLaneError::MutantsParse`].
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::MutantsParse`] when the on-disk read
-/// fails (path missing, permissions, UTF-8 decode, etc.). The
-/// underlying I/O error is preserved as a flattened string for
-/// dispatcher-side rendering.
 fn read_mutants_contents(path: &Path) -> Result<String, MutantsLaneError> {
     let label = path.display().to_string();
     std::fs::read_to_string(path).map_err(|error| MutantsLaneError::MutantsParse {
@@ -106,17 +57,6 @@ fn read_mutants_contents(path: &Path) -> Result<String, MutantsLaneError> {
     })
 }
 
-/// Build one [`NewSurvivor`] row from a parsed [`MutantRecord`].
-///
-/// # Errors
-///
-/// Returns [`MutantsLaneError::SpanMissing`] when the record has no
-/// `span.start` line/column, [`MutantsLaneError::PathOutsidePackage`]
-/// when the declared `file` does not belong to the declared package,
-/// [`MutantsLaneError::UnknownOperator`] for an unrecognised
-/// `BinaryOperator` / `UnaryOperator` pattern, and
-/// [`MutantsLaneError::MutantIdInvalid`] for an invalid `MutantId::new`
-/// argument.
 fn build_survivor_from_record(
     raw: &titania_core::MutantRecord,
 ) -> Result<NewSurvivor, MutantsLaneError> {
@@ -176,9 +116,6 @@ mod tests {
     #[test]
     fn classify_survivor_returns_err_when_artifacts_missing() {
         let workspace = tempfile::tempdir().expect("tempdir").keep();
-        // No mutants.out directory has been produced → classify must
-        // surface a typed `MutantsLaneError::ArtifactDir` so the
-        // dispatcher can fail closed.
         let result = super::classify_survivor_typed(
             "src/lib.rs:1:5: replace foo",
             &workspace,

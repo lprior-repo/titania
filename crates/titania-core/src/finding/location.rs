@@ -1,57 +1,14 @@
-//! Location domain type and serde wire adapters.
-//!
-//! `Location` is a public newtype wrapper over a private `LocationInner` enum.
-//! All construction goes through validated constructors (`Location::span`, etc.).
-//! Direct variant construction is impossible because `LocationInner` is private.
-//!
-//! Serde deserialization uses a private `LocationReadWire` intermediate so that
-//! validation runs on every deserialize path.
-
 use serde::{Deserialize, Serialize};
 
 use crate::{error::LocationError, workspace_path::WorkspacePath};
 
-// ── Private inner enum ──────────────────────────────────────────────────────
-
-/// Private inner type for [`Location`].
-///
-/// Sealed so external crates cannot construct variants directly.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 enum LocationInner {
-    /// A byte-offset span within a single source file.
-    Span {
-        /// Workspace-relative source file path containing the finding.
-        file: WorkspacePath,
-        /// One-based first line of the finding span.
-        line_start: u32,
-        /// Zero-based first column of the finding span.
-        col_start: u32,
-        /// One-based last line of the finding span.
-        line_end: u32,
-        /// Zero-based last column of the finding span.
-        col_end: u32,
-    },
-    /// A dependency crate and its version.
-    Dependency {
-        /// Dependency package name.
-        crate_name: String,
-        /// Dependency version observed by the lane.
-        version: String,
-    },
-    /// A manifest file (Cargo.toml, policy.toml, etc.).
-    Manifest {
-        /// Workspace-relative manifest path.
-        file: WorkspacePath,
-    },
-    /// A workspace-level observation (no file or crate context).
+    Span { file: WorkspacePath, line_start: u32, col_start: u32, line_end: u32, col_end: u32 },
+    Dependency { crate_name: String, version: String },
+    Manifest { file: WorkspacePath },
     Workspace,
-    /// A tool or its version.
-    Tool {
-        /// Tool executable or logical tool name.
-        name: String,
-        /// Tool version string reported by the lane.
-        version: String,
-    },
+    Tool { name: String, version: String },
 }
 
 impl LocationInner {
@@ -67,35 +24,11 @@ impl LocationInner {
     }
 }
 
-// ── Public newtype ──────────────────────────────────────────────────────────
-
-/// Location where a finding was observed.
-///
-/// This is a newtype wrapper over a private inner enum. All construction
-/// goes through smart constructors that enforce invariants.
-///
-/// # Serialization
-///
-/// `Location` derives `Serialize` for production wire output.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct Location(LocationInner);
 
 impl Location {
-    /// Construct a [`Location`] from a workspace root file path.
-    ///
-    /// Cross-line spans (`line_end > line_start`) accept `col_end < col_start`
-    /// because the span traverses a line boundary. Same-line spans
-    /// (`line_end == line_start`) still require `col_end >= col_start`.
-    ///
-    /// # Errors
-    /// - [`LocationError::LineStartBeforeOne`] if `line_start < 1`.
-    /// - [`LocationError::EndBeforeStart`] if `line_end < line_start`.
-    /// - [`LocationError::ColEndBeforeStart`] if `line_end == line_start`
-    ///   and `col_end < col_start`.
-    ///
-    /// Line numbers are 1-based; column numbers are 0-based Unicode scalar
-    /// values.
     pub fn span(
         file: WorkspacePath,
         line_start: u32,
@@ -107,48 +40,37 @@ impl Location {
         Ok(Self(LocationInner::Span { file, line_start, col_start, line_end, col_end }))
     }
 
-    /// Construct a [`Location`] for a foreign dependency reference.
     #[must_use]
     pub const fn dependency(crate_name: String, version: String) -> Self {
         Self(LocationInner::Dependency { crate_name, version })
     }
 
-    /// Construct a [`Location`] for a `Cargo.toml` manifest reference.
     #[must_use]
     pub const fn manifest(file: WorkspacePath) -> Self {
         Self(LocationInner::Manifest { file })
     }
 
-    /// Construct a [`Location`] at the workspace level (no specific file).
     #[must_use]
     pub const fn workspace() -> Self {
         Self(LocationInner::Workspace)
     }
 
-    /// Construct a [`Location`] for a tooling-produced finding.
     #[must_use]
     pub const fn tool(name: String, version: String) -> Self {
         Self(LocationInner::Tool { name, version })
     }
 
-    /// Whether this location is a file span.
     #[must_use]
     pub const fn is_span(&self) -> bool {
         self.0.is_span()
     }
 
-    /// If this location is a span, return the workspace path.
     #[must_use]
     pub const fn span_file(&self) -> Option<&WorkspacePath> {
         self.0.span_file()
     }
 }
 
-// ── Wire deserialization ────────────────────────────────────────────────────
-
-/// Intermediate wire representation for [`Location`] deserialization.
-///
-/// Private — external crates cannot construct or inspect variants directly.
 #[derive(Deserialize)]
 enum LocationReadWire {
     Span { file: WorkspacePath, line_start: u32, col_start: u32, line_end: u32, col_end: u32 },
@@ -158,16 +80,6 @@ enum LocationReadWire {
     Tool { name: String, version: String },
 }
 
-/// Construct a [`Location::Span`].
-///
-/// Cross-line spans (`line_end > line_start`) accept `col_end < col_start`;
-/// only same-line spans require `col_end >= col_start`.
-///
-/// # Errors
-/// - [`LocationError::LineStartBeforeOne`] if `line_start < 1`.
-/// - [`LocationError::EndBeforeStart`] if `line_end < line_start`.
-/// - [`LocationError::ColEndBeforeStart`] if `line_end == line_start`
-///   and `col_end < col_start`.
 fn construct_span(
     file: WorkspacePath,
     line_start: u32,
@@ -179,33 +91,22 @@ fn construct_span(
     Ok(Location(LocationInner::Span { file, line_start, col_start, line_end, col_end }))
 }
 
-/// Construct a [`Location::Dependency`].
 const fn dep(crate_name: String, version: String) -> Location {
     Location(LocationInner::Dependency { crate_name, version })
 }
 
-/// Construct a [`Location::Manifest`].
 const fn manifest(file: WorkspacePath) -> Location {
     Location(LocationInner::Manifest { file })
 }
 
-/// Construct a [`Location::Workspace`].
 const fn workspace() -> Location {
     Location(LocationInner::Workspace)
 }
 
-/// Construct a [`Location::Tool`].
 const fn tool(name: String, version: String) -> Location {
     Location(LocationInner::Tool { name, version })
 }
 
-/// Convert deserialized location wire data into a validated domain location.
-///
-/// # Errors
-/// - [`LocationError::LineStartBeforeOne`] or [`LocationError::EndBeforeStart`]
-///   when span coordinates are invalid, or
-/// - [`LocationError::ColEndBeforeStart`] when a same-line span has
-///   `col_end < col_start`. Cross-line spans permit descending columns.
 fn location_from_wire(wire: LocationReadWire) -> Result<Location, LocationError> {
     let location = match wire {
         LocationReadWire::Span { file, line_start, col_start, line_end, col_end } => {
@@ -219,10 +120,6 @@ fn location_from_wire(wire: LocationReadWire) -> Result<Location, LocationError>
     Ok(location)
 }
 
-/// Deserialize a [`Location`] from wire format.
-///
-/// # Errors
-/// Propagates serde deserialization errors.
 fn deserialize_location<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Location, D::Error> {
@@ -236,19 +133,6 @@ impl<'de> Deserialize<'de> for Location {
     }
 }
 
-// ── Span validation ─────────────────────────────────────────────────────────
-
-/// Validate span coordinate invariants.
-///
-/// # Errors
-/// - [`LocationError::LineStartBeforeOne`] when `line_start < 1`.
-/// - [`LocationError::EndBeforeStart`] when `line_end < line_start`.
-/// - [`LocationError::ColEndBeforeStart`] when `col_end < col_start` on the
-///   same line (`line_end == line_start` and `col_end < col_start`).
-///
-/// Cross-line spans (`line_end > line_start`) permit `col_end < col_start`
-/// because the span crosses a line boundary; only same-line spans must keep
-/// columns ordered.
 const fn validate_span_bounds(
     line_start: u32,
     col_start: u32,

@@ -1,4 +1,3 @@
-// Fixture: allowed — returns strings and typed errors through explicit imports.
 
 use std::collections::HashMap;
 

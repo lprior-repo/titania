@@ -1,19 +1,3 @@
-//! Workspace-relative path string. Validated so the inner value is always
-//! a relative, sanitized UTF-8 path suitable for human-readable output,
-//! JSON serialization, and stable cross-platform hashing.
-//!
-//! Invariants enforced by construction:
-//! - Non-empty.
-//! - No leading `/`.
-//! - No `..` segment anywhere (no `..` as a complete path segment).
-//! - No `\` (we use forward-slash paths only).
-//! - No NUL byte.
-//! - No control characters (0x00–0x1F except in the byte stream; tab 0x09 is rejected).
-//! - No Windows drive-absolute prefix (`<letter>:` as the first two bytes).
-//! - No UNC prefix. Backslash UNC (`\\server\share\...`) is rejected as
-//!   `ContainsBackslash`; forward-slash UNC (`//server/share/...`) is
-//!   rejected as `UncForm`.
-
 use core::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -21,60 +5,31 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::error::WorkspacePathError;
 
-/// A validated workspace-relative POSIX path string.
-///
-/// Compare with [`std::path::Path`] which is host-OS dependent; a
-/// [`WorkspacePath`] is always `str`-safe, forward-slash, and unambiguous
-/// across Unix and Windows.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct WorkspacePath(String);
 
 impl WorkspacePath {
-    /// Construct a validated workspace path. Forward slashes, no `..`
-    /// segments, no leading slash, no backslash, no control bytes.
-    ///
-    /// # Errors
-    /// See [`WorkspacePathError`] for the full taxonomy.
     pub fn new(s: &str) -> Result<Self, WorkspacePathError> {
         validate_workspace_path(s)?;
         Ok(Self(s.nfc().collect()))
     }
 
-    /// Borrow the underlying path string.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
-    /// Number of segments (split on `/`). A path with no slashes has 1
-    /// segment.
     #[must_use]
     pub fn segment_count(&self) -> usize {
         self.0.split('/').filter(|s| !s.is_empty()).count()
     }
 
-    /// Whether this path starts with the given prefix segment (e.g.
-    /// `WorkspacePath("src/foo.rs").starts_with("src") == true`).
     #[must_use]
     pub fn starts_with_segment(&self, segment: &str) -> bool {
         self.0.split('/').next().is_some_and(|first| first == segment)
     }
 }
 
-/// Validate the bytes and path segments of a candidate workspace path.
-///
-/// # Errors
-/// - [`WorkspacePathError::Empty`] if the path is empty.
-/// - [`WorkspacePathError::DriveAbsolute`] if the path starts with a Windows
-///   drive prefix (e.g. `C:` or `C:/src/lib.rs`).
-/// - [`WorkspacePathError::ContainsBackslash`] if the path uses `\` (this
-///   also rejects the backslash UNC form `\\server\share\...`).
-/// - [`WorkspacePathError::UncForm`] if the path starts with `//` (the
-///   forward-slash UNC form `//server/share/...`).
-/// - [`WorkspacePathError::LeadingSlash`] if the path is absolute.
-/// - [`WorkspacePathError::ContainsNull`] if the path contains a NUL byte.
-/// - [`WorkspacePathError::ControlByte`] if the path contains an ASCII control byte.
-/// - [`WorkspacePathError::ContainsDotDot`] if the path contains a `..` segment.
 fn validate_workspace_path(s: &str) -> Result<(), WorkspacePathError> {
     check_non_empty(s)?;
     check_no_drive_absolute(s)?;
@@ -87,8 +42,6 @@ fn validate_workspace_path(s: &str) -> Result<(), WorkspacePathError> {
     Ok(())
 }
 
-/// # Errors
-/// [`WorkspacePathError::Empty`] if the path is empty.
 const fn check_non_empty(s: &str) -> Result<(), WorkspacePathError> {
     if s.is_empty() {
         return Err(WorkspacePathError::Empty);
@@ -96,9 +49,6 @@ const fn check_non_empty(s: &str) -> Result<(), WorkspacePathError> {
     Ok(())
 }
 
-/// # Errors
-/// [`WorkspacePathError::DriveAbsolute`] if the path starts with an ASCII
-/// letter followed by `:` (Windows drive-absolute prefix).
 fn check_no_drive_absolute(s: &str) -> Result<(), WorkspacePathError> {
     let bytes = s.as_bytes();
     let Some((first, rest)) = bytes.split_first() else {
@@ -107,14 +57,10 @@ fn check_no_drive_absolute(s: &str) -> Result<(), WorkspacePathError> {
     if !first.is_ascii_alphabetic() || rest.first() != Some(&b':') {
         return Ok(());
     }
-    // `<letter>:` are both single-byte ASCII, so the 2-char prefix is
-    // valid UTF-8 and `s.get(..2)` always returns `Some`.
     let prefix = s.get(..2).map_or_else(|| format!("{first}:"), ToOwned::to_owned);
     Err(WorkspacePathError::DriveAbsolute(prefix))
 }
 
-/// # Errors
-/// [`WorkspacePathError::LeadingSlash`] if the path is absolute.
 fn check_relative(s: &str) -> Result<(), WorkspacePathError> {
     if s.starts_with('/') {
         return Err(WorkspacePathError::LeadingSlash);
@@ -122,8 +68,6 @@ fn check_relative(s: &str) -> Result<(), WorkspacePathError> {
     Ok(())
 }
 
-/// # Errors
-/// [`WorkspacePathError::ContainsBackslash`] if the path uses `\`.
 fn check_no_backslash(s: &str) -> Result<(), WorkspacePathError> {
     if s.as_bytes().contains(&b'\\') {
         return Err(WorkspacePathError::ContainsBackslash);
@@ -131,9 +75,6 @@ fn check_no_backslash(s: &str) -> Result<(), WorkspacePathError> {
     Ok(())
 }
 
-/// # Errors
-/// [`WorkspacePathError::UncForm`] if the path starts with `//` (the
-/// forward-slash rendering of a Windows UNC path).
 fn check_no_unc(s: &str) -> Result<(), WorkspacePathError> {
     if s.starts_with("//") {
         return Err(WorkspacePathError::UncForm);
@@ -141,8 +82,6 @@ fn check_no_unc(s: &str) -> Result<(), WorkspacePathError> {
     Ok(())
 }
 
-/// # Errors
-/// [`WorkspacePathError::ContainsNull`] if the path contains NUL.
 fn check_no_null(s: &str) -> Result<(), WorkspacePathError> {
     if s.as_bytes().contains(&0) {
         return Err(WorkspacePathError::ContainsNull);
@@ -150,8 +89,6 @@ fn check_no_null(s: &str) -> Result<(), WorkspacePathError> {
     Ok(())
 }
 
-/// # Errors
-/// [`WorkspacePathError::ControlByte`] if the path contains an ASCII control byte.
 fn check_no_control_bytes(s: &str) -> Result<(), WorkspacePathError> {
     match s.as_bytes().iter().find(|&&b| b < 0x20) {
         Some(&b) => Err(WorkspacePathError::ControlByte(b)),
@@ -159,8 +96,6 @@ fn check_no_control_bytes(s: &str) -> Result<(), WorkspacePathError> {
     }
 }
 
-/// # Errors
-/// [`WorkspacePathError::ContainsDotDot`] if the path contains a `..` segment.
 fn check_no_dotdot(s: &str) -> Result<(), WorkspacePathError> {
     if s.split('/').any(|seg| seg == "..") {
         return Err(WorkspacePathError::ContainsDotDot);

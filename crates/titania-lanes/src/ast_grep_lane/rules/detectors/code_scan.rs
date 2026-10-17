@@ -1,9 +1,3 @@
-//! One-pass code scanner for text-backed detectors.
-//!
-//! Used only by architecture import detectors that need to skip matches
-//! inside comments and string literals. Real ast-grep powers the FUNC_*
-//! rules and does not consult this module.
-
 mod block;
 mod raw;
 mod state;

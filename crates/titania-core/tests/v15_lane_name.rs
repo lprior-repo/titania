@@ -1,5 +1,3 @@
-//! v1.5 contract tests for `Lane::name` uniqueness across all 12 variants.
-
 use titania_core::Lane;
 
 #[test]

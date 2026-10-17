@@ -1,7 +1,4 @@
-// Fixture: allowed — loop keywords only inside string literals.
-//
-// String literals containing `for`, `while`, `loop` must NOT trigger
-// FUNC_LOOPS_* findings.
+
 
 pub fn format_loop_doc() -> String {
     let for_example = "for item in items { process(item) }";

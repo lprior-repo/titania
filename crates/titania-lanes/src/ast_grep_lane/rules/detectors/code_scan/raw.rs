@@ -1,5 +1,3 @@
-//! Raw-string state transitions.
-
 use super::{CodePending, LineScan, ScanMode};
 
 enum RawDelimiter {

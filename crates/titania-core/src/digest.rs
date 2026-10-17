@@ -1,43 +1,20 @@
-//! 64-character lowercase hex content digest.
-//!
-//! Backed by `String`: the byte representation is 64 ASCII chars, the API stays
-//! safe without `unsafe`, and the allocation cost is amortized at construction.
-//!
-//! Construction is total: [`Digest::from_hex`] returns `Result`, and
-//! [`Digest::from_bytes`] is infallible because blake3's hex output is
-//! contractually 64 lowercase hex characters.
-
 use core::{fmt, str::FromStr};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::error::DigestError;
 
-/// Number of hex characters in a hex-encoded 256-bit digest.
 const DIGEST_HEX_LEN: usize = 64;
 
-/// A validated 64-character lowercase-hex content digest.
-///
-/// Once constructed, the inner string is guaranteed to be exactly 64 ASCII
-/// characters and every byte is in `[0-9a-f]`. The constructor returns
-/// `Result`; there is no public API to produce an invalid value.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Digest(String);
 
 impl Digest {
-    /// Compute a digest from arbitrary bytes using blake3 and hex-encode
-    /// the result to lowercase ASCII. Total.
     #[must_use]
     pub fn from_bytes(data: &[u8]) -> Self {
-        // blake3's hex output is contractually 64 lowercase hex chars.
         Self(blake3::hash(data).to_hex().to_string())
     }
 
-    /// Parse a 64-character lowercase-hex string into a [`Digest`].
-    ///
-    /// # Errors
-    /// - [`DigestError::WrongLength`] if the input length is not 64.
-    /// - [`DigestError::NonHexChar`] at the first non-`[0-9a-f]` byte.
     pub fn from_hex(hex: &str) -> Result<Self, DigestError> {
         let bytes = hex.as_bytes();
         check_digest_len(bytes)?;
@@ -45,7 +22,6 @@ impl Digest {
         Ok(Self(hex.to_owned()))
     }
 
-    /// Borrow the underlying lowercase-hex string.
     #[must_use]
     pub fn as_hex(&self) -> &str {
         &self.0
@@ -85,18 +61,10 @@ impl<'de> Deserialize<'de> for Digest {
     }
 }
 
-/// Check the byte length of a hex digest string.
-///
-/// # Errors
-/// Returns [`DigestError::WrongLength`] when the length is not 64 bytes.
 fn check_digest_len(bytes: &[u8]) -> Result<(), DigestError> {
     (bytes.len() == DIGEST_HEX_LEN).then_some(()).ok_or(DigestError::WrongLength(bytes.len()))
 }
 
-/// Check all digest bytes are lowercase hex.
-///
-/// # Errors
-/// Returns [`DigestError::NonHexChar`] at the first non-hex byte.
 fn check_digest_hex(bytes: &[u8]) -> Result<(), DigestError> {
     bytes
         .iter()

@@ -1,24 +1,15 @@
-//! Doctor tool/version diagnostic domain model.
-//!
-//! This module owns the scope-to-tool matrix and host probing needed by
-//! `titania-check doctor`. It does not render CLI output.
-
 use std::path::{Path, PathBuf};
 
 use crate::{OutputComponent, OutputError};
 use titania_core::GateScope;
 
-/// Outcome of a doctor scan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DoctorStatus {
-    /// All required tools are installed.
     Ok,
-    /// One or more required tools are missing.
     MissingRequiredTools,
 }
 
 impl DoctorStatus {
-    /// Stable external status string.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -28,29 +19,21 @@ impl DoctorStatus {
     }
 }
 
-/// A single tool row in the doctor report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolRow {
-    /// Canonical display name.
     pub name: &'static str,
-    /// Whether the scope requires this tool to be usable.
     pub required: bool,
-    /// Whether the tool is available to this process.
     pub installed: bool,
-    /// Detected version or status detail, when available.
     pub version: Option<String>,
-    /// Detected filesystem path, when available.
     pub path: Option<PathBuf>,
 }
 
 impl ToolRow {
-    /// Create an embedded capability row.
     #[must_use]
     pub const fn embedded(name: &'static str) -> Self {
         Self { name, required: true, installed: true, version: None, path: None }
     }
 
-    /// Create a probed external-tool row.
     #[must_use]
     pub const fn external(
         name: &'static str,
@@ -62,35 +45,23 @@ impl ToolRow {
     }
 }
 
-/// Whether an external tool is required for this scope and whether it is installed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToolPresence {
-    /// Whether the tool is required by the scope's policy.
     pub required: bool,
-    /// Whether the tool was detected on this machine.
     pub installed: bool,
 }
 
-impl ToolPresence {
-    // Construct via struct literal at call sites to keep constructors single-bool
-    // under workspace `max-fn-params-bools = 1`.
-}
+impl ToolPresence {}
 
-/// Complete doctor report for a single gate scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DoctorReport {
-    /// Scope the report covers.
     pub scope: GateScope,
-    /// Ordered tool rows.
     pub tools: Vec<ToolRow>,
-    /// Required tool names that are unavailable.
     pub missing_required: Vec<String>,
-    /// Aggregate doctor status.
     pub status: DoctorStatus,
 }
 
 impl DoctorReport {
-    /// Build a report from tool rows.
     #[must_use]
     pub fn new(scope: GateScope, tools: Vec<ToolRow>) -> Self {
         let missing_required = tools
@@ -238,14 +209,8 @@ fn probe_dylint(required: bool) -> Vec<ToolRow> {
         |path| installed_cargo_dylint_row(required, path),
     );
 
-    // The library is only required when cargo-dylint itself is available —
-    // without cargo-dylint the entire Dylint lane is non-functional, so the
-    // library row becomes informational rather than required.
     let lib_required = required && cargo_dylint_path.is_some();
 
-    // Probe the prebuilt sibling/env library first. Its installed status
-    // determines whether dylint-link is required (needed only when no valid
-    // prebuilt library exists and the lib must be built from source).
     let library_row = probe_dylint_library_with_link(
         lib_required,
         cargo_dylint_path.as_deref(),
@@ -272,14 +237,6 @@ fn installed_cargo_dylint_row(required: bool, path: &Path) -> ToolRow {
     )
 }
 
-/// Probe a cargo subcommand's reported version via `cargo <subcommand> --version`.
-///
-/// Cargo plugins (installed with `cargo install`) cannot be invoked directly
-/// with `--version` because the shim forwards unrecognised arguments to
-/// cargo's subcommand resolution rather than to the plugin binary.
-///
-/// Returns `None` when `cargo` cannot be spawned, exits non-zero, or when the
-/// captured stdout does not contain a parseable version token.
 fn probe_cargo_subcommand_version(subcommand: &str) -> Option<String> {
     let output =
         std::process::Command::new("cargo").arg(subcommand).arg("--version").output().ok()?;
@@ -318,27 +275,18 @@ fn probe_dylint_library_with_link(
     cargo_dylint_path: Option<&Path>,
     dylint_link_path: Option<&Path>,
 ) -> ToolRow {
-    // Check for a prebuilt sibling/env library first.
     let prebuilt = cargo_dylint_path.and_then(sibling_dylint_library).or_else(env_dylint_library);
 
     if let Some(path) = prebuilt {
         return dylint_library_row(required, path);
     }
 
-    // No prebuilt library. Can we build from source via metadata?
     match cargo_dylint_path {
         None => missing_dylint_library(required),
         Some(_) => resolve_built_on_demand(required, dylint_link_path),
     }
 }
 
-/// Decide the dylint-lib row when no prebuilt library exists on disk.
-///
-/// Metadata "built-on-demand" mode is only honest when `dylint-link` is
-/// installed (cargo-dylint 6.0.1 needs `dylint-link` to link cdylib
-/// artifacts during a metadata-mode build). Without `dylint-link` the
-/// library cannot be built, so the doctor must report it as missing with
-/// an actionable reason rather than overclaiming availability.
 fn resolve_built_on_demand(required: bool, dylint_link_path: Option<&Path>) -> ToolRow {
     if dylint_link_path.is_none() {
         return dylint_link_missing_library(required);
@@ -349,7 +297,6 @@ fn resolve_built_on_demand(required: bool, dylint_link_path: Option<&Path>) -> T
     missing_dylint_library(required)
 }
 
-/// Build the dylint-lib row for metadata "built-on-demand" mode.
 fn metadata_dylint_library_row(required: bool) -> ToolRow {
     ToolRow::external(
         "libtitania_dylint",
@@ -359,8 +306,6 @@ fn metadata_dylint_library_row(required: bool) -> ToolRow {
     )
 }
 
-/// Read the current workspace's `Cargo.toml` and test whether its
-/// `[workspace.metadata.dylint]` section names the titania library.
 fn workspace_dylint_metadata_available() -> bool {
     let manifest = match std::env::current_dir() {
         Ok(dir) => dir.join("Cargo.toml"),
@@ -369,16 +314,6 @@ fn workspace_dylint_metadata_available() -> bool {
     std::fs::read_to_string(&manifest).is_ok_and(|content| manifest_names_titania_dylint(&content))
 }
 
-/// Pure heuristic: does a raw `Cargo.toml` text configure the titania dylint
-/// library under `[workspace.metadata.dylint]`?
-///
-/// This mirrors the lane's authoritative `toml_edit`-based check
-/// (`dylint_lane::cargo_manifest_names_titania_dylint`) using a lightweight
-/// text scan so the doctor crate stays free of a TOML dependency. The doctor
-/// is informational; the lane performs the precise parse. A false positive
-/// would require both the metadata header and a titania reference to appear in
-/// the same manifest without actually configuring the titania library — an
-/// extremely unlikely real-world state.
 fn manifest_names_titania_dylint(content: &str) -> bool {
     const METADATA_HEADER: &str = "[workspace.metadata.dylint]";
     const TITANIA_DYLINT_HYPHEN: &str = "titania-dylint";
@@ -400,8 +335,6 @@ fn missing_dylint_library(required: bool) -> ToolRow {
     )
 }
 
-/// Build the dylint-lib row when `dylint-link` is missing but needed to
-/// build `libtitania_dylint` from source.
 fn dylint_link_missing_library(required: bool) -> ToolRow {
     ToolRow::external(
         "libtitania_dylint",
@@ -411,7 +344,6 @@ fn dylint_link_missing_library(required: bool) -> ToolRow {
     )
 }
 
-/// Probe `dylint-link` on PATH and build its tool row.
 fn probe_dylint_link(required: bool, path: Option<PathBuf>) -> ToolRow {
     path.map_or_else(
         || {
@@ -445,16 +377,6 @@ fn dylint_library_row(required: bool, path: PathBuf) -> ToolRow {
     )
 }
 
-/// Probe the library file for the canonical Dylint ABI markers.
-///
-/// Reads the file directly, first checking for a known dynamic-library object
-/// header (ELF, Mach-O/fat Mach-O, or PE), then scanning for the two required
-/// Dylint plugin exports (`dylint_version` and `register_lints`). If both are
-/// present the library is considered ABI-compatible; otherwise it is flagged
-/// as a mismatch.
-///
-/// This avoids any external tool dependency (no `nm` required) while rejecting
-/// arbitrary text files that happen to contain the marker names.
 fn abi_is_compatible(path: &Path) -> bool {
     const MARKERS: [&[u8]; 2] = [b"dylint_version", b"register_lints"];
 
@@ -482,7 +404,6 @@ fn looks_like_dynamic_library(bytes: &[u8]) -> bool {
     MAGIC_PREFIXES.iter().any(|magic| bytes.starts_with(magic))
 }
 
-/// Produce a complete doctor report for the given scope.
 #[must_use]
 pub fn report(scope: GateScope) -> DoctorReport {
     let tools =
@@ -490,12 +411,6 @@ pub fn report(scope: GateScope) -> DoctorReport {
     DoctorReport::new(scope, tools)
 }
 
-/// Return the doctor report for a scope.
-///
-/// # Errors
-///
-/// Returns [`OutputError::ComponentUnavailable`] if the compiled doctor matrix
-/// is empty, which would mean the output component is misconfigured.
 pub fn doctor_report(scope: GateScope) -> Result<DoctorReport, OutputError> {
     let report = report(scope);
     if report.tools.is_empty() {
@@ -550,7 +465,6 @@ members = ["crates/foo"]
 
     #[test]
     fn titania_reference_without_metadata_header_is_rejected() {
-        // The path appears in a normal dependency, not dylint metadata.
         let manifest = r#"
 [dependencies]
 titania-dylint = { path = "crates/titania-dylint" }

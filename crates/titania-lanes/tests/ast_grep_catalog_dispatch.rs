@@ -1,24 +1,3 @@
-//! Focused contract tests for `titania_lanes::ast_grep_lane`.
-//!
-//! Two related concerns are exercised here, neither of which overlaps the
-//! shared `tests/ast_grep_lane.rs` matrix or the generated-include fixture work
-//! owned by the AST-grep detector specialist.
-//!
-//! 1. **Exact catalog dispatch.** The lane must enable rules only from
-//!    document-level YAML `id:` fields. A prefix id such as
-//!    `BOUNDED_EXECUTION_UNBOUNDED_LOOP_EXTRA`, a comment that mentions
-//!    `id: BOUNDED_EXECUTION_UNBOUNDED_LOOP`, and a `message:` field
-//!    containing the substring must NOT enable
-//!    `BOUNDED_EXECUTION_UNBOUNDED_LOOP`. Unknown ids are rejected explicitly via
-//!    [`AstGrepLaneError::UnknownRuleId`] instead of being silently accepted.
-//!
-//! 2. **`BYPASS_GENERATED_INCLUDE` detector parity.** Real `include!(
-//!    concat!(env!("OUT_DIR"), "..."))` in code must trigger the rule, and
-//!    the same surface pattern inside line comments, block comments, regular
-//!    string literals, and raw string literals must NOT trigger it. These
-//!    prove the AST-structural detector is not regressed by the surrounding
-//!    catalog-dispatch refactor.
-
 use std::{error::Error, path::PathBuf};
 
 use titania_core::LaneOutcome;
@@ -30,14 +9,6 @@ fn fixture_root(name: &str) -> PathBuf {
     PathBuf::from(base).join("tests").join("fixtures").join("ast_grep").join(name)
 }
 
-// ===========================================================================
-// Exact catalog dispatch — comments, message text, and prefix ids must not
-// enable `BOUNDED_EXECUTION_UNBOUNDED_LOOP`.
-// ===========================================================================
-
-/// **Contract:** A catalog document whose top-level `id:` is exactly
-/// `BOUNDED_EXECUTION_UNBOUNDED_LOOP` enables that rule and produces a
-/// finding on a fixture that contains a real unbounded retry.
 #[test]
 fn exact_id_enables_func_loops_for() -> TestResult {
     let catalog = "\
@@ -59,8 +30,6 @@ language: Rust
     }
 }
 
-/// **Contract:** Quoted document ids with an inline YAML comment normalize to
-/// the same exact rule id as an unquoted id.
 #[test]
 fn quoted_id_with_inline_comment_enables_func_loops_for() -> TestResult {
     let catalog = "id: \"BOUNDED_EXECUTION_UNBOUNDED_LOOP\" # documented rule\nlanguage: Rust\n";
@@ -79,11 +48,6 @@ fn quoted_id_with_inline_comment_enables_func_loops_for() -> TestResult {
     Ok(())
 }
 
-/// **Contract:** A catalog document whose top-level `id:` is a prefix
-/// string (`BOUNDED_EXECUTION_UNBOUNDED_LOOP_EXTRA`) must NOT enable
-/// `BOUNDED_EXECUTION_UNBOUNDED_LOOP`. The old substring dispatch would have
-/// enabled it; the new dispatch rejects the unknown id explicitly via
-/// [`AstGrepLaneError::UnknownRuleId`].
 #[test]
 fn prefix_id_does_not_enable_func_loops_for() -> TestResult {
     let catalog = "id: BOUNDED_EXECUTION_UNBOUNDED_LOOP_EXTRA\n";
@@ -100,9 +64,6 @@ fn prefix_id_does_not_enable_func_loops_for() -> TestResult {
     }
 }
 
-/// **Contract:** A catalog that only contains a comment mentioning
-/// `id: BOUNDED_EXECUTION_UNBOUNDED_LOOP` must NOT enable that rule. The lane
-/// returns `Clean` because no document-level id is present.
 #[test]
 fn comment_id_does_not_enable_func_loops_for() -> TestResult {
     let catalog = "\
@@ -119,11 +80,6 @@ fn comment_id_does_not_enable_func_loops_for() -> TestResult {
     Ok(())
 }
 
-/// **Contract:** A catalog whose `message:` field contains the substring
-/// `id: BOUNDED_EXECUTION_UNBOUNDED_LOOP` must NOT enable that rule. Only the
-/// document-level `id:` is authoritative. The other id in the catalog
-/// (`BYPASS_GENERATED_INCLUDE`) is a known rule that does not apply to the
-/// unbounded-loop fixture, so the outcome is `Clean`.
 #[test]
 fn message_text_substring_does_not_enable_func_loops_for() -> TestResult {
     let catalog = "\
@@ -156,9 +112,6 @@ metadata:
     Ok(())
 }
 
-/// **Contract:** A catalog document whose `id:` value is empty (e.g. `id: `)
-/// is malformed. The lane rejects it explicitly instead of silently enabling
-/// every rule or accepting the unknown value.
 #[test]
 fn empty_id_is_rejected_as_unknown() -> TestResult {
     let catalog = "id: \n";
@@ -174,14 +127,6 @@ fn empty_id_is_rejected_as_unknown() -> TestResult {
     }
 }
 
-// ===========================================================================
-// BYPASS_GENERATED_INCLUDE — positive control and false-positive resistance
-// ===========================================================================
-
-/// **Contract:** A real `include!(concat!(env!("OUT_DIR"), "..."))` in
-/// executable code MUST trigger `BYPASS_GENERATED_INCLUDE`. Positive control
-/// proving the AST-structural detector still fires on genuine generated-
-/// include macros.
 #[test]
 fn ast_grep_bypass_generated_include_real_in_code_still_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/bypass.yml")];
@@ -201,9 +146,6 @@ fn ast_grep_bypass_generated_include_real_in_code_still_detected() -> TestResult
     Ok(())
 }
 
-/// **Contract:** A whole-line comment containing the generated-include
-/// pattern must NOT trigger `BYPASS_GENERATED_INCLUDE`. The AST detector
-/// matches only `macro_invocation` nodes; line comments never produce one.
 #[test]
 fn ast_grep_bypass_generated_include_in_line_comment_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/bypass.yml")];
@@ -217,9 +159,6 @@ fn ast_grep_bypass_generated_include_in_line_comment_not_detected() -> TestResul
     Ok(())
 }
 
-/// **Contract:** A block comment containing the generated-include pattern
-/// must NOT trigger `BYPASS_GENERATED_INCLUDE`. Block comments never
-/// produce `macro_invocation` AST nodes.
 #[test]
 fn ast_grep_bypass_generated_include_in_block_comment_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/bypass.yml")];
@@ -233,9 +172,6 @@ fn ast_grep_bypass_generated_include_in_block_comment_not_detected() -> TestResu
     Ok(())
 }
 
-/// **Contract:** A string literal containing the generated-include pattern
-/// must NOT trigger `BYPASS_GENERATED_INCLUDE`. String content is data, not
-/// a macro invocation, and never produces a `macro_invocation` AST node.
 #[test]
 fn ast_grep_bypass_generated_include_in_string_literal_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/bypass.yml")];
@@ -249,9 +185,6 @@ fn ast_grep_bypass_generated_include_in_string_literal_not_detected() -> TestRes
     Ok(())
 }
 
-/// **Contract:** A raw string literal containing the generated-include
-/// pattern must NOT trigger `BYPASS_GENERATED_INCLUDE`. Raw string content
-/// is data, not a macro invocation.
 #[test]
 fn ast_grep_bypass_generated_include_in_raw_string_literal_not_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/bypass.yml")];
@@ -266,12 +199,6 @@ fn ast_grep_bypass_generated_include_in_raw_string_literal_not_detected() -> Tes
     Ok(())
 }
 
-/// **Contract:** A raw-string `include!(concat!(env!(r#"OUT_DIR"#), r#"/gen.rs"#));`
-/// in executable code MUST trigger `BYPASS_GENERATED_INCLUDE`. Tree-sitter
-/// parses the raw string form as `raw_string_literal`, not `string_literal`,
-/// so the detector has to decode the inner content of either literal kind
-/// and still recognise the exact `OUT_DIR` identifier plus a non-empty path.
-/// This proves the raw-string bypass is closed.
 #[test]
 fn ast_grep_bypass_generated_include_raw_string_in_code_still_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/bypass.yml")];

@@ -1,10 +1,6 @@
-//! v1.5 contract tests for `MutantsBaseline::diff` (set difference).
-
 use titania_core::{MutantBaselineEntry, MutantId, MutantOperator, MutantsBaseline};
 
 fn entry_for(mutation_id: &str) -> MutantBaselineEntry {
-    // mutation_id is a fully-formed `<pkg>::<rel-path>:<line>:<col>:<operator>`
-    // string; using the parser guarantees the typed field stays canonical.
     let mid = MutantId::parse(mutation_id).unwrap_or_else(|error| {
         panic!("test fixture id `{mutation_id}` must parse as a MutantId: {error}")
     });
@@ -88,9 +84,6 @@ fn diff_handles_empty_survivors() {
 
 #[test]
 fn diff_filters_unknown_mutation_id_forms_out() {
-    // Construct a baseline entry that contains a synthesised id; an
-    // unrecognised survivor of a totally different shape must report as a
-    // diff without ever needing a string comparison.
     let entries = vec![entry_zero("pkg-a::src/a.rs:1:1:equal_replace")];
     let baseline = MutantsBaseline::from_bypasses(entries);
     let synthesised =

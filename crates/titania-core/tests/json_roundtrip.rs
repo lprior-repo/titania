@@ -1,11 +1,3 @@
-//! serde JSON round-trip and cross-primitive serialization tests.
-//!
-//! Behavior: any value built by a smart constructor should serialize to a
-//! stable JSON string and deserialize back to an equal value.
-//!
-//! The golden test constructs domain values, serializes them to canonical
-//! JSON, then deserializes back and asserts exact string identity.
-
 #![allow(clippy::needless_borrow)]
 #![allow(clippy::useless_vec)]
 
@@ -53,11 +45,7 @@ fn complete_edit_reject_fixture(mut fixture: serde_json::Value) -> serde_json::V
     });
     fixture
 }
-// ===========================================================================
-// Golden JSON fixtures — hardcoded constants, not generated at test time.
-// ===========================================================================
 
-// Report variants
 const REPORT_PASS_JSON: &str = r#"{"variant":"Pass","receipt":{"schema_version":1,"scope":"Edit","source_digest":"7d1aa223722b2aaa89b92fc6b2ef0baa709c01eab9f8494b1de5c335f2750707","cargo_lock_digest":"e73acfadf2de935ef6e689d57aec63e8d98e8092061fa61c9fcd1a3ce46016e2","policy_digest":"ff096070fb25d5456f50000af78f1c92fda605bdb7bc3d1e7d1cc0091204e61c","toolchain_digest":"dd9765724d63cedb171573e96d87aad8c17ca281055f5b639c94761ea2da5c9e","lanes":[{"lane":"Fmt","evidence_digest":"b26fcc302645d25e8327ec86f8ec1f0e4f989bfdeca51e17a314a5b29ba8f146","clean":true}]},"per_lane":[{"lane":"Fmt","outcome":{"Clean":{"evidence":{"command":{"executable":"cargo","argv":["cargo","fmt","--check"]},"tool_version":"rustfmt 1.84.0","exit_status":{"Exited":{"code":0}},"parsed_result_digest":"44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"}}}}]}"#;
 
 const REPORT_REJECT_JSON: &str = r#"{"variant":"Reject","code_findings":[{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"Span":{"file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30}},"message":"Imperative for loop in production source","repair":{"UseIteratorPipeline":{"suggestion":"items.iter().map(|item| ...)"}},"effect":"Reject"}],"gate_failures":[],"per_lane":[]}"#;
@@ -66,7 +54,6 @@ const REPORT_POLICY_ERROR_JSON: &str = r#"{"variant":"PolicyError","diagnostics"
 
 const REPORT_INPUT_ERROR_JSON: &str = r#"{"variant":"InputError","diagnostics":[{"message":"unrecognized scope","tool":null,"severity":"Error"}]}"#;
 
-// LaneOutcome variants
 const LANE_OUTCOME_CLEAN_JSON: &str = r#"{"Clean":{"evidence":{"command":{"executable":"cargo","argv":["cargo","fmt","--check"]},"tool_version":"rustfmt 1.84.0","exit_status":{"Exited":{"code":0}},"parsed_result_digest":"44e86eb38ff9b065a1e805dd61f624e334a4296479e4be43c354ca8af90b0340"}}}"#;
 
 const LANE_OUTCOME_FINDINGS_JSON: &str = r#"{"Findings":[{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"Span":{"file":"src/parser.rs","line_start":42,"col_start":5,"line_end":42,"col_end":30}},"message":"Imperative for loop in production source","repair":{"UseIteratorPipeline":{"suggestion":"items.iter().map(|item| ...)"}},"effect":"Reject"}]}"#;
@@ -76,7 +63,6 @@ const LANE_OUTCOME_FAILED_JSON: &str =
 
 const LANE_OUTCOME_SKIPPED_JSON: &str = r#"{"Skipped":"NotApplicable"}"#;
 
-// SkipReason — constants use stale labels but current production variants.
 const SKIP_REASON_NOT_REQUIRED_JSON: &str = r#""NotSelectedByScope""#;
 const SKIP_REASON_TOOL_MISSING_JSON: &str = r#""NotApplicable""#;
 
@@ -84,7 +70,6 @@ const SKIP_REASON_PRIOR_COMPILATION_FAILURE_JSON: &str = r#""PriorCompilationFai
 
 const SKIP_REASON_POLICY_DISABLED_JSON: &str = r#""PolicyDisabled""#;
 
-// LaneFailure variants
 const LANE_FAILURE_INFRA_JSON: &str =
     r#"{"InfraFailure":{"tool":"dylint","reason":"binary not found"}}"#;
 
@@ -97,7 +82,6 @@ const LANE_FAILURE_SUSPICIOUS_JSON: &str =
 const LANE_FAILURE_RESOURCE_JSON: &str =
     r#"{"ResourceFailure":{"tool":"cargo-test","limit":"memory"}}"#;
 
-// ProcessTermination variants
 const PROCESS_TERMINATION_EXIT_JSON: &str = r#"{"Exited":{"code":0}}"#;
 
 const PROCESS_TERMINATION_SIGNAL_JSON: &str = r#"{"Signaled":{"signal":11}}"#;
@@ -108,7 +92,6 @@ const PROCESS_TERMINATION_MEMORY_LIMIT_EXCEEDED_JSON: &str = r#""MemoryLimitExce
 
 const PROCESS_TERMINATION_SPAWN_FAILED_JSON: &str = r#""SpawnFailed""#;
 
-// Location variants
 const LOCATION_WORKSPACE_JSON: &str = r#""Workspace""#;
 
 const LOCATION_SPAN_JSON: &str =
@@ -121,7 +104,6 @@ const LOCATION_MANIFEST_JSON: &str = r#"{"Manifest":{"file":"Cargo.toml"}}"#;
 
 const LOCATION_TOOL_JSON: &str = r#"{"Tool":{"name":"rustfmt","version":"1.84.0"}}"#;
 
-// RepairHint variants
 const REPAIR_HINT_USE_ITERATOR_JSON: &str =
     r#"{"UseIteratorPipeline":{"suggestion":"items.iter().map(|item| ...)"}}"#;
 
@@ -142,14 +124,8 @@ const REPAIR_HINT_REPLACE_DEPENDENCY_JSON: &str =
 
 const REPAIR_HINT_PATCH_JSON: &str = r#"{"Patch":{"file":"src/parser.rs","range":{"start_byte":42,"end_byte":84},"replacement":"items.iter().map(|i| i * 2).collect()"}}"#;
 
-// ===========================================================================
-// Golden test: construct domain values, serialize → parse → assert identity
-// ===========================================================================
-
 #[test]
 fn json_roundtrip_golden() {
-    // ---- Report variants ----
-
     {
         let fixture = complete_edit_report_fixture(
             serde_json::from_str::<serde_json::Value>(REPORT_PASS_JSON).unwrap(),
@@ -178,8 +154,6 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- LaneOutcome variants ----
-
     {
         let fixture = serde_json::from_str::<serde_json::Value>(LANE_OUTCOME_CLEAN_JSON).unwrap();
         let expected: LaneOutcome = serde_json::from_value(fixture.clone()).unwrap();
@@ -205,8 +179,6 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- SkipReason variants ----
-
     {
         let fixture =
             serde_json::from_str::<serde_json::Value>(SKIP_REASON_NOT_REQUIRED_JSON).unwrap();
@@ -221,8 +193,6 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- SkipReason: prior_compilation_failure ----
-
     {
         let fixture =
             serde_json::from_str::<serde_json::Value>(SKIP_REASON_PRIOR_COMPILATION_FAILURE_JSON)
@@ -231,16 +201,12 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- SkipReason: policy_disabled ----
-
     {
         let fixture =
             serde_json::from_str::<serde_json::Value>(SKIP_REASON_POLICY_DISABLED_JSON).unwrap();
         let expected: SkipReason = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
-
-    // ---- LaneFailure variants ----
 
     {
         let fixture = serde_json::from_str::<serde_json::Value>(LANE_FAILURE_INFRA_JSON).unwrap();
@@ -261,16 +227,12 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- LaneFailure: resource_failure ----
-
     {
         let fixture =
             serde_json::from_str::<serde_json::Value>(LANE_FAILURE_RESOURCE_JSON).unwrap();
         let expected: LaneFailure = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
-
-    // ---- ProcessTermination variants ----
 
     {
         let fixture =
@@ -286,16 +248,12 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- ProcessTermination: timed_out ----
-
     {
         let fixture =
             serde_json::from_str::<serde_json::Value>(PROCESS_TERMINATION_TIMED_OUT_JSON).unwrap();
         let expected: ProcessTermination = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
-
-    // ---- ProcessTermination: memory_limit_exceeded ----
 
     {
         let fixture = serde_json::from_str::<serde_json::Value>(
@@ -306,8 +264,6 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- ProcessTermination: spawn_failed ----
-
     {
         let fixture =
             serde_json::from_str::<serde_json::Value>(PROCESS_TERMINATION_SPAWN_FAILED_JSON)
@@ -315,8 +271,6 @@ fn json_roundtrip_golden() {
         let expected: ProcessTermination = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
-
-    // ---- Location variants ----
 
     {
         let fixture = serde_json::from_str::<serde_json::Value>(LOCATION_WORKSPACE_JSON).unwrap();
@@ -330,15 +284,11 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- Location: dependency ----
-
     {
         let fixture = serde_json::from_str::<serde_json::Value>(LOCATION_DEPENDENCY_JSON).unwrap();
         let expected: Location = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
-
-    // ---- Location: manifest ----
 
     {
         let fixture = serde_json::from_str::<serde_json::Value>(LOCATION_MANIFEST_JSON).unwrap();
@@ -346,15 +296,11 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- Location: tool ----
-
     {
         let fixture = serde_json::from_str::<serde_json::Value>(LOCATION_TOOL_JSON).unwrap();
         let expected: Location = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
-
-    // ---- RepairHint variants ----
 
     {
         let fixture =
@@ -377,16 +323,12 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- RepairHint: flatten_nesting ----
-
     {
         let fixture =
             serde_json::from_str::<serde_json::Value>(REPAIR_HINT_FLATTEN_NESTING_JSON).unwrap();
         let expected: RepairHint = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
-
-    // ---- RepairHint: use_checked_arithmetic ----
 
     {
         let fixture =
@@ -396,8 +338,6 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- RepairHint: replace_dependency ----
-
     {
         let fixture =
             serde_json::from_str::<serde_json::Value>(REPAIR_HINT_REPLACE_DEPENDENCY_JSON).unwrap();
@@ -405,18 +345,12 @@ fn json_roundtrip_golden() {
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 
-    // ---- RepairHint: patch ----
-
     {
         let fixture = serde_json::from_str::<serde_json::Value>(REPAIR_HINT_PATCH_JSON).unwrap();
         let expected: RepairHint = serde_json::from_value(fixture.clone()).unwrap();
         assert_eq!(serde_json::to_value(&expected).unwrap(), fixture);
     }
 }
-
-// ===========================================================================
-// Domain-value construction tests
-// ===========================================================================
 
 #[test]
 fn report_pass_constructs_and_round_trips() -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -503,9 +437,6 @@ fn report_reject_constructs_and_round_trips() -> std::result::Result<(), Box<dyn
     Ok(())
 }
 
-/// Per v1 §10, a Reject's `per_lane` may be empty when the reject is
-/// CodeOnly or GateOnly. The constructor and wire deserializer must
-/// accept this shape and round-trip it losslessly.
 #[test]
 fn report_reject_code_only_with_empty_per_lane_round_trips()
 -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -561,9 +492,6 @@ fn report_reject_gate_only_with_empty_per_lane_round_trips()
     Ok(())
 }
 
-/// The existing empty-reject invariant must remain in force: a Reject
-/// with both `code_findings` and `gate_failures` empty is still a bug
-/// and must be rejected by the constructor, regardless of `per_lane`.
 #[test]
 fn report_reject_still_rejects_empty_collections_with_empty_per_lane() {
     let result =
@@ -735,10 +663,6 @@ fn repair_hint_all_variants() {
     assert_eq!(human, parsed);
 }
 
-// ---------------------------------------------------------------------------
-// Existing tests (preserved)
-// ---------------------------------------------------------------------------
-
 #[test]
 fn digest_json_is_string_form() {
     let d = Digest::from_bytes(b"alpha");
@@ -846,10 +770,6 @@ fn structured_value_serializes_deterministically() {
     assert_eq!(serde_json::to_string(&a).unwrap(), serde_json::to_string(&b).unwrap());
 }
 
-// ===========================================================================
-// Invalid JSON fixtures — hardcoded constants for rejection tests.
-// ===========================================================================
-
 const UNKNOWN_REPORT_VARIANT_JSON: &str = r#"{"variant":"nonexistent","per_lane":[]}"#;
 
 const UNKNOWN_LANE_OUTCOME_VARIANT_JSON: &str = r#"{"nonexistent":{}}"#;
@@ -865,13 +785,8 @@ const EMPTY_REJECT_COLLECTIONS_JSON: &str =
 
 const INVALID_LOCATION_SPAN_JSON: &str = r#"{"lane":"AstGrep","rule_id":"FUNC_LOOPS_FOR","location":{"Span":{"file":"src/parser.rs","line_start":42,"col_start":30,"line_end":10,"col_end":5}},"message":"bad span","repair":{"UseIteratorPipeline":{"suggestion":"x"}},"effect":"Reject"}"#;
 
-// ===========================================================================
-// Invalid v1 JSON wire-shape rejection tests.
-// ===========================================================================
-
 #[test]
 fn json_roundtrip_rejects_invalid() {
-    // ---- Unknown Report variant ----
     let result: Result<Report, _> = serde_json::from_str(UNKNOWN_REPORT_VARIANT_JSON);
     assert!(result.is_err(), "should reject unknown report variant");
     let err = result.unwrap_err().to_string();
@@ -880,7 +795,6 @@ fn json_roundtrip_rejects_invalid() {
         "error should reference invalid variant 'nonexistent': {err}"
     );
 
-    // ---- Unknown LaneOutcome variant ----
     let result: Result<LaneOutcome, _> = serde_json::from_str(UNKNOWN_LANE_OUTCOME_VARIANT_JSON);
     assert!(result.is_err(), "should reject unknown lane outcome variant");
     let err = result.unwrap_err().to_string();
@@ -889,7 +803,6 @@ fn json_roundtrip_rejects_invalid() {
         "error should reference invalid variant 'nonexistent': {err}"
     );
 
-    // ---- Malformed tag (wrong type for struct field) ----
     let result: Result<Report, _> = serde_json::from_str(MALFORMED_TAG_JSON);
     assert!(result.is_err(), "should reject malformed tag value");
     let err = result.unwrap_err().to_string();
@@ -898,7 +811,6 @@ fn json_roundtrip_rejects_invalid() {
         "error should reference invalid value 'not_an_object': {err}"
     );
 
-    // ---- Missing required field ----
     let result: Result<Report, _> = serde_json::from_str(MISSING_REQUIRED_FIELD_JSON);
     assert!(result.is_err(), "should reject missing required field");
     let err = result.unwrap_err().to_string();
@@ -907,10 +819,6 @@ fn json_roundtrip_rejects_invalid() {
         "error should reference missing field 'code_findings': {err}"
     );
 
-    // ---- Wrong lane/filename pair ----
-    // A LaneOutcome Clean variant with a findings body is a core-owned
-    // variant-body mismatch: serde rejects it because Clean requires
-    // an `evidence` field, not `findings`.
     let result: Result<LaneOutcome, _> = serde_json::from_str(WRONG_LANE_FILENAME_PAIR_JSON);
     assert!(result.is_err(), "should reject LaneOutcome variant-body mismatch: {result:?}");
     let err = result.unwrap_err().to_string();
@@ -919,9 +827,6 @@ fn json_roundtrip_rejects_invalid() {
         "error should reference missing evidence field for clean variant: {err}"
     );
 
-    // ---- Empty reject collections (invariant violation) ----
-    // Report::Reject with both collections empty violates the invariant
-    // documented on Report::Reject: at least one must be non-empty.
     let result: Result<Report, _> = serde_json::from_str(EMPTY_REJECT_COLLECTIONS_JSON);
     assert!(result.is_err(), "should reject Report::Reject with empty collections: {result:?}");
     let err = result.unwrap_err().to_string();
@@ -930,7 +835,6 @@ fn json_roundtrip_rejects_invalid() {
         "error should reference empty reject collections invariant: {err}"
     );
 
-    // ---- Invalid location span (line_end < line_start) ----
     let result: Result<Finding, _> = serde_json::from_str(INVALID_LOCATION_SPAN_JSON);
     assert!(result.is_err(), "should reject invalid location span");
     let err = result.unwrap_err().to_string();

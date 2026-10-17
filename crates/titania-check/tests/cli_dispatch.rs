@@ -1,12 +1,3 @@
-//! Failing-first CLI dispatch tests for bead tn-cgk.1.
-//!
-//! Covers: parser/validation, exit-code mapping, dispatch shell, and lane execution.
-//! Uses `std::process::Command` and the `CARGO_BIN_EXE_titania-check`
-//! environment variable set by `cargo test`.
-//!
-//! Selective acceptance filter:
-//! `cargo test -p titania-check cli_args_dispatch_missing_implementation_exit_codes`
-
 use serde_json::Value;
 use std::{
     env, fs,
@@ -74,21 +65,9 @@ fn run_in(cwd: &Path, args: &[&str]) -> (i32, String, String) {
     let _ = cmd.stdout(Stdio::piped());
     let _ = cmd.stderr(Stdio::piped());
 
-    // Stub Moon via TITANIA_MOON_BIN so `Command::Check` does not invoke the
-    // real moon binary (which would error on tempdirs without `.moon/`).
-    // `/bin/true` exits 0 with any args. Tests that exercise real Moon dispatch
-    // (missing-moon handling, moon-invocation proof) override or clear this.
-    // `/bin/true` is Unix-only; gate the env override so that Windows
-    // compilation never carries the literal. Tests that go through
-    // `Command::Check` and depend on this stub exiting 0 are themselves
-    // gated to `cfg(unix)` below; on non-Unix the production moon spawn
-    // falls back to the `moon` PATH lookup, which those tests avoid.
     #[cfg(unix)]
     let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
 
-    // Pass CARGO_TARGET_DIR through as-is so that library_is_available
-    // can resolve it relative to the workspace root when walking up
-    // from CARGO_MANIFEST_DIR.
     if let Ok(ctd) = env::var("CARGO_TARGET_DIR") {
         let _ = cmd.env("CARGO_TARGET_DIR", ctd);
     }
@@ -110,7 +89,6 @@ fn run_in_without_policy_env(cwd: &Path, args: &[&str]) -> (i32, String, String)
     let _ = cmd.env_remove("RUSTC_WRAPPER");
     let _ = cmd.env_remove("RUSTC_WORKSPACE_WRAPPER");
     let _ = cmd.env_remove("RUSTC_BOOTSTRAP");
-    // Stub Moon (see run_in for rationale). Unix-only.
     #[cfg(unix)]
     let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
 
@@ -169,7 +147,6 @@ fn assert_empty_workspace_reject(args: &[&str], expected_gate_failures: usize) {
     );
 }
 
-/// Helper: build a minimal Cargo project (lib + bin) and return the TempDir.
 fn package(name: &str, lib_rs: &str, main_rs: &str) -> Result<TempDir, std::io::Error> {
     let temp = tempfile::tempdir()?;
     fs::write(
@@ -191,22 +168,18 @@ fn package(name: &str, lib_rs: &str, main_rs: &str) -> Result<TempDir, std::io::
     Ok(temp)
 }
 
-/// Resolve the artifact path for the fmt lane in the edit scope.
 fn fmt_artifact_path(root: &Path) -> std::path::PathBuf {
     root.join(".titania/out/edit/fmt.json")
 }
 
-/// Resolve the artifact path for the clippy lane in the edit scope.
 fn clippy_artifact_path(root: &Path) -> std::path::PathBuf {
     root.join(".titania/out/edit/clippy.json")
 }
 
-/// Resolve the artifact path for the test lane in the prepush scope.
 fn prepush_test_artifact_path(root: &Path) -> std::path::PathBuf {
     root.join(".titania/out/prepush/test.json")
 }
 
-/// Resolve the artifact path for the policy-scan lane in the release scope.
 fn release_policy_artifact_path(root: &Path) -> std::path::PathBuf {
     root.join(".titania/out/release/policy-scan.json")
 }
@@ -224,9 +197,6 @@ fn generate_lockfile(root: &Path) {
     );
 }
 
-// Default `--scope edit --emit json` dispatches through `Command::Check`, which
-// spawns Moon. Without a Unix stub (`/bin/true`) Moon's PATH lookup fails on
-// Windows and the assertion shape (exit 1 reject on empty workspace) breaks.
 #[cfg(unix)]
 #[test]
 fn cli_args_default_scope_edit() {
@@ -251,8 +221,6 @@ fn cli_args_emit_json_flag() {
     assert_empty_workspace_reject(&["--emit", "json"], 7);
 }
 
-// `--out <path>` with `--emit json` (no subcommand) routes through
-// `Command::Check` and Moon; see the rationale on `cli_args_default_scope_edit`.
 #[cfg(unix)]
 #[test]
 fn cli_args_out_path() {
@@ -286,8 +254,6 @@ fn aggregate_missing_scope_lists_accepted_spellings() {
     assert_eq!(stderr, "InputError: aggregate requires --scope <edit|prepush|release|full>\n");
 }
 
-// Default `--emit json` dispatches to `Command::Check`; see rationale on
-// `cli_args_default_scope_edit`.
 #[cfg(unix)]
 #[test]
 fn dispatch_default_check_aggregates_empty_workspace() {
@@ -309,7 +275,6 @@ fn dispatch_run_lane_fmt_writes_typed_clean_artifact() {
     let json: Value = serde_json::from_str(&payload).expect("artifact must be valid JSON");
     assert_eq!(json["lane"].as_str(), Some("Fmt"), "lane must be Fmt");
     assert!(json["outcome"].get("Clean").is_some(), "outcome must be Clean");
-    // Command evidence: executable, argv, tool_version, exit_status.
     let evidence = &json["outcome"]["Clean"]["evidence"];
     let cmd = &evidence["command"];
     assert_eq!(cmd["executable"].as_str(), Some("cargo"), "command executable must be cargo");
@@ -345,7 +310,6 @@ fn dispatch_run_lane_clippy_executes_on_clean_project() {
         "fn main() {}\n",
     )
     .expect("temp package must be created");
-    // Generate a lock file (clippy lane uses --frozen which requires one).
     generate_lockfile(temp.path());
     let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "clippy"]);
     assert_eq!(code, 0, "run-lane clippy on clean project must exit 0, stderr: {stderr}");
@@ -417,7 +381,6 @@ mod tests {
 
     let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "test"]);
 
-    // Per v1-spec §12, a gate failure (LaneFailure::Tool) is a Reject (exit 1).
     assert_eq!(code, 1, "run-lane test with failing cargo test must reject, stderr: {stderr}");
     assert!(stdout.is_empty(), "run-lane test must not write stdout, got: {stdout}");
 
@@ -432,7 +395,6 @@ mod tests {
         json["outcome"].get("Findings").is_none(),
         "nonzero cargo test must not produce Findings per v1-spec §5"
     );
-    // Per v1-spec §11.2 example: Test failures emit Failed { ToolFailure { tool, termination } }.
     let failed = &json["outcome"]["Failed"];
     assert!(failed.get("ToolFailure").is_some(), "must be ToolFailure, got: {failed:#}");
     let tool = failed["ToolFailure"]["tool"].as_str().expect("tool must be a string");
@@ -440,7 +402,6 @@ mod tests {
     let exit_code = failed["ToolFailure"]["termination"]["Exited"]["code"]
         .as_u64()
         .expect("termination must be Exited with code");
-    // cargo test exits 101 when the test harness reports failures.
     assert_eq!(exit_code, 101, "cargo test exit code must be 101 (test failure)");
 }
 
@@ -504,7 +465,6 @@ fn dispatch_doctor_emits_human_table() {
     assert!(stdout.contains("Tool"), "stdout must contain Tool column header: {stdout}");
     assert!(stdout.contains("Required"), "stdout must contain Required column header: {stdout}");
     assert!(stdout.contains("Status:"), "stdout must contain Status line: {stdout}");
-    // Exit code is 0 if all required tools are installed, 3 if missing
     assert!(code == 0 || code == 3, "doctor exit code must be 0 or 3, got: {code}");
 }
 
@@ -523,8 +483,6 @@ fn dispatch_unknown_lane_lists_accepted_spellings() {
     );
 }
 
-// Default `--emit json` dispatches to `Command::Check`; see rationale on
-// `cli_args_default_scope_edit`.
 #[cfg(unix)]
 #[test]
 fn exit_codes_reject_report_exits_1() {
@@ -564,8 +522,6 @@ fn exit_codes_run_lane_invalid_lane() {
     assert_stderr_contains(&stderr, "unknown lane 'invalid-lane'");
 }
 
-// `--scope prepush --emit json --out ...` (no subcommand) routes through
-// `Command::Check`; see rationale on `cli_args_default_scope_edit`.
 #[cfg(unix)]
 #[test]
 fn exit_codes_scope_emit_out_combination() {
@@ -583,16 +539,12 @@ fn exit_codes_scope_emit_out_combination() {
     assert_eq!(report["gate_failures"].as_array().map(|items| items.len()), Some(9),);
 }
 
-// `--scope prepush --emit json` (no subcommand) dispatches to `Command::Check`;
-// see rationale on `cli_args_default_scope_edit`.
 #[cfg(unix)]
 #[test]
 fn exit_codes_scope_prepush_emit_json() {
     assert_empty_workspace_reject(&["--scope", "prepush", "--emit", "json"], 9);
 }
 
-// `--scope release --emit json --out ...` (no subcommand) routes through
-// `Command::Check`; see rationale on `cli_args_default_scope_edit`.
 #[cfg(unix)]
 #[test]
 fn exit_codes_scope_release_emit_json_out() {
@@ -610,14 +562,10 @@ fn exit_codes_scope_release_emit_json_out() {
     assert_eq!(report["gate_failures"].as_array().map(|items| items.len()), Some(10),);
 }
 
-// Aggregates a `Command::Check` scenario with follow-on doctor/explain/run-lane
-// probes. The first assertion routes through Moon and depends on the Unix
-// `/bin/true` stub, so the whole acceptance-filter check is Unix-only.
 #[cfg(unix)]
 #[test]
 fn cli_args_dispatch_missing_implementation_exit_codes() {
     assert_empty_workspace_reject(&["--emit", "json"], 7);
-    // Doctor now uses real implementation; verify JSON output parses
     let (code, stdout, _stderr) = run(&["doctor", "--scope", "edit", "--emit", "json"]);
     assert!(serde_json::from_str::<serde_json::Value>(&stdout).is_ok(), "doctor JSON must parse");
     assert!(code == 0 || code == 3, "doctor exit code must be 0 or 3, got: {code}");
@@ -627,17 +575,12 @@ fn cli_args_dispatch_missing_implementation_exit_codes() {
     assert_stderr_contains(&stderr, "unknown lane 'invalid-lane'");
 }
 
-/// M7: `titania-check check --scope edit` must dispatch to the aggregate check
-/// path (exit 1 for reject on empty workspace), not return UnknownSubcommand.
 #[cfg(unix)]
 #[test]
 fn m7_check_subcommand_dispatches_to_aggregate() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
     let (code, stdout, stderr) =
         run_in(workspace.path(), &["check", "--emit", "json", "--scope", "edit"]);
-    // If the check subcommand were not recognized, we would get exit code 3
-    // with stderr "unknown subcommand 'check'". Instead it should dispatch
-    // to aggregate and return a reject report (exit 1).
     assert_ne!(
         code, 3,
         "check subcommand must not return UnknownSubcommand(exit 3); stderr: {stderr}",
@@ -647,8 +590,6 @@ fn m7_check_subcommand_dispatches_to_aggregate() {
         serde_json::from_str(&stdout).expect("check must emit JSON report to stdout");
     assert_eq!(report["variant"], "Reject", "check report variant must be Reject");
 }
-/// M7: `titania-check check` (no explicit scope, default edit) must dispatch
-/// to aggregate and produce a typed reject report.
 #[cfg(unix)]
 #[test]
 fn m7_check_subcommand_default_scope() {
@@ -661,22 +602,17 @@ fn m7_check_subcommand_default_scope() {
     assert_eq!(report["variant"], "Reject");
 }
 
-// ===== M8: --emit must affect output format for check/aggregate commands =====
-
-/// M8: `--emit json` must produce parseable JSON output (not text/table format).
 #[cfg(unix)]
 #[test]
 fn m8_emit_json_produces_valid_json() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
     let (code, stdout, stderr) = run_in(workspace.path(), &["--scope", "edit", "--emit", "json"]);
     assert_eq!(code, 1, "reject on empty workspace must exit 1, stderr: {stderr}");
-    // Must parse as JSON
     let parsed: serde_json::Value =
         serde_json::from_str(&stdout).expect("--emit json stdout must be valid JSON");
     assert_eq!(parsed["variant"], "Reject", "JSON report must have variant field");
 }
 
-/// M8: primary report commands reject the human renderer under v1 §12.
 #[cfg(unix)]
 #[test]
 fn m8_emit_human_rejected() {
@@ -687,7 +623,6 @@ fn m8_emit_human_rejected() {
     assert_stderr_contains(&stderr, "unknown emit format");
 }
 
-/// M8: primary report commands accept JSON and reject human output.
 #[cfg(unix)]
 #[test]
 fn m8_emit_format_changes_output() {
@@ -704,7 +639,6 @@ fn m8_emit_format_changes_output() {
     assert_stderr_contains(&human_stderr, "unknown emit format");
 }
 
-/// M8: invalid `--emit` value must be rejected.
 #[test]
 fn m8_emit_invalid_value_rejected() {
     let (code, stdout, stderr) = run(&["--scope", "edit", "--emit", "xml"]);
@@ -712,10 +646,6 @@ fn m8_emit_invalid_value_rejected() {
     assert_stderr_contains(&stderr, "unknown emit format");
 }
 
-// ===== M8: --out must write report to file =====
-
-/// M8: `--out <path>` must write the report to the specified file path.
-/// On success, stdout must be empty and the file must contain the JSON report.
 #[cfg(unix)]
 #[test]
 fn m8_out_path_writes_report_to_file() {
@@ -726,9 +656,7 @@ fn m8_out_path_writes_report_to_file() {
         &["--emit", "json", "--scope", "edit", "--out", out_path.to_str().unwrap()],
     );
     assert_eq!(code, 1, "reject must exit 1, stderr: {stderr}");
-    // When --out is specified, stdout must be empty
     assert!(stdout.is_empty(), "--out must suppress stdout; got: {stdout}");
-    // The report file must exist and contain valid JSON
     let report_text =
         fs::read_to_string(&out_path).expect("--out path must contain the report file");
     let parsed: serde_json::Value =
@@ -736,7 +664,6 @@ fn m8_out_path_writes_report_to_file() {
     assert_eq!(parsed["variant"], "Reject", "written report must have variant field");
 }
 
-/// M8: `--out` with `--emit json` writes JSON to file.
 #[cfg(unix)]
 #[test]
 fn m8_out_with_emit_json_writes_json_file() {
@@ -753,10 +680,6 @@ fn m8_out_with_emit_json_writes_json_file() {
     assert_eq!(parsed["variant"], "Reject");
 }
 
-// ===== H1: run-lane exit codes must distinguish infrastructure vs input vs reject =====
-
-/// H1: `run-lane` on a missing lane must return exit code 3 (InputError),
-/// not 0 (pass) or 1 (reject).
 #[test]
 fn h1_run_lane_missing_lane_exits_3() {
     let (code, stdout, stderr) = run(&["run-lane", "nonexistent-lane"]);
@@ -765,7 +688,6 @@ fn h1_run_lane_missing_lane_exits_3() {
     assert_stderr_contains(&stderr, "unknown lane");
 }
 
-/// H1: `run-lane fmt` on a clean project must exit 0 (pass).
 #[test]
 fn h1_run_lane_clean_fmt_exits_0() {
     let temp = package("h1_fmt_clean", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
@@ -775,7 +697,6 @@ fn h1_run_lane_clean_fmt_exits_0() {
     assert!(stdout.is_empty(), "fmt lane must not write stdout, got: {stdout}");
 }
 
-/// H1: `run-lane clippy` on a clean project (with lockfile) must exit 0 (pass).
 #[test]
 fn h1_run_lane_clean_clippy_exits_0() {
     let temp = package(
@@ -784,7 +705,6 @@ fn h1_run_lane_clean_clippy_exits_0() {
         "fn main() {}\n",
     )
     .expect("temp package must be created");
-    // Generate lockfile for clippy's --frozen mode
     drop(
         std::process::Command::new("cargo")
             .current_dir(temp.path())
@@ -797,8 +717,6 @@ fn h1_run_lane_clean_clippy_exits_0() {
     assert!(stdout.is_empty(), "clippy lane must not write stdout, got: {stdout}");
 }
 
-/// H1: aggregate/check on empty workspace must exit 1 (reject), not 0 (pass).
-/// The exit code must distinguish reject from pass.
 #[test]
 fn h1_aggregate_empty_workspace_exits_1_not_0() {
     let workspace = tempfile::tempdir().expect("tempdir must be created");
@@ -811,15 +729,12 @@ fn h1_aggregate_empty_workspace_exits_1_not_0() {
     let report: serde_json::Value =
         serde_json::from_str(&stdout).expect("aggregate must emit JSON report");
     assert_eq!(report["variant"], "Reject");
-    // Verify gate_failures > 0 to confirm it is reject, not pass
     assert!(
         report["gate_failures"].as_array().is_some_and(|arr| !arr.is_empty()),
         "reject report must have gate_failures",
     );
 }
 
-/// H1: `titania-check check --scope edit` exit code must equal aggregate's exit code.
-/// Both should map the same ReportStatus → exit code.
 #[cfg(unix)]
 #[test]
 fn h1_check_and_aggregate_exit_codes_match() {
@@ -832,29 +747,12 @@ fn h1_check_and_aggregate_exit_codes_match() {
     );
 }
 
-// ===== H1: lane infrastructure Failure must map to InternalError(4) =====
-
-/// H1: a lane `Failure` disposition must surface as exit code 4 (InternalError),
-/// not the raw `LaneExit::Failure` value of 3 (which is `InputError` in the
-/// v1-spec §12 exit-code taxonomy). This proves `map_lane_exit` re-maps
-/// Failure → 4 at the CLI boundary.
-///
-/// We trigger a real `LaneExit::Failure` by running `run-lane fmt` in a Cargo
-/// project whose `.titania/out/edit/` directory is read-only: cargo fmt itself
-/// succeeds (Clean outcome), but `write_lane_artifact` fails when it tries to
-/// write the temp artifact file. `execute_lane_checked` then returns Err, and
-/// `execute_lane` synthesizes `LaneExit::Failure`. `map_lane_exit` must route
-/// that to exit 4.
-// chmod 0o555 on the artifact directory is Unix-only (see `make_read_only`).
 #[cfg(unix)]
 #[test]
 fn h1_lane_failure_maps_to_internal_error() {
     let temp = package("h1_lane_failure", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
         .expect("temp package must be created");
 
-    // Pre-create the artifact directory and make it read-only so the lane's
-    // atomic-write step fails. create_dir_all is a no-op on existing dirs, so
-    // the failure surfaces at the temp-file write step inside write_lane_artifact.
     let artifact_dir = temp.path().join(".titania").join("out").join("edit");
     std::fs::create_dir_all(&artifact_dir).expect("artifact dir must be pre-created");
     make_read_only(&artifact_dir);
@@ -871,7 +769,6 @@ fn h1_lane_failure_maps_to_internal_error() {
     assert!(!stderr.is_empty(), "Failure path must write a diagnostic to stderr, got empty stderr",);
 }
 
-/// Mark a directory read-only (mode 0555) on Unix so writes inside it fail.
 #[cfg(unix)]
 fn make_read_only(path: &Path) {
     use std::os::unix::fs::PermissionsExt;
@@ -881,51 +778,34 @@ fn make_read_only(path: &Path) {
     std::fs::set_permissions(path, perms).expect("dir must be made read-only");
 }
 
-/// No-op marker on non-Unix hosts (the test is Unix-gated in practice).
 #[cfg(not(unix))]
 fn make_read_only(_path: &Path) {}
 
-// ===== --help / -h / help routing =====
-
-/// `--help` prints usage to stdout and exits 0.
 #[test]
 fn help_long_flag_prints_usage_and_exits_zero() {
     assert_exact_help(&["--help"]);
 }
 
-/// `-h` is an alias for `--help`.
 #[test]
 fn help_short_flag_prints_usage_and_exits_zero() {
     assert_exact_help(&["-h"]);
 }
 
-/// `help` (bare subcommand) prints usage and exits 0.
 #[test]
 fn help_bare_subcommand_prints_usage_and_exits_zero() {
     assert_exact_help(&["help"]);
 }
 
-/// `check --help` prints usage and exits 0.
 #[test]
 fn help_after_check_subcommand_prints_usage_and_exits_zero() {
     assert_exact_help(&["check", "--help"]);
 }
 
-/// `aggregate --help` prints usage and exits 0 (and does NOT require --scope).
 #[test]
 fn help_after_aggregate_subcommand_short_circuits_scope_requirement() {
     assert_exact_help(&["aggregate", "--help"]);
 }
 
-// ===== Check → Moon dispatch (spec §12, §13) =====
-
-/// `Command::Check` with no moon binary on PATH (TITANIA_MOON_BIN points at a
-/// missing path) must surface InputError(3) with the install hint.
-// TITANIA_MOON_BIN pointed at an absent path; `Command::Check` then spawns
-// Moon and surfaces `MoonSpawnError::NotFound`. The Unix-only assertion
-// shape (exit 3 + install hint) validates the Moon-not-found diagnostic;
-// non-Unix hosts have no canonical Moon install path or hint to compare
-// against, so the positive scenario stays Unix-gated.
 #[cfg(unix)]
 #[test]
 fn check_with_missing_moon_binary_yields_input_error() {
@@ -935,8 +815,6 @@ fn check_with_missing_moon_binary_yields_input_error() {
     let _ = cmd.args(&["--scope", "edit"]);
     let _ = cmd.stdout(Stdio::piped());
     let _ = cmd.stderr(Stdio::piped());
-    // Point at a path that does not exist → spawn fails with NotFound →
-    // MoonSpawnError::NotFound → InputError(3).
     let _ = cmd.env("TITANIA_MOON_BIN", "/nonexistent/titania-moon-stub-missing");
     let output = cmd.output().expect("failed to spawn titania-check");
     let code = output.status.code().unwrap_or(-1);
@@ -953,11 +831,6 @@ fn check_with_missing_moon_binary_yields_input_error() {
     );
 }
 
-/// `Command::Check` must invoke the moon binary (not skip directly to
-/// aggregate). Proven by setting TITANIA_MOON_BIN to a recording stub that
-/// writes a marker file when invoked: the marker must exist after `check`
-/// returns. `aggregate` must NOT invoke moon (marker stays absent).
-// Recording stub is a `/bin/sh` shell script + `chmod 0o755`; Unix-only.
 #[cfg(unix)]
 #[test]
 fn check_invokes_moon_aggregate_does_not() {
@@ -965,7 +838,6 @@ fn check_invokes_moon_aggregate_does_not() {
     let marker = workspace.path().join("moon_invoked marker.txt");
     let stub = write_recording_stub(workspace.path(), &marker);
 
-    // Check path: moon must be invoked.
     let mut check_cmd = Command::new(binary());
     let _ = check_cmd.current_dir(workspace.path());
     let _ = check_cmd.args(&["check", "--scope", "edit"]);
@@ -979,7 +851,6 @@ fn check_invokes_moon_aggregate_does_not() {
         marker.display(),
     );
 
-    // Remove the marker, then run aggregate: moon must NOT be invoked.
     drop(std::fs::remove_file(&marker));
     let mut agg_cmd = Command::new(binary());
     let _ = agg_cmd.current_dir(workspace.path());
@@ -995,11 +866,6 @@ fn check_invokes_moon_aggregate_does_not() {
     );
 }
 
-/// Write a tiny POSIX shell stub that touches `marker` on invocation, then
-/// exits 0. Used to prove the check→moon spawn path is taken.
-// POSIX shell (`/bin/sh`) + chmod 0o755. The only caller is the Unix-gated
-// `check_invokes_moon_aggregate_does_not`; gating the helper keeps Windows
-// compilation free of the shell-script and `chmod` literals.
 #[cfg(unix)]
 fn write_recording_stub(dir: &Path, marker: &Path) -> String {
     let stub_path = dir.join("moon-recording-stub.sh");
@@ -1016,14 +882,6 @@ fn write_recording_stub(dir: &Path, marker: &Path) -> String {
     stub_path.to_str().expect("stub path must be valid UTF-8").to_owned()
 }
 
-// ---------------------------------------------------------------------------
-// setup-hermetic subcommand tests
-// ---------------------------------------------------------------------------
-
-/// `setup-hermetic` on a fresh temp dir must:
-/// - exit 0
-/// - print eval-able export lines on stdout
-/// - create both symlinks that resolve to real directories
 #[cfg(unix)]
 #[test]
 fn setup_hermetic_creates_symlinks_and_prints_exports() {
@@ -1050,8 +908,6 @@ fn setup_hermetic_creates_symlinks_and_prints_exports() {
     assert!(rustup_link.exists(), "rustup-home symlink must resolve");
 }
 
-/// Re-running `setup-hermetic` must be idempotent — existing correct symlinks
-/// are left as-is, and the command still exits 0.
 #[cfg(unix)]
 #[test]
 fn setup_hermetic_is_idempotent() {
@@ -1064,8 +920,6 @@ fn setup_hermetic_is_idempotent() {
     assert_eq!(code2, 0, "second run must exit 0, stderr: {stderr2}");
 }
 
-/// `run-lane clippy --cap-lints allow` must reject with InputError
-/// (exit 3): ceiling flags can never reach the protected lane argv via CLI.
 #[test]
 fn run_lane_rejects_extra_cap_lints_args() {
     let temp = tempfile::tempdir().expect("tempdir must be created");
@@ -1077,7 +931,6 @@ fn run_lane_rejects_extra_cap_lints_args() {
     );
 }
 
-/// `setup-hermetic extra-arg` must reject with InputError (exit 3).
 #[test]
 fn setup_hermetic_rejects_extra_arguments() {
     let (code, _, stderr) = run(&["setup-hermetic", "unexpected-arg"]);
@@ -1088,7 +941,6 @@ fn setup_hermetic_rejects_extra_arguments() {
     );
 }
 
-/// `link_if_needed` must refuse to overwrite a real (non-symlink) directory.
 #[cfg(unix)]
 #[test]
 fn setup_hermetic_refuses_real_directory_at_link_path() {
@@ -1103,13 +955,6 @@ fn setup_hermetic_refuses_real_directory_at_link_path() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Standalone --scope hermetic env injection tests (v1-spec §9.5)
-// ---------------------------------------------------------------------------
-
-/// Write a stub `moon` script that records `CARGO_HOME` and `RUSTUP_HOME` to
-/// `env_file`, then exits 0. Used to prove the env injection reaches the Moon
-/// subprocess without running real Moon tasks.
 #[cfg(unix)]
 fn write_stub_moon(dir: &Path, env_file: &Path) -> std::path::PathBuf {
     let script = format!(
@@ -1128,8 +973,6 @@ fn write_stub_moon(dir: &Path, env_file: &Path) -> std::path::PathBuf {
     stub
 }
 
-/// Create hermetic symlinks under `<root>/.titania/hermetic/` pointing at the
-/// real Cargo and Rustup homes resolved from the test environment.
 #[cfg(unix)]
 fn create_hermetic_symlinks(root: &Path) {
     let hermetic_dir = root.join(".titania").join("hermetic");
@@ -1144,8 +987,6 @@ fn create_hermetic_symlinks(root: &Path) {
         .expect("rustup-home symlink must be created");
 }
 
-/// Run `titania-check --scope edit --emit json` in `cwd` with `TITANIA_MOON_BIN`
-/// set to `stub`, returning `(exit_code, stdout, stderr, recorded_env)`.
 #[cfg(unix)]
 fn run_check_with_stub_moon(
     cwd: &Path,
@@ -1168,9 +1009,6 @@ fn run_check_with_stub_moon(
     (code, stdout, stderr, recorded_env)
 }
 
-/// Standalone `--scope edit` with hermetic symlinks present must inject
-/// `CARGO_HOME` / `RUSTUP_HOME` to the hermetic paths on the Moon subprocess,
-/// even when the parent process env holds wrong values (v1-spec §9.5).
 #[cfg(unix)]
 #[test]
 fn check_scope_edit_injects_hermetic_env_to_moon_subprocess() {
@@ -1203,10 +1041,6 @@ fn check_scope_edit_injects_hermetic_env_to_moon_subprocess() {
     );
 }
 
-/// Standalone `--scope edit` WITHOUT hermetic dirs must NOT override the
-/// parent env vars on the Moon subprocess. The hint is gated on the
-/// policy-scan artifact containing `BYPASS_ENV_*` findings; since the stub
-/// moon writes no artifact, no hint appears.
 #[cfg(unix)]
 #[test]
 fn check_scope_edit_does_not_inject_env_without_hermetic_dirs() {
@@ -1232,10 +1066,6 @@ fn check_scope_edit_does_not_inject_env_without_hermetic_dirs() {
     );
 }
 
-/// Standalone `--scope edit` when the process env already points at the
-/// hermetic path must inherit the value as-is (not override). This proves the
-/// Moon-CI path is not broken when the `env:` task block already sets the
-/// correct values.
 #[cfg(unix)]
 #[test]
 fn check_scope_edit_preserves_already_correct_env() {
@@ -1276,9 +1106,6 @@ fn check_scope_edit_preserves_already_correct_env() {
     assert!(!stderr.contains("hint:"), "no hint when hermetic dirs exist, got stderr: {stderr}");
 }
 
-/// `run-lane policy-scan` with hermetic env vars set to the controlled paths
-/// must produce a Clean artifact with zero `BYPASS_ENV_*` findings. This proves
-/// the policy-scan lane is Clean when the env injection has been applied.
 #[test]
 fn run_lane_policy_scan_clean_with_hermetic_env() {
     let temp = package(

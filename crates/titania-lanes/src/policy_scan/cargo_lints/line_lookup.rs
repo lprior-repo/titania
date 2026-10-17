@@ -1,6 +1,3 @@
-//! Source-line lookup for Cargo lint table entries.
-
-/// Find a lint key's 1-indexed line within one TOML lint section.
 #[must_use]
 pub(super) fn find_lint_line(content: &str, table_prefix: &str, category: &str, key: &str) -> u32 {
     let section = format!("[{table_prefix}.{category}]");

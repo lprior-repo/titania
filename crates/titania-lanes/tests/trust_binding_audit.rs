@@ -1,19 +1,3 @@
-//! Behavior tests for the trust/binding audit (`titania-lanes::trust_binding`).
-//!
-//! Proves, per tn-083n acceptance criteria:
-//! (a) A real verified production body with matching raw verifier evidence
-//!     classifies `VerifiedProduction` and names its binding + trusted base.
-//! (b) A path-linked `assume_specification` contract classifies
-//!     `SourceLinked`, never production-body proven.
-//! (c) An unbound copied model, or a production body that moved past its
-//!     evidence revision, is blocked (`MissingBinding` / `MirrorDrift`).
-//! (d) `assume` / `external_body` / `admit` / `trusted` markers without an
-//!     independent explicit waiver block (`UnapprovedTrust`); a waiver keeps
-//!     the classification at `SourceLinked`, never verified.
-//! (e) A tautology theorem (`2 == 2`) discharges nothing (`VacuousProof`).
-//! (f) A smoke fixture can never satisfy a production obligation
-//!     (`SmokeOnly`), even with passing evidence.
-
 use titania_lanes::{
     LaneReport,
     trust_binding::{
@@ -24,7 +8,6 @@ use titania_lanes::{
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-/// Obligation mirroring the real receipt-schema binding.
 fn receipt_obligation(proof_file: &str) -> Obligation {
     Obligation::new(
         "receipt-schema-version",
@@ -34,8 +17,6 @@ fn receipt_obligation(proof_file: &str) -> Obligation {
     )
 }
 
-/// Fixture mirroring `verification/verus/receipt_schema.rs`: a `#[path]`
-/// import plus an `assume_specification` bridge plus a `2 == 2` theorem.
 const RECEIPT_MIRROR: &str = r#"use vstd::prelude::*;
 
 #[path = "../../crates/titania-core/src/receipt/schema.rs"]
@@ -67,7 +48,6 @@ proof fn schema_version_literal_is_stable()
 fn main() {}
 "#;
 
-/// Fixture mirroring `verification/verus/formal_setup_smoke.rs`.
 const SMOKE_FIXTURE: &str = r#"// titania-verus-binding: fixture-smoke
 use vstd::prelude::*;
 
@@ -85,8 +65,6 @@ proof fn formal_setup_smoke()
 fn main() {}
 "#;
 
-/// Bound (`#[path]`) file whose only proof content is a literal tautology and
-/// which never references the production symbol.
 const TAUTOLOGY_ONLY: &str = r#"use vstd::prelude::*;
 
 #[path = "../../crates/titania-core/src/receipt/schema.rs"]
@@ -106,7 +84,6 @@ proof fn literal_is_stable()
 fn main() {}
 "#;
 
-/// Copied model with no `#[path]` import and no `production::` reference.
 const COPIED_MODEL: &str = r#"use vstd::prelude::*;
 
 verus! {
@@ -241,9 +218,6 @@ fn single_verdict(results: &[AuditResult]) -> &BindingVerdict {
 fn verified_body_with_matching_evidence_names_binding_and_base() -> TestResult {
     let obligation: Obligation = receipt_obligation("verification/verus/receipt_schema.rs");
     let evidences: &[VerifierEvidence] = &[passing_evidence("rev-abc123")];
-    // A marker-free bound file: the unwaived assume_specification mirror
-    // from RECEIPT_MIRROR must NOT verify even with passing evidence
-    // (covered by path_linked_assume_spec_is_source_linked_never_verified).
     let clean_mirror: &str = r#"use vstd::prelude::*;
 
 #[path = "../../crates/titania-core/src/receipt/schema.rs"]
@@ -301,7 +275,6 @@ fn path_linked_assume_spec_is_source_linked_never_verified() -> TestResult {
     }
     assert_eq!(report.finding_count(), 1);
     assert_eq!(report.findings()[0].rule().as_str(), "TRUST_UNAPPROVED_MARKER");
-    // Same file, marker explicitly waived: source-linked, still not proven.
     let waivers: &[Waiver] = &[explicit_waiver(TrustMarker::AssumeSpecification)];
     let (results, report) = run_audit(
         &obligation,
@@ -406,7 +379,6 @@ fn each_trust_marker_without_waiver_blocks() -> TestResult {
             report.findings()[0].message().contains(fragment),
             "case {name}: message names the marker"
         );
-        // Explicit waiver lifts the block but stays source-linked.
         let waivers: &[Waiver] = &[explicit_waiver(*marker)];
         let (results, report) = run_audit(&obligation, &path, content, &[], waivers, "rev-abc123")?;
         match single_verdict(&results) {

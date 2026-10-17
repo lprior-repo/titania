@@ -48,11 +48,6 @@ impl<'de> Deserialize<'de> for ReceiptEnvelope {
     }
 }
 
-/// Validate the receipt schema version before deserializing the full payload.
-///
-/// # Errors
-/// Returns [`ReceiptError::UnsupportedSchemaVersion`] when `schema_version`
-/// is not supported by this crate.
 fn check_receipt_schema_version(schema_version: u32) -> Result<(), ReceiptError> {
     is_supported_receipt_schema_version(schema_version)
         .then_some(())

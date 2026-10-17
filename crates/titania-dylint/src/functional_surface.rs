@@ -1,5 +1,3 @@
-//! Functional-surface Dylint rules replacing brittle Rust text scans.
-
 use rustc_ast::{
     Expr as AstExpr, ExprKind as AstExprKind, Item as AstItem, ItemKind as AstItemKind,
     MetaItemInner,
@@ -15,45 +13,36 @@ use rustc_session::{declare_lint, impl_lint_pass};
 use rustc_span::{Span, def_id::DefId, sym};
 
 declare_lint! {
-    /// Detects `.unwrap()` method calls in production Rust.
     pub FUNC_UNWRAP_USED,
     Forbid,
     "FUNC_UNWRAP_USED: replace unwrap with explicit typed error handling"
 }
 
 declare_lint! {
-    /// Detects `.expect(...)` method calls in production Rust.
     pub FUNC_EXPECT_USED,
     Forbid,
     "FUNC_EXPECT_USED: replace expect with explicit typed error handling"
 }
 
 declare_lint! {
-    /// Detects `.unwrap_or*` defaults in production Rust.
     pub FUNC_UNWRAP_OR,
     Forbid,
     "FUNC_UNWRAP_OR: replace unwrap_or defaults with explicit typed recovery"
 }
 
 declare_lint! {
-    /// Detects unbounded `loop` blocks and condition `while` loops without a
-    /// named termination bound in production Rust.
     pub BOUNDED_EXECUTION_UNBOUNDED_LOOP,
     Forbid,
     "BOUNDED_EXECUTION_UNBOUNDED_LOOP: unbounded retry requires a named bound with cited evidence"
 }
 
 declare_lint! {
-    /// Detects unbounded iterator sources (`repeat`, `cycle`, ...) without a
-    /// named termination bound in production Rust.
     pub BOUNDED_EXECUTION_UNBOUNDED_ITERATOR,
     Forbid,
     "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR: unbounded iterator source requires a named bound with cited evidence"
 }
 
 declare_lint! {
-    /// Detects `.ok()` error erasure that discards `Result` errors into
-    /// `Option` in production Rust.
     pub FUNC_RESULT_OK,
     Forbid,
     "FUNC_RESULT_OK: replace ok() erasure with explicit typed error handling"
@@ -111,7 +100,6 @@ fn emit_all_call_policies(cx: &LateContext<'_>, expr: &HirExpr<'_>, func: &HirEx
     emit_iterator_call_policy(cx, expr, func);
 }
 
-/// Register functional-surface lints and pass.
 pub(crate) fn register(lint_store: &mut LintStore) {
     lint_store.register_lints(&[
         FUNC_UNWRAP_USED,
@@ -130,8 +118,6 @@ fn emit_method_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>) {
         return;
     };
     let name = segment.ident.name.as_str();
-    // The `ok` disposition admits every verdict except `Other` (fail-closed
-    // `Unknown` preserved); all other dispositions keep the historic verdict.
     let admitted = match method_policy(name) {
         MethodPolicy::None => false,
         MethodPolicy::Ok => !matches!(identify_result_method(cx, expr), MethodIdentity::Other),
@@ -155,8 +141,6 @@ fn emit_path_call_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>, func: &HirExp
     let Some(name) = qpath_final_name(qpath) else {
         return;
     };
-    // The `ok` disposition requires the Result-only verdict; all other
-    // dispositions keep the historic Option-or-Result verdict.
     let admitted = match method_policy(name) {
         MethodPolicy::None => false,
         MethodPolicy::Ok => is_core_result_ok_method(cx, def_id),
@@ -189,11 +173,6 @@ fn emit_path_value_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>, qpath: &QPat
     emit_named_policy(cx, actionable_span(expr.span), name);
 }
 
-/// Return `true` when `expr` is the callee of an enclosing `Call`.
-///
-/// The `Call` arm owns that diagnostic, so a bare path in callee position
-/// must not emit separately. Any other parent shape fails open toward
-/// emission so real violations are never skipped silently.
 fn is_call_callee(cx: &LateContext<'_>, expr: &HirExpr<'_>) -> bool {
     let parent_id = cx.tcx.parent_hir_id(expr.hir_id);
     let parent = cx.tcx.hir_node(parent_id);
@@ -216,12 +195,6 @@ fn emit_named_policy(cx: &LateContext<'_>, span: Span, name: &str) {
     }
 }
 
-/// Classify a method-call receiver by resolved definition identity.
-///
-/// `CoreStd` covers the inherent `Option`/`Result` methods in `core`.
-/// `Other` covers unrelated same-name methods (custom types, foreign traits).
-/// `Unknown` covers unresolvable receivers; callers fail closed toward the
-/// historic name-based verdict so real violations are never skipped silently.
 enum MethodIdentity {
     CoreStd,
     Other,
@@ -249,12 +222,6 @@ fn identify_method(cx: &LateContext<'_>, expr: &HirExpr<'_>) -> MethodIdentity {
     }
 }
 
-/// Classify an `ok` method call by resolved receiver identity.
-///
-/// `CoreStd` covers the inherent `Result::ok` erasure in `core`. `Other`
-/// covers unrelated same-name methods (custom types, foreign traits).
-/// `Unknown` covers unresolvable receivers; callers fail closed toward
-/// emission so real violations are never skipped silently.
 fn identify_result_method(cx: &LateContext<'_>, expr: &HirExpr<'_>) -> MethodIdentity {
     let HirExprKind::MethodCall(..) = &expr.kind else {
         return MethodIdentity::Unknown;
@@ -272,10 +239,6 @@ fn identify_result_method(cx: &LateContext<'_>, expr: &HirExpr<'_>) -> MethodIde
     }
 }
 
-/// Return `true` when `def_id` is the inherent `ok` on core `Result`.
-///
-/// Trait-provided same-name methods resolve to `Other`; `ok_or` and
-/// `ok_or_else` never reach this predicate (exact-name table).
 fn is_core_result_ok_method(cx: &LateContext<'_>, def_id: DefId) -> bool {
     let Some(assoc) = cx.tcx.opt_associated_item(def_id) else {
         return false;
@@ -296,8 +259,6 @@ fn is_core_result_ok_method(cx: &LateContext<'_>, def_id: DefId) -> bool {
     assoc.name().as_str() == "ok"
 }
 
-/// Return `true` when `adt_id` is the `core` `Result` enum (local impostors
-/// and foreign same-name enums excluded).
 fn is_core_result_adt(cx: &LateContext<'_>, adt_id: DefId) -> bool {
     if adt_id.is_local() {
         return false;
@@ -305,12 +266,9 @@ fn is_core_result_adt(cx: &LateContext<'_>, adt_id: DefId) -> bool {
     if cx.tcx.crate_name(adt_id.krate).as_str() != "core" {
         return false;
     }
-    // `def_path_str` renders `core` items through their `std` re-export path.
     matches!(cx.tcx.def_path_str(adt_id).as_str(), "core::result::Result" | "std::result::Result")
 }
 
-/// Return `true` when `def_id` is an inherent method on `core`'s `Option` or
-/// `Result`. Trait-provided same-name methods resolve to `Other`.
 fn is_core_option_result_method(cx: &LateContext<'_>, def_id: DefId) -> bool {
     let Some(assoc) = cx.tcx.opt_associated_item(def_id) else {
         return false;
@@ -332,7 +290,6 @@ fn is_core_option_result_method(cx: &LateContext<'_>, def_id: DefId) -> bool {
     if cx.tcx.crate_name(adt_id.krate).as_str() != "core" {
         return false;
     }
-    // `def_path_str` renders `core` items through their `std` re-export path.
     matches!(
         cx.tcx.def_path_str(adt_id).as_str(),
         "core::option::Option"
@@ -349,8 +306,6 @@ fn qpath_final_name<'a>(qpath: &'a QPath<'a>) -> Option<&'a str> {
     }
 }
 
-/// Unfold macro-expansion spans to the outermost call site so diagnostics
-/// point at the actionable production code instead of vanishing.
 fn actionable_span(span: Span) -> Span {
     let unfolded = std::iter::successors(Some(span), |current| {
         current.from_expansion().then(|| current.ctxt().outer_expn_data().call_site)
@@ -359,8 +314,6 @@ fn actionable_span(span: Span) -> Span {
     unfolded.map_or(span, |found| found)
 }
 
-/// `for` loops are permitted (finite-input iteration); only condition
-/// `while` loops and `loop` blocks are checked against the bound policy.
 fn emit_bounded_policy(cx: &EarlyContext<'_>, expr: &AstExpr) {
     match &expr.kind {
         AstExprKind::While(condition, _, _) => emit_condition_loop(cx, expr.span, condition),
