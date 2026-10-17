@@ -307,11 +307,17 @@ fn qpath_final_name<'a>(qpath: &'a QPath<'a>) -> Option<&'a str> {
 }
 
 fn actionable_span(span: Span) -> Span {
-    let unfolded = std::iter::successors(Some(span), |current| {
-        current.from_expansion().then(|| current.ctxt().outer_expn_data().call_site)
-    })
-    .last();
-    unfolded.map_or(span, |found| found)
+    let mut unfolded = span;
+    let mut cursor = expansion_site(span);
+    while let Some(site) = cursor {
+        unfolded = site;
+        cursor = expansion_site(site);
+    }
+    unfolded
+}
+
+fn expansion_site(span: Span) -> Option<Span> {
+    span.from_expansion().then(|| span.ctxt().outer_expn_data().call_site)
 }
 
 fn emit_bounded_policy(cx: &EarlyContext<'_>, expr: &AstExpr) {

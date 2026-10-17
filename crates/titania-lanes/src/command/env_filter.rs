@@ -60,6 +60,9 @@ const DEFAULT_ALLOW_KEYS: &[&str] = &[
     "CURL_CA_BUNDLE",
     "SSH_AUTH_SOCK",
     "SSH_AGENT_PID",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
 ];
 
 #[derive(Copy, Clone, Debug)]

@@ -20,6 +20,23 @@ struct SourceLineParser<'a> {
     state: InternalState,
 }
 
+fn drain_steps(parser: &mut SourceLineParser<'_>) {
+    let mut step = parser.consume_next();
+    while let Some(scan) = step {
+        step = parser.consume_while_going(scan);
+    }
+}
+
+fn count_hashes(chars: &mut Peekable<Chars<'_>>) -> u8 {
+    let mut hash_count = 0u8;
+    let mut pound = chars.next_if_eq(&'#');
+    while let Some(seen) = pound {
+        hash_count = hash_count.saturating_add(1);
+        pound = (seen == '#').then(|| chars.next_if_eq(&'#')).flatten();
+    }
+    hash_count
+}
+
 #[derive(Clone, Copy)]
 enum InternalState {
     Code,
@@ -56,12 +73,16 @@ impl<'a> SourceLineParser<'a> {
     }
 
     fn parse(mut self) -> ParseResult<'a> {
-        let _consumed = std::iter::from_fn(|| self.consume_next()).all(ScanStep::keep_going);
+        drain_steps(&mut self);
         self.finish()
     }
 
     fn consume_next(&mut self) -> Option<ScanStep> {
         self.chars.next().map(|ch| self.consume_char(ch))
+    }
+
+    fn consume_while_going(&mut self, scan: ScanStep) -> Option<ScanStep> {
+        ScanStep::keep_going(scan).then(|| self.consume_next()).flatten()
     }
 
     fn consume_char(&mut self, ch: char) -> ScanStep {
@@ -126,7 +147,7 @@ impl<'a> SourceLineParser<'a> {
     }
 
     fn consume_hashes(chars: &mut Peekable<Chars<'a>>) -> u8 {
-        std::iter::from_fn(|| chars.next_if_eq(&'#')).fold(0u8, |count, _| count.saturating_add(1))
+        count_hashes(chars)
     }
 
     fn consume_raw_string(&mut self, ch: char, expected_hashes: u8) -> ScanStep {

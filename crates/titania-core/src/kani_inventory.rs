@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{error::KaniInventoryError, proof_id::KaniHarnessId};
+use crate::{KaniHarnessIdError, error::KaniInventoryError, proof_id::KaniHarnessId};
 
 pub const KANI_INVENTORY_MAX_HARNESSES: usize = 1_000_000;
 
@@ -120,7 +120,14 @@ pub fn canonical_harness_id(qualified_name: &str) -> Option<KaniHarnessId> {
     }
     let canonical: String =
         stripped.chars().map(ascii_upper_or_pass).map(collapse_to_id_byte).collect();
-    KaniHarnessId::new(&canonical).ok()
+    match KaniHarnessId::new(&canonical) {
+        Ok(identifier) => Some(identifier),
+        Err(error) => absent_harness_id(error),
+    }
+}
+
+const fn absent_harness_id(_error: KaniHarnessIdError) -> Option<KaniHarnessId> {
+    None
 }
 
 const fn ascii_upper_or_pass(character: char) -> char {

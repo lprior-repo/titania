@@ -32,6 +32,28 @@ fn default_scrub_keeps_only_allowlisted_keys() {
 }
 
 #[test]
+fn default_scrub_preserves_operator_temp_dir_keys() {
+    let parent = pairs(&[
+        ("TMPDIR", "/home/op/.cache/muse-tmp"),
+        ("TMP", "/home/op/.cache/muse-tmp"),
+        ("TEMP", "/home/op/.cache/muse-tmp"),
+        ("PATH", "/usr/bin"),
+    ]);
+    let scrubbed = ScrubbedEnv::from_iter(parent);
+    let kept: Vec<&str> = scrubbed.pairs().iter().map(|(k, _)| k.as_str()).collect();
+    assert!(kept.contains(&"TMPDIR"), "TMPDIR must survive: {kept:?}");
+    assert!(kept.contains(&"TMP"), "TMP must survive: {kept:?}");
+    assert!(kept.contains(&"TEMP"), "TEMP must survive: {kept:?}");
+    let tmpdir_value = scrubbed
+        .pairs()
+        .iter()
+        .find(|(k, _)| k == "TMPDIR")
+        .map(|(_, v)| v.as_str())
+        .expect("TMPDIR present");
+    assert_eq!(tmpdir_value, "/home/op/.cache/muse-tmp");
+}
+
+#[test]
 fn default_scrub_preserves_first_occurrence_wins() {
     let parent = pairs(&[("PATH", "/first"), ("PATH", "/second")]);
     let scrubbed = ScrubbedEnv::from_iter(parent);
