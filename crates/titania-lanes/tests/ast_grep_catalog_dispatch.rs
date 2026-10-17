@@ -6,9 +6,10 @@
 //!
 //! 1. **Exact catalog dispatch.** The lane must enable rules only from
 //!    document-level YAML `id:` fields. A prefix id such as
-//!    `FUNC_LOOPS_FOR_EXTRA`, a comment that mentions `id: FUNC_LOOPS_FOR`,
-//!    and a `message:` field containing the substring must NOT enable
-//!    `FUNC_LOOPS_FOR`. Unknown ids are rejected explicitly via
+//!    `BOUNDED_EXECUTION_UNBOUNDED_LOOP_EXTRA`, a comment that mentions
+//!    `id: BOUNDED_EXECUTION_UNBOUNDED_LOOP`, and a `message:` field
+//!    containing the substring must NOT enable
+//!    `BOUNDED_EXECUTION_UNBOUNDED_LOOP`. Unknown ids are rejected explicitly via
 //!    [`AstGrepLaneError::UnknownRuleId`] instead of being silently accepted.
 //!
 //! 2. **`BYPASS_GENERATED_INCLUDE` detector parity.** Real `include!(
@@ -31,25 +32,25 @@ fn fixture_root(name: &str) -> PathBuf {
 
 // ===========================================================================
 // Exact catalog dispatch — comments, message text, and prefix ids must not
-// enable `FUNC_LOOPS_FOR`.
+// enable `BOUNDED_EXECUTION_UNBOUNDED_LOOP`.
 // ===========================================================================
 
 /// **Contract:** A catalog document whose top-level `id:` is exactly
-/// `FUNC_LOOPS_FOR` enables that rule and produces a finding on a fixture
-/// that contains a real imperative for-loop.
+/// `BOUNDED_EXECUTION_UNBOUNDED_LOOP` enables that rule and produces a
+/// finding on a fixture that contains a real unbounded retry.
 #[test]
 fn exact_id_enables_func_loops_for() -> TestResult {
     let catalog = "\
-id: FUNC_LOOPS_FOR
+id: BOUNDED_EXECUTION_UNBOUNDED_LOOP
 language: Rust
 ";
-    let fixture = fixture_root("functional/func_loops_for_violation.rs");
+    let fixture = fixture_root("functional/bounded_execution_unbounded_loop_violation.rs");
     let outcome = titania_lanes::ast_grep_lane::run(&[catalog], &[fixture], &[])?;
     match outcome {
         LaneOutcome::Findings { findings } => {
             assert!(
-                findings.iter().any(|f| f.rule_id().as_str() == "FUNC_LOOPS_FOR"),
-                "exact `id: FUNC_LOOPS_FOR` must enable the rule, got findings: {:?}",
+                findings.iter().any(|f| f.rule_id().as_str() == "BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
+                "exact `id: BOUNDED_EXECUTION_UNBOUNDED_LOOP` must enable the rule, got findings: {:?}",
                 findings.iter().map(|f| f.rule_id().as_str()).collect::<Vec<_>>()
             );
             Ok(())
@@ -62,33 +63,37 @@ language: Rust
 /// the same exact rule id as an unquoted id.
 #[test]
 fn quoted_id_with_inline_comment_enables_func_loops_for() -> TestResult {
-    let catalog = "id: \"FUNC_LOOPS_FOR\" # documented rule\nlanguage: Rust\n";
-    let fixture = fixture_root("functional/func_loops_for_violation.rs");
+    let catalog = "id: \"BOUNDED_EXECUTION_UNBOUNDED_LOOP\" # documented rule\nlanguage: Rust\n";
+    let fixture = fixture_root("functional/bounded_execution_unbounded_loop_violation.rs");
     let outcome = titania_lanes::ast_grep_lane::run(&[catalog], &[fixture], &[])?;
     let findings = match outcome {
         LaneOutcome::Findings { findings } => findings,
         other => return Err(format!("expected Findings, got {other:?}").into()),
     };
     assert!(
-        findings.iter().any(|finding| finding.rule_id().as_str() == "FUNC_LOOPS_FOR"),
+        findings
+            .iter()
+            .any(|finding| finding.rule_id().as_str() == "BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
         "quoted exact id must enable the rule: {findings:?}"
     );
     Ok(())
 }
 
 /// **Contract:** A catalog document whose top-level `id:` is a prefix
-/// string (`FUNC_LOOPS_FOR_EXTRA`) must NOT enable `FUNC_LOOPS_FOR`. The
-/// old substring dispatch would have enabled it; the new dispatch rejects
-/// the unknown id explicitly via [`AstGrepLaneError::UnknownRuleId`].
+/// string (`BOUNDED_EXECUTION_UNBOUNDED_LOOP_EXTRA`) must NOT enable
+/// `BOUNDED_EXECUTION_UNBOUNDED_LOOP`. The old substring dispatch would have
+/// enabled it; the new dispatch rejects the unknown id explicitly via
+/// [`AstGrepLaneError::UnknownRuleId`].
 #[test]
 fn prefix_id_does_not_enable_func_loops_for() -> TestResult {
-    let catalog = "id: FUNC_LOOPS_FOR_EXTRA\n";
-    let fixture = fixture_root("functional/func_loops_for_violation.rs");
-    let err = titania_lanes::ast_grep_lane::run(&[catalog], &[fixture], &[])
-        .expect_err("prefix id must not enable FUNC_LOOPS_FOR and must be rejected");
+    let catalog = "id: BOUNDED_EXECUTION_UNBOUNDED_LOOP_EXTRA\n";
+    let fixture = fixture_root("functional/bounded_execution_unbounded_loop_violation.rs");
+    let err = titania_lanes::ast_grep_lane::run(&[catalog], &[fixture], &[]).expect_err(
+        "prefix id must not enable BOUNDED_EXECUTION_UNBOUNDED_LOOP and must be rejected",
+    );
     match err {
         titania_lanes::ast_grep_lane::AstGrepLaneError::UnknownRuleId { id } => {
-            assert_eq!(id, "FUNC_LOOPS_FOR_EXTRA");
+            assert_eq!(id, "BOUNDED_EXECUTION_UNBOUNDED_LOOP_EXTRA");
             Ok(())
         }
         other => Err(format!("expected UnknownRuleId, got {other:?}").into()),
@@ -96,16 +101,16 @@ fn prefix_id_does_not_enable_func_loops_for() -> TestResult {
 }
 
 /// **Contract:** A catalog that only contains a comment mentioning
-/// `id: FUNC_LOOPS_FOR` must NOT enable `FUNC_LOOPS_FOR`. The lane returns
-/// `Clean` because no document-level id is present.
+/// `id: BOUNDED_EXECUTION_UNBOUNDED_LOOP` must NOT enable that rule. The lane
+/// returns `Clean` because no document-level id is present.
 #[test]
 fn comment_id_does_not_enable_func_loops_for() -> TestResult {
     let catalog = "\
-# Catalog note: this comment mentions id: FUNC_LOOPS_FOR
+# Catalog note: this comment mentions id: BOUNDED_EXECUTION_UNBOUNDED_LOOP
 # but no top-level id is declared.
-# The lane must not enable FUNC_LOOPS_FOR based on comment text.
+# The lane must not enable BOUNDED_EXECUTION_UNBOUNDED_LOOP based on comment text.
 ";
-    let fixture = fixture_root("functional/func_loops_for_violation.rs");
+    let fixture = fixture_root("functional/bounded_execution_unbounded_loop_violation.rs");
     let outcome = titania_lanes::ast_grep_lane::run(&[catalog], &[fixture], &[])?;
     assert!(
         matches!(outcome, LaneOutcome::Clean { .. }),
@@ -115,23 +120,23 @@ fn comment_id_does_not_enable_func_loops_for() -> TestResult {
 }
 
 /// **Contract:** A catalog whose `message:` field contains the substring
-/// `id: FUNC_LOOPS_FOR` must NOT enable `FUNC_LOOPS_FOR`. Only the document-
-/// level `id:` is authoritative. The other id in the catalog
+/// `id: BOUNDED_EXECUTION_UNBOUNDED_LOOP` must NOT enable that rule. Only the
+/// document-level `id:` is authoritative. The other id in the catalog
 /// (`BYPASS_GENERATED_INCLUDE`) is a known rule that does not apply to the
-/// `for`-loop fixture, so the outcome is `Clean`.
+/// unbounded-loop fixture, so the outcome is `Clean`.
 #[test]
 fn message_text_substring_does_not_enable_func_loops_for() -> TestResult {
     let catalog = "\
 id: BYPASS_GENERATED_INCLUDE
 language: Rust
 severity: error
-message: \"FUNC_LOOPS_FOR: a note referencing id: FUNC_LOOPS_FOR inside message text\"
+message: \"BOUNDED_EXECUTION_UNBOUNDED_LOOP: a note referencing id: BOUNDED_EXECUTION_UNBOUNDED_LOOP inside message text\"
 rule:
   regex: 'include!\\s*\\(\\s*concat!\\s*\\(\\s*env!\\s*\\(\\s*\"?OUT_DIR\"?\\s*\\)\\s*,\\s*\"[^\"]*\"\\s*\\)\\s*\\)\\s*;?'
 metadata:
   effect: Reject
 ";
-    let fixture = fixture_root("functional/func_loops_for_violation.rs");
+    let fixture = fixture_root("functional/bounded_execution_unbounded_loop_violation.rs");
     let outcome = titania_lanes::ast_grep_lane::run(&[catalog], &[fixture], &[])?;
     let findings: Vec<String> = match outcome {
         LaneOutcome::Clean { .. } => return Ok(()),
@@ -141,12 +146,12 @@ metadata:
         other => return Err(format!("unexpected LaneOutcome variant: {other:?}").into()),
     };
     assert!(
-        !findings.iter().any(|id| id == "FUNC_LOOPS_FOR"),
-        "FUNC_LOOPS_FOR must NOT be enabled by message substring: {findings:?}"
+        !findings.iter().any(|id| id == "BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP must NOT be enabled by message substring: {findings:?}"
     );
     assert!(
         findings.is_empty(),
-        "no rule should fire on the for-loop fixture in this catalog: {findings:?}"
+        "no rule should fire on the unbounded-loop fixture in this catalog: {findings:?}"
     );
     Ok(())
 }
@@ -157,7 +162,7 @@ metadata:
 #[test]
 fn empty_id_is_rejected_as_unknown() -> TestResult {
     let catalog = "id: \n";
-    let fixture = fixture_root("functional/func_loops_for_violation.rs");
+    let fixture = fixture_root("functional/bounded_execution_unbounded_loop_violation.rs");
     let err = titania_lanes::ast_grep_lane::run(&[catalog], &[fixture], &[])
         .expect_err("empty id must be rejected");
     match err {

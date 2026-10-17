@@ -45,6 +45,34 @@ fn config_toml_rustflags_emit_one_finding_per_flag() -> TestResult {
 }
 
 #[test]
+fn config_rustflags_cap_lints_is_a_finding() -> TestResult {
+    let build = fixture()?;
+    write_file(
+        build.path(),
+        ".cargo/config.toml",
+        "[build]\nrustflags = [\"--cap-lints\", \"allow\"]\n",
+    )?;
+    let build_report = scan_from(build.path())?;
+    assert_eq!(build_report.finding_count(), 2);
+    assert!(
+        build_report.findings().iter().all(|f| f.rule().as_str() == "BYPASS_CARGO_CONFIG_FLAGS")
+    );
+    assert!(build_report.findings()[0].message().contains("--cap-lints"));
+
+    let target = fixture()?;
+    write_file(
+        target.path(),
+        ".cargo/config.toml",
+        "[target.'cfg(unix)']\nrustflags = \"--cap-lints allow\"\n",
+    )?;
+    let target_report = scan_from(target.path())?;
+    assert_eq!(target_report.finding_count(), 1);
+    assert_eq!(target_report.findings()[0].rule().as_str(), "BYPASS_CARGO_CONFIG_FLAGS");
+    assert!(target_report.findings()[0].message().contains("--cap-lints allow"));
+    Ok(())
+}
+
+#[test]
 fn extensionless_config_rustflags_are_scanned() -> TestResult {
     let tmp = fixture()?;
     write_file(tmp.path(), ".cargo/config", "[build]\nrustflags = \"-D warnings\"\n")?;

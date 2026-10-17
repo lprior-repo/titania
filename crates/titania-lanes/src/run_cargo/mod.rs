@@ -75,6 +75,10 @@ pub(super) enum RunCargoError {
     Outcome(OutcomeError),
     /// Cargo version probe produced invalid evidence.
     ToolVersion(String),
+    /// Caller-supplied extra arguments would weaken the lane invocation
+    /// (lint ceiling). Blocked before spawning; maps to Reject, never to a
+    /// trusted receipt.
+    Policy(String),
 }
 
 /// Return the static cargo sub-command arguments for *lane*.

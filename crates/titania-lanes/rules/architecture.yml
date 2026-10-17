@@ -23,6 +23,7 @@ rule:
     - pattern: "use sqlx::*;"
     - pattern: "use reqwest::*;"
     - regex: "\\buse\\s+(tokio|axum|sqlx|reqwest)::"
+    - regex: "\\b(tokio|axum|sqlx|reqwest)::"
 metadata:
   effect: Reject
   repair_hint: ReplaceDependency
@@ -50,6 +51,7 @@ rule:
     - regex: "\\buse\\s+std::(fs|env|net)::"
     - regex: "\\buse\\s+std::(fs|env|net)\\b"
     - regex: "\\buse\\s+std::\\{[^}]*\\b(fs|env|net)\\b"
+    - regex: "\\bstd::(fs|env|net)::"
 metadata:
   effect: Reject
   repair_hint: RequiresHumanReview
@@ -75,6 +77,7 @@ rule:
     - pattern: "use std::time::Instant;"
     - regex: "\\buse\\s+std::time::(SystemTime|Instant)\\b"
     - regex: "\\buse\\s+std::time::\\{[^}]*\\b(SystemTime|Instant)\\b"
+    - regex: "\\bstd::time::(SystemTime|Instant)\\b"
 metadata:
   effect: Reject
   repair_hint: RequiresHumanReview
@@ -100,6 +103,85 @@ rule:
     - pattern: "use rand::Rng;"
     - regex: "\\buse\\s+rand::(thread_rng|Rng)\\b"
     - regex: "\\buse\\s+rand::\\{[^}]*\\b(thread_rng|Rng)\\b"
+    - regex: "\\brand::(thread_rng|Rng)\\b"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview
+---
+id: ARCHITECTURE_IMPORT_CORE_PROCESS
+language: Rust
+severity: error
+message: "ARCHITECTURE_IMPORT_CORE_PROCESS: core/domain code must delegate process spawning to the shell through a typed port"
+files:
+  - "src/core/**/*.rs"
+  - "src/domain/**/*.rs"
+  - "crates/*-core/src/**/*.rs"
+  - "crates/*-domain/src/**/*.rs"
+ignores:
+  - "**/fixtures/**"
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "use std::process::Command;"
+    - regex: "\\buse\\s+std::process\\b"
+    - regex: "\\buse\\s+std::\\{[^}]*\\bprocess\\b"
+    - regex: "\\bstd::process::"
+    - regex: "\\btokio::process"
+    - regex: "\\bstd::os::(unix|windows)::process"
+metadata:
+  effect: Reject
+  repair_hint: RequiresHumanReview
+---
+id: ARCHITECTURE_EFFECT_CORE_ASYNC
+language: Rust
+severity: error
+message: "ARCHITECTURE_EFFECT_CORE_ASYNC: core/domain code must stay synchronous; async execution belongs to the shell"
+files:
+  - "src/core/**/*.rs"
+  - "src/domain/**/*.rs"
+  - "crates/*-core/src/**/*.rs"
+  - "crates/*-domain/src/**/*.rs"
+ignores:
+  - "**/fixtures/**"
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "tokio::spawn($$$ARGS)"
+    - regex: "\\basync\\s+fn\\b"
+    - regex: "\\.await\\b"
+    - regex: "\\btokio::(spawn|task|time)"
+metadata:
+  effect: Reject
+  repair_hint: ReplaceDependency
+---
+id: ARCHITECTURE_EFFECT_CORE_STATE
+language: Rust
+severity: error
+message: "ARCHITECTURE_EFFECT_CORE_STATE: core/domain code must not use ambient mutable state; pass explicit values through typed ports"
+files:
+  - "src/core/**/*.rs"
+  - "src/domain/**/*.rs"
+  - "crates/*-core/src/**/*.rs"
+  - "crates/*-domain/src/**/*.rs"
+ignores:
+  - "**/fixtures/**"
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/build.rs"
+rule:
+  any:
+    - pattern: "static mut $NAME: $TYPE = $INIT;"
+    - regex: "\\bstatic\\s+mut\\b"
+    - regex: "\\bstd::sync::(Mutex|RwLock)\\b"
+    - regex: "\\bstd::cell::(Cell|RefCell|UnsafeCell)\\b"
+    - regex: "\\bstd::thread::(spawn|sleep)\\b"
 metadata:
   effect: Reject
   repair_hint: RequiresHumanReview

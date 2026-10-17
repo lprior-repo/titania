@@ -1,0 +1,6 @@
+{"bead_id":"tn-083n","lane":"test-execution","obligation":"AC1-verified-body-names-binding","planned_evidence":"integration test: passing evidence at current hash yields VerifiedProduction","verdict":"planned"}
+{"bead_id":"tn-083n","lane":"test-execution","obligation":"AC2-path-linked-assume-spec-is-source-linked","planned_evidence":"integration test: receipt_schema.rs-shaped fixture yields SourceLinked, never Verified","verdict":"planned"}
+{"bead_id":"tn-083n","lane":"test-execution","obligation":"AC3-unbound-model-or-drift-blocked","planned_evidence":"integration tests: no-path/no-refs yields MissingBinding; stale revision yields MirrorDrift","verdict":"planned"}
+{"bead_id":"tn-083n","lane":"test-execution","obligation":"AC4-unapproved-trust-markers-fail","planned_evidence":"integration tests per marker kind with/without waiver","verdict":"planned"}
+{"bead_id":"tn-083n","lane":"test-execution","obligation":"AC5-tautology-discharges-nothing","planned_evidence":"integration test: 2==2-only file yields VacuousProof","verdict":"planned"}
+{"bead_id":"tn-083n","lane":"test-execution","obligation":"AC6-smoke-kept-separate","planned_evidence":"integration test: fixture-smoke file yields SmokeOnly block","verdict":"planned"}

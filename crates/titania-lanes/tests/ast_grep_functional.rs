@@ -22,11 +22,10 @@ const FUNCTIONAL_YAML: &str = include_str!("../rules/functional.yml");
 // Required rule IDs and their expected metadata.
 // ---------------------------------------------------------------------------
 
-/// The ten structural rule IDs that MUST appear in the catalog.
+/// The nine structural rule IDs that MUST appear in the catalog.
 const REQUIRED_RULE_IDS: &[&str] = &[
-    "FUNC_LOOPS_FOR",
-    "FUNC_LOOPS_WHILE",
-    "FUNC_LOOPS_LOOP",
+    "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
+    "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR",
     "FUNC_NESTING_DEPTH",
     "FUNC_RECURSION_DIRECT",
     "FUNC_PRINT_STDOUT",
@@ -187,7 +186,8 @@ fn ast_grep_functional_fixture_files_exist_for_each_rule() {
     let fixtures_dir = format!("{base}/tests/fixtures/ast_grep/functional");
 
     for &rule_id in REQUIRED_RULE_IDS {
-        let fixture_path = format!("{fixtures_dir}/{}_violation.rs", rule_id.to_lowercase());
+        let fixture_name = violation_fixture_name(rule_id);
+        let fixture_path = format!("{fixtures_dir}/{fixture_name}");
         assert!(
             std::path::Path::new(&fixture_path).exists(),
             "Fixture file '{fixture_path}' must exist for rule '{rule_id}'",
@@ -199,8 +199,20 @@ fn ast_grep_functional_fixture_files_exist_for_each_rule() {
     }
 }
 
-/// The allowed-iterator-pipeline fixture is valid Rust that does not
-/// contain bare for/while/loop imperative statements.
+fn violation_fixture_name(rule_id: &str) -> String {
+    match rule_id {
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP" => {
+            String::from("bounded_execution_unbounded_loop_violation.rs")
+        }
+        "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR" => {
+            String::from("bounded_execution_unbounded_iterator_violation.rs")
+        }
+        _ => format!("{}_violation.rs", rule_id.to_lowercase()),
+    }
+}
+
+/// The allowed-iterator-pipeline fixture is valid Rust that contains no
+/// unbounded retry or unbounded iterator source.
 #[test]
 fn ast_grep_functional_allowed_iterator_pipeline_fixture_has_no_loops() {
     let base = env!("CARGO_MANIFEST_DIR");
@@ -208,12 +220,37 @@ fn ast_grep_functional_allowed_iterator_pipeline_fixture_has_no_loops() {
     let content =
         std::fs::read_to_string(&fixture).unwrap_or_else(|e| panic!("Cannot read fixture: {e}"));
 
+    assert!(!content.contains("loop {"), "Allowed fixture must not contain 'loop' blocks",);
     assert!(
-        !content.contains("for ") || content.contains(".iter()") || content.contains(".map("),
-        "Allowed fixture must use iterators, not bare 'for' loops",
+        !content.contains("while "),
+        "Allowed fixture must not contain condition 'while' loops",
     );
-    assert!(!content.contains("while "), "Allowed fixture must not contain 'while' loops",);
-    assert!(!content.contains("loop {"),);
+    assert!(
+        !content.contains("repeat(")
+            && !content.contains("repeat_with(")
+            && !content.contains("successors(")
+            && !content.contains("from_fn(")
+            && !content.contains(".cycle()"),
+        "Allowed fixture must not contain unbounded iterator sources",
+    );
+}
+
+/// The allowed-bounded-for fixture uses finite `for` iteration with `?` and
+/// must not contain any unbounded retry or iterator source.
+#[test]
+fn ast_grep_functional_allowed_bounded_for_fixture_has_no_unbounded_surface() {
+    let base = env!("CARGO_MANIFEST_DIR");
+    let fixture = format!("{base}/tests/fixtures/ast_grep/functional/allowed_bounded_for.rs");
+    let content =
+        std::fs::read_to_string(&fixture).unwrap_or_else(|e| panic!("Cannot read fixture: {e}"));
+
+    assert!(content.contains("for "), "Allowed bounded-for fixture must contain a 'for' loop",);
+    assert!(content.contains('?'), "Allowed bounded-for fixture must propagate with '?'",);
+    assert!(!content.contains("loop {"), "Bounded-for fixture must not contain 'loop' blocks",);
+    assert!(
+        !content.contains("repeat(") && !content.contains(".cycle()"),
+        "Bounded-for fixture must not contain unbounded iterator sources",
+    );
 }
 
 /// The allowed-no-print fixture has no print!/println!/eprintln! calls.
@@ -235,14 +272,25 @@ fn ast_grep_functional_violation_fixtures_contain_their_patterns() {
     let base = env!("CARGO_MANIFEST_DIR");
     let fixtures_dir = format!("{base}/tests/fixtures/ast_grep/functional");
 
-    // for-loop fixture
-    assert_loop_fixture_contains(&fixtures_dir, "func_loops_for_violation.rs", "for item in");
+    // unbounded-loop fixture (loop block and condition while, no while-let)
+    assert_loop_fixture_contains(
+        &fixtures_dir,
+        "bounded_execution_unbounded_loop_violation.rs",
+        "loop {",
+    );
+    assert_loop_fixture_contains(
+        &fixtures_dir,
+        "bounded_execution_unbounded_loop_violation.rs",
+        "while ",
+    );
 
-    // while-loop fixture
-    assert_loop_fixture_contains(&fixtures_dir, "func_loops_while_violation.rs", "while ");
-
-    // loop-block fixture
-    assert_loop_fixture_contains(&fixtures_dir, "func_loops_loop_violation.rs", "loop {");
+    // unbounded-iterator fixture (infinite sources, no loop syntax needed)
+    let unbounded_iter =
+        read_fixture(&fixtures_dir, "bounded_execution_unbounded_iterator_violation.rs");
+    assert!(
+        unbounded_iter.contains("repeat(") || unbounded_iter.contains(".cycle()"),
+        "'bounded_execution_unbounded_iterator_violation.rs' must contain repeat( or .cycle()",
+    );
 
     // print-stdout fixture
     let stdout = read_fixture(&fixtures_dir, "func_print_stdout_violation.rs");

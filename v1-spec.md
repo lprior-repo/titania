@@ -245,7 +245,7 @@ normalizes their output into typed `Finding` values:
 |---|---|---|---|
 | clippy | `CLIPPY_*` | `CLIPPY_UNWRAP_USED`, `CLIPPY_INDEXING_SLICING` | Parse `--message-format=json`, map lint name to uppercase rule ID |
 | cargo-deny | `DENY_*` | `DENY_ADVISORY`, `DENY_LICENSE`, `DENY_BANNED_CRATE` | Parse cargo-deny JSON output, map check type to rule ID |
-| ast-grep | (as defined in §6) | `FUNC_LOOPS_FOR`, `BYPASS_ALLOW_ATTR` | Parse ast-grep JSON output directly |
+| ast-grep | (as defined in §6) | `BOUNDED_EXECUTION_UNBOUNDED_LOOP`, `BYPASS_ALLOW_ATTR` | Parse ast-grep JSON output directly |
 | dylint | (as defined in §7) | `BYPASS_PUB_ALLOW`, `FUNC_UNWRAP_USED`, `HOLZMAN_PANIC_ASSERT` | Parse Dylint/rustc diagnostics and construct typed findings |
 | panic-scan | compatibility artifact | — | Emit clean evidence; no Rust text policy scan |
 | policy-scan | `BYPASS_*` | `BYPASS_CARGO_LINTS_WEAKENING` | Native scan, construct Finding per violation |
@@ -261,9 +261,8 @@ produces a `Finding` with `FindingEffect::Reject` unless noted.
 
 | Rule ID | Pattern | Effect | RepairHint |
 |---|---|---|---|
-| `FUNC_LOOPS_FOR` | `for $LOOP in $ITER { ... }` in production source | Reject | `UseIteratorPipeline` |
-| `FUNC_LOOPS_WHILE` | `while $COND { ... }` in production source | Reject | `UseIteratorPipeline` |
-| `FUNC_LOOPS_LOOP` | `loop { ... }` in production source | Reject | `UseIteratorPipeline` |
+| `BOUNDED_EXECUTION_UNBOUNDED_LOOP` | `loop { ... }` or `while $COND` (excluding `while let`) in production source without a named bound | Reject | `RequiresHumanReview` |
+| `BOUNDED_EXECUTION_UNBOUNDED_ITERATOR` | `repeat` / `repeat_with` / `successors` / `from_fn` / `.cycle()` in production source without a named bound | Reject | `RequiresHumanReview` |
 | `FUNC_NESTING_DEPTH` | Nesting depth > 2 (AST depth measurement) | Reject | `FlattenNesting` |
 | `FUNC_RESULT_STRING` | `Result<$T, String>` type annotation | Reject | `RequiresHumanReview` |
 | `FUNC_RECURSION_DIRECT` | Function calls itself by name | Reject | `RequiresHumanReview` |
@@ -271,6 +270,12 @@ produces a `Finding` with `FindingEffect::Reject` unless noted.
 | `FUNC_PRINT_STDERR` | `eprint!` or `eprintln!` in production source | Reject | `RequiresHumanReview` |
 | `FUNC_UNWRAP_OR` | `.unwrap_or($X)` / `.unwrap_or_default()` / `.unwrap_or_else($F)` | Reject | `RequiresHumanReview` |
 | `FUNC_WILDCARD_IMPORT` | `use $PATH::*;` | Informational | — |
+
+Bounded iteration is permitted regardless of `for` syntax: a `for` loop over
+finite input that propagates failures with `?`, and a `while let` loop bounded
+by `Option`/iterator exhaustion, are both clean. Syntax never establishes
+boundedness — an unbounded retry spelled as iterator combinators is rejected
+by `BOUNDED_EXECUTION_UNBOUNDED_ITERATOR` under the same bound policy.
 
 All structural rules exclude `tests/`, `benches/`, `examples/`, `build.rs`.
 
@@ -294,9 +299,17 @@ All structural rules exclude `tests/`, `benches/`, `examples/`, `build.rs`.
 | `ARCHITECTURE_IMPORT_CORE_FS` | `use std::fs::*` / `use std::env::*` / `use std::net::*` in `core/` or `domain/` | Reject | Core must not do direct I/O |
 | `ARCHITECTURE_IMPORT_CORE_TIME` | `use std::time::SystemTime` / `use std::time::Instant` in `core/` or `domain/` | Reject | Core must not read wall clock |
 | `ARCHITECTURE_IMPORT_CORE_RANDOM` | `use rand::thread_rng` in `core/` or `domain/` | Reject | Core must not use entropy source |
+| `ARCHITECTURE_IMPORT_CORE_PROCESS` | `use std::process::*` in `core/` or `domain/` | Reject | Core must not spawn processes |
+| `ARCHITECTURE_EFFECT_CORE_ASYNC` | `async fn` / `.await` / `tokio::spawn` in `core/` or `domain/` | Reject | Core must stay synchronous |
+| `ARCHITECTURE_EFFECT_CORE_STATE` | `static mut` / `Mutex` / `RefCell` / `thread::spawn` in `core/` or `domain/` | Reject | Core must not use ambient mutable state |
 
 Architecture rules check file path prefix: if the file is under `core/`,
 `domain/`, or a crate named `*-core` / `*-domain`, the rules apply.
+Every rule also matches fully-qualified paths with no `use` import
+(`std::fs::read_to_string`, `tokio::spawn`), `as`-aliased imports, and
+macro bodies (scanned as code text); comment and string mentions never
+fire. `std::sync::LazyLock` memoization over frozen compile-time input
+and `include_str!` of frozen files are explicitly allowed.
 
 ---
 
@@ -778,7 +791,7 @@ No owner, no reason, no expiry, no exception.
 
 ```toml
 [[exceptions]]
-rule_id = "FUNC_LOOPS_FOR"
+rule_id = "BOUNDED_EXECUTION_UNBOUNDED_LOOP"
 path = "src/control/loop.rs"
 owner = "flight-control"
 reason = "Fixed 8-iteration control loop over sensor lanes"
@@ -910,8 +923,10 @@ cargo hack check --workspace --feature-powerset
 
 **Source/test split discipline.** Source-only strictness is enforced by source
 Clippy targets plus Titania's Dylint and native lanes. Tests may use `unwrap`,
-`expect`, `panic!`, `assert!`, and even `for`/`while`/`loop` for clarity and
-behavior coverage; production source may not. Dylint owns the macro-aware
+`expect`, `panic!`, `assert!`, and even unbounded `loop`/`while`/`repeat` for
+clarity and behavior coverage; production source may only use bounded
+iteration (`for` over finite input, `while let`, finite combinators) and must
+cite a named bound for retries. Dylint owns the macro-aware
 `HOLZMAN_PANIC_*` and functional `FUNC_*` checks that raw text scans used to
 approximate.
 
@@ -1093,7 +1108,7 @@ impl Digest {
 }
 
 /// Rule identifier. Uppercase, namespaced by prefix.
-/// Examples: FUNC_LOOPS_FOR, CLIPPY_UNWRAP_USED, BYPASS_ALLOW_ATTR.
+/// Examples: BOUNDED_EXECUTION_UNBOUNDED_LOOP, CLIPPY_UNWRAP_USED, BYPASS_ALLOW_ATTR.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RuleId(pub String);  // invariant: uppercase, ASCII, contains '_'
 
@@ -1335,10 +1350,10 @@ Report Reject example:
   "code_findings": [
     {
       "lane": "AstGrep",
-      "rule_id": "FUNC_LOOPS_FOR",
+      "rule_id": "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
       "location": { "Span": { "file": "src/parser.rs", "line_start": 42, "col_start": 5, "line_end": 42, "col_end": 30 } },
-      "message": "Imperative for loop in production source",
-      "repair": { "UseIteratorPipeline": { "suggestion": "items.iter().map(|item| ...)" } },
+      "message": "BOUNDED_EXECUTION_UNBOUNDED_LOOP: unbounded retry requires a named bound with cited evidence",
+      "repair": { "RequiresHumanReview": { "note": "cite Bound::FiniteInput, Bound::Capped, or Bound::ProtocolTerminal" } },
       "effect": "Reject"
     },
     {
@@ -1370,9 +1385,9 @@ all files matching `.titania/out/<scope>/*.json`.
     "Findings": [
       {
         "lane": "AstGrep",
-        "rule_id": "FUNC_LOOPS_FOR",
+        "rule_id": "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
         "location": { "Span": { "file": "src/parser.rs", "line_start": 42, "col_start": 5, "line_end": 42, "col_end": 30 } },
-        "message": "Imperative for loop in production source",
+        "message": "BOUNDED_EXECUTION_UNBOUNDED_LOOP: unbounded retry requires a named bound with cited evidence",
         "repair": { "UseIteratorPipeline": { "suggestion": "items.iter().map(|item| ...)" } },
         "effect": "Reject"
       }
@@ -1467,12 +1482,12 @@ If any required tool is missing, exit code is 3 (InputError) and `status` is
 ### explain output format
 
 ```
-FUNC_LOOPS_FOR
-  Rejects imperative `for` loops in production source.
+BOUNDED_EXECUTION_UNBOUNDED_LOOP
+  Rejects unbounded retries without a named bound and cited evidence.
 
-  Pattern: for $LOOP in $ITER { ... }
+  Pattern: loop { ... } / while $COND { ... } (excluding `while let`)
   Effect: Reject
-  Repair: UseIteratorPipeline — suggests iterator pipeline alternative
+  Repair: RequiresHumanReview — cite Bound::FiniteInput, Bound::Capped, or Bound::ProtocolTerminal
 
   Example violation:
     for item in items { process(item); }
@@ -1698,16 +1713,19 @@ Titania-check v1 is done when:
 
 ### Killer demo
 
-An AI writes Rust with a `for` loop and `.unwrap()`:
+An AI writes Rust with an unbounded `loop` retry and `.unwrap()`:
 
 ```rust
-for item in items {
-    let value = item.unwrap();
+loop {
+    if done() {
+        break;
+    }
+    let value = next().unwrap();
 }
 ```
 
 `titania-check --scope edit` rejects with two typed findings:
-- `FUNC_LOOPS_FOR` (from ast-grep) with `RepairHint::UseIteratorPipeline`
+- `BOUNDED_EXECUTION_UNBOUNDED_LOOP` (from ast-grep) with `RepairHint::RequiresHumanReview`
 - `CLIPPY_UNWRAP_USED` (from clippy, normalized) with `RepairHint::RequiresHumanReview`
 
 The AI repairs. The gate passes and emits a `QualityReceipt` with

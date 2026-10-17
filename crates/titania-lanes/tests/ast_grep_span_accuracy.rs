@@ -1,13 +1,13 @@
 //! Byte/codepoint-accurate span + column reporting for the ast-grep lane (H3).
 //!
 //! Black-hat finding H3: running the ast-grep lane on a demo file produced a
-//! `FUNC_LOOPS_FOR` finding with `"line_start": 4, "col_start": 0` for a `for`
-//! keyword indented four spaces, i.e. actually at column 4. v1-spec §10
+//! loop finding with `"line_start": 4, "col_start": 0` for a keyword
+//! indented four spaces, i.e. actually at column 4. v1-spec §10
 //! mandates "1-based lines, 0-based columns (Unicode scalar values)" and sells
 //! `TextRange`/`Location::Span` as enabling deterministic patching.
 //!
 //! These tests:
-//! 1. Reproduce the bug on a focused fixture (`for` at line 4, col 4).
+//! 1. Reproduce the bug on a focused fixture (`loop` at line 4, col 4).
 //! 2. Pin byte/codepoint-accurate columns for the H3 case.
 //! 3. Round-trip every reported finding's start coordinate back against the
 //!    original source — reading `(line_start-1, col_start)` MUST land on the
@@ -98,38 +98,40 @@ fn lands_on_token(line: &str, col_0_based: u64) -> bool {
 }
 
 // ===========================================================================
-// H3 reproduction: `for` at 1-based line 4, 0-based column 4 (not 0).
+// H3 reproduction: `loop` at 1-based line 4, 0-based column 4 (not 0).
 // ===========================================================================
 
 #[test]
 fn h3_for_keyword_indented_four_spaces_reports_col_4_not_col_0() -> TestResult {
-    let findings = run_one("functional/for_indented_col4_violation.rs");
+    let findings = run_one("functional/loop_indented_col4_violation.rs");
     let by_id = by_rule_id(&findings);
-    let finding =
-        by_id.get("FUNC_LOOPS_FOR").copied().expect("fixture must trigger FUNC_LOOPS_FOR");
+    let finding = by_id
+        .get("BOUNDED_EXECUTION_UNBOUNDED_LOOP")
+        .copied()
+        .expect("fixture must trigger BOUNDED_EXECUTION_UNBOUNDED_LOOP");
 
     let (line_start, col_start, line_end, col_end) = span_coords(finding);
 
-    // The `for` keyword is on 1-based line 4 of the fixture, indented four
+    // The `loop` keyword is on 1-based line 4 of the fixture, indented four
     // ASCII spaces, so its 0-based codepoint column is 4. The black-hat report
     // observed col_start == 0 here; this assertion pins the fix.
-    assert_eq!(line_start, 4, "line_start must point at the `for` line");
+    assert_eq!(line_start, 4, "line_start must point at the `loop` line");
     assert_eq!(col_start, 4, "col_start must be 4 (four leading spaces), was 0 before H3 fix");
 
     // The end coordinate must stay on or after the start coordinate's line.
     assert!(line_end >= line_start, "line_end must not precede line_start");
 
-    // Round-trip: reading (line 4, col 4) out of the source lands on `for`.
+    // Round-trip: reading (line 4, col 4) out of the source lands on `loop`.
     let source =
-        std::fs::read_to_string(fixture_path("functional/for_indented_col4_violation.rs"))?;
+        std::fs::read_to_string(fixture_path("functional/loop_indented_col4_violation.rs"))?;
     let line = line_from_coords(&source, line_start);
     assert!(
-        starts_with_token(line, col_start, "for"),
-        "deterministic-patching round-trip failed: line {line_start} col {col_start} of the source is `{line}`, expected it to start with `for`"
+        starts_with_token(line, col_start, "loop"),
+        "deterministic-patching round-trip failed: line {line_start} col {col_start} of the source is `{line}`, expected it to start with `loop`"
     );
 
     // The end column, read on the start line, must not overrun it; for a
-    // multi-line span line_end > line_start is expected (the for-body), so we
+    // multi-line span line_end > line_start is expected (the loop-body), so we
     // only assert col_end ordering when the span is single-line.
     if line_end == line_start {
         assert!(col_end >= col_start, "same-line col_end must be >= col_start");
@@ -138,24 +140,29 @@ fn h3_for_keyword_indented_four_spaces_reports_col_4_not_col_0() -> TestResult {
 }
 
 // ===========================================================================
-// Before/after anchor on the original functional fixture (two for-loops).
+// Before/after anchor on the unbounded-loop fixture (loop first).
 // ===========================================================================
 
 #[test]
 fn for_loop_fixture_first_match_lands_on_for_keyword() -> TestResult {
-    let findings = run_one("functional/func_loops_for_violation.rs");
+    let findings = run_one("functional/bounded_execution_unbounded_loop_violation.rs");
     let by_id = by_rule_id(&findings);
-    let finding = by_id.get("FUNC_LOOPS_FOR").copied().expect("FUNC_LOOPS_FOR must fire");
+    let finding = by_id
+        .get("BOUNDED_EXECUTION_UNBOUNDED_LOOP")
+        .copied()
+        .expect("BOUNDED_EXECUTION_UNBOUNDED_LOOP must fire");
     let (line_start, col_start, _, _) = span_coords(finding);
 
-    let source = std::fs::read_to_string(fixture_path("functional/func_loops_for_violation.rs"))?;
+    let source = std::fs::read_to_string(fixture_path(
+        "functional/bounded_execution_unbounded_loop_violation.rs",
+    ))?;
     let line = line_from_coords(&source, line_start);
     assert!(
-        starts_with_token(line, col_start, "for"),
-        "first FUNC_LOOPS_FOR match must land on `for`: line {line_start} is `{line}`, col {col_start}"
+        starts_with_token(line, col_start, "loop"),
+        "first BOUNDED_EXECUTION_UNBOUNDED_LOOP match must land on `loop`: line {line_start} is `{line}`, col {col_start}"
     );
-    // The first `for` in this fixture is indented four spaces.
-    assert_eq!(col_start, 4, "first `for` is four spaces indented");
+    // The first `loop` in this fixture is indented four spaces.
+    assert_eq!(col_start, 4, "first `loop` is four spaces indented");
     Ok(())
 }
 
@@ -178,24 +185,24 @@ struct RoundTripRow {
 fn round_trip_matrix() -> Vec<RoundTripRow> {
     vec![
         RoundTripRow {
-            fixture: "functional/for_indented_col4_violation.rs",
-            rule: "FUNC_LOOPS_FOR",
-            keyword: Some("for"),
+            fixture: "functional/loop_indented_col4_violation.rs",
+            rule: "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
+            keyword: Some("loop"),
         },
         RoundTripRow {
-            fixture: "functional/func_loops_for_violation.rs",
-            rule: "FUNC_LOOPS_FOR",
-            keyword: Some("for"),
+            fixture: "functional/bounded_execution_unbounded_loop_violation.rs",
+            rule: "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
+            keyword: Some("loop"),
         },
         RoundTripRow {
-            fixture: "functional/func_loops_while_violation.rs",
-            rule: "FUNC_LOOPS_WHILE",
+            fixture: "functional/bounded_execution_unbounded_while_violation.rs",
+            rule: "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
             keyword: Some("while"),
         },
         RoundTripRow {
-            fixture: "functional/func_loops_loop_violation.rs",
-            rule: "FUNC_LOOPS_LOOP",
-            keyword: Some("loop"),
+            fixture: "functional/bounded_execution_unbounded_iterator_violation.rs",
+            rule: "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR",
+            keyword: None,
         },
         RoundTripRow {
             fixture: "functional/func_print_stdout_violation.rs",
@@ -273,9 +280,12 @@ fn every_functional_finding_start_coordinate_lands_on_the_offending_token() -> T
 
 #[test]
 fn indented_while_loop_reports_nonzero_column() -> TestResult {
-    let findings = run_one("functional/func_loops_while_violation.rs");
+    let findings = run_one("functional/bounded_execution_unbounded_while_violation.rs");
     let by_id = by_rule_id(&findings);
-    let finding = by_id.get("FUNC_LOOPS_WHILE").copied().expect("FUNC_LOOPS_WHILE must fire");
+    let finding = by_id
+        .get("BOUNDED_EXECUTION_UNBOUNDED_LOOP")
+        .copied()
+        .expect("BOUNDED_EXECUTION_UNBOUNDED_LOOP must fire");
     let (_, col_start, _, _) = span_coords(finding);
     assert!(col_start > 0, "indented `while` must not report col_start == 0");
     Ok(())

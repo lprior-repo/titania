@@ -1,0 +1,1 @@
+{"loaded_skill_name":"go-skill","loaded_skill_version":"10.1.0","note":"Inline execution: delegation environment exposes only general-purpose/workflow-subagent child types, so specialist states run inline following the named skill bodies. Honest executor ids in routing + invocation ledgers; independence limits reported, never waived.","observed_state_range":"1..16"}

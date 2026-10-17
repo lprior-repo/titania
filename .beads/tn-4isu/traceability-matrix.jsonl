@@ -1,0 +1,7 @@
+{"acceptance":"Happy: diff property holds at unwind 16, same inputs/asserts","seed_id":"tn4isu.P1","spec_section":"tn-4isu§4-H1","spec_text":"reduced search records success for the same property within caps"}
+{"acceptance":"Happy: wire invariant holds at unwind 24, same 8-byte domain","seed_id":"tn4isu.P2","spec_section":"tn-4isu§4-H1","spec_text":"reduced search records success for the same property within caps"}
+{"acceptance":"Happy: id-harness cost attributed to symbolic bytes, bound kept","seed_id":"tn4isu.P3","spec_section":"tn-4isu§4-H2","spec_text":"every harness has a successful result bound to the current revision"}
+{"acceptance":"Happy: 12/12 SUCCESSFUL in one per-package run within 600s","seed_id":"tn4isu.P4","spec_section":"tn-4isu§4-H2","spec_text":"complete required inventory reconciled to actual execution"}
+{"acceptance":"Error: any timeout/OOM keeps Full blocked with numbers","seed_id":"tn4isu.P4","spec_section":"tn-4isu§4-E1","spec_text":"timeout, OOM or missing tool blocks Full"}
+{"acceptance":"Error: dropped/weakened harness cannot discharge obligation","seed_id":"tn4isu.P1","spec_section":"tn-4isu§4-E2","spec_text":"smaller substituted behavior or dropped harness rejected"}
+{"acceptance":"Edge: -j 1, MemoryMax=24G, MemorySwapMax=0, no cap lift","seed_id":"tn4isu.P4","spec_section":"tn-4isu§4-edge1","spec_text":"approved cgroup/input/unwind bounds only"}

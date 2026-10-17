@@ -1,0 +1,1 @@
+State 7b (proof-reviewer bridge review): verified identity preservation (requirement/contract/verifier) on all 4 bridge rows; disjointness holds; evidence fields present. STATUS: APPROVED in proof-to-rust-review.md.

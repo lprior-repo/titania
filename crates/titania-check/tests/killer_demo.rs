@@ -164,7 +164,7 @@ fn find_dylint_library(root: &Path) -> Option<PathBuf> {
 // E2E: Bad Fixture — Report::Reject with code findings
 // ---------------------------------------------------------------------------
 
-/// AC-1: A bad fixture (for-loop + `.unwrap()`) is rejected with the required producer findings.
+/// AC-1: A bad fixture (unbounded `loop` + `.unwrap()`) is rejected with the required producer findings.
 #[test]
 fn bad_fixture_rejects_with_code_findings() {
     // Given: the bad fixture workspace
@@ -210,14 +210,17 @@ fn bad_fixture_rejects_with_code_findings() {
 
     // Exact rule IDs
     let rule_ids: Vec<&str> = findings.iter().filter_map(|f| f["rule_id"].as_str()).collect();
-    assert!(rule_ids.contains(&"FUNC_LOOPS_FOR"), "must contain FUNC_LOOPS_FOR, got: {rule_ids:?}");
+    assert!(
+        rule_ids.contains(&"BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
+        "must contain BOUNDED_EXECUTION_UNBOUNDED_LOOP, got: {rule_ids:?}"
+    );
     assert!(
         rule_ids.contains(&"CLIPPY_UNWRAP_USED"),
         "must contain CLIPPY_UNWRAP_USED, got: {rule_ids:?}"
     );
 }
 
-/// AC-1 (detail): The FUNC_LOOPS_FOR finding has the correct lane, effect, and repair hint.
+/// AC-1 (detail): The BOUNDED_EXECUTION_UNBOUNDED_LOOP finding has the correct lane, effect, and repair hint.
 #[test]
 fn bad_fixture_has_func_loops_for_finding() {
     // Given: the bad fixture workspace
@@ -228,25 +231,25 @@ fn bad_fixture_has_func_loops_for_finding() {
     assert_eq!(code, 1, "must reject");
     let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
     let findings = report["code_findings"].as_array().expect("code_findings");
-    let for_finding = findings
+    let loop_finding = findings
         .iter()
-        .find(|f| f["rule_id"] == "FUNC_LOOPS_FOR" && f["lane"] == "AstGrep")
-        .expect("must find FUNC_LOOPS_FOR finding from AstGrep");
+        .find(|f| f["rule_id"] == "BOUNDED_EXECUTION_UNBOUNDED_LOOP" && f["lane"] == "AstGrep")
+        .expect("must find BOUNDED_EXECUTION_UNBOUNDED_LOOP finding from AstGrep");
 
     assert_eq!(
-        for_finding["lane"].as_str(),
+        loop_finding["lane"].as_str(),
         Some("AstGrep"),
-        "FUNC_LOOPS_FOR must come from AstGrep lane"
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP must come from AstGrep lane"
     );
     assert_eq!(
-        for_finding["effect"].as_str(),
+        loop_finding["effect"].as_str(),
         Some("Reject"),
-        "FUNC_LOOPS_FOR finding must have effect Reject"
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP finding must have effect Reject"
     );
     assert_eq!(
-        external_tag(&for_finding["repair"]),
-        Some("UseIteratorPipeline"),
-        "FUNC_LOOPS_FOR repair hint must be UseIteratorPipeline"
+        external_tag(&loop_finding["repair"]),
+        Some("RequiresHumanReview"),
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP repair hint must be RequiresHumanReview"
     );
 }
 
@@ -306,8 +309,8 @@ fn bad_fixture_findings_have_correct_repair_hints() {
         let rule = f["rule_id"].as_str().unwrap_or("");
         let hint = external_tag(&f["repair"]).unwrap_or("");
         match rule {
-            "FUNC_LOOPS_FOR" => {
-                found_for_hint |= hint == "UseIteratorPipeline";
+            "BOUNDED_EXECUTION_UNBOUNDED_LOOP" => {
+                found_for_hint |= hint == "RequiresHumanReview";
             }
             "CLIPPY_UNWRAP_USED" => {
                 found_unwrap_hint |= hint == "RequiresHumanReview";
@@ -316,7 +319,10 @@ fn bad_fixture_findings_have_correct_repair_hints() {
         }
     }
 
-    assert!(found_for_hint, "FUNC_LOOPS_FOR must have use_iterator_pipeline repair hint");
+    assert!(
+        found_for_hint,
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP must have requires_human_review repair hint"
+    );
     assert!(found_unwrap_hint, "CLIPPY_UNWRAP_USED must have requires_human_review repair hint");
 }
 
@@ -476,6 +482,45 @@ fn repaired_fixture_per_lane_has_seven_entries() {
             "lane {i} variant must be Clean or Skipped, got: {variant}"
         );
     }
+}
+
+/// AC-8: A bounded `for` loop over finite input propagating `?` passes.
+/// Positive control for the bounded-execution contract (Bound::FiniteInput):
+/// the same `titania-check` gate that rejects the unbounded bad fixture
+/// accepts idiomatic bounded iteration with explicit error propagation.
+#[test]
+fn bounded_for_with_question_passes() {
+    // Given: the repaired workspace plus a bounded for-with-? function
+    let workspace = fixtures::repaired_workspace();
+    let lib = workspace.path().join("src").join("lib.rs");
+    let mut source = std::fs::read_to_string(&lib).expect("repaired lib.rs must be readable");
+    source.push_str(
+        "\n/// Bounded iteration: finite input, typed failure stays observable.\n///\n/// # Errors\n///\n/// Returns the first negative-input failure without discarding its cause.\npub fn bounded_total(items: &[i32]) -> Result<Vec<i32>, &'static str> {\n    \
+         let mut out = Vec::new();\n    \
+         for value in items {\n        \
+         out.push(checked(*value)?);\n    }\n    \
+         Ok(out)\n}\n\nconst fn checked(value: i32) -> Result<i32, &'static str> {\n    \
+         if value < 0 {\n        return Err(\"negative input\");\n    }\n    \
+         Ok(value)\n}\n",
+    );
+    std::fs::write(&lib, source).expect("bounded function must be appendable");
+
+    // When: titania-check runs
+    let (code, stdout, stderr) = run_in(workspace.path(), &["--scope", "edit", "--emit", "json"]);
+
+    // Then: exit code 0 with variant Pass — no BOUNDED_EXECUTION finding
+    let stdout_head: String = stdout.chars().take(2000).collect();
+    assert_eq!(code, 0, "bounded for must pass, stderr: {stderr}, stdout: {stdout_head}");
+    let report: Value = serde_json::from_str(&stdout).expect("stdout must be valid JSON");
+    assert_eq!(report["variant"], "Pass", "bounded for report must be Pass");
+    let empty = Vec::new();
+    let findings = report["code_findings"].as_array().unwrap_or(&empty);
+    assert!(
+        findings
+            .iter()
+            .all(|f| !f["rule_id"].as_str().unwrap_or("").starts_with("BOUNDED_EXECUTION")),
+        "bounded for must emit no BOUNDED_EXECUTION finding, got: {findings:?}"
+    );
 }
 
 /// AC-7 (detail): per_lane contains all 7 Edit lane names.

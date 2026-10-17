@@ -93,6 +93,32 @@ fn scrubbed_inherit_keeps_path_through_to_subprocess() -> TestResult {
 }
 
 #[test]
+fn scrubbed_inherit_drops_cap_lints_rustflags() -> TestResult {
+    let command = Command::new("/bin/sh")
+        .arg("-c")
+        .arg("printf %s \"${RUSTFLAGS:-TITANIA_MISSING}\"")
+        .env("RUSTFLAGS", "--cap-lints allow")
+        .output()?;
+    let parent_output = String::from_utf8(command.stdout)?;
+    assert_eq!(
+        parent_output, "--cap-lints allow",
+        "sanity: parent shell should see the ceiling value; got {parent_output:?}",
+    );
+
+    let (_tmp, target) = fixture_target()?;
+    let probe = "v=${RUSTFLAGS:-TITANIA_MISSING}; printf '%s' \"$v\"";
+    let mut command = CommandIn::new(&target, "/bin/sh")?;
+    let _ = command.inherit_env().arg("-c").arg(probe);
+    let output = command.run_capture_raw()?;
+    let out = String::from_utf8(output.into_stdout())?;
+    assert_eq!(
+        out, "TITANIA_MISSING",
+        "scrubbed inherit must drop ceiling-carrying RUSTFLAGS; observed {out:?}",
+    );
+    Ok(())
+}
+
+#[test]
 fn scrubbed_inherit_drops_ld_preload() -> TestResult {
     let (_tmp, target) = fixture_target()?;
     let probe = "v=${LD_PRELOAD:-TITANIA_MISSING}; printf '%s' \"$v\"";

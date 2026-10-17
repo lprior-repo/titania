@@ -1,0 +1,3 @@
+=== strict source-only clippy per AGENTS.md ===
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.05s
+EXIT:0

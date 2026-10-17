@@ -13,6 +13,7 @@ pub mod cargo_config;
 pub mod cargo_lints;
 pub mod env_vars;
 pub mod exceptions;
+pub mod invocation;
 
 /// Scan policy-bypass inputs that affect a lane invocation.
 ///

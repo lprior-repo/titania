@@ -1,0 +1,4 @@
+=== RUSTDOCFLAGS=-D warnings cargo doc ===
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.05s
+   Generated /home/lewis/src/titania/.muse/worktrees/subagent-v2-01a14623-5a8f-76e0-be4a-be4eb153aaf7-01a146d6-84d3-7002-a503-6dac4a90e808/target/doc/titania_aggregate/index.html and 6 other files
+EXIT:0

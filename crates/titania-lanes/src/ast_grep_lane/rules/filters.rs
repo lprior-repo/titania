@@ -63,3 +63,26 @@ fn crate_path_is_core_domain(rest: &str) -> bool {
             && crate_rest.starts_with("src/")
     })
 }
+
+#[cfg(test)]
+mod scope_tests {
+    use super::is_core_domain_path;
+
+    #[test]
+    fn tn_bvv7_designated_core_paths_are_in_scope() {
+        assert!(is_core_domain_path("src/core/classify.rs"));
+        assert!(is_core_domain_path("src/domain/receipt.rs"));
+        assert!(is_core_domain_path("crates/titania-core/src/lib.rs"));
+        assert!(is_core_domain_path("crates/titania-core/src/finding/repair_catalog.rs"));
+        assert!(is_core_domain_path("crates/billing-domain/src/invoice.rs"));
+    }
+
+    #[test]
+    fn tn_bvv7_shell_paths_are_out_of_scope() {
+        assert!(!is_core_domain_path("crates/titania-lanes/src/ast_grep_lane.rs"));
+        assert!(!is_core_domain_path("crates/titania-check/src/main.rs"));
+        assert!(!is_core_domain_path("crates/titania-core/tests/effect_boundary.rs"));
+        assert!(!is_core_domain_path("src/main.rs"));
+        assert!(!is_core_domain_path("crates/titania-core/build.rs"));
+    }
+}

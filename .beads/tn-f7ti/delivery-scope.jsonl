@@ -1,0 +1,1 @@
+{"area":"proof-registry control","bead_id":"tn-f7ti","includes":["crates/titania-lanes/src/proof_registry.rs","crates/titania-lanes/tests/proof_registry.rs","contracts/proof_obligations.yaml authority marking"],"scope":"local","touched_crates":["titania-lanes"]}

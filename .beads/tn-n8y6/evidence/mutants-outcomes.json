@@ -1,0 +1,309 @@
+{
+  "outcomes": [
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/titania-core/src/kani_inventory.rs:129:13: delete field kani_version from struct Self expression in KaniInventory::parse_str",
+          "package": "titania-core",
+          "file": "crates/titania-core/src/kani_inventory.rs",
+          "function": {
+            "function_name": "KaniInventory::parse_str",
+            "return_type": "-> Result<Self, KaniInventoryError>",
+            "span": {
+              "start": {
+                "line": 114,
+                "column": 5
+              },
+              "end": {
+                "line": 139,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 129,
+              "column": 13
+            },
+            "end": {
+              "line": 129,
+              "column": 45
+            }
+          },
+          "replacement": "",
+          "genre": "StructField"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__titania-core__src__kani_inventory.rs_line_129_col_13.log",
+      "diff_path": "diff/crates__titania-core__src__kani_inventory.rs_line_129_col_13.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.503975078,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/lewis/.rustup/toolchains/nightly-2026-04-27-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=titania-core@0.1.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/titania-core/src/kani_inventory.rs:130:13: delete field file_version from struct Self expression in KaniInventory::parse_str",
+          "package": "titania-core",
+          "file": "crates/titania-core/src/kani_inventory.rs",
+          "function": {
+            "function_name": "KaniInventory::parse_str",
+            "return_type": "-> Result<Self, KaniInventoryError>",
+            "span": {
+              "start": {
+                "line": 114,
+                "column": 5
+              },
+              "end": {
+                "line": 139,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 130,
+              "column": 13
+            },
+            "end": {
+              "line": 130,
+              "column": 45
+            }
+          },
+          "replacement": "",
+          "genre": "StructField"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__titania-core__src__kani_inventory.rs_line_130_col_13.log",
+      "diff_path": "diff/crates__titania-core__src__kani_inventory.rs_line_130_col_13.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.751326816,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/lewis/.rustup/toolchains/nightly-2026-04-27-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=titania-core@0.1.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/titania-core/src/mutants_baseline.rs:127:38: delete ! in MutantsBaseline::diff",
+          "package": "titania-core",
+          "file": "crates/titania-core/src/mutants_baseline.rs",
+          "function": {
+            "function_name": "MutantsBaseline::diff",
+            "return_type": "-> Vec<&'a MutantId>",
+            "span": {
+              "start": {
+                "line": 121,
+                "column": 5
+              },
+              "end": {
+                "line": 128,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 127,
+              "column": 38
+            },
+            "end": {
+              "line": 127,
+              "column": 39
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__titania-core__src__mutants_baseline.rs_line_127_col_38.log",
+      "diff_path": "diff/crates__titania-core__src__mutants_baseline.rs_line_127_col_38.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 1.954396823,
+          "process_status": "Success",
+          "argv": [
+            "/home/lewis/.rustup/toolchains/nightly-2026-04-27-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=titania-core@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.100584713,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/lewis/.rustup/toolchains/nightly-2026-04-27-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=titania-core@0.1.0",
+            "-p",
+            "titania-core"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/titania-core/src/receipt.rs:117:5: replace check_passed_not_above_scanned -> Result<(), ReceiptError> with Ok(())",
+          "package": "titania-core",
+          "file": "crates/titania-core/src/receipt.rs",
+          "function": {
+            "function_name": "check_passed_not_above_scanned",
+            "return_type": "-> Result<(), ReceiptError>",
+            "span": {
+              "start": {
+                "line": 112,
+                "column": 1
+              },
+              "end": {
+                "line": 118,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 117,
+              "column": 5
+            },
+            "end": {
+              "line": 117,
+              "column": 100
+            }
+          },
+          "replacement": "Ok(())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/crates__titania-core__src__receipt.rs_line_117_col_5.log",
+      "diff_path": "diff/crates__titania-core__src__receipt.rs_line_117_col_5.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.250810146,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/lewis/.rustup/toolchains/nightly-2026-04-27-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=titania-core@0.1.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "crates/titania-core/src/receipt.rs:117:13: replace <= with > in check_passed_not_above_scanned",
+          "package": "titania-core",
+          "file": "crates/titania-core/src/receipt.rs",
+          "function": {
+            "function_name": "check_passed_not_above_scanned",
+            "return_type": "-> Result<(), ReceiptError>",
+            "span": {
+              "start": {
+                "line": 112,
+                "column": 1
+              },
+              "end": {
+                "line": 118,
+                "column": 2
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 117,
+              "column": 13
+            },
+            "end": {
+              "line": 117,
+              "column": 15
+            }
+          },
+          "replacement": ">",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/crates__titania-core__src__receipt.rs_line_117_col_13.log",
+      "diff_path": "diff/crates__titania-core__src__receipt.rs_line_117_col_13.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 0.903742424,
+          "process_status": "Success",
+          "argv": [
+            "/home/lewis/.rustup/toolchains/nightly-2026-04-27-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=titania-core@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.101376077,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/lewis/.rustup/toolchains/nightly-2026-04-27-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=titania-core@0.1.0",
+            "-p",
+            "titania-core"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 5,
+  "missed": 0,
+  "caught": 2,
+  "timeout": 0,
+  "unviable": 3,
+  "success": 0,
+  "start_time": "2026-10-16T22:35:13.36810868Z",
+  "end_time": "2026-10-16T22:35:20.169075216Z",
+  "cargo_mutants_version": "27.0.0"
+}

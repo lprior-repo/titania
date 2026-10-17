@@ -1,0 +1,1 @@
+State 3 (rust-contract): emitted domain/type/workflow/error/boundary/hazard/contract + 4 proof seeds + traceability. Proof seeds only (no obligations). Inherits tn-6r36 D1/D5; narrows D1 to detector behavior with two documented fail-closed residuals (R1 take-bounds, R2 cycle-name heuristic).

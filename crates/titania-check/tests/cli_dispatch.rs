@@ -1064,6 +1064,19 @@ fn setup_hermetic_is_idempotent() {
     assert_eq!(code2, 0, "second run must exit 0, stderr: {stderr2}");
 }
 
+/// `run-lane clippy --cap-lints allow` must reject with InputError
+/// (exit 3): ceiling flags can never reach the protected lane argv via CLI.
+#[test]
+fn run_lane_rejects_extra_cap_lints_args() {
+    let temp = tempfile::tempdir().expect("tempdir must be created");
+    let (code, _, stderr) = run_in(temp.path(), &["run-lane", "clippy", "--cap-lints", "allow"]);
+    assert_eq!(code, 3, "ceiling extra args must exit 3 (InputError), stderr: {stderr}");
+    assert!(
+        stderr.contains("unexpected argument '--cap-lints'"),
+        "stderr must name the rejected ceiling argument: {stderr}"
+    );
+}
+
 /// `setup-hermetic extra-arg` must reject with InputError (exit 3).
 #[test]
 fn setup_hermetic_rejects_extra_arguments() {

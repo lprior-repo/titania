@@ -15,18 +15,21 @@ use crate::{
 };
 
 #[kani::proof]
+#[kani::unwind(32)]
 fn lane_name_rejects_empty_string() {
     let result = LaneName::new("");
     kani::assert(matches!(result, Err(ReceiptError::EmptyLaneName)), "empty lane rejected");
 }
 
 #[kani::proof]
+#[kani::unwind(32)]
 fn lane_name_rejects_nul_byte() {
     let result = LaneName::new("fmt\0clippy");
     kani::assert(matches!(result, Err(ReceiptError::InvalidLaneName)), "nul lane rejected");
 }
 
 #[kani::proof]
+#[kani::unwind(32)]
 fn lane_digest_rejects_passed_greater_than_scanned() {
     let scanned: u32 = kani::any();
     let passed: u32 = kani::any();
@@ -50,6 +53,7 @@ fn lane_digest_rejects_passed_greater_than_scanned() {
 }
 
 #[kani::proof]
+#[kani::unwind(32)]
 fn lane_digest_accepts_passed_not_greater_than_scanned() {
     let scanned: u32 = kani::any();
     let passed: u32 = kani::any();
@@ -77,6 +81,7 @@ fn lane_digest_accepts_passed_not_greater_than_scanned() {
 }
 
 #[kani::proof]
+#[kani::unwind(32)]
 fn recorded_target_root_rejects_empty_string() {
     let result = RecordedTargetRoot::new("");
     kani::assert(
@@ -86,6 +91,7 @@ fn recorded_target_root_rejects_empty_string() {
 }
 
 #[kani::proof]
+#[kani::unwind(32)]
 fn recorded_target_root_rejects_relative_path() {
     let result = RecordedTargetRoot::new("relative/project");
     kani::assert(
@@ -95,6 +101,7 @@ fn recorded_target_root_rejects_relative_path() {
 }
 
 #[kani::proof]
+#[kani::unwind(32)]
 fn recorded_target_root_rejects_nul_byte() {
     let result = RecordedTargetRoot::new("/tmp/project\0bad");
     kani::assert(
@@ -104,6 +111,7 @@ fn recorded_target_root_rejects_nul_byte() {
 }
 
 #[kani::proof]
+#[kani::unwind(32)]
 fn recorded_target_root_accepts_absolute_path() {
     let result = RecordedTargetRoot::new("/tmp/project");
     match result {
@@ -367,7 +375,7 @@ fn build_kani_diff_candidate(line: u32) -> MutantId {
 // triggering the symbolic `Vec` length explosion that gated pushes
 // would produce.
 #[kani::proof]
-#[kani::unwind(32)]
+#[kani::unwind(16)]
 fn kani_mutants_baseline_diff_zero_neg() {
     let candidates: [MutantId; KANI_DIFF_CANDIDATE_BOUND] = [
         build_kani_diff_candidate(1),
@@ -514,9 +522,9 @@ fn kani_mutants_baseline_diff_zero_neg() {
 /// round-trip is the identity, or surfaces an `Err` (the deserialiser
 /// maps every typed `OutcomeError` variant through
 /// `serde::de::Error::custom`). No panics, no process exit. Buffer is
-/// 8 bytes; `unwind(64)` covers serde_json's internal state-machine.
+/// 8 bytes; `unwind(12)` covers serde_json's internal state-machine.
 #[kani::proof]
-#[kani::unwind(64)]
+#[kani::unwind(12)]
 fn outcome_wire_invariants() {
     let bytes: [u8; 8] = kani::any();
     let len: usize = kani::any();

@@ -1,0 +1,2 @@
+crates/titania-core/src/mutants_baseline.rs:127:38: delete ! in MutantsBaseline::diff
+crates/titania-core/src/receipt.rs:117:13: replace <= with > in check_passed_not_above_scanned

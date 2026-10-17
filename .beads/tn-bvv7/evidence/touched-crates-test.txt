@@ -1,0 +1,1210 @@
+   Compiling titania-lanes v0.1.0 (/home/lewis/src/titania/.muse/worktrees/subagent-v2-01a14623-5a8f-76e0-be4a-be4eb153aaf7-01a146d6-84d3-7002-a503-6dac4a90e808/crates/titania-lanes)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.15s
+     Running unittests src/lib.rs (target/debug/deps/titania_core-58424b9757e440c7)
+
+running 8 tests
+test finding::repair_catalog::tests::architecture_import_core_infra_is_replace_dependency ... ok
+test finding::repair_catalog::tests::catalog_parses_to_expected_row_count ... ok
+test finding::repair_catalog::tests::empty_rule_id_returns_human_review_without_panicking ... ok
+test finding::repair_catalog::tests::deny_banned_crate_class_is_human_review_not_replace ... ok
+test finding::repair_catalog::tests::every_tsv_line_parses_to_a_catalog_row ... ok
+test finding::repair_catalog::tests::func_wildcard_import_informational_marker_collapses_to_human_review ... ok
+test finding::repair_catalog::tests::every_catalog_row_class_matches_for_rule ... ok
+test finding::repair_catalog::tests::unknown_rule_id_returns_human_review_with_id_in_note ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/artifact_roundtrip.rs (target/debug/deps/artifact_roundtrip-5637cc33fc495364)
+
+running 5 tests
+test dylint_infra_failure_on_disk_shape_is_aggregator_parseable ... ok
+test clean_outcome_round_trips ... ok
+test skipped_outcome_round_trips ... ok
+test dylint_infra_failure_outcome_round_trips ... ok
+test findings_outcome_round_trips ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bdd.rs (target/debug/deps/bdd-abe543f7919c783c)
+
+running 4 tests
+test scenario_path_round_trip_and_reject_traversal ... ok
+test scenario_receiver_pipeline_digest ... ok
+test scenario_rule_catalog_names_finding ... ok
+test scenario_text_range_contains_target_byte ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/json_roundtrip.rs (target/debug/deps/json_roundtrip-4a8d42f0ae6fe38c)
+
+running 22 tests
+test digest_json_is_string_form ... ok
+test digest_round_trip_preserves_value ... ok
+test digest_deserialize_rejects_garbage ... ok
+test lane_outcome_skipped_all_reasons ... ok
+test lane_failure_all_variants ... ok
+test process_termination_all_variants ... ok
+test repair_hint_all_variants ... ok
+test location_all_variants ... ok
+test json_roundtrip_rejects_invalid ... ok
+test report_reject_still_rejects_empty_collections_with_empty_per_lane ... ok
+test report_reject_gate_only_with_empty_per_lane_round_trips ... ok
+test rule_id_deserialize_rejects_garbage ... ok
+test report_reject_constructs_and_round_trips ... ok
+test structured_value_serializes_deterministically ... ok
+test report_reject_code_only_with_empty_per_lane_round_trips ... ok
+test text_range_deserialize_rejects_inverted ... ok
+test report_pass_constructs_and_round_trips ... ok
+test workspace_path_deserialize_rejects_garbage ... ok
+test workspace_path_json_round_trip_preserves_value ... ok
+test json_roundtrip_golden ... ok
+test rule_id_json_round_trip_preserves_value ... ok
+test text_range_json_round_trip_preserves_value ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/outcome_serde.rs (target/debug/deps/outcome_serde-3e86357668c7a4b0)
+
+running 22 tests
+test command_evidence_deserialize_omits_mode_when_none ... ok
+test command_evidence_deserialize_rejects_argv_zero_mismatch ... ok
+test command_evidence_deserialize_preserves_mode_field_when_present ... ok
+test command_evidence_deserialize_rejects_empty_argv ... ok
+test lane_evidence_deserialize_rejects_argv_zero_mismatch_inside_clean ... ok
+test lane_evidence_deserialize_rejects_empty_argv_inside_clean ... ok
+test lane_evidence_deserialize_rejects_signaled_exit ... ok
+test lane_evidence_round_trip_preserves_value ... ok
+test command_evidence_round_trip_preserves_value ... ok
+test lane_evidence_deserialize_rejects_nonzero_exit ... ok
+test lane_outcome_clean_round_trip_preserves_value ... ok
+test lane_outcome_failed_round_trip_preserves_value ... ok
+test lane_outcome_clean_deserialize_rejects_nonzero_exit ... ok
+test lane_outcome_findings_empty_constructor_remains_allowed ... ok
+test lane_outcome_findings_deserialize_rejects_empty_list ... ok
+test lane_outcome_skipped_round_trip_preserves_value ... ok
+test lane_outcome_findings_round_trip_preserves_value ... ok
+test outcome_error_argv0_mismatch_message ... ok
+test outcome_error_empty_argv_message ... ok
+test outcome_error_empty_findings_message ... ok
+test outcome_error_non_zero_exit_message ... ok
+test outcome_error_argv0_mismatch_display_bounds_hostile_payload ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/path_range_unit_tests.rs (target/debug/deps/path_range_unit_tests-f6d7ee807d1b947c)
+
+running 35 tests
+test text_range_accepts_full_u32_range ... ok
+test text_range_accepts_positive_length_range ... ok
+test text_range_accepts_zero_length_range ... ok
+test text_range_contains_byte_is_inclusive_start_exclusive_end ... ok
+test text_range_display_is_stable ... ok
+test text_range_ordering_matches_byte_position ... ok
+test text_range_overlaps_distinct_cases ... ok
+test text_range_rejects_end_before_start ... ok
+test text_range_serde_rejects_inverted_input ... ok
+test text_range_serde_round_trip_object_form ... ok
+test workspace_path_display_and_debug_have_stable_shape ... ok
+test text_range_width_is_non_negative_for_all_valid_inputs ... ok
+test workspace_path_does_not_reject_partial_dotdot ... ok
+test workspace_path_accepts_simple_paths ... ok
+test workspace_path_drive_letter_alone_is_rejected_as_drive_absolute ... ok
+test workspace_path_nfc_normalizes_combining_chars ... ok
+test workspace_path_rejects_backslash_at_each_position ... ok
+test workspace_path_preserves_forward_slash_relative_after_drive_rejection ... ok
+test workspace_path_rejects_dotdot_everywhere ... ok
+test workspace_path_rejects_each_control_byte_excluding_null ... ok
+test workspace_path_rejects_empty ... ok
+test workspace_path_rejects_leading_slash ... ok
+test workspace_path_rejects_null_byte ... ok
+test workspace_path_rejects_unc_backslash_is_already_backslash_error ... ok
+test workspace_path_rejects_unc_forward_slash_form ... ok
+test workspace_path_rejects_windows_drive_absolute_backslash_via_drive_variant ... ok
+test workspace_path_rejects_windows_drive_absolute_forward_slash ... ok
+test workspace_path_segment_count_correct ... ok
+test workspace_path_serde_rejects_invalid_input ... ok
+test workspace_path_serde_rejects_unc_forward_slash_form ... ok
+test workspace_path_serde_rejects_windows_drive_absolute_form ... ok
+test workspace_path_serde_rejects_windows_drive_backslash_form ... ok
+test workspace_path_starts_with_segment_matches_first ... ok
+test workspace_path_try_from_str_matches_new ... ok
+test workspace_path_serde_round_trip ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/properties.rs (target/debug/deps/properties-be8ec869c0271e10)
+
+running 18 tests
+test text_range_width_is_end_minus_start ... ok
+test text_range_contains_byte_is_inclusive_exclusive ... ok
+test text_range_overlaps_semantics ... ok
+test digest_is_always_64_lowercase_hex ... ok
+test text_range_serde_round_trip ... ok
+test digest_serde_round_trip ... ok
+test digest_from_bytes_is_deterministic ... ok
+test digest_sampled_injective ... ok
+test workspace_path_rejects_leading_slash ... ok
+test workspace_path_rejects_backslash ... ok
+test workspace_path_rejects_dotdot_segment ... ok
+test workspace_path_serde_round_trip ... ok
+test outcome_argv0_mismatch_display_is_bounded_and_sanitized ... ok
+test rule_id_normalize_uppercases_input ... ok
+test rule_id_rejects_lowercase ... ok
+test workspace_path_accepts_no_backslash_no_dotdot_no_leading ... ok
+test rule_id_serde_round_trip ... ok
+test rule_id_display_round_trip ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/receipt_invariants.rs (target/debug/deps/receipt_invariants-c34f4022803bee61)
+
+running 9 tests
+test lane_digest_rejects_passed_count_above_scanned_count ... ok
+test malformed_digest_is_rejected_by_digest_constructor ... ok
+test quality_receipt_deserialization_rejects_lane_missing_evidence_digest ... ok
+test quality_receipt_new_rejects_empty_lane_list ... ok
+test receipt_deserialize_rejects_schema_before_missing_current_fields ... ok
+test receipt_rejects_finish_time_before_start_time ... ok
+test receipt_deserialize_rejects_lane_digest_passed_above_scanned ... ok
+test receipt_round_trip_preserves_all_fields ... ok
+test receipt_deserialize_rejects_schema_before_target_root ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/receipt_public_api.rs (target/debug/deps/receipt_public_api-f14dc66af0764af5)
+
+running 2 tests
+test quality_receipt_v1_rejects_schema_version_two ... ok
+test quality_receipt_v1_schema_version_is_one_and_fields_exact ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/repair_hint_unit_tests.rs (target/debug/deps/repair_hint_unit_tests-a7b4d1c4699c2140)
+
+running 12 tests
+test non_patch_variants_still_construct ... ok
+test patch_accepts_non_zero_width_range ... ok
+test patch_accepts_zero_width_at_every_boundary_in_u32 ... ok
+test patch_accepts_single_byte_range ... ok
+test patch_accepts_zero_width_range_at_file_start ... ok
+test patch_accepts_zero_width_range_at_known_offset ... ok
+test patch_accepts_zero_width_range_in_middle ... ok
+test patch_accepts_zero_width_range_with_empty_replacement ... ok
+test patch_accepts_zero_width_range_with_unicode_replacement ... ok
+test patch_wire_deserialize_accepts_zero_width ... ok
+test patch_wire_serialize_round_trip_preserves_zero_width ... ok
+test text_range_rejects_inverted_range ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/signaled_range.rs (target/debug/deps/signaled_range-8c4a591270f59213)
+
+running 7 tests
+test deserialize_rejects_signaled_negative ... ok
+test deserialize_rejects_signaled_zero ... ok
+test lane_failure_tool_deserialize_rejects_signaled_zero ... ok
+test signaled_error_carries_offending_value ... ok
+test signaled_rejects_zero_and_negatives ... ok
+test signaled_accepts_positive_representatives ... ok
+test signaled_accepts_every_positive_value ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/span_unit_tests.rs (target/debug/deps/span_unit_tests-814e821dac5c6f98)
+
+running 16 tests
+test location_cross_line_span_round_trips_through_serde ... ok
+test location_deserializes_cross_line_span_with_descending_columns ... ok
+test location_rejects_inverted_line_span_on_wire ... ok
+test location_span_accepts_cross_line_equal_columns ... ok
+test location_span_accepts_cross_line_with_descending_columns ... ok
+test location_rejects_same_line_inverted_span_on_wire ... ok
+test location_span_accepts_cross_line_with_large_columns ... ok
+test location_span_accepts_cross_line_with_zero_columns ... ok
+test location_span_accepts_same_line_ordered_columns ... ok
+test location_span_line_invariant_takes_precedence_over_column_invariant ... ok
+test location_span_accepts_same_line_zero_width ... ok
+test location_span_rejects_line_end_before_line_start ... ok
+test location_span_rejects_line_start_zero ... ok
+test location_span_rejects_line_start_zero_with_descending_cross_line_columns ... ok
+test location_span_rejects_same_line_descending_columns ... ok
+test location_span_rejects_same_line_descending_columns_zero_width ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/target_project_public_api.rs (target/debug/deps/target_project_public_api-94edb461ac5b62dd)
+
+running 13 tests
+test select_target_root_falls_back_to_package_when_no_workspace ... ok
+test select_target_root_ignores_non_workspace_tables ... ok
+test select_target_root_rejects_malformed_selected_manifest ... ok
+test select_target_root_returns_workspace_when_present ... ok
+test classify_manifest_detects_workspace_and_package ... ok
+test select_target_root_returns_no_cargo_toml_when_no_manifest ... ok
+test target_project_public_api_rejects_manifest_directory_observation ... ok
+test target_project_public_api_json_round_trips_absolute_root ... ok
+test target_project_public_api_json_rejects_relative_root ... ok
+test target_project_public_api_rejects_missing_manifest_observation ... ok
+test target_project_public_api_rejects_non_existent_directory_observation ... ok
+test target_project_public_api_rejects_relative_observation ... ok
+test target_project_public_api_reports_exact_shape_errors ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tn_03d_domain_model.rs (target/debug/deps/tn_03d_domain_model-1fd3562fd158dc66)
+
+running 62 tests
+test command_evidence_constructs ... ok
+test command_evidence_rejects_argv_zero_mismatch ... ok
+test diagnostic_severity_variants ... ok
+test command_evidence_rejects_empty_argv ... ok
+test finding_effect_variants ... ok
+test finding_constructs_valid ... ok
+test gate_scope_from_str ... ok
+test finding_effect_serde_round_trip ... ok
+test gate_scope_edit_lanes_ordered ... ok
+test gate_scope_prepush_lanes_ordered ... ok
+test gate_scope_release_lanes_ordered ... ok
+test gate_scope_serde_round_trip ... ok
+test input_diagnostic_constructs ... ok
+test lane_all_10_variants_constructible ... ok
+test lane_evidence_constructs ... ok
+test finding_serde_round_trip ... ok
+test lane_failure_variants ... ok
+test lane_from_str_exact_pascal_case ... ok
+test lane_from_str_unknown_rejected ... ok
+test lane_failure_serde_round_trip ... ok
+test lane_outcome_clean ... ok
+test lane_outcome_clean_rejects_nonzero_exit ... ok
+test lane_outcome_failed ... ok
+test lane_outcome_findings ... ok
+test lane_outcome_is_not_pass_failed ... ok
+test lane_outcome_is_not_pass_findings_mixed ... ok
+test lane_outcome_is_not_pass_findings_with_reject ... ok
+test lane_outcome_is_pass_skipped ... ok
+test lane_outcome_is_pass_clean ... ok
+test lane_outcome_skipped_all_reasons ... ok
+test lane_receipt_constructs ... ok
+test lane_receipt_serde_round_trip ... ok
+test lane_serde_round_trip ... ok
+test location_span ... ok
+test location_span_rejects_line_start_zero ... ok
+test policy_diagnostic_constructs ... ok
+test process_termination_exit_code ... ok
+test process_termination_is_success ... ok
+test location_serde_round_trip ... ok
+test process_termination_serde_rejects_invalid_signals ... ok
+test process_termination_signaled_34_json_shape ... ok
+test process_termination_serde_round_trip ... ok
+test process_termination_signaled_validates ... ok
+test process_termination_variants ... ok
+test quality_receipt_constructs ... ok
+test repair_hint_other_variants ... ok
+test repair_hint_patch ... ok
+test repair_hint_patch_accepts_zero_width ... ok
+test quality_receipt_serde_round_trip ... ok
+test report_pass_accepts_informational_only_findings ... ok
+test report_pass_constructor_accepts_lane_outcomes ... ok
+test report_pass_constructor_rejects_empty_lane_outcomes ... ok
+test repair_hint_serde_round_trip ... ok
+test report_pass_rejects_failed_outcome ... ok
+test report_pass_direct_construction ... ok
+test report_reject_code_only ... ok
+test report_reject_gate_only ... ok
+test report_pass_rejects_findings_with_reject ... ok
+test report_reject_kind_none_on_non_reject ... ok
+test report_reject_mixed ... ok
+test report_reject_rejects_empty_collections ... ok
+test report_serde_round_trip ... ok
+
+test result: ok. 62 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/unit_tests.rs (target/debug/deps/unit_tests-afde192e2e2fbb38)
+
+running 24 tests
+test digest_display_matches_as_hex ... ok
+test digest_distinct_inputs_produce_distinct_digests_sampled ... ok
+test digest_debug_format_is_stable ... ok
+test digest_from_hex_rejects_non_hex_at_each_position ... ok
+test digest_from_bytes_is_deterministic ... ok
+test digest_from_hex_rejects_uppercase_at_each_position ... ok
+test digest_from_bytes_is_64_lowercase_hex ... ok
+test digest_from_hex_rejects_wrong_length ... ok
+test digest_from_hex_accepts_all_valid_chars ... ok
+test digest_fromstr_round_trip ... ok
+test rule_id_accepts_underscore_only_input ... ok
+test rule_id_accepts_well_formed_ids ... ok
+test rule_id_display_and_debug_have_stable_shape ... ok
+test rule_id_normalize_drops_all_underscores_to_no_underscore_error ... ok
+test rule_id_normalize_drops_illegal_chars_preserving_underscore ... ok
+test rule_id_normalize_propagates_validation_errors ... ok
+test rule_id_normalize_uppercases_lowercase_input ... ok
+test rule_id_prefix_extracts_before_first_underscore ... ok
+test rule_id_rejects_empty ... ok
+test rule_id_rejects_no_underscore ... ok
+test rule_id_rejects_lowercase_letter_at_each_position ... ok
+test rule_id_rejects_special_characters ... ok
+test rule_id_serde_round_trips_via_string ... ok
+test rule_id_serde_rejects_invalid_input ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_baseline_expiry.rs (target/debug/deps/v15_baseline_expiry-9f89fd2ec2f6cde5)
+
+running 4 tests
+test boundary_timestamp_is_inclusive ... ok
+test expired_entry_does_not_cover ... ok
+test no_expiry_always_covers ... ok
+test unexpired_entry_covers ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_kani_harness_id.rs (target/debug/deps/v15_kani_harness_id-c07c5a1a70bf1339)
+
+running 20 tests
+test accepts_max_len_boundary ... ok
+test accepts_lowercase ... ok
+test accepts_mixed_case ... ok
+test accepts_no_underscore ... ok
+test accepts_uppercase_with_underscore ... ok
+test display_emits_inner_string ... ok
+test from_str_parses_canonical_id ... ok
+test from_str_rejects_lowercase_dash ... ok
+test rejects_dot_after_first_letter ... ok
+test rejects_empty ... ok
+test rejects_inner_non_ascii ... ok
+test rejects_leading_digit ... ok
+test rejects_leading_non_ascii_letter ... ok
+test rejects_leading_only_underscore ... ok
+test rejects_leading_symbol ... ok
+test rejects_leading_underscore ... ok
+test rejects_over_max_len ... ok
+test serde_round_trips_max_len_identifier ... ok
+test serde_round_trips_underscore_only_body ... ok
+test serde_serializes_to_exact_wire_form ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_kani_harness_id_serde.rs (target/debug/deps/v15_kani_harness_id_serde-b023079e62ff9f77)
+
+running 5 tests
+test serde_rejects_empty_string ... ok
+test serde_rejects_invalid_strings ... ok
+test serde_rejects_leading_digit ... ok
+test serde_roundtrip_preserves_uppercase ... ok
+test serde_roundtrip_preserves_inner_string ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_kani_inventory.rs (target/debug/deps/v15_kani_inventory-07a8eac0445fb532)
+
+running 17 tests
+test canonical_harness_id_collapses_punctuation_to_underscore ... ok
+test canonical_harness_id_rejects_empty_body ... ok
+test canonical_harness_id_rejects_leading_digit ... ok
+test canonical_harness_id_rejects_non_ascii_body ... ok
+test cap_constant_matches_docstring ... ok
+test canonical_id_uppercases_and_strips_kani_prefix ... ok
+test empty_qualified_name_produces_no_canonical_id ... ok
+test rejects_non_array_harness_list ... ok
+test empty_inventory_loads_with_zero_count ... ok
+test minimal_inventory_omits_optional_metadata ... ok
+test malformed_json_returns_typed_json_parse_error ... ok
+test rejects_top_level_string ... ok
+test rejects_top_level_array ... ok
+test happy_path_loads_eight_standard_harnesses ... ok
+test serde_round_trip_harness_listing_preserves_canonical_id ... ok
+test unknown_top_level_keys_are_ignored ... ok
+test serde_round_trip_preserves_inventory ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_lane_name.rs (target/debug/deps/v15_lane_name-4dd3c6454a9b0819)
+
+running 3 tests
+test file_stem_uniqueness ... ok
+test lane_name_uniqueness ... ok
+test name_matches_pascal_case_serde_form ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_lane_roundtrip.rs (target/debug/deps/v15_lane_roundtrip-475e703763929252)
+
+running 6 tests
+test gate_scope_full_includes_kani_and_mutants ... ok
+test gate_scope_full_round_trip ... ok
+test lane_kani_round_trip ... ok
+test gate_scope_release_does_not_include_kani_or_mutants ... ok
+test lane_mutants_round_trip ... ok
+test lane_serde_round_trip_for_new_variants ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_lane_serde_roundtrip.rs (target/debug/deps/v15_lane_serde_roundtrip-e40c617142d8c0d7)
+
+running 4 tests
+test name_from_str_round_trip_all_variants ... ok
+test serde_json_serializes_in_pascal_case ... ok
+test serde_round_trip_all_variants ... ok
+test serde_rejects_unknown_variant ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_mutant_id.rs (target/debug/deps/v15_mutant_id-a476cb77a5449a6c)
+
+running 58 tests
+test accepts_u32_max_column_via_parse ... ok
+test accepts_u32_max_line_and_col_via_new ... ok
+test accepts_u32_max_line_via_parse ... ok
+test location_returns_suffix ... ok
+test new_accepts_package_at_max_len ... ok
+test from_str_parses_canonical_form ... ok
+test constructs_canonical_string ... ok
+test new_accepts_path_at_max_len ... ok
+test new_emits_exact_canonical_wire_for_each_operator ... ok
+test new_rejects_package_dot_dot_component ... ok
+test new_rejects_package_drive_prefix ... ok
+test new_rejects_package_too_long ... ok
+test new_rejects_package_unc_backslash ... ok
+test new_rejects_package_unc_forward_slash ... ok
+test new_rejects_package_with_backslash ... ok
+test new_rejects_package_with_control_byte ... ok
+test new_rejects_package_with_embedded_colon ... ok
+test new_rejects_package_with_nul_byte ... ok
+test new_rejects_path_dot_dot_component ... ok
+test new_rejects_path_drive_prefix ... ok
+test new_rejects_path_too_long ... ok
+test new_rejects_path_trailing_dot_dot ... ok
+test new_rejects_path_with_backslash ... ok
+test new_rejects_path_with_control_byte ... ok
+test new_rejects_path_with_nul_byte ... ok
+test operator_as_str_matches_closed_set ... ok
+test operator_from_str_rejects_unknown_with_typed_error ... ok
+test operator_from_str_round_trips_each_variant ... ok
+test operator_serde_deserializes_from_exact_wire_form ... ok
+test operator_serde_rejects_unknown_wire_form ... ok
+test package_returns_prefix ... ok
+test operator_serde_serializes_to_exact_wire_form ... ok
+test parse_accepts_long_path ... ok
+test parse_accepts_long_path_within_cap ... ok
+test parse_rejects_absolute_path ... ok
+test parse_rejects_colon_in_path ... ok
+test parse_rejects_column_overflow ... ok
+test parse_rejects_empty_package ... ok
+test parse_rejects_empty_path ... ok
+test parse_rejects_missing_operator ... ok
+test parse_rejects_missing_pkg_separator ... ok
+test parse_rejects_non_numeric_column ... ok
+test parse_rejects_too_few_colons ... ok
+test parse_rejects_line_overflow ... ok
+test parse_rejects_non_numeric_line ... ok
+test parse_rejects_too_many_colons ... ok
+test parse_rejects_zero_column ... ok
+test parse_rejects_unknown_operator ... ok
+test parse_rejects_zero_line ... ok
+test parse_round_trips_each_operator ... ok
+test rejects_empty_path ... ok
+test parse_round_trips_with_new ... ok
+test rejects_absolute_path ... ok
+test rejects_empty_package ... ok
+test rejects_zero_column ... ok
+test rejects_zero_line ... ok
+test serde_deserialize_rejects_malformed_string ... ok
+test serde_deserializes_through_parse ... ok
+
+test result: ok. 58 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_mutants_baseline_diff.rs (target/debug/deps/v15_mutants_baseline_diff-ef20f1da3cd148f3)
+
+running 6 tests
+test diff_empty_baseline_returns_all_survivors ... ok
+test diff_filters_unknown_mutation_id_forms_out ... ok
+test diff_partial_baseline_returns_only_new ... ok
+test diff_handles_empty_survivors ... ok
+test diff_never_returns_more_than_survivors ... ok
+test diff_full_baseline_returns_empty ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_mutants_baseline_load.rs (target/debug/deps/v15_mutants_baseline_load-485b676a9d3382f1)
+
+running 12 tests
+test accepts_reason_with_visible_content ... ok
+test from_bypasses_round_trip_via_json ... ok
+test happy_path_loads_empty_baseline ... ok
+test rejects_accepted_by_rule_with_overflow_expiry ... ok
+test rejects_accepted_by_rule_with_extra_segment ... ok
+test rejects_accepted_by_rule_with_zero_expiry ... ok
+test rejects_whitespace_only_reason ... ok
+test rejects_empty_reason ... ok
+test rejects_wildcard_mutation_id ... ok
+test malformed_json_returns_parse_error ... ok
+test rejects_accepted_by_rule_without_owner ... ok
+test wrong_schema_version_returns_unsupported ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_mutants_outcomes.rs (target/debug/deps/v15_mutants_outcomes-d2cf87c73d6d160d)
+
+running 26 tests
+test outcomes_cap_constant_is_generous ... ok
+test outcomes_baseline_only_loads_with_zero_missed ... ok
+test outcomes_empty_with_unknown_keys_parses ... ok
+test outcomes_rejects_non_object_root ... ok
+test outcomes_malformed_returns_typed_parse_error ... ok
+test outcomes_happy_path_counts_missed_mutants ... ok
+test records_classify_operator_covers_remaining_binary_arms ... ok
+test records_cap_constant_is_generous ... ok
+test records_classify_operator_defaults_when_genre_missing ... ok
+test records_classify_operator_handles_unknown_binary_name ... ok
+test outcomes_scenario_discriminates_baseline_and_mutant ... ok
+test records_file_outside_package_returns_typed_error ... ok
+test records_malformed_returns_typed_parse_error ... ok
+test records_happy_path_builds_typed_ids_for_four_genres ... ok
+test records_rejects_object_root ... ok
+test records_missing_span_returns_typed_error ... ok
+test records_start_point_returns_line_and_column ... ok
+test records_start_point_returns_none_when_span_missing ... ok
+test records_start_point_returns_none_when_start_missing ... ok
+test records_round_trip_preserves_typed_id ... ok
+test relative_mutant_path_passes_bare_path_through ... ok
+test relative_mutant_path_rejects_other_crate ... ok
+test relative_mutant_path_strips_crates_prefix ... ok
+test relative_mutant_path_strips_dot_slash ... ok
+test serde_round_trip_preserves_outcomes ... ok
+test serde_round_trip_preserves_records ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_skip_reason_tool_unavailable.rs (target/debug/deps/v15_skip_reason_tool_unavailable-dbb36ffcdc29d01b)
+
+running 8 tests
+test skip_reason_not_applicable_round_trip_is_preserved ... ok
+test skip_reason_serde_round_trip_tool_unavailable_cargo_mutants ... ok
+test skip_reason_serde_round_trip_tool_unavailable_cargo_kani ... ok
+test tool_kind_as_str_matches_serde_form ... ok
+test skip_reason_tool_unavailable_uses_object_payload ... ok
+test skip_reason_tool_unavailable_deserializes_from_object_payload ... ok
+test tool_kind_serde_uses_kebab_case ... ok
+test tool_kind_round_trip_via_serde ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/titania_dylint-dc77f958a9cffde3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/allow_required.rs (target/debug/deps/allow_required-d3a86c264625f4f1)
+
+running 20 tests
+test bypass_required_lint_weakening_is_registered_by_cargo_dylint ... ok
+test bypass_pub_allow_is_registered_by_cargo_dylint ... ok
+test bypass_required_lint_weakening_ignores_preserved_lints ... ok
+test bypass_pub_allow_rejects_self_suppression ... ok
+test bypass_required_lint_weakening_detects_unused_group ... ok
+test bypass_pub_allow_detects_public_allow_warnings ... ok
+test bypass_required_lint_weakening_detects_expect_used_removal ... ok
+test bypass_pub_allow_detects_public_trait_method ... ok
+test bypass_pub_allow_detects_public_allow_attribute ... ok
+test bypass_required_lint_weakening_detects_panic_removal ... ok
+test bypass_required_lint_weakening_detects_allow_warnings ... ok
+test bypass_required_lint_weakening_detects_let_underscore_removal ... ok
+test bypass_required_lint_weakening_rejects_self_suppression ... ok
+test bypass_required_lint_weakening_detects_clippy_style_group ... ok
+test bypass_required_lint_weakening_detects_deny_unwrap_removal ... ok
+test bypass_attr_context_detects_macro_generated_associated_method ... ok
+test bypass_required_lint_weakening_detects_forbid_downgrade ... ok
+test bypass_pub_allow_ignores_pub_crate_allow_attribute ... ok
+test bypass_pub_allow_ignores_pub_crate_associated_fn ... ok
+test bypass_pub_allow_detects_public_associated_fn ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.96s
+
+     Running tests/internal_escape.rs (target/debug/deps/internal_escape-6cd299ba38f09224)
+
+running 15 tests
+test resolve_cargo_target_dir_defaults_to_workspace_target_when_env_absent ... ok
+test resolve_cargo_target_dir_joins_relative_env_to_workspace ... ok
+test resolve_cargo_target_dir_preserves_absolute_env ... ok
+test bypass_internal_unstable_is_registered_by_cargo_dylint ... ok
+test bypass_attr_context_is_registered_by_cargo_dylint ... ok
+test bypass_internal_unsafe_is_registered_by_cargo_dylint ... ok
+test bypass_internal_unsafe_ignores_plain_function ... ok
+test bypass_internal_unsafe_rejects_self_suppression ... ok
+test bypass_internal_unstable_detects_allow_internal_unstable_attr ... ok
+test bypass_internal_unsafe_detects_allow_internal_unsafe_attr ... ok
+test bypass_attr_context_leaves_direct_allow_to_pub_allow ... ok
+test bypass_internal_unstable_rejects_self_suppression ... ok
+test bypass_attr_context_rejects_self_suppression ... ok
+test bypass_internal_unstable_ignores_plain_function ... ok
+test bypass_attr_context_detects_macro_generated_allow ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
+
+     Running tests/policy_surface.rs (target/debug/deps/policy_surface-ead320e8a5e69031)
+
+running 10 tests
+test policy_surface_lints_are_registered_by_cargo_dylint ... ok
+test panic_surface_detects_panic_macros ... ok
+test policy_surface_ignores_cfg_test_modules ... ok
+test functional_surface_detects_aliased_unwrap ... ok
+test policy_surface_ignores_strings_and_comments ... ok
+test functional_surface_detects_ufcs_unwrap ... ok
+test functional_surface_detects_imperative_loops ... ok
+test functional_surface_ignores_unrelated_custom_methods ... ok
+test functional_surface_detects_macro_expanded_unwrap ... ok
+test functional_surface_detects_unwrap_expect_and_unwrap_or_defaults ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+     Running unittests src/lib.rs (target/debug/deps/titania_lanes-026aac721ff0774d)
+
+running 154 tests
+test ast_grep_lane::rules::detectors::detector_tests::detect_core_infra_import_skips_string_literal_mentions ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_aliased_fs_import_stays_violation ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_fq_random_without_use_is_violation ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_process_import_is_violation ... ok
+test ast_grep_lane::rules::detectors::detector_tests::detect_core_infra_import_skips_comment_mentions ... ok
+test ast_grep_lane::rules::detectors::detector_tests::detect_core_infra_import_catches_real_use ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_fq_time_without_use_is_violation ... ok
+test ast_grep_lane::rules::detectors::detector_tests::detect_core_infra_import_allows_clean_code ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_state_effect_is_violation ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_async_effect_is_violation ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_fq_fs_without_use_is_violation ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_fq_infra_without_use_is_violation ... ok
+test ast_grep_lane::rules::filters::scope_tests::tn_bvv7_shell_paths_are_out_of_scope ... ok
+test ast_grep_lane::rules::filters::scope_tests::tn_bvv7_designated_core_paths_are_in_scope ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_state_effect_allows_frozen_catalog_pattern ... ok
+test ast_grep_lane::span::tests::ascii_indented_token_column_counts_spaces ... ok
+test ast_grep_lane::span::tests::ascii_column_zero_for_first_rune ... ok
+test ast_grep_lane::span::tests::cjk_identifier_column_and_byte_range_are_consistent ... ok
+test ast_grep_lane::span::tests::column_resets_at_each_line ... ok
+test ast_grep_lane::span::tests::byte_range_slices_back_to_the_token_ascii_and_multibyte ... ok
+test ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_boundary_names_do_not_fire ... ok
+test ast_grep_lane::span::tests::empty_source_has_single_line_offset ... ok
+test ast_grep_lane::span::tests::file_level_site_anchors_at_first_byte_pair ... ok
+test ast_grep_lane::span::tests::first_byte_is_line_zero ... ok
+test ast_grep_lane::span::tests::four_byte_leading_emoji_counts_as_one_column ... ok
+test ast_grep_lane::span::tests::from_range_preserves_byte_offsets ... ok
+test ast_grep_lane::span::tests::mixed_multibyte_prefix_each_rune_one_column ... ok
+test ast_grep_lane::span::tests::two_byte_leading_rune_counts_as_one_column ... ok
+test ast_grep_lane::span::tests::three_byte_leading_rune_counts_as_one_column ... ok
+test command::env_filter::tests::default_scrub_preserves_first_occurrence_wins ... ok
+test command::env_filter::tests::apply_to_carries_surviving_pairs ... ok
+test command::env_filter::tests::default_scrub_keeps_only_allowlisted_keys ... ok
+test command::env_filter::tests::from_iter_with_policy_is_explicit ... ok
+test command::env_filter::tests::from_iter_accepts_string_pairs ... ok
+test command::env_filter::tests::from_parent_drops_non_unicode_key_silently ... ok
+test command::env_filter::tests::from_parent_drops_non_unicode_value_silently ... ok
+test command::env_filter::tests::from_parent_for_target_preserves_only_validated_lane_paths ... ok
+test run_lane::run_cargo::args::tests::args_for_lane_is_deterministic_and_bounded ... ok
+test run_lane::run_cargo::args::tests::clippy_args_deny_section_9_2_disallowed_family ... ok
+test run_lane::run_cargo::args::tests::clippy_args_deny_section_9_2_unwrap_expect_panic_families ... ok
+test run_lane::run_cargo::args::tests::clippy_args_deny_section_9_2_arithmetic_and_cast_families ... ok
+test command::env_filter::tests::nul_keys_are_dropped ... ok
+test command::env_filter::tests::from_parent_pure_fixture_filters_known_hazards ... ok
+test dylint_lane::tests::metadata_wins_over_sibling_when_it_names_titania ... ok
+test run_lane::run_cargo::args::tests::clippy_args_deny_section_9_2_todo_macro_and_indexing_families ... ok
+test run_lane::run_cargo::args::tests::clippy_args_deny_section_9_2_group_lints ... ok
+test run_lane::run_lane_dylint::tests::env_library_load_uses_lib_path_args ... ok
+test run_lane::run_cargo::args::tests::clippy_args_deny_section_9_2_allow_attribute_family ... ok
+test run_lane::run_cargo::args::tests::clippy_args_emit_warnings_and_unsafe_code_denial ... ok
+test run_lane::run_lane_kani::size_tests::assert_kani_lane_error_under_threshold ... ok
+test run_lane::run_lane_kani::tests::canonical_harness_id_rejects_invalid_form ... ok
+test run_lane::run_cargo::args::tests::clippy_args_deny_section_9_2_lock_future_families ... ok
+test run_lane::run_lane_kani::tests::canonical_harness_id_uppercases_lowercase_names ... ok
+test run_lane::run_cargo::args::tests::clippy_args_have_exact_section_9_2_length ... ok
+test dylint_lane::tests::env_library_path_wins_over_metadata_and_sibling ... ok
+test run_lane::run_lane_kani::tests::checking_harness_name_returns_none_for_unrelated_lines ... ok
+test run_lane::run_lane_kani::tests::checking_harness_name_strips_trailing_ellipsis ... ok
+test run_lane::run_cargo::args::tests::clippy_args_match_v1_section_9_2_exactly ... ok
+test dylint_lane::tests::metadata_must_name_titania_library ... ok
+test run_lane::run_cargo::args::tests::compile_args_match_v1_section_9_10_step_1 ... ok
+test run_lane::run_lane_kani::tests::clean_outcome_records_real_bare_argv_when_cgroup_unavailable ... ok
+test run_lane::run_lane_kani::tests::clean_outcome_records_real_cgroup_argv ... ok
+test run_lane::run_cargo::args::tests::core_lane_round_trips_through_cargo_lane ... ok
+test run_lane::run_lane_kani::tests::clean_outcome_rejects_non_zero_worst_exit ... ok
+test run_lane::run_cargo::args::tests::version_args_route_fmt_separately_from_other_lanes ... ok
+test run_lane::run_lane_kani::tests::inventory_error_outcome_skips_when_binary_not_found ... ok
+test run_lane::run_lane_kani::tests::inventory_error_outcome_emits_infra_finding_for_other_failures ... ok
+test run_lane::run_lane_kani::tests::inventory_error_outcome_skips_when_subcommand_missing ... ok
+test run_lane::run_lane_kani::tests::is_subcommand_missing_recognises_both_phrases ... ok
+test run_lane::run_lane_kani::tests::kani_run_error_variants_are_distinguishable_via_display ... ok
+test run_lane::run_lane_kani::tests::meets_floor_uses_tuple_ordering ... ok
+test run_lane::run_lane_kani::tests::location_tool_carries_runtime_detected_version ... ok
+test run_lane::run_lane_kani::tests::no_harness_outcome_is_findings_not_clean ... ok
+test run_lane::run_lane_kani::tests::package_run_successful_classifies_zero_exit ... ok
+test run_lane::run_lane_kani::tests::parse_kani_version_accepts_supported_release ... ok
+test run_lane::run_lane_kani::tests::parse_kani_version_rejects_garbled_output ... ok
+test run_lane::run_lane_kani::tests::parse_kani_version_rejects_too_old_release ... ok
+test run_lane::run_lane_kani::tests::pipe_byte_cap_is_large_but_bounded ... ok
+test run_lane::run_lane_kani::tests::rule_id_error_wraps_via_explicit_constructor ... ok
+test run_lane::run_lane_dylint::tests::metadata_load_does_not_use_lib_path_args ... ok
+test run_lane::run_lane_mutants::command::tests::cgroup_argv_memory_limits_match_brief ... ok
+test run_lane::run_lane_mutants::command::tests::cgroup_argv_first_arg_matches_systemd_run_executable ... ok
+test run_lane::run_lane_mutants::command::tests::cgroup_argv_output_uses_locked_spec_directory_name ... ok
+test run_lane::run_lane_mutants::error::tests::assert_mutants_lane_error_under_threshold ... ok
+test run_lane::run_lane_mutants::command::tests::cgroup_argv_preserves_direct_flag_order ... ok
+test run_lane::run_lane_mutants::operators::tests::binary_operator_classifies_known_patterns ... ok
+test run_lane::run_lane_mutants::operators::tests::binary_operator_does_not_coerce_unknown_to_arithmetic_op_flip ... ok
+test run_lane::run_lane_mutants::operators::tests::binary_operator_unknown_pattern_fails_typed_infra ... ok
+test run_lane::run_lane_mutants::operators::tests::fn_value_classifies_integer_literal_replacements ... ok
+test run_lane::run_lane_mutants::operators::tests::operator_for_raw_routes_genre_to_classifier ... ok
+test run_lane::run_lane_mutants::operators::tests::operator_for_raw_unknown_genre_fails_typed_infra ... ok
+test run_lane::run_lane_mutants::operators::tests::relative_mutant_path_returns_bare_path_without_crates_prefix ... ok
+test run_lane::run_lane_mutants::operators::tests::relative_mutant_path_strips_crates_prefix_for_matching_package ... ok
+test run_lane::run_lane_mutants::operators::tests::relative_mutant_path_strips_dot_slash_prefix ... ok
+test run_lane::run_lane_mutants::operators::tests::unary_operator_classifies_delete_negation ... ok
+test run_lane::run_lane_mutants::operators::tests::unary_operator_unknown_fails_typed_infra ... ok
+test run_lane::run_lane_mutants::outcomes::tests::baseline_missing_skip_reason_unused_here ... ok
+test run_lane::run_lane_mutants::outcomes::tests::baseline_missing_outcome_carries_typed_rule_id ... ok
+test run_lane::run_lane_mutants::outcomes::tests::clean_outcome_fallback_records_cargo_executable ... ok
+test run_lane::run_lane_mutants::outcomes::tests::clean_outcome_cgroup_records_systemd_run_executable ... ok
+test run_lane::run_lane_mutants::outcomes::tests::finding_reject_constructs_with_survivor_shape ... ok
+test run_lane::run_lane_mutants::outcomes::tests::survivor_finding_carries_real_location_not_generic_tool_loc ... ok
+test run_lane::run_lane_mutants::report::tests::survivor_name_returns_none_for_baseline_payload ... ok
+test run_lane::run_lane_mutants::report::tests::survivor_name_picks_mutant_name_under_scenario_object ... ok
+test run_lane::run_lane_mutants::outcomes::tests::survivor_finding_assembles_real_span_for_typed_id ... ok
+test run_lane::run_lane_mutants::survivors::tests::build_new_survivors_skips_when_no_survivor_names ... ok
+test run_lane::run_lane_mutants::survivors::tests::classify_survivor_returns_err_when_artifacts_missing ... ok
+test run_lane::run_lane_mutants::report::tests::validate_reported_missed_count_accepts_matching_aggregate ... ok
+test run_lane::run_lane_mutants::report::tests::parse_survivor_names_returns_empty_for_clean_run ... ok
+test run_lane::run_lane_mutants::report::tests::validate_reported_missed_count_rejects_mismatch ... ok
+test source_line::tests::block_comment_within_one_line_is_skipped ... ok
+test run_lane::run_lane_kani::tests::verdict_from_line_parses_known_markers ... ok
+test run_lane::run_lane_mutants::baseline::tests::baseline_path_resolves_to_strict_ai_profile ... ok
+test run_lane::run_lane_kani::tests::verdict_map_pairs_checking_with_verification_lines ... ok
+test run_lane::run_lane_mutants::version::tests::parse_major_extracts_27_from_cargo_mutants_27_line ... ok
+test run_lane::run_lane_mutants::tests::tool_unavailable_outcome_records_skip_reason ... ok
+test run_lane::run_lane_mutants::version::tests::parse_major_extracts_27_from_no_trailing_newline ... ok
+test run_lane::run_lane_mutants::version::tests::major_meets_floor_accepts_known_floor_and_above ... ok
+test run_lane::run_lane_mutants::version::tests::parse_major_rejects_negative_or_non_decimal_input ... ok
+test run_lane::run_lane_mutants::version::tests::parse_major_rejects_non_cargo_mutants_prefix ... ok
+test run_lane::run_lane_mutants::tests::current_unix_returns_non_zero_on_real_clock ... ok
+test run_lane::run_lane_mutants::version::tests::major_meets_floor_rejects_below_floor ... ok
+test source_line::tests::multi_line_raw_string_blank_contents_on_both_lines ... ok
+test source_line::tests::multi_line_raw_string_closes_with_code_on_same_line ... ok
+test source_line::tests::plain_code_line_is_borrowed_without_allocation ... ok
+test source_line::tests::multi_line_raw_string_with_forbidden_token_on_close_line ... ok
+test source_line::tests::raw_string_in_assignment_blanks_forbidden_token ... ok
+test source_line::tests::raw_string_literal_contents_are_blanked_out ... ok
+test source_line::tests::raw_string_with_hash_content ... ok
+test source_line::tests::raw_string_with_interior_quote_and_hash ... ok
+test source_line::tests::raw_string_with_multiple_hash_delimiters ... ok
+test source_line::tests::string_literal_contents_are_blanked_out ... ok
+test tests::as_u8_matches_v1_spec_section_12_exit_codes ... ok
+test tests::not_applicable_is_successful_process_exit_with_distinct_disposition ... ok
+test source_line::tests::zero_hash_raw_string_r_quote_blank ... ok
+test run_lane::run_cargo_lane::tests::nonzero_exit_empty_stdout_becomes_failed_not_clean ... ok
+test source_line::tests::block_comment_spans_multiple_lines ... ok
+test run_lane::run_lane_outcome::tests::containing_scopes_exactly_match_gate_membership ... ok
+test source_line::tests::byte_raw_string_contents_are_blanked_out ... ok
+test run_lane::run_cargo_lane::tests::nonzero_exit_clean_json_becomes_failed_not_clean ... ok
+test source_line::tests::escaped_quote_in_string_does_not_close ... ok
+test source_line::tests::line_comment_is_skipped ... ok
+test ast_grep_lane::rules::detectors::tn_bvv7_property_tests::tn_bvv7_effect_boundary_property ... ok
+test source_line::tests::mixed_regular_and_raw_strings_both_blanked ... ok
+test run_lane::run_cargo_lane::tests::nonzero_exit_with_unwrap_json_becomes_findings ... ok
+test run_lane::run_lane_dylint::tests::nonzero_bypass_output_becomes_findings ... ok
+test run_lane::run_lane_dylint::tests::typed_bypass_rule_ids_survive ... ok
+test run_lane::run_lane_dylint::tests::non_bypass_nonzero_remains_suspicious_failure ... ok
+test ast_grep_lane::rules::detectors::tn_bvv7_property_tests::tn_bvv7_fq_bypass_property ... ok
+test run_lane::run_cargo_lane::tests::zero_exit_clean_json_becomes_clean ... ok
+test run_lane::run_lane_kani::tests::missing_verdict_distinguishes_unknown_from_blocked ... ok
+test run_lane::run_lane_kani::tests::spawn_failure_package_emits_blocked_findings_with_teardown_context ... ok
+test run_lane::run_lane_kani::tests::timed_out_package_emits_blocked_finding_per_harness ... ok
+test run_lane::run_lane_kani::tests::verdict_driven_package_emits_one_finding_per_harness ... ok
+
+test result: ok. 154 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/artifact_writer.rs (target/debug/deps/artifact_writer-a5673fa6a84d7823)
+
+running 10 tests
+test write_fails_when_output_root_does_not_exist ... ok
+test clean_artifact_includes_outcome_variant_in_json ... ok
+test write_fails_when_output_root_is_not_a_directory ... ok
+test findings_artifact_includes_outcome_variant_in_json ... ok
+test parent_directories_created_on_write ... ok
+test findings_outcome_written_to_scoped_lane_file ... ok
+test no_temp_file_remains_after_successful_write ... ok
+test clean_outcome_written_to_scoped_lane_file ... ok
+test written_artifact_json_contains_lane_name ... ok
+test artifact_json_lane_matches_lane_enum_for_all_edit_lanes ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ast_grep_architecture.rs (target/debug/deps/ast_grep_architecture-f24653bbabe30ef1)
+
+running 11 tests
+test ast_grep_architecture_all_required_rule_ids_present_exactly_once ... ok
+test ast_grep_architecture_direct_import_patterns_present ... ok
+test ast_grep_architecture_all_rules_reject_effect ... ok
+test ast_grep_architecture_production_only_path_exclusions_present ... ok
+test ast_grep_architecture_allowed_fixtures_have_no_violations ... ok
+test ast_grep_architecture_core_manifest_has_no_effect_dependencies ... ok
+test ast_grep_architecture_every_rule_has_required_fields ... ok
+test ast_grep_architecture_fully_qualified_patterns_present ... ok
+test ast_grep_architecture_repair_hints_per_rule ... ok
+test ast_grep_architecture_violation_fixtures_contain_their_patterns ... ok
+test ast_grep_architecture_fixture_files_exist_for_each_rule ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ast_grep_bypass.rs (target/debug/deps/ast_grep_bypass-9e5524dcb143bedd)
+
+running 8 tests
+test ast_grep_bypass_all_required_rule_ids_present_exactly_once ... ok
+test ast_grep_bypass_all_rules_reject_effect ... ok
+test ast_grep_bypass_production_only_path_exclusions_present ... ok
+test ast_grep_bypass_repair_hints_present ... ok
+test ast_grep_bypass_violation_fixtures_contain_their_patterns ... ok
+test ast_grep_bypass_clean_fixture_has_no_bypass_patterns ... ok
+test ast_grep_bypass_fixture_files_exist_for_each_rule ... ok
+test ast_grep_bypass_every_rule_has_required_fields ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ast_grep_catalog_dispatch.rs (target/debug/deps/ast_grep_catalog_dispatch-930e6f3f22f69c76)
+
+running 13 tests
+test empty_id_is_rejected_as_unknown ... ok
+test prefix_id_does_not_enable_func_loops_for ... ok
+test comment_id_does_not_enable_func_loops_for ... ok
+test quoted_id_with_inline_comment_enables_func_loops_for ... ok
+test exact_id_enables_func_loops_for ... ok
+test message_text_substring_does_not_enable_func_loops_for ... ok
+test ast_grep_bypass_generated_include_in_line_comment_not_detected ... ok
+test ast_grep_bypass_generated_include_in_block_comment_not_detected ... ok
+test ast_grep_bypass_generated_include_in_string_literal_not_detected ... ok
+test ast_grep_bypass_generated_include_in_raw_string_literal_not_detected ... ok
+test ast_grep_bypass_generated_include_real_in_code_still_detected ... ok
+test ast_grep_bypass_generated_include_multi_part_concat_detected ... ok
+test ast_grep_bypass_generated_include_raw_string_in_code_still_detected ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ast_grep_cfg_test_skip.rs (target/debug/deps/ast_grep_cfg_test_skip-a03a38c99c0f2e0d)
+
+running 4 tests
+test func_print_stdout_skipped_inside_cfg_test_module ... ok
+test func_loops_for_fires_in_prod_skips_in_cfg_test_module ... ok
+test func_loops_for_skipped_inside_cfg_test_module ... ok
+test func_loops_for_skipped_inside_cfg_all_test_module ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ast_grep_functional.rs (target/debug/deps/ast_grep_functional-330ad2e93861fdda)
+
+running 8 tests
+test ast_grep_functional_allowed_iterator_pipeline_fixture_has_no_loops ... ok
+test ast_grep_functional_all_required_rule_ids_present_exactly_once ... ok
+test ast_grep_functional_allowed_no_print_fixture_has_no_print_calls ... ok
+test ast_grep_functional_wildcard_import_is_informational ... ok
+test ast_grep_functional_every_rule_has_required_fields ... ok
+test ast_grep_functional_fixture_files_exist_for_each_rule ... ok
+test ast_grep_functional_production_only_path_exclusions_present ... ok
+test ast_grep_functional_violation_fixtures_contain_their_patterns ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ast_grep_lane.rs (target/debug/deps/ast_grep_lane-738767090e25f247)
+
+running 27 tests
+test ast_grep_lane_artifact_lane_field_is_astgrep ... ok
+test ast_grep_lane_findings_outcome_serializes_with_variant_and_findings ... ok
+test ast_grep_lane_does_not_reject_rngcore_as_rng_import ... ok
+test ast_grep_functional_loop_in_raw_string_literal_not_detected ... ok
+test ast_grep_lane_does_not_reject_std_boundary_prefix_names ... ok
+test ast_grep_lane_runtime_dispatch_matches_embedded_yaml_ids ... ok
+test ast_grep_lane_runner_uses_embedded_rules_no_external_binary ... ok
+test ast_grep_functional_for_loop_in_line_comment_not_detected ... ok
+test ast_grep_functional_for_loop_in_block_comment_not_detected ... ok
+test ast_grep_functional_real_for_loop_still_detected ... ok
+test ast_grep_functional_loop_keywords_in_nested_block_comment_not_detected ... ok
+test ast_grep_functional_while_after_block_comment_delimiter_string_detected ... ok
+test ast_grep_lane_does_not_reject_string_value_types_as_result_error ... ok
+test ast_grep_functional_for_after_line_comment_delimiter_string_detected ... ok
+test ast_grep_lane_honors_yaml_ignore_filters ... ok
+test ast_grep_functional_loop_in_string_literal_not_detected ... ok
+test ast_grep_lane_maps_stderr_macros_to_stderr_rule ... ok
+test ast_grep_lane_rejects_fq_effect_paths_without_imports ... ok
+test ast_grep_functional_loop_keywords_in_line_comments_only_are_clean ... ok
+test ast_grep_functional_while_in_trailing_comment_not_detected ... ok
+test ast_grep_lane_accepts_clean_core_effect_controls ... ok
+test ast_grep_lane_rejects_new_core_effect_boundaries ... ok
+test ast_grep_lane_rejects_multiline_result_string_error ... ok
+test ast_grep_lane_rejects_pub_and_multiline_architecture_imports ... ok
+test ast_grep_lane_exception_suppresses_only_matching_rule_path_pair ... ok
+test ast_grep_lane_multi_family_fixture_emits_findings_with_exact_rule_ids ... ok
+test ast_grep_lane_runtime_emits_every_embedded_rule_id ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/ast_grep_span_accuracy.rs (target/debug/deps/ast_grep_span_accuracy-4296c49cd1716ca4)
+
+running 4 tests
+test h3_for_keyword_indented_four_spaces_reports_col_4_not_col_0 ... ok
+test for_loop_fixture_first_match_lands_on_for_keyword ... ok
+test indented_while_loop_reports_nonzero_column ... ok
+test every_functional_finding_start_coordinate_lands_on_the_offending_token ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/clippy_normalizer.rs (target/debug/deps/clippy_normalizer-8786c55a96b9e214)
+
+running 4 tests
+test clippy_normalizer_malformed_fixture_returns_suspicious_failure_not_clean ... ok
+test clippy_normalizer_warning_only_fixture_maps_to_typed_rule ... ok
+test clippy_normalizer_unknown_lint_fixture_maps_to_unknown_rule ... ok
+test clippy_normalizer_unwrap_fixture_maps_to_unwrap_used_rule ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/command_env_scrub.rs (target/debug/deps/command_env_scrub-79537090135a10c9)
+
+running 7 tests
+test scrubbed_inherit_drops_ld_preload ... ok
+test default_clear_policy_wins_over_inherited_parent ... ok
+test scrubbed_inherit_drops_rustc_bootstrap_unstable_flag ... ok
+test scrubbed_inherit_drops_untrusted_cargo_prefix_env_var ... ok
+test explicit_env_wins_over_scrubbed_inherit ... ok
+test scrubbed_inherit_drops_rustflags_even_when_parent_has_it ... ok
+test scrubbed_inherit_keeps_path_through_to_subprocess ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/command_public_api.rs (target/debug/deps/command_public_api-595b52e04396ca96)
+
+running 10 tests
+test command_public_api_rejects_invalid_program_names ... ok
+test command_public_api_env_remove_scrubs_explicit_env ... ok
+test command_public_api_args_env_and_cwd_are_subprocess_visible ... ok
+test command_public_api_run_capture_is_checked_like_run ... ok
+test command_public_api_spawn_io_error_carries_program_and_kind ... ok
+test command_public_api_nonzero_exit_carries_code_and_stderr ... ok
+test command_public_api_run_status_raw_preserves_exit_code ... ok
+test command_public_api_default_env_clear_and_inherit_env_are_observable ... ok
+test command_public_api_non_utf8_errors_carry_program_and_stream ... ok
+test command_public_api_timeout_and_output_limits_carry_exact_fields ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/deny_normalizer.rs (target/debug/deps/deny_normalizer-3dd12c1f32857951)
+
+running 10 tests
+test deny_normalizer_clean_fixture_returns_empty_report ... ok
+test deny_normalizer_missing_binary_returns_infra_failure ... ok
+test deny_normalizer_advisory_fixture_maps_to_advisory_rule ... ok
+test deny_normalizer_duplicate_versions_fixture_maps_to_multiple_versions_rule ... ok
+test deny_normalizer_license_fixture_maps_to_license_rule ... ok
+test deny_normalizer_banned_crate_fixture_maps_to_banned_crate_rule ... ok
+test deny_normalizer_unknown_registry_fixture_maps_to_unknown_registry_rule ... ok
+test deny_normalizer_unknown_git_fixture_maps_to_unknown_git_rule ... ok
+test deny_normalizer_malformed_fixture_returns_suspicious_failure_not_clean ... ok
+test deny_normalizer_mixed_fixture_contains_all_finding_types ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/docs_contract.rs (target/debug/deps/docs_contract-09d81f38519ac586)
+
+running 5 tests
+test v1_docs_contract_required_commands ... ok
+test v1_docs_contract_vision_links_v1spec ... ok
+test v1_docs_contract_scopes_match_gatescope ... ok
+test v1_docs_contract_no_forbidden_strings ... ok
+test v1_docs_contract_sync ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/dylint_loader.rs (target/debug/deps/dylint_loader-45b7bcb263207e65)
+
+running 6 tests
+test dylint_loader_probe_infra_failure_is_infra ... ok
+test dylint_loader_probe_render_mentions_tool ... ok
+test dylint_loader_probe_missing_cargo_dylint_returns_infra_failure ... ok
+test dylint_loader_probe_failure_contains_correct_tool_name ... ok
+test dylint_loader_probe_infra_report_contains_infra_finding ... ok
+test dylint_loader_probe_ready_has_no_failure ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/dylint_reject_repair.rs (target/debug/deps/dylint_reject_repair-37f999c00ebe40a0)
+
+running 1 test
+test dylint_rejects_bypass_pub_allow_then_clean_after_repair ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.33s
+
+     Running tests/external_target_policy.rs (target/debug/deps/external_target_policy-bbd71d870dd521e3)
+
+running 13 tests
+test external_target_policy_artifact_requires_valid_target_root ... ok
+test external_target_policy_artifact_lands_in_target ... ok
+test external_target_policy_artifact_path_is_deterministic ... ok
+test external_target_policy_embedded_sources_include_required_files ... ok
+test external_target_policy_artifact_json_has_correct_fields ... ok
+test external_target_policy_rejects_nonexistent_path ... ok
+test external_target_policy_rejects_regular_file ... ok
+test external_target_policy_rejects_missing_cargo_toml ... ok
+test external_target_policy_validates_temp_project ... ok
+test external_target_policy_command_env_is_passed ... ok
+test external_target_policy_command_nonzero_exit_is_reported ... ok
+test external_target_policy_command_inherits_target_cwd ... ok
+test external_target_policy_command_cwd_matches_target_path ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/moon_task_graph.rs (target/debug/deps/moon_task_graph-9db88b4f4c0957c7)
+
+running 1 test
+test v1_moon_tasks ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/policy_scan_cargo_config.rs (target/debug/deps/policy_scan_cargo_config-8a7939f3be64a0a7)
+
+running 17 tests
+test absent_cargo_config_stays_clean_when_siblings_are_present ... ok
+test absent_cargo_config_files_are_clean ... ok
+test extensionless_malformed_cargo_config_still_parses_to_parse_error ... ok
+test config_toml_rustflags_emit_one_finding_per_flag ... ok
+test extensionless_config_rustflags_are_scanned ... ok
+test malformed_cargo_config_emits_parse_error_finding ... ok
+test parent_cargo_config_is_scanned_from_child_crate ... ok
+test inline_target_table_with_cfg_key_is_clean ... ok
+test inline_target_table_rustflags_emit_flag_findings ... ok
+test unreadable_cargo_config_emits_read_error_finding ... ok
+test both_config_files_are_scanned_in_stable_order ... ok
+test non_sccache_wrappers_emit_wrapper_findings ... ok
+test inline_build_table_rustflags_emit_flag_findings ... ok
+test sccache_wrappers_are_clean ... ok
+test mixed_rustflags_and_wrapper_findings_share_file_path ... ok
+test local_sccache_wrapper_in_child_is_clean ... ok
+test empty_target_tables_are_clean_but_target_rustflags_are_findings ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/policy_scan_cargo_lints.rs (target/debug/deps/policy_scan_cargo_lints-b3766765a206af0c)
+
+running 21 tests
+test malformed_toml_is_not_a_weakening_finding ... ok
+test member_manifest_with_workspace_true_is_clean ... ok
+test clippy_allow_weakenings_emit_typed_findings ... ok
+test clippy_warn_weakenings_emit_typed_findings ... ok
+test message_contains_actual_required_and_weakened_terms ... ok
+test multiple_weakened_lints_produce_one_finding_each ... ok
+test must_use_family_deny_levels_are_clean ... ok
+test member_manifest_without_lints_table_emits_missing_inheritance_finding ... ok
+test member_manifest_with_lints_but_no_workspace_true_emits_finding ... ok
+test must_use_family_weakenings_emit_typed_findings ... ok
+test empty_workspace_lints_table_enumerates_every_canonical_omission ... ok
+test root_manifest_without_workspace_table_is_clean ... ok
+test required_deny_and_warn_levels_are_clean ... ok
+test policy_lint_override_weakens_required_level_and_suppresses_finding ... ok
+test policy_lint_override_only_weakens_never_strengthens ... ok
+test root_manifest_with_empty_workspace_lints_table_emits_missing_canonical_finding ... ok
+test partial_workspace_lints_table_enumerates_every_remaining_canonical_omission ... ok
+test rust_allow_weakenings_emit_typed_findings ... ok
+test subdirectory_manifest_uses_manifest_path_in_finding ... ok
+test root_manifest_with_partial_workspace_lints_emits_missing_canonical_finding ... ok
+test workspace_lints_partial_table_emits_weakening_and_missing_canonical_findings ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/policy_scan_env_vars.rs (target/debug/deps/policy_scan_env_vars-e1e7d3ff2bc02703)
+
+running 14 tests
+test cargo_encoded_rustflags_finding_names_lane_discipline_bypass ... ok
+test all_forbidden_vars_emit_distinct_findings ... ok
+test absent_cargo_home_and_rustup_home_emit_controlled_findings ... ok
+test empty_bootstrap_remains_a_finding_under_strict_homes ... ok
+test empty_cargo_home_and_rustup_home_emit_controlled_findings ... ok
+test rustc_wrapper_non_sccache_is_a_finding ... ok
+test exact_controlled_paths_pass_strict_check ... ok
+test rustc_wrapper_path_to_sccache_is_clean ... ok
+test unset_vars_are_clean_but_empty_bootstrap_is_forbidden ... ok
+test rustflags_finding_names_lane_discipline_bypass ... ok
+test rustc_wrapper_sccache_is_clean ... ok
+test workspace_wrapper_and_bootstrap_have_exact_rules ... ok
+test wrong_rooted_cargo_home_and_rustup_home_emit_controlled_findings ... ok
+test wrong_cargo_home_with_correct_rustup_home_is_singular ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/policy_scan_exceptions.rs (target/debug/deps/policy_scan_exceptions-f78b8022d84fae2e)
+
+running 9 tests
+test parse_expired_exception_returns_expired_error ... ok
+test same_day_expires_on_is_valid_not_expired ... ok
+test valid_exception_does_not_expire_before_today ... ok
+test empty_exceptions_suppress_nothing ... ok
+test matching_exception_suppresses_lint_weakening ... ok
+test exception_matches_nothing_when_both_rule_and_path_wrong ... ok
+test non_matching_rule_does_not_suppress ... ok
+test non_matching_path_does_not_suppress ... ok
+test matching_exception_suppresses_config_flags_finding ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/run_lane_sources.rs (target/debug/deps/run_lane_sources-49f913237317b50c)
+
+running 2 tests
+test non_production_sources_are_skipped ... ok
+test titania_cache_sources_are_skipped ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/template_metadata.rs (target/debug/deps/template_metadata-47aa7dcd5f64ab69)
+
+running 3 tests
+test template_metadata ... ok
+test template_moon_configs ... ok
+test template_policy_rust_configs ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/toolchain_config.rs (target/debug/deps/toolchain_config-ee640dde0f60528d)
+
+running 4 tests
+test toolchain_config_validator_reports_mismatch_fixture ... ok
+test toolchain_config_validator_reports_missing_sync_fixture ... ok
+test toolchain_root_matches_template ... ok
+test toolchain_configs_are_pinned_nightly_and_in_sync ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v15_atomic_baseline.rs (target/debug/deps/v15_atomic_baseline-1923ca3d0066fb6b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/v1_config_contract.rs (target/debug/deps/v1_config_contract-c3e59087a70cccb6)
+
+running 9 tests
+test dylint_cargo_has_reviewed_abi_lint_exception ... ok
+test clippy_thresholds_reject_weakened_fixture ... ok
+test dylint_cargo_preserves_local_lint_policy_except_abi ... ok
+test workspace_lints_reject_weakened_fixture ... ok
+test strict_ai_exceptions_expired_fixture_rejected_by_policy_parser ... ok
+test strict_ai_exceptions_all_fields_present ... ok
+test strict_ai_exceptions_metadata_matches_audit ... ok
+test workspace_lints ... ok
+test strict_ai_exceptions_expired_fixture_emits_policy_finding ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests titania_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests titania_lanes
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

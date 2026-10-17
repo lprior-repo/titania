@@ -126,6 +126,26 @@ fn cargo_encoded_rustflags_finding_names_lane_discipline_bypass() -> TestResult 
 }
 
 #[test]
+fn rustflags_cap_lints_allow_is_a_finding() -> TestResult {
+    let report = scan_with(&only("RUSTFLAGS", "--cap-lints allow"))?;
+    assert_eq!(report.finding_count(), 1);
+    let finding = finding_for(&report, "BYPASS_ENV_RUSTFLAGS");
+    assert!(finding.message().contains("RUSTFLAGS"));
+    assert!(finding.message().contains("bypasses lane discipline"));
+    Ok(())
+}
+
+#[test]
+fn encoded_rustflags_cap_lints_allow_is_a_finding() -> TestResult {
+    let report = scan_with(&only("CARGO_ENCODED_RUSTFLAGS", "--cap-lints\x1fallow"))?;
+    assert_eq!(report.finding_count(), 1);
+    let finding = finding_for(&report, "BYPASS_ENV_CARGO_ENCODED_RUSTFLAGS");
+    assert!(finding.message().contains("CARGO_ENCODED_RUSTFLAGS"));
+    assert!(finding.message().contains("bypasses lane discipline"));
+    Ok(())
+}
+
+#[test]
 fn rustc_wrapper_non_sccache_is_a_finding() -> TestResult {
     let report = scan_with(&only("RUSTC_WRAPPER", "/usr/bin/ccache"))?;
     let finding = finding_for(&report, "BYPASS_ENV_RUSTC_WRAPPER");

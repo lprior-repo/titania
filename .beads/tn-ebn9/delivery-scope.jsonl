@@ -1,0 +1,1 @@
+{"bead_id":"tn-ebn9","control":"bounded-execution detectors","crates":["titania-dylint","titania-lanes","titania-core","titania-output","titania-check"],"excludes":["kani lanes","mutants lanes","moon ci","unwrap_or semantics (tn-8obr)","obligation gate (tn-ce7x)"],"schema_version":"delivery-scope/v1","status":"scoped"}

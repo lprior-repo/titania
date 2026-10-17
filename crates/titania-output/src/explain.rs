@@ -85,14 +85,24 @@ fn row_entry(row: Row) -> RuleExplanation {
 
 fn example_violation(rule_id: &str, pattern: &str) -> Cow<'static, str> {
     match rule_id {
-        "FUNC_LOOPS_FOR" => Cow::Borrowed("for item in items { process(item); }"),
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP" => {
+            Cow::Borrowed("loop { if ready() { break; } retry(); }")
+        }
+        "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR" => {
+            Cow::Borrowed("std::iter::repeat(work).map(|job| run(job))")
+        }
         _ => Cow::Owned(format!("code matching `{pattern}`")),
     }
 }
 
 fn example_repair(rule_id: &str, repair: &str) -> Cow<'static, str> {
     match rule_id {
-        "FUNC_LOOPS_FOR" => Cow::Borrowed("items.iter().for_each(|item| process(item));"),
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP" => Cow::Borrowed(
+            "for item in items { process(item)?; } // Bound::FiniteInput + cited test",
+        ),
+        "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR" => Cow::Borrowed(
+            "std::iter::repeat(work).take(max).map(|job| run(job)) // Bound::Capped + cited test",
+        ),
         _ => Cow::Owned(format!("apply `{repair}`")),
     }
 }

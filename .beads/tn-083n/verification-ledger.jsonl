@@ -1,0 +1,9 @@
+{"bead_id":"tn-083n","command":"cargo test --test trust_binding_audit","cwd":"worktree-root","exit":0,"output":"compile FAIL (E0432 unresolved import titania_lanes::trust_binding) — Gate 1 failing-before evidence","phase":"tests-first"}
+{"bead_id":"tn-083n","command":"cargo test --test trust_binding_audit","cwd":"worktree-root","exit":0,"output":"10 passed; 0 failed","phase":"post-implementation"}
+{"bead_id":"tn-083n","command":"cargo fmt --all -- --check","cwd":"worktree-root","exit":0,"output":"FMT_CLEAN (after one cargo fmt --all application)"}
+{"bead_id":"tn-083n","command":"cargo check --workspace --all-targets --all-features","cwd":"worktree-root","exit":0,"output":"Finished dev profile, no errors"}
+{"bead_id":"tn-083n","command":"cargo clippy --workspace --lib --bins --examples --all-features + AGENTS.md source-only strict -D set (33 flags)","cwd":"worktree-root","exit":0,"output":"clean; fixed 9 nursery/pedantic findings en route (or_fun_call x3, option_if_let_else x1, excessive_nesting x5) + 2 missing_errors_doc + 1 rustdoc redundant link"}
+{"bead_id":"tn-083n","command":"cargo test -p titania-lanes --all-features","cwd":"worktree-root","exit":0,"output":"29 suites, 366 passed, 0 failed (incl. 10 new trust_binding_audit)"}
+{"bead_id":"tn-083n","command":"RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps","cwd":"worktree-root","exit":0,"output":"Finished; workspace docs generated"}
+{"bead_id":"tn-083n","command":"tools/go-skill-v9-validate","cwd":"worktree-root","exit":-1,"output":"BLOCKED: tool absent (no tools/ dir in checkout); manual gate checks substitute"}
+{"bead_id":"tn-083n","command":"moon ci","cwd":"worktree-root","exit":-1,"output":"NOT RUN: explicitly out of scope for this bead (owned by tn-4isu/tn-7bq2)"}

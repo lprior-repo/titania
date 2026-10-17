@@ -33,9 +33,11 @@ pub mod discover;
 pub mod dylint_lane;
 pub mod helpers;
 pub mod policy_scan;
+pub mod proof_registry;
 
 pub mod run_lane;
 pub mod source_line;
+pub mod trust_binding;
 
 pub use command::{CommandBudget, CommandIn, CommandOutput, EnvPolicy, LaneError, OutputStream};
 pub use discover::{CurrentTargetError, discover_target, target_project_from_path, try_from_path};

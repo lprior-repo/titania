@@ -1,0 +1,1 @@
+State 12 (formal-verifier): executed all required obligations (proptest lane, 4 proof + 4 bridge PASS rows with commands/exits/logs). No PENDING, no planned mappings, no pending base items, no waivers. Out-of-scope lanes (kani/mutants/moon) recorded as not-run, never as passes.

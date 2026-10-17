@@ -1,6 +1,5 @@
-FUNC_LOOPS_FOR	ast-grep+dylint	Reject	UseIteratorPipeline	for $LOOP in $ITER { ... }	Rejects imperative `for` loops in production source.
-FUNC_LOOPS_WHILE	ast-grep+dylint	Reject	UseIteratorPipeline	while $COND { ... }	Rejects imperative while loops in production source.
-FUNC_LOOPS_LOOP	ast-grep+dylint	Reject	UseIteratorPipeline	loop { ... }	Rejects open-ended loop blocks in production source.
+BOUNDED_EXECUTION_UNBOUNDED_LOOP	ast-grep+dylint	Reject	RequiresHumanReview	loop { ... } / while $COND { ... }	Rejects unbounded retries without a named bound and cited evidence.
+BOUNDED_EXECUTION_UNBOUNDED_ITERATOR	ast-grep+dylint	Reject	RequiresHumanReview	repeat / repeat_with / successors / from_fn / .cycle()	Rejects unbounded iterator sources without a named bound and cited evidence.
 FUNC_NESTING_DEPTH	ast-grep	Reject	FlattenNesting	nesting depth > 2	Rejects deeply nested production control flow.
 FUNC_RECURSION_DIRECT	ast-grep	Reject	RequiresHumanReview	function calls itself	Rejects direct recursion in production source.
 FUNC_PRINT_STDOUT	ast-grep	Reject	RequiresHumanReview	print! or println!	Rejects stdout printing in production source.
@@ -21,6 +20,9 @@ ARCHITECTURE_IMPORT_CORE_INFRA	ast-grep	Reject	ReplaceDependency	core/domain imp
 ARCHITECTURE_IMPORT_CORE_FS	ast-grep	Reject	RequiresHumanReview	core/domain imports std::fs/env/net	Rejects direct filesystem, environment, or network imports from core/domain code.
 ARCHITECTURE_IMPORT_CORE_TIME	ast-grep	Reject	RequiresHumanReview	core/domain imports SystemTime or Instant	Rejects direct wall-clock reads from core/domain code.
 ARCHITECTURE_IMPORT_CORE_RANDOM	ast-grep	Reject	RequiresHumanReview	core/domain imports random source	Rejects direct entropy reads from core/domain code.
+ARCHITECTURE_IMPORT_CORE_PROCESS	ast-grep	Reject	RequiresHumanReview	core/domain imports std::process	Rejects direct process spawns from core/domain code.
+ARCHITECTURE_EFFECT_CORE_ASYNC	ast-grep	Reject	ReplaceDependency	core/domain uses async runtime	Rejects async execution from core/domain code.
+ARCHITECTURE_EFFECT_CORE_STATE	ast-grep	Reject	RequiresHumanReview	core/domain uses ambient mutable state	Rejects ambient mutable state from core/domain code.
 BYPASS_PUB_ALLOW	dylint	Reject	RequiresHumanReview	#[allow(...)] on pub item	Rejects public API items with local allow suppressions.
 BYPASS_REQUIRED_LINT_WEAKENING	dylint	Reject	RequiresHumanReview	#![allow(...)] for required lint	Rejects crate-level weakening of mandatory Titania lint policy.
 BYPASS_ATTR_CONTEXT	dylint	Reject	RequiresHumanReview	macro-expanded #[allow(...)] on pub item	Rejects public allow attributes produced by macro expansion.

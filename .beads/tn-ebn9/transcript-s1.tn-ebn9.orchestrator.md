@@ -1,0 +1,1 @@
+State 1: claimed tn-ebn9 (bd update --claim, OPEN, dependency tn-6r36 closed). Verified isolated worktree (pwd == git toplevel == worktree path, HEAD 927893f, clean status). Wrote provenance/baseline/readiness. Single-operator session.

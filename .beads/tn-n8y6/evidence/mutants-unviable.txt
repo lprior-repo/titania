@@ -1,0 +1,3 @@
+crates/titania-core/src/kani_inventory.rs:129:13: delete field kani_version from struct Self expression in KaniInventory::parse_str
+crates/titania-core/src/kani_inventory.rs:130:13: delete field file_version from struct Self expression in KaniInventory::parse_str
+crates/titania-core/src/receipt.rs:117:5: replace check_passed_not_above_scanned -> Result<(), ReceiptError> with Ok(())

@@ -2,10 +2,10 @@
 # Each document is loaded with include_str! by the AstGrep lane; path filters keep
 # these structural checks on production Rust only.
 
-id: FUNC_LOOPS_FOR
+id: BOUNDED_EXECUTION_UNBOUNDED_LOOP
 language: Rust
 severity: error
-message: "FUNC_LOOPS_FOR: replace imperative for loops with iterator pipelines"
+message: "BOUNDED_EXECUTION_UNBOUNDED_LOOP: unbounded retry requires a named bound with cited evidence"
 files:
   - "**/*.rs"
 ignores:
@@ -15,15 +15,17 @@ ignores:
   - "**/examples/**"
   - "**/build.rs"
 rule:
-  pattern: "for $LOOP in $ITER { $$$BODY }"
+  any:
+    - pattern: "loop { $$$BODY }"
+    - pattern: "while $COND { $$$BODY }"
 metadata:
   effect: Reject
-  repair_hint: UseIteratorPipeline
+  repair_hint: RequiresHumanReview
 ---
-id: FUNC_LOOPS_WHILE
+id: BOUNDED_EXECUTION_UNBOUNDED_ITERATOR
 language: Rust
 severity: error
-message: "FUNC_LOOPS_WHILE: replace while loops with bounded iterator or state-machine transitions"
+message: "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR: unbounded iterator source requires a named bound with cited evidence"
 files:
   - "**/*.rs"
 ignores:
@@ -33,28 +35,15 @@ ignores:
   - "**/examples/**"
   - "**/build.rs"
 rule:
-  pattern: "while $COND { $$$BODY }"
+  any:
+    - pattern: "$ITER.cycle()"
+    - pattern: "repeat($$$ARGS)"
+    - pattern: "repeat_with($$$ARGS)"
+    - pattern: "successors($$$ARGS)"
+    - pattern: "from_fn($$$ARGS)"
 metadata:
   effect: Reject
-  repair_hint: UseIteratorPipeline
----
-id: FUNC_LOOPS_LOOP
-language: Rust
-severity: error
-message: "FUNC_LOOPS_LOOP: replace open-ended loop blocks with explicit bounded control flow"
-files:
-  - "**/*.rs"
-ignores:
-  - "**/fixtures/**"
-  - "**/tests/**"
-  - "**/benches/**"
-  - "**/examples/**"
-  - "**/build.rs"
-rule:
-  pattern: "loop { $$$BODY }"
-metadata:
-  effect: Reject
-  repair_hint: UseIteratorPipeline
+  repair_hint: RequiresHumanReview
 ---
 id: FUNC_PRINT_STDOUT
 language: Rust

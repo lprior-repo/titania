@@ -17,18 +17,70 @@ pub fn checked_methods(value: Option<i32>, result: Result<i32, i32>) -> i32 {
 }
 "#;
 
-const FIXTURE_LOOP_SURFACE: &str = r#"
-pub fn loops() -> i32 {
-    let mut total = 0;
-    for value in 0..1 {
-        total += value;
+const FIXTURE_BOUNDED_FOR_WITH_QUESTION: &str = r#"
+pub fn total(items: &[i32]) -> Result<i32, &'static str> {
+    let mut sum = 0;
+    for value in items {
+        sum += process(*value)?;
     }
+    Ok(sum)
+}
+
+fn process(value: i32) -> Result<i32, &'static str> {
+    if value < 0 {
+        return Err("negative input");
+    }
+    Ok(value)
+}
+"#;
+
+const FIXTURE_UNBOUNDED_LOOP_SURFACE: &str = r#"
+pub fn retry_until_ready(mut attempts: u32) -> u32 {
+    loop {
+        if attempts == 0 {
+            break attempts;
+        }
+        attempts -= 1;
+    }
+}
+"#;
+
+const FIXTURE_UNBOUNDED_WHILE_SURFACE: &str = r#"
+pub fn spin_while_busy(mut total: i32) -> i32 {
     while total < 2 {
         total += 1;
     }
-    loop {
-        break total;
+    total
+}
+"#;
+
+const FIXTURE_WHILE_LET_SURFACE: &str = r#"
+pub fn drain(items: &mut Vec<i32>) -> i32 {
+    let mut sum = 0;
+    while let Some(value) = items.pop() {
+        sum += value;
     }
+    sum
+}
+"#;
+
+const FIXTURE_UNBOUNDED_ITERATOR_SURFACE: &str = r#"
+pub fn repeat_forever() -> impl Iterator<Item = u32> {
+    std::iter::repeat(1u32)
+}
+
+pub fn cycle_forever(items: Vec<u32>) -> impl Iterator<Item = u32> {
+    items.into_iter().cycle()
+}
+"#;
+
+const FIXTURE_BOUNDED_ITERATOR_SURFACE: &str = r#"
+pub fn bounded_retry(max: u64) -> Vec<u64> {
+    (0..max).collect()
+}
+
+pub fn bounded_pipeline(items: &[i32]) -> Vec<i32> {
+    items.iter().map(|value| value + 1).collect()
 }
 "#;
 
@@ -125,6 +177,67 @@ mod tests {
 
 pub fn production_code() -> i32 {
     1
+}
+"#;
+
+const FIXTURE_OK_DIRECT: &str = r#"
+pub fn erase_direct(result: Result<i32, i32>) -> Option<i32> {
+    result.ok()
+}
+"#;
+
+const FIXTURE_OK_PATHS: &str = r#"
+use std::result::Result as Fallible;
+
+pub fn erase_paths(
+    a: Result<i32, i32>,
+    b: Result<i32, i32>,
+    c: Result<i32, i32>,
+) -> (Option<i32>, Option<i32>, Option<i32>) {
+    (Result::ok(a), <Result<i32, i32>>::ok(b), Fallible::ok(c))
+}
+"#;
+
+const FIXTURE_OK_VALUES: &str = r#"
+pub fn erase_values(values: Vec<Result<i32, i32>>) -> Vec<i32> {
+    values.into_iter().filter_map(Result::ok).collect()
+}
+
+pub fn erase_letbound(result: Result<i32, i32>) -> Option<i32> {
+    let erase = Result::ok;
+    erase(result)
+}
+"#;
+
+const FIXTURE_CUSTOM_OK_AND_OK_OR: &str = r#"
+pub struct Token(i32);
+
+impl Token {
+    pub fn ok(self) -> i32 {
+        self.0
+    }
+}
+
+pub fn keep(token: Token, value: Option<i32>) -> (i32, Result<i32, i32>, Result<i32, i32>) {
+    (token.ok(), value.ok_or(-1), value.ok_or_else(|| -2))
+}
+"#;
+
+const FIXTURE_EXHAUSTIVE: &str = r#"
+pub fn settle(result: Result<i32, i32>) -> i32 {
+    match result {
+        Ok(v) => v,
+        Err(e) => e,
+    }
+}
+
+pub fn carry(result: Result<i32, i32>) -> Result<i32, i32> {
+    result.map_err(|e| e)
+}
+
+pub fn pass(result: Result<i32, i32>) -> Result<i32, i32> {
+    let value = result?;
+    Ok(value)
 }
 "#;
 
@@ -255,9 +368,8 @@ fn policy_surface_lints_are_registered_by_cargo_dylint() {
         "FUNC_UNWRAP_USED",
         "FUNC_EXPECT_USED",
         "FUNC_UNWRAP_OR",
-        "FUNC_LOOPS_FOR",
-        "FUNC_LOOPS_WHILE",
-        "FUNC_LOOPS_LOOP",
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
+        "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR",
         "HOLZMAN_PANIC_PANIC",
         "HOLZMAN_PANIC_ASSERT",
         "HOLZMAN_PANIC_ASSERT_EQ",
@@ -266,6 +378,7 @@ fn policy_surface_lints_are_registered_by_cargo_dylint() {
         "HOLZMAN_PANIC_UNIMPLEMENTED",
         "HOLZMAN_PANIC_UNREACHABLE",
         "HOLZMAN_PANIC_DBG",
+        "FUNC_RESULT_OK",
     ]
     .iter()
     .for_each(|rule| {
@@ -286,11 +399,51 @@ fn functional_surface_detects_unwrap_expect_and_unwrap_or_defaults() {
 }
 
 #[test]
-fn functional_surface_detects_imperative_loops() {
-    let output = run_dylint_on_fixture("loop_surface", FIXTURE_LOOP_SURFACE);
-    assert_dylint_rejects(&output, "FUNC_LOOPS_FOR", "for loops");
-    assert_dylint_rejects(&output, "FUNC_LOOPS_WHILE", "while loops");
-    assert_dylint_rejects(&output, "FUNC_LOOPS_LOOP", "loop blocks");
+fn bounded_execution_permits_finite_for_with_question() {
+    let output = run_dylint_on_fixture("bounded_for_question", FIXTURE_BOUNDED_FOR_WITH_QUESTION);
+    assert!(
+        output.status.success(),
+        "bounded for over finite input with ? must pass:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bounded_execution_rejects_unbounded_loop() {
+    let output = run_dylint_on_fixture("unbounded_loop", FIXTURE_UNBOUNDED_LOOP_SURFACE);
+    assert_dylint_rejects(&output, "BOUNDED_EXECUTION_UNBOUNDED_LOOP", "loop blocks");
+}
+
+#[test]
+fn bounded_execution_rejects_condition_while() {
+    let output = run_dylint_on_fixture("unbounded_while", FIXTURE_UNBOUNDED_WHILE_SURFACE);
+    assert_dylint_rejects(&output, "BOUNDED_EXECUTION_UNBOUNDED_LOOP", "condition while loops");
+}
+
+#[test]
+fn bounded_execution_permits_while_let() {
+    let output = run_dylint_on_fixture("while_let", FIXTURE_WHILE_LET_SURFACE);
+    assert!(
+        output.status.success(),
+        "while let (bounded by Option exhaustion) must pass:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bounded_execution_rejects_unbounded_iterators() {
+    let output = run_dylint_on_fixture("unbounded_iter", FIXTURE_UNBOUNDED_ITERATOR_SURFACE);
+    assert_dylint_rejects(&output, "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR", "repeat/cycle sources");
+}
+
+#[test]
+fn bounded_execution_permits_finite_iterators() {
+    let output = run_dylint_on_fixture("bounded_iter", FIXTURE_BOUNDED_ITERATOR_SURFACE);
+    assert!(
+        output.status.success(),
+        "finite ranges and maps must pass:\n{}",
+        combined_output(&output)
+    );
 }
 
 #[test]
@@ -350,6 +503,66 @@ fn policy_surface_ignores_cfg_test_modules() {
     assert!(
         output.status.success(),
         "cfg(test) modules must not trigger production Dylint policy rules:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn functional_surface_rejects_direct_ok_erasure() {
+    let output = run_dylint_on_fixture("direct_ok_erasure", FIXTURE_OK_DIRECT);
+    assert_dylint_rejects(&output, "FUNC_RESULT_OK", "direct .ok() erasure");
+}
+
+#[test]
+fn functional_surface_rejects_ok_path_forms() {
+    let output = run_dylint_on_fixture("ok_path_forms", FIXTURE_OK_PATHS);
+    assert_dylint_rejects(&output, "FUNC_RESULT_OK", "UFCS Result::ok path call");
+    assert_dylint_rejects(
+        &output,
+        "FUNC_RESULT_OK",
+        "fully-qualified <Result<i32, i32>>::ok path call",
+    );
+    assert_dylint_rejects(&output, "FUNC_RESULT_OK", "renamed-import Fallible::ok path call");
+}
+
+#[test]
+fn functional_surface_rejects_ok_value_forms() {
+    let output = run_dylint_on_fixture("ok_value_forms", FIXTURE_OK_VALUES);
+    assert_dylint_rejects(&output, "FUNC_RESULT_OK", "bare-path ok values");
+    assert_eq!(
+        combined_output(&output).matches("FUNC_RESULT_OK").count(),
+        2,
+        "bare-path ok values must emit exactly one FUNC_RESULT_OK per site (2 sites):\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn functional_surface_accepts_custom_ok_and_ok_or() {
+    let output = run_dylint_on_fixture("custom_ok_and_ok_or", FIXTURE_CUSTOM_OK_AND_OK_OR);
+    assert!(
+        output.status.success(),
+        "custom ok and ok_or forms must exit 0:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "FUNC_RESULT_OK"),
+        "custom ok and ok_or forms must not emit FUNC_RESULT_OK:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn functional_surface_accepts_exhaustive_disposition() {
+    let output = run_dylint_on_fixture("exhaustive_disposition", FIXTURE_EXHAUSTIVE);
+    assert!(
+        output.status.success(),
+        "exhaustive disposition must exit 0:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "FUNC_RESULT_OK"),
+        "exhaustive disposition must not emit FUNC_RESULT_OK:\n{}",
         combined_output(&output)
     );
 }

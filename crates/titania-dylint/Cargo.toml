@@ -103,6 +103,9 @@ redundant_feature_names = "deny"
 [dependencies]
 dylint_linting = "=6.0.1"
 
+[dev-dependencies]
+proptest = "1"
+
 
 [package.metadata.rust-analyzer]
 rustc_private = true

@@ -41,43 +41,40 @@ fn assert_stderr_contains(stderr: &str, needle: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Known rule: FUNC_LOOPS_FOR must exit 0 and print metadata on stdout.
+// Known rule: BOUNDED_EXECUTION_UNBOUNDED_LOOP must exit 0 and print metadata.
 // ---------------------------------------------------------------------------
 
 #[test]
 fn explain_known_rule_exits_zero() {
-    let (code, _stdout, stderr) = run(&["explain", "FUNC_LOOPS_FOR"]);
+    let (code, _stdout, stderr) = run(&["explain", "BOUNDED_EXECUTION_UNBOUNDED_LOOP"]);
     assert_eq!(
         code, 0,
-        "explain for known rule FUNC_LOOPS_FOR must exit 0, got {code}. stderr: {stderr}"
+        "explain for known rule BOUNDED_EXECUTION_UNBOUNDED_LOOP must exit 0, got {code}. stderr: {stderr}"
     );
 }
 
 #[test]
 fn explain_known_rule_prints_metadata_on_stdout() {
-    let (code, stdout, stderr) = run(&["explain", "FUNC_LOOPS_FOR"]);
+    let (code, stdout, stderr) = run(&["explain", "BOUNDED_EXECUTION_UNBOUNDED_LOOP"]);
     assert_eq!(code, 0, "must exit 0 to read stdout, got {code}. stderr: {stderr}");
     let output = stdout.trim();
-    assert!(output.starts_with("FUNC_LOOPS_FOR"), "stdout must start with rule id: {output}");
     assert!(
-        output.contains("Pattern: for $LOOP in $ITER { ... }"),
-        "stdout must include spec pattern: {output}"
+        output.starts_with("BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
+        "stdout must start with rule id: {output}"
     );
+    assert!(output.contains("Pattern: loop { ... }"), "stdout must include spec pattern: {output}");
     assert!(output.contains("Effect: Reject"), "stdout must include effect: {output}");
-    assert!(output.contains("Repair: UseIteratorPipeline"), "stdout must include repair: {output}");
+    assert!(output.contains("Repair: RequiresHumanReview"), "stdout must include repair: {output}");
 }
 
 #[test]
 fn explain_known_rule_prints_examples() {
-    let (code, stdout, stderr) = run(&["explain", "FUNC_LOOPS_FOR"]);
+    let (code, stdout, stderr) = run(&["explain", "BOUNDED_EXECUTION_UNBOUNDED_LOOP"]);
     assert_eq!(code, 0, "must exit 0, got {code}. stderr: {stderr}");
     assert!(stdout.contains("Example violation:"), "missing violation heading: {stdout}");
-    assert!(stdout.contains("for item in items { process(item); }"), "missing violation: {stdout}");
+    assert!(stdout.contains("loop { if ready()"), "missing violation: {stdout}");
     assert!(stdout.contains("Example repair:"), "missing repair heading: {stdout}");
-    assert!(
-        stdout.contains("items.iter().for_each(|item| process(item));"),
-        "missing repair: {stdout}"
-    );
+    assert!(stdout.contains("Bound::FiniteInput"), "missing repair: {stdout}");
 }
 
 #[test]
@@ -168,7 +165,7 @@ fn explain_lowercase_rule_id_is_parser_invalid() {
 
 #[test]
 fn explain_lowercase_rule_id_rejects_lowercase_characters() {
-    let (code, _stdout, stderr) = run(&["explain", "func_loops_for"]);
+    let (code, _stdout, stderr) = run(&["explain", "bounded_execution_unbounded_loop"]);
     assert_eq!(code, 3, "must exit 3 for lowercase input: {stderr}");
     assert_stderr_contains(&stderr, "unknown rule ID");
 }

@@ -2,12 +2,16 @@
 //!
 //! Each [`RuleDef`] pairs a rule id with a [`Detector`] closure. Real
 //! ast-grep patterns power every structural rule (FUNC_*). The bypass
-//! attribute rules also use ast-grep. Architecture import rules keep
-//! their hand-rolled string detectors because the path-scope filter and
-//! grouped-import boundary logic is not naturally expressible as a
-//! single ast-grep pattern — see the residual section in the bead
-//! report.
+//! attribute rules also use ast-grep. Architecture import/effect rules
+//! (`ARCHITECTURE_IMPORT_CORE_*`, `ARCHITECTURE_EFFECT_CORE_*`) keep
+//! their hand-rolled string detectors because the path-scope filter,
+//! grouped-import boundary logic, fully-qualified-path coverage, and
+//! comment/string blindness are not naturally expressible as a single
+//! ast-grep pattern — see the bead report for the residual
+//! (resolved-identity HIR lint remains future work).
 
+#[cfg(test)]
+mod detector_tests;
 mod detectors;
 mod filters;
 
@@ -70,7 +74,6 @@ impl Detector {
 /// Internal repair hint selector.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum RepairKind {
-    UseIteratorPipeline,
     RemoveAllowAttribute,
     ReplaceDependency,
     RequiresHumanReview,
@@ -89,9 +92,6 @@ pub(super) fn rule_applies(rule: &RuleDef, workspace_path: &WorkspacePath) -> bo
 
 pub(super) fn repair_hint(kind: RepairKind) -> RepairHint {
     match kind {
-        RepairKind::UseIteratorPipeline => RepairHint::use_iterator_pipeline(
-            "replace imperative control flow with an iterator pipeline".to_owned(),
-        ),
         RepairKind::RemoveAllowAttribute => RepairHint::remove_allow_attribute("allow".to_owned()),
         RepairKind::ReplaceDependency => RepairHint::replace_dependency(
             "tokio/axum/sqlx/reqwest".to_owned(),
@@ -108,27 +108,19 @@ pub(super) fn repair_hint(kind: RepairKind) -> RepairHint {
 
 pub(super) const RULES: &[RuleDef] = &[
     RuleDef {
-        id: "FUNC_LOOPS_FOR",
-        message: "FUNC_LOOPS_FOR: replace imperative for loops with iterator pipelines",
+        id: "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
+        message: "BOUNDED_EXECUTION_UNBOUNDED_LOOP: unbounded retry requires a named bound with cited evidence",
         effect: FindingEffect::Reject,
-        repair: RepairKind::UseIteratorPipeline,
-        detect: Detector::Engine(AstEngine::detect_for_loop),
+        repair: RepairKind::RequiresHumanReview,
+        detect: Detector::Engine(AstEngine::detect_unbounded_loop),
         scope: RuleScope::ProductionRust,
     },
     RuleDef {
-        id: "FUNC_LOOPS_WHILE",
-        message: "FUNC_LOOPS_WHILE: replace while loops with bounded iterator or state-machine transitions",
+        id: "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR",
+        message: "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR: unbounded iterator source requires a named bound with cited evidence",
         effect: FindingEffect::Reject,
-        repair: RepairKind::UseIteratorPipeline,
-        detect: Detector::Engine(AstEngine::detect_while_loop),
-        scope: RuleScope::ProductionRust,
-    },
-    RuleDef {
-        id: "FUNC_LOOPS_LOOP",
-        message: "FUNC_LOOPS_LOOP: replace open-ended loop blocks with explicit bounded control flow",
-        effect: FindingEffect::Reject,
-        repair: RepairKind::UseIteratorPipeline,
-        detect: Detector::Engine(AstEngine::detect_loop_block),
+        repair: RepairKind::RequiresHumanReview,
+        detect: Detector::Engine(AstEngine::detect_unbounded_iterator),
         scope: RuleScope::ProductionRust,
     },
     RuleDef {
@@ -273,6 +265,30 @@ pub(super) const RULES: &[RuleDef] = &[
         effect: FindingEffect::Reject,
         repair: RepairKind::RequiresHumanReview,
         detect: Detector::String(detectors::detect_core_random_import),
+        scope: RuleScope::CoreDomainRust,
+    },
+    RuleDef {
+        id: "ARCHITECTURE_IMPORT_CORE_PROCESS",
+        message: "ARCHITECTURE_IMPORT_CORE_PROCESS: core/domain code must delegate process spawning to the shell through a typed port",
+        effect: FindingEffect::Reject,
+        repair: RepairKind::RequiresHumanReview,
+        detect: Detector::String(detectors::detect_core_process_import),
+        scope: RuleScope::CoreDomainRust,
+    },
+    RuleDef {
+        id: "ARCHITECTURE_EFFECT_CORE_ASYNC",
+        message: "ARCHITECTURE_EFFECT_CORE_ASYNC: core/domain code must stay synchronous; async execution belongs to the shell",
+        effect: FindingEffect::Reject,
+        repair: RepairKind::ReplaceDependency,
+        detect: Detector::String(detectors::detect_core_async_effect),
+        scope: RuleScope::CoreDomainRust,
+    },
+    RuleDef {
+        id: "ARCHITECTURE_EFFECT_CORE_STATE",
+        message: "ARCHITECTURE_EFFECT_CORE_STATE: core/domain code must not use ambient mutable state; pass explicit values through typed ports",
+        effect: FindingEffect::Reject,
+        repair: RepairKind::RequiresHumanReview,
+        detect: Detector::String(detectors::detect_core_state_effect),
         scope: RuleScope::CoreDomainRust,
     },
 ];

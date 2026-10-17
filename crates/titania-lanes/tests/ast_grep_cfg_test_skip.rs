@@ -46,44 +46,47 @@ fn finding_rule_ids(outcome: &LaneOutcome) -> Vec<String> {
 }
 
 // ===========================================================================
-// FUNC_LOOPS_FOR must skip #[cfg(test)] modules
+// BOUNDED_EXECUTION_* must skip #[cfg(test)] modules
 // ===========================================================================
 
-/// A `for` loop inside `#[cfg(test)] mod tests` produces NO findings.
+/// An unbounded retry inside `#[cfg(test)] mod tests` produces NO findings.
 #[test]
 fn func_loops_for_skipped_inside_cfg_test_module() -> TestResult {
-    let outcome = run_fixture("allowed_for_in_cfg_test_module.rs")?;
+    let outcome = run_fixture("allowed_unbounded_loop_in_cfg_test_module.rs")?;
     let ids = finding_rule_ids(&outcome);
     assert!(
-        !ids.iter().any(|id| id == "FUNC_LOOPS_FOR"),
-        "FUNC_LOOPS_FOR must not fire inside #[cfg(test)] mod tests, got: {ids:?}",
+        !ids.iter().any(|id| id == "BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP must not fire inside #[cfg(test)] mod tests, got: {ids:?}",
     );
     assert!(
-        !ids.iter().any(|id| id.contains("FUNC_LOOPS")),
-        "No FUNC_LOOPS_* rule may fire inside #[cfg(test)] mod tests, got: {ids:?}",
+        !ids.iter().any(|id| id.contains("BOUNDED_EXECUTION")),
+        "No BOUNDED_EXECUTION_* rule may fire inside #[cfg(test)] mod tests, got: {ids:?}",
     );
     Ok(())
 }
 
-/// A `for` loop in production code alongside a `for` loop in `#[cfg(test)] mod tests`
-/// produces a FUNC_LOOPS_FOR finding for the production code only.
+/// An unbounded retry in production code alongside one in `#[cfg(test)] mod tests`
+/// produces a BOUNDED_EXECUTION_UNBOUNDED_LOOP finding for the production code only.
 #[test]
 fn func_loops_for_fires_in_prod_skips_in_cfg_test_module() -> TestResult {
-    let outcome = run_fixture("real_for_in_prod_and_cfg_test_module.rs")?;
+    let outcome = run_fixture("real_unbounded_loop_in_prod_and_cfg_test_module.rs")?;
     let ids = finding_rule_ids(&outcome);
-    let for_count = ids.iter().filter(|id| *id == "FUNC_LOOPS_FOR").count();
-    assert_eq!(for_count, 1, "exactly one FUNC_LOOPS_FOR finding (production code), got {ids:?}",);
+    let loop_count = ids.iter().filter(|id| *id == "BOUNDED_EXECUTION_UNBOUNDED_LOOP").count();
+    assert_eq!(
+        loop_count, 1,
+        "exactly one BOUNDED_EXECUTION_UNBOUNDED_LOOP finding (production code), got {ids:?}",
+    );
     Ok(())
 }
 
-/// A `for` loop inside `#[cfg(all(test, feature = "debug"))] mod tests` is skipped.
+/// An unbounded retry inside `#[cfg(all(test, feature = "debug"))] mod tests` is skipped.
 #[test]
 fn func_loops_for_skipped_inside_cfg_all_test_module() -> TestResult {
-    let outcome = run_fixture("allowed_for_in_cfg_all_test_module.rs")?;
+    let outcome = run_fixture("allowed_unbounded_loop_in_cfg_all_test_module.rs")?;
     let ids = finding_rule_ids(&outcome);
     assert!(
-        !ids.iter().any(|id| id == "FUNC_LOOPS_FOR"),
-        "FUNC_LOOPS_FOR must not fire inside #[cfg(all(test, ...))] mod tests, got: {ids:?}",
+        !ids.iter().any(|id| id == "BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP must not fire inside #[cfg(all(test, ...))] mod tests, got: {ids:?}",
     );
     Ok(())
 }

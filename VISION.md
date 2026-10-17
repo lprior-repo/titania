@@ -243,7 +243,7 @@ No owner, no reason, no expiry, no exception.
 
 ```toml
 [[exceptions]]
-rule_id = "FUNC_LOOPS_FOR"
+rule_id = "BOUNDED_EXECUTION_UNBOUNDED_LOOP"
 path = "src/control/loop.rs"
 owner = "flight-control"
 reason = "Fixed 8-iteration control loop over sensor lanes"

@@ -1,0 +1,1 @@
+State 2 (explore): opened functional_surface.rs, rules.rs, killer_demo.rs; inventoried every FUNC_LOOPS consumer via scoped grep (dylint, lanes rules/engine/yml, run_lane_dylint, repair catalog, explain, killer-demo, lane test suites, fixtures, v1-spec). Scoped the smallest cutover; no second convention needed (killer-demo pair proves the control).

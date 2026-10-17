@@ -1,0 +1,1 @@
+State 11 (holzman-rust): implemented the cutover under zero-panic discipline (iterator pipelines, early returns, typed errors, no new unsafe). Source coverage matrix in implementation.md. Clippy strict source gate clean.

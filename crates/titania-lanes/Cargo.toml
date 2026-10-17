@@ -38,3 +38,4 @@ workspace = true
 tempfile = "3.27.0"
 anyhow = "1"
 loom = "0.7"
+proptest = "1"

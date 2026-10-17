@@ -1,0 +1,1 @@
+{"detail":"Independent proof review tn-c6n-inv-006 returned STATUS: APPROVED with zero findings; no repair guide issued. This row records the empty result so the required artifact exists.","finding_code":"tn-c6n-REVIEW-006-NONE","owner_state":6,"reviewer_invocation_id":"tn-c6n-inv-006","reviewer_skill":"proof-reviewer","schema_version":"finding/v1","severity":"none"}

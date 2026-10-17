@@ -832,6 +832,7 @@ name = "titania-dylint"
 version = "0.1.0"
 dependencies = [
  "dylint_linting",
+ "proptest",
 ]
 
 [[package]]
@@ -843,6 +844,7 @@ dependencies = [
  "ast-grep-language",
  "camino",
  "loom",
+ "proptest",
  "serde",
  "serde_json",
  "smallvec",

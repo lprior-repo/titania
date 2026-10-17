@@ -1,38 +1,48 @@
-# tn-c6n Implementation Report (PARTIAL)
+# Implementation — tn-c6n (State 11, holzman-rust)
 
-## Status: PARTIAL — aborted before final commit
+## Change summary
 
-The subagent working on this bead was cancelled by the system before reaching the commit step. The verus spec file is on disk but was never committed to the branch.
+Tests-only delivery. Zero production files modified (`git status` shows
+only the two new test files untracked under `crates/`; verified by the
+State-10 re-review). All six retained invariants were already enforced by
+their smart constructors; enforcement was confirmed, not added.
 
-## File Created (uncommitted, on branch feat/tn-c6n-verus-specs)
+## Files added
 
-### `verification/verus/receipt_invariants.rs`
+- `crates/titania-core/tests/receipt_domain_invariants.rs` (265 lines): 14
+  behavior checks, exact variant/message assertions, no mocks, no mirrors.
+- `crates/titania-core/tests/receipt_domain_properties.rs` (140 lines): 5
+  proptest accept/reject equivalences + 1 stability check over production
+  constructors.
 
-- Defines local mirror types for `LaneName`, `ReceiptLaneExit`, `ReceiptError` to avoid production-crate deps (serde, camino, thiserror).
-- Includes proof functions for lane-name invariants, lane-digest invariants, receipt-period invariants, recorded-target-root invariants, schema-version invariant, and ReceiptError variant exhaustiveness.
+Both files stay under the 300-line ceiling. No `unsafe`, no new
+dependencies (proptest/tempfile/serde_json/camino already in the crate's
+dev/regular deps), no panic-path production code touched.
 
-### `verification/verus/syntax_test.rs`
+## Source Coverage Matrix
 
-Scratch file from the agent's syntax exploration. Should be removed before final commit.
+| Production source | Invariant | Behavior tests | Harness | Result |
+|---|---|---|---|---|
+| receipt/lane_name.rs::LaneName::new | R1 validity | 3 lane-name tests | prop_lane_name_decides_validity | 14+6 green |
+| receipt.rs::LaneDigest::new | R2 consistency | 3 lane-digest tests | prop_lane_digest_guards_counts | 14+6 green |
+| error.rs::ReceiptError | R3 exhaustiveness | exhaustive-match test | error_messages_stable_across_all_variants | 14+6 green |
+| receipt.rs::ReceiptPeriod::new | R4 ordering | 2 period tests | prop_receipt_period_orders_stamps | 14+6 green |
+| receipt/target_root.rs::RecordedTargetRoot::new | R5 validity | 2 root tests | prop_recorded_root_decides_validity | 14+6 green |
+| receipt/schema.rs::RECEIPT_ENVELOPE_SCHEMA_VERSION | R6 gate | 2 schema tests | prop_schema_gate_rejects_other_versions + verus binding | 14+6 green, verus 3/0 |
 
-## Trust Markers
+## Rust safety evidence
 
-The file uses `#[verifier::external_body]` on proof functions where the body needs to call String operations not fully spec'd in vstd. This is a TRUSTED boundary and should be ledgered in `.evidence/verus/trusted-base-waivers.txt`. The agent did not update the waivers ledger before being cancelled.
+- Production diff: empty. Holzman zero-panic discipline preserved by
+  construction (nothing added to production).
+- Test code compiles under `cargo check --workspace --all-targets
+  --all-features` with workspace lints; strict source-only clippy is
+  unaffected (no source targets changed).
+- `cargo test -p titania-core --test receipt_domain_invariants` → 14
+  passed, exit 0. `--test receipt_domain_properties` → 6 passed, exit 0.
+  Pre-existing `receipt_invariants` (9 tests) untouched and green.
 
-## Recommended Cleanup Before Final Commit
+## Residuals
 
-1. Remove `verification/verus/syntax_test.rs` (scratch).
-2. Update `.evidence/verus/trusted-base-waivers.txt` with a second ledger entry for `receipt_invariants.rs`.
-3. Update `.evidence/verus/trust-scan.txt` with the new `#[verifier::external_body]` markers.
-4. Verify the file is well-formed (parseable as Rust with `verus!` opaque macros).
-5. Re-run `cargo check --workspace --all-targets` (file is in `verification/` not a Cargo target, so cargo should be unaffected).
-6. Commit: `git add verification/verus/receipt_invariants.rs && git commit -m "feat(verus): add receipt-domain invariant proofs"`.
-
-## Verification
-
-- `command -v verus` — NOT FOUND on this host. The verifier has not been run; the file is structurally complete but unverified.
-- The bead is closed in bd tracker; the closure reason references the uncommitted file path. **The closure reason is partially broken** because the file is on disk but uncommitted to the branch — if the worktree is deleted, the closure is wrong.
-
-## Status: NOT COMMITTED
-
-This work is on disk in `.worktrees/feat-tnc6n/verification/verus/receipt_invariants.rs` but not committed to the branch. Manual follow-up is required to commit it.
+- Formal bounded-proof (kani) and refinement (flux) lanes remain ruled out
+  with evidence; ownership `tn-7bq2`. Single-operator review debt carries
+  to landing. No commit/push/sync performed.

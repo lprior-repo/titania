@@ -59,7 +59,7 @@ fn ast_grep_lane_multi_family_fixture_emits_findings_with_exact_rule_ids() -> Te
     // Collect fixture paths for a functional violation, a bypass violation,
     // and an architecture violation.
     let fixture_paths: Vec<PathBuf> = [
-        "functional/func_loops_for_violation.rs",
+        "functional/func_nesting_depth_violation.rs",
         "bypass/bypass_allow_attr_violation.rs",
         "crates/example-core/src/architecture_import_core_infra_violation.rs",
     ]
@@ -128,7 +128,7 @@ fn ast_grep_lane_exception_suppresses_only_matching_rule_path_pair() -> TestResu
     ];
 
     let fixture_paths: Vec<PathBuf> = [
-        "functional/func_loops_for_violation.rs",
+        "functional/func_nesting_depth_violation.rs",
         "functional/func_print_stdout_violation.rs",
         "bypass/bypass_allow_attr_violation.rs",
     ]
@@ -136,7 +136,7 @@ fn ast_grep_lane_exception_suppresses_only_matching_rule_path_pair() -> TestResu
     .to_vec();
 
     // Exception: suppress only FUNC_PRINT_STDOUT in func_print_stdout_violation.rs
-    // This should leave func_loops_for_violation.rs and bypass_allow_attr_violation.rs
+    // This should leave func_nesting_depth_violation.rs and bypass_allow_attr_violation.rs
     // findings intact.
     let exceptions: [(RuleId, String); 1] = [(
         RuleId::new("FUNC_PRINT_STDOUT").unwrap(),
@@ -166,11 +166,11 @@ fn ast_grep_lane_exception_suppresses_only_matching_rule_path_pair() -> TestResu
                 assert_eq!(suppressed_count, 0, "suppressed finding should not be present",);
 
                 // The other findings must be present.
-                let func_loops_present =
-                    findings.iter().any(|f| f.rule_id().as_str() == "FUNC_LOOPS_FOR");
+                let nesting_present =
+                    findings.iter().any(|f| f.rule_id().as_str() == "FUNC_NESTING_DEPTH");
                 let bypass_present =
                     findings.iter().any(|f| f.rule_id().as_str() == "BYPASS_ALLOW_ATTR");
-                assert!(func_loops_present, "FUNC_LOOPS_FOR finding should be present");
+                assert!(nesting_present, "FUNC_NESTING_DEPTH finding should be present");
                 assert!(bypass_present, "BYPASS_ALLOW_ATTR finding should be present");
             }
         }
@@ -481,6 +481,96 @@ fn ast_grep_lane_rejects_pub_and_multiline_architecture_imports() -> TestResult 
     Ok(())
 }
 
+/// **tn-bvv7:** Fully-qualified effect paths with no `use` import are still
+/// rejected in core scope: the alias/re-export bypass is closed.
+#[test]
+fn ast_grep_lane_rejects_fq_effect_paths_without_imports() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = [
+        "crates/example-core/src/architecture_import_core_fs_fq_violation.rs",
+        "crates/example-core/src/architecture_import_core_process_fq_violation.rs",
+    ]
+    .map(|path| fixture_root("ast_grep", path))
+    .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|finding| finding.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected fully-qualified effect findings, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_FS"),
+        "std::fs::/std::env::/std::net:: with no import must be rejected: {ids:?}"
+    );
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_PROCESS"),
+        "std::process::Command with no import must be rejected: {ids:?}"
+    );
+    Ok(())
+}
+
+/// **tn-bvv7:** The three new effect boundaries fire through the lane:
+/// process spawning, async execution, and ambient mutable state.
+#[test]
+fn ast_grep_lane_rejects_new_core_effect_boundaries() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = [
+        "crates/example-core/src/architecture_import_core_process_violation.rs",
+        "crates/example-core/src/architecture_effect_core_async_violation.rs",
+        "crates/example-core/src/architecture_effect_core_state_violation.rs",
+    ]
+    .map(|path| fixture_root("ast_grep", path))
+    .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|finding| finding.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected new effect boundary findings, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_PROCESS"),
+        "use std::process::Command must be rejected: {ids:?}"
+    );
+    assert!(
+        ids.contains("ARCHITECTURE_EFFECT_CORE_ASYNC"),
+        "async fn / .await / tokio::spawn must be rejected: {ids:?}"
+    );
+    assert!(
+        ids.contains("ARCHITECTURE_EFFECT_CORE_STATE"),
+        "static mut / Mutex must be rejected: {ids:?}"
+    );
+    Ok(())
+}
+
+/// **tn-bvv7:** Clean core controls stay clean through the lane: a typed-port
+/// shell description, synchronous calculation, and frozen-catalog
+/// memoization (LazyLock) are not violations.
+#[test]
+fn ast_grep_lane_accepts_clean_core_effect_controls() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = [
+        "crates/example-core/src/allowed_no_core_process_import.rs",
+        "crates/example-core/src/allowed_no_core_async_effect.rs",
+        "crates/example-core/src/allowed_no_core_state_effect.rs",
+    ]
+    .map(|path| fixture_root("ast_grep", path))
+    .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "clean process/async/state controls must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
 // ===========================================================================
 // Tests: ast-grep functional detector false positives (comments, strings)
 // ===========================================================================
@@ -612,6 +702,10 @@ fn ast_grep_functional_loop_in_raw_string_literal_not_detected() -> TestResult {
     Ok(())
 }
 
+/// **Contract:** A bounded `for` loop after a string containing `//` stays
+/// clean. Finite-input iteration is permitted under the bounded-execution
+/// contract; the scanner still parses the code after the string delimiter
+/// (a scanner regression would surface as a parse failure, not a finding).
 #[test]
 fn ast_grep_functional_for_after_line_comment_delimiter_string_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -621,16 +715,9 @@ fn ast_grep_functional_for_after_line_comment_delimiter_string_detected() -> Tes
 
     let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
 
-    let ids: std::collections::BTreeSet<_> = match outcome {
-        LaneOutcome::Findings { findings } => {
-            findings.iter().map(|f| f.rule_id().as_str().to_owned()).collect()
-        }
-        other => panic!("expected finding after string delimiter, got {other:?}"),
-    };
-
     assert!(
-        ids.contains("FUNC_LOOPS_FOR"),
-        "real for-loop after string containing // must emit FUNC_LOOPS_FOR: {ids:?}"
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "bounded for-loop after string containing // must stay clean: {outcome:?}"
     );
     Ok(())
 }
@@ -652,15 +739,16 @@ fn ast_grep_functional_while_after_block_comment_delimiter_string_detected() -> 
     };
 
     assert!(
-        ids.contains("FUNC_LOOPS_WHILE"),
-        "real while-loop after string containing /* must emit FUNC_LOOPS_WHILE: {ids:?}"
+        ids.contains("BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
+        "real while-loop after string containing /* must emit BOUNDED_EXECUTION_UNBOUNDED_LOOP: {ids:?}"
     );
     Ok(())
 }
 
-/// **Contract:** A real imperative for-loop in code MUST still trigger
-/// FUNC_LOOPS_FOR. This is the positive control that proves the detector
-/// fires when loop syntax appears in actual executable lines.
+/// **Contract:** A real bounded `for` loop in code stays clean under the
+/// bounded-execution contract (Bound::FiniteInput). This is the positive
+/// control proving finite-input iteration is permitted, while the
+/// `while`-after-delimiter test above proves unbounded retries still fire.
 #[test]
 fn ast_grep_functional_real_for_loop_still_detected() -> TestResult {
     let rules_yaml = [include_str!("../rules/functional.yml")];
@@ -669,27 +757,51 @@ fn ast_grep_functional_real_for_loop_still_detected() -> TestResult {
 
     let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
 
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "bounded for-loops in real code must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+/// **Contract:** A real unbounded retry in code MUST trigger
+/// BOUNDED_EXECUTION_UNBOUNDED_LOOP, and a real unbounded iterator source
+/// MUST trigger BOUNDED_EXECUTION_UNBOUNDED_ITERATOR. These are the
+/// negative controls proving the bound policy fires on genuine violations.
+#[test]
+fn ast_grep_functional_real_unbounded_violations_still_detected() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = [
+        "functional/bounded_execution_unbounded_loop_violation.rs",
+        "functional/bounded_execution_unbounded_iterator_violation.rs",
+    ]
+    .map(|p| fixture_root("ast_grep", p))
+    .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
     let ids: std::collections::BTreeSet<_> = match outcome {
         LaneOutcome::Findings { findings } => {
             findings.iter().map(|f| f.rule_id().as_str().to_owned()).collect()
         }
-        other => panic!("expected findings for real for-loop, got {other:?}"),
+        other => panic!("expected findings for unbounded violations, got {other:?}"),
     };
 
-    assert!(ids.contains("FUNC_LOOPS_FOR"), "real for-loop must emit FUNC_LOOPS_FOR: {ids:?}");
-    assert!(!ids.contains("FUNC_LOOPS_WHILE"), "real for-loop must not emit FUNC_LOOPS_WHILE");
     assert!(
-        !ids.contains("FUNC_LOOPS_LOOP"),
-        "real for-loop must not emit FUNC_LOOPS_LOOP: {ids:?}"
+        ids.contains("BOUNDED_EXECUTION_UNBOUNDED_LOOP"),
+        "unbounded loop fixture must emit BOUNDED_EXECUTION_UNBOUNDED_LOOP: {ids:?}"
+    );
+    assert!(
+        ids.contains("BOUNDED_EXECUTION_UNBOUNDED_ITERATOR"),
+        "unbounded iterator fixture must emit BOUNDED_EXECUTION_UNBOUNDED_ITERATOR: {ids:?}"
     );
     Ok(())
 }
 
 fn all_rule_fixture_paths() -> Vec<PathBuf> {
     [
-        "functional/func_loops_for_violation.rs",
-        "functional/func_loops_while_violation.rs",
-        "functional/func_loops_loop_violation.rs",
+        "functional/bounded_execution_unbounded_loop_violation.rs",
+        "functional/bounded_execution_unbounded_iterator_violation.rs",
         "functional/func_nesting_depth_violation.rs",
         "functional/func_recursion_direct_violation.rs",
         "functional/func_print_stdout_violation.rs",
@@ -708,6 +820,9 @@ fn all_rule_fixture_paths() -> Vec<PathBuf> {
         "crates/example-core/src/architecture_import_core_fs_grouped_violation.rs",
         "crates/example-core/src/architecture_import_core_time_violation.rs",
         "crates/example-core/src/architecture_import_core_random_violation.rs",
+        "crates/example-core/src/architecture_import_core_process_violation.rs",
+        "crates/example-core/src/architecture_effect_core_async_violation.rs",
+        "crates/example-core/src/architecture_effect_core_state_violation.rs",
     ]
     .map(|path| fixture_root("ast_grep", path))
     .to_vec()

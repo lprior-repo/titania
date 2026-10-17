@@ -7,7 +7,8 @@ use titania_output::{OutputError, explain::explain_rule};
 
 const CATALOG: &str = include_str!("../../titania-core/src/finding/repair_catalog.tsv");
 const REQUIRED: &[&str] = &[
-    "FUNC_LOOPS_FOR",
+    "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
+    "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR",
     "FUNC_UNWRAP_USED",
     "FUNC_EXPECT_USED",
     "FUNC_UNWRAP_OR",
@@ -49,12 +50,24 @@ const REQUIRED: &[&str] = &[
 
 #[test]
 fn explain_func_loops_for_returns_catalog_entry() {
-    let entry = explain_rule("FUNC_LOOPS_FOR").expect("FUNC_LOOPS_FOR exists");
-    assert_eq!(entry.rule_id, "FUNC_LOOPS_FOR");
-    assert_eq!(entry.pattern, "for $LOOP in $ITER { ... }");
-    assert_eq!(entry.repair, "UseIteratorPipeline");
-    assert!(entry.example_violation.contains("for item in items"));
-    assert!(entry.example_repair.contains("items.iter().for_each"));
+    let entry = explain_rule("BOUNDED_EXECUTION_UNBOUNDED_LOOP")
+        .expect("BOUNDED_EXECUTION_UNBOUNDED_LOOP exists");
+    assert_eq!(entry.rule_id, "BOUNDED_EXECUTION_UNBOUNDED_LOOP");
+    assert!(entry.pattern.contains("loop"));
+    assert_eq!(entry.repair, "RequiresHumanReview");
+    assert!(entry.example_violation.contains("loop"));
+    assert!(entry.example_repair.contains("Bound::FiniteInput"));
+}
+
+#[test]
+fn explain_bounded_iterator_returns_catalog_entry() {
+    let entry = explain_rule("BOUNDED_EXECUTION_UNBOUNDED_ITERATOR")
+        .expect("BOUNDED_EXECUTION_UNBOUNDED_ITERATOR exists");
+    assert_eq!(entry.rule_id, "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR");
+    assert!(entry.pattern.contains("repeat"));
+    assert_eq!(entry.repair, "RequiresHumanReview");
+    assert!(entry.example_violation.contains("repeat"));
+    assert!(entry.example_repair.contains("Bound::Capped"));
 }
 
 #[test]

@@ -48,13 +48,16 @@ const fn cargo_lane_name(lane: Lane) -> Option<&'static str> {
 const fn error_exit(error: &RunCargoError) -> LaneExit {
     match error {
         RunCargoError::Usage(_) | RunCargoError::Target(_) => LaneExit::Usage,
+        RunCargoError::Policy(_) => LaneExit::Violations,
         _other => LaneExit::Failure,
     }
 }
 
 fn error_message(error: RunCargoError) -> String {
     match error {
-        RunCargoError::Usage(message) | RunCargoError::ToolVersion(message) => message,
+        RunCargoError::Usage(message)
+        | RunCargoError::ToolVersion(message)
+        | RunCargoError::Policy(message) => message,
         RunCargoError::Target(error) => format!("target discovery failed: {error}"),
         RunCargoError::Command(error) => format!("cargo execution failed: {error}"),
         RunCargoError::CurrentDir(error) => format!("cannot read current directory: {error}"),
@@ -88,13 +91,16 @@ fn run_checked(lane_name: &str) -> Result<LaneOutcome, RunCargoError> {
 /// Clippy normalizes its JSON output into `CLIPPY_*` findings.
 ///
 /// # Errors
-/// Returns [`RunCargoError::Command`] on cargo execution failure, or any
+/// Returns [`RunCargoError::Policy`] when `extra_args` carries a lint
+/// ceiling, [`RunCargoError::Command`] on cargo execution failure, or any
 /// outcome-construction error from [`lane_outcome`].
 fn run_lane(
     target: &TargetProject,
     lane: CargoLane,
     extra_args: &[String],
 ) -> Result<LaneOutcome, RunCargoError> {
+    crate::policy_scan::invocation::validate_extra_args(extra_args)
+        .map_err(|error| RunCargoError::Policy(error.to_string()))?;
     let output = cargo_output(target, lane, extra_args).map_err(RunCargoError::Command)?;
     if lane == CargoLane::Clippy {
         return normalize_clippy_output(target, lane, extra_args, &output);
@@ -176,7 +182,7 @@ fn normalize_clippy_output(
 
 #[cfg(test)]
 mod tests {
-    use super::{CargoLane, normalize_clippy_output};
+    use super::{CargoLane, RunCargoError, normalize_clippy_output, run_lane};
     use crate::{command::mock_output, discover::try_from_path};
     use std::error::Error;
     use titania_core::{LaneOutcome, Location, TargetProject};
@@ -266,6 +272,31 @@ mod tests {
             );
         }
         Ok(())
+    }
+
+    /// A ceiling in extra args is rejected before any child process starts:
+    /// no spawn, no outcome, no trusted receipt — just a policy error.
+    #[test]
+    fn run_lane_rejects_cap_lints_before_spawn() -> Result<(), Box<dyn Error>> {
+        let (_dir, target) = make_target()?;
+        let extra = [String::from("--cap-lints"), String::from("allow")];
+        match run_lane(&target, CargoLane::Clippy, &extra) {
+            Err(RunCargoError::Policy(message)) => {
+                assert!(
+                    message.contains("--cap-lints"),
+                    "policy error must name the ceiling token; got {message:?}"
+                );
+                Ok(())
+            }
+            Err(other) => {
+                Err(std::io::Error::other(format!("expected RunCargoError::Policy, got {other:?}"))
+                    .into())
+            }
+            Ok(outcome) => Err(std::io::Error::other(format!(
+                "ceiling extra args must not produce an outcome; got {outcome:?}"
+            ))
+            .into()),
+        }
     }
 
     /// Zero exit + clean JSON → Clean (sanity check, existing behavior preserved).

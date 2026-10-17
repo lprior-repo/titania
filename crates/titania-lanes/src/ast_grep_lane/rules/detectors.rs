@@ -5,12 +5,22 @@
 //!
 //! * `BYPASS_INLINE_SUPPRESSION` — comments are not AST nodes, so ast-grep
 //!   cannot see `// ast-grep-ignore` / `// sg-ignore`.
-//! * `ARCHITECTURE_IMPORT_CORE_*` — the rule couples a path-scope filter
-//!   (file under `core/` / `domain/`) with import-text detection that
-//!   covers grouped imports, multiline `use` blocks, and boundary-name
-//!   exclusions (`fs_extra` is not `fs`). Expressing all of that as one
-//!   ast-grep pattern requires a path-aware selector the engine does not
-//!   own; the hand-rolled detector stays until a path-aware port lands.
+//! * `ARCHITECTURE_IMPORT_CORE_*` and `ARCHITECTURE_EFFECT_CORE_*` — each rule
+//!   couples a path-scope filter (file under `core/` / `domain/`) with
+//!   code-text detection that covers `use` imports (direct, grouped,
+//!   multiline, `as`-aliased), fully-qualified paths without imports
+//!   (`std::fs::read_to_string` with no `use`), and macro bodies (scanned
+//!   as code text). Boundary-name exclusions hold (`fs_extra` is not `fs`,
+//!   `brand::thread_rng` is not `rand::thread_rng`). Expressing all of that
+//!   as one ast-grep pattern requires a path-aware selector the engine does
+//!   not own; the hand-rolled detector stays until a path-aware port lands.
+//!
+//! Detection is comment- and string-blind: every detector scans
+//! [`code_only_source`], so mentions inside `//` comments, `/* */` blocks,
+//! and string/char literals never fire. `include_str!` of a frozen catalog
+//! and `std::sync::LazyLock` memoization are intentionally NOT violations:
+//! the former is compile-time deterministic input, the latter is
+//! write-once immutable caching (see `ARCHITECTURE_EFFECT_CORE_STATE`).
 
 mod code_scan;
 
@@ -40,22 +50,128 @@ pub(super) fn detect_core_infra_import(source: &str) -> bool {
             || line.contains("use axum::")
             || line.contains("use sqlx::")
             || line.contains("use reqwest::")
-    })
+    }) || fully_qualified_uses_path(source, &["tokio::", "axum::", "sqlx::", "reqwest::"])
 }
 
 pub(super) fn detect_core_fs_import(source: &str) -> bool {
     direct_import_contains(source, "std::", &["fs", "env", "net"])
         || grouped_std_import_contains(source, &["fs", "env", "net"])
+        || fully_qualified_uses_path(source, &["std::fs::", "std::env::", "std::net::"])
 }
 
 pub(super) fn detect_core_time_import(source: &str) -> bool {
     direct_import_contains(source, "std::time::", &["SystemTime", "Instant"])
         || grouped_import_contains(source, "use std::time::", &["SystemTime", "Instant"])
+        || fully_qualified_uses_path(source, &["std::time::SystemTime", "std::time::Instant"])
 }
 
 pub(super) fn detect_core_random_import(source: &str) -> bool {
     direct_import_contains(source, "rand::", &["thread_rng", "Rng"])
         || grouped_rand_import_contains(source, &["thread_rng", "Rng"])
+        || fully_qualified_uses_path(source, &["rand::thread_rng", "rand::Rng"])
+}
+
+/// Detect process-spawning capability in core code.
+///
+/// Covers `use std::process::Command` (direct, grouped, `as`-aliased),
+/// fully-qualified `std::process::Command::new` with no import, the
+/// `tokio::process` async counterpart, and the `std::os::{unix,windows}`
+/// process extensions. Shell code behind a typed port is out of scope:
+/// the lane's path filter keeps this detector on core/domain paths only.
+pub(super) fn detect_core_process_import(source: &str) -> bool {
+    direct_import_contains(source, "std::", &["process"])
+        || grouped_std_import_contains(source, &["process"])
+        || fully_qualified_uses_path(
+            source,
+            &[
+                "std::process::",
+                "tokio::process",
+                "std::os::unix::process",
+                "std::os::windows::process",
+            ],
+        )
+}
+
+/// Detect async-runtime effects in core code.
+///
+/// Core stays synchronous: `async fn`, `.await`, and direct use of the
+/// Tokio task/time runtime (`tokio::spawn`, `tokio::task`, `tokio::time`)
+/// all belong to the shell behind a typed port. Comment and string
+/// mentions never fire.
+pub(super) fn detect_core_async_effect(source: &str) -> bool {
+    let code = code_only_source(source);
+    code_contains_token(&code, "async fn")
+        || code.contains(".await")
+        || fully_qualified_uses_path(source, &["tokio::spawn", "tokio::task", "tokio::time"])
+}
+
+/// Detect ambient mutable state in core code.
+///
+/// Banned: `static mut`, blocking/global locks (`std::sync::Mutex`,
+/// `std::sync::RwLock`), interior mutability cells (`std::cell::Cell`,
+/// `std::cell::RefCell`, `std::cell::UnsafeCell`), and ambient thread
+/// control (`std::thread::spawn`, `std::thread::sleep`).
+///
+/// Explicitly allowed: `std::sync::LazyLock` / `std::sync::OnceLock`
+/// write-once immutable memoization over frozen compile-time input
+/// (the repair-catalog pattern), and `include_str!` of frozen files.
+/// Neither appears in the banned list by construction.
+pub(super) fn detect_core_state_effect(source: &str) -> bool {
+    fully_qualified_uses_path(
+        source,
+        &[
+            "static mut",
+            "std::sync::Mutex",
+            "std::sync::RwLock",
+            "std::cell::Cell",
+            "std::cell::RefCell",
+            "std::cell::UnsafeCell",
+            "std::thread::spawn",
+            "std::thread::sleep",
+        ],
+    )
+}
+
+/// `true` when comment/string-stripped `source` uses any of `needles` as a
+/// real path token (not a substring of a longer identifier).
+///
+/// `needles` ending in `::` (e.g. `std::fs::`) need only a leading
+/// boundary: the trailing `::` already pins the segment. Other needles
+/// (e.g. `rand::Rng`, `static mut`) need both boundaries so `rand::RngCore`
+/// and `static mutable` do not fire.
+fn fully_qualified_uses_path(source: &str, needles: &[&str]) -> bool {
+    let code = code_only_source(source);
+    needles.iter().any(|needle| code_contains_token(&code, needle))
+}
+
+/// `true` when `needle` occurs in `code` on identifier boundaries.
+fn code_contains_token(code: &str, needle: &str) -> bool {
+    code.match_indices(needle).any(|(start, _)| {
+        leading_boundary_ok(code, start) && trailing_boundary_ok(code, start, needle)
+    })
+}
+
+/// `true` when the byte before `start` cannot extend an identifier.
+fn leading_boundary_ok(code: &str, start: usize) -> bool {
+    code.split_at_checked(start).is_some_and(|(before, _)| {
+        before.chars().next_back().is_none_or(|prev| !is_ident_char(prev))
+    })
+}
+
+/// `true` when the byte after the needle cannot extend an identifier.
+///
+/// Needles ending in `::` skip the trailing check: the `::` terminator is
+/// already an exact segment boundary.
+fn trailing_boundary_ok(code: &str, start: usize, needle: &str) -> bool {
+    needle.ends_with("::")
+        || code
+            .split_at_checked(start.saturating_add(needle.len()))
+            .is_none_or(|(_, after)| after.chars().next().is_none_or(|next| !is_ident_char(next)))
+}
+
+/// `true` for ASCII alphanumerics and `_` (identifier continuations).
+fn is_ident_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_'
 }
 
 fn direct_import_contains(source: &str, path_prefix: &str, names: &[&str]) -> bool {
@@ -119,43 +235,4 @@ fn grouped_member_matches(member: &str, name: &str) -> bool {
     member
         .strip_prefix(name)
         .is_some_and(|rest| rest.is_empty() || rest.starts_with("::") || rest.starts_with(" as "))
-}
-
-#[cfg(test)]
-mod detector_tests {
-    use super::detect_core_infra_import;
-
-    #[test]
-    fn detect_core_infra_import_catches_real_use() {
-        assert!(detect_core_infra_import("use tokio::task;"));
-        assert!(detect_core_infra_import("use axum::Router;"));
-        assert!(detect_core_infra_import("use sqlx::Migrator;"));
-        assert!(detect_core_infra_import("use reqwest::Client;"));
-    }
-
-    #[test]
-    fn detect_core_infra_import_skips_comment_mentions() {
-        assert!(!detect_core_infra_import("// use tokio::task"));
-        assert!(!detect_core_infra_import("/* use axum::Router */"));
-        assert!(!detect_core_infra_import("#[doc = \"use sqlx::Migrator\"]"));
-        assert!(!detect_core_infra_import("/// Requires `use reqwest::Client;`"));
-    }
-
-    #[test]
-    fn detect_core_infra_import_skips_string_literal_mentions() {
-        assert!(!detect_core_infra_import(r#""use tokio::task;""#));
-        assert!(!detect_core_infra_import(r#""use axum::Router""#));
-    }
-
-    #[test]
-    fn detect_core_infra_import_allows_clean_code() {
-        let clean = r#"
-use std::collections::HashMap;
-
-pub fn compute(x: i32) -> i32 {
-    x + 1
-}
-"#;
-        assert!(!detect_core_infra_import(clean));
-    }
 }

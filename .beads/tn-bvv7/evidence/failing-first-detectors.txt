@@ -1,0 +1,12 @@
+assertion failed: detect_core_random_import("pub fn pick() -> u8 { rand::thread_rng().gen() }")
+
+
+failures:
+    ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_fq_fs_without_use_is_violation
+    ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_fq_infra_without_use_is_violation
+    ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_fq_random_without_use_is_violation
+    ast_grep_lane::rules::detectors::detector_tests::tn_bvv7_fq_time_without_use_is_violation
+
+test result: FAILED. 5 passed; 4 failed; 0 ignored; 0 measured; 136 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p titania-lanes --lib`

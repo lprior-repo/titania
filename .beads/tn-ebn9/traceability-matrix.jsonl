@@ -1,0 +1,4 @@
+{"acceptance":"Happy 1: bounded for + ? permitted","seed_id":"tn-ebn9.P1","spec_section":"tn-ebn9 S4-H1","spec_text":"finite collection iteration with ? passes"}
+{"acceptance":"Error 2: unbounded stream without loop syntax rejected","seed_id":"tn-ebn9.P2","spec_section":"tn-ebn9 S4-E2","spec_text":"no syntax-only bypass accepted"}
+{"acceptance":"Happy 1b: while-let permitted","seed_id":"tn-ebn9.P3","spec_section":"tn-ebn9 S4-H1","spec_text":"while-let bounded by exhaustion passes"}
+{"acceptance":"Happy 2: bounded loop/iterator share disposition","seed_id":"tn-ebn9.P4","spec_section":"tn-ebn9 S4-H2","spec_text":"equivalent bounded forms agree"}

@@ -36,24 +36,27 @@ declare_lint! {
 }
 
 declare_lint! {
-    /// Detects `for` loops in production Rust.
-    pub FUNC_LOOPS_FOR,
+    /// Detects unbounded `loop` blocks and condition `while` loops without a
+    /// named termination bound in production Rust.
+    pub BOUNDED_EXECUTION_UNBOUNDED_LOOP,
     Forbid,
-    "FUNC_LOOPS_FOR: replace imperative for loops with iterator pipelines"
+    "BOUNDED_EXECUTION_UNBOUNDED_LOOP: unbounded retry requires a named bound with cited evidence"
 }
 
 declare_lint! {
-    /// Detects `while` loops in production Rust.
-    pub FUNC_LOOPS_WHILE,
+    /// Detects unbounded iterator sources (`repeat`, `cycle`, ...) without a
+    /// named termination bound in production Rust.
+    pub BOUNDED_EXECUTION_UNBOUNDED_ITERATOR,
     Forbid,
-    "FUNC_LOOPS_WHILE: replace while loops with bounded iterator or state-machine transitions"
+    "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR: unbounded iterator source requires a named bound with cited evidence"
 }
 
 declare_lint! {
-    /// Detects open-ended `loop` blocks in production Rust.
-    pub FUNC_LOOPS_LOOP,
+    /// Detects `.ok()` error erasure that discards `Result` errors into
+    /// `Option` in production Rust.
+    pub FUNC_RESULT_OK,
     Forbid,
-    "FUNC_LOOPS_LOOP: replace open-ended loop blocks with explicit bounded control flow"
+    "FUNC_RESULT_OK: replace ok() erasure with explicit typed error handling"
 }
 
 #[derive(Default)]
@@ -65,9 +68,9 @@ impl_lint_pass!(FunctionalSurface => [
     FUNC_UNWRAP_USED,
     FUNC_EXPECT_USED,
     FUNC_UNWRAP_OR,
-    FUNC_LOOPS_FOR,
-    FUNC_LOOPS_WHILE,
-    FUNC_LOOPS_LOOP,
+    FUNC_RESULT_OK,
+    BOUNDED_EXECUTION_UNBOUNDED_LOOP,
+    BOUNDED_EXECUTION_UNBOUNDED_ITERATOR,
 ]);
 
 impl EarlyLintPass for FunctionalSurface {
@@ -83,18 +86,29 @@ impl EarlyLintPass for FunctionalSurface {
 
     fn check_expr(&mut self, cx: &EarlyContext<'_>, expr: &AstExpr) {
         let _emitted =
-            outside_test_module(self.test_module_depth).then(|| emit_loop_policy(cx, expr));
+            outside_test_module(self.test_module_depth).then(|| emit_bounded_policy(cx, expr));
     }
 }
 
 impl<'tcx> LateLintPass<'tcx> for FunctionalSurface {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx HirExpr<'tcx>) {
         match &expr.kind {
-            HirExprKind::MethodCall(..) => emit_method_policy(cx, expr),
-            HirExprKind::Call(func, _) => emit_path_call_policy(cx, expr, func),
+            HirExprKind::MethodCall(..) => emit_all_method_policies(cx, expr),
+            HirExprKind::Call(func, _) => emit_all_call_policies(cx, expr, func),
+            HirExprKind::Path(qpath) => emit_path_value_policy(cx, expr, qpath),
             _ => (),
         }
     }
+}
+
+fn emit_all_method_policies(cx: &LateContext<'_>, expr: &HirExpr<'_>) {
+    emit_method_policy(cx, expr);
+    emit_iterator_method_policy(cx, expr);
+}
+
+fn emit_all_call_policies(cx: &LateContext<'_>, expr: &HirExpr<'_>, func: &HirExpr<'_>) {
+    emit_path_call_policy(cx, expr, func);
+    emit_iterator_call_policy(cx, expr, func);
 }
 
 /// Register functional-surface lints and pass.
@@ -103,9 +117,9 @@ pub(crate) fn register(lint_store: &mut LintStore) {
         FUNC_UNWRAP_USED,
         FUNC_EXPECT_USED,
         FUNC_UNWRAP_OR,
-        FUNC_LOOPS_FOR,
-        FUNC_LOOPS_WHILE,
-        FUNC_LOOPS_LOOP,
+        FUNC_RESULT_OK,
+        BOUNDED_EXECUTION_UNBOUNDED_LOOP,
+        BOUNDED_EXECUTION_UNBOUNDED_ITERATOR,
     ]);
     lint_store.register_early_pass(|| Box::new(FunctionalSurface::default()));
     lint_store.register_late_pass(|_| Box::new(FunctionalSurface::default()));
@@ -116,10 +130,16 @@ fn emit_method_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>) {
         return;
     };
     let name = segment.ident.name.as_str();
-    if matches!(method_policy(name), MethodPolicy::None) {
-        return;
-    }
-    if !is_core_or_unknown_method(cx, expr) {
+    // The `ok` disposition admits every verdict except `Other` (fail-closed
+    // `Unknown` preserved); all other dispositions keep the historic verdict.
+    let admitted = match method_policy(name) {
+        MethodPolicy::None => false,
+        MethodPolicy::Ok => !matches!(identify_result_method(cx, expr), MethodIdentity::Other),
+        MethodPolicy::Unwrap | MethodPolicy::Expect | MethodPolicy::UnwrapOr => {
+            is_core_or_unknown_method(cx, expr)
+        }
+    };
+    if !admitted {
         return;
     }
     emit_named_policy(cx, actionable_span(segment.ident.span), name);
@@ -135,13 +155,55 @@ fn emit_path_call_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>, func: &HirExp
     let Some(name) = qpath_final_name(qpath) else {
         return;
     };
-    if matches!(method_policy(name), MethodPolicy::None) {
-        return;
-    }
-    if !is_core_option_result_method(cx, def_id) {
+    // The `ok` disposition requires the Result-only verdict; all other
+    // dispositions keep the historic Option-or-Result verdict.
+    let admitted = match method_policy(name) {
+        MethodPolicy::None => false,
+        MethodPolicy::Ok => is_core_result_ok_method(cx, def_id),
+        MethodPolicy::Unwrap | MethodPolicy::Expect | MethodPolicy::UnwrapOr => {
+            is_core_option_result_method(cx, def_id)
+        }
+    };
+    if !admitted {
         return;
     }
     emit_named_policy(cx, actionable_span(expr.span), name);
+}
+
+fn emit_path_value_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>, qpath: &QPath<'_>) {
+    let Res::Def(DefKind::AssocFn, def_id) = cx.qpath_res(qpath, expr.hir_id) else {
+        return;
+    };
+    let Some(name) = qpath_final_name(qpath) else {
+        return;
+    };
+    if !matches!(method_policy(name), MethodPolicy::Ok) {
+        return;
+    }
+    if !is_core_result_ok_method(cx, def_id) {
+        return;
+    }
+    if is_call_callee(cx, expr) {
+        return;
+    }
+    emit_named_policy(cx, actionable_span(expr.span), name);
+}
+
+/// Return `true` when `expr` is the callee of an enclosing `Call`.
+///
+/// The `Call` arm owns that diagnostic, so a bare path in callee position
+/// must not emit separately. Any other parent shape fails open toward
+/// emission so real violations are never skipped silently.
+fn is_call_callee(cx: &LateContext<'_>, expr: &HirExpr<'_>) -> bool {
+    let parent_id = cx.tcx.parent_hir_id(expr.hir_id);
+    let parent = cx.tcx.hir_node(parent_id);
+    match parent {
+        rustc_hir::Node::Expr(parent_expr) => match &parent_expr.kind {
+            HirExprKind::Call(func, _) => func.hir_id == expr.hir_id,
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 fn emit_named_policy(cx: &LateContext<'_>, span: Span, name: &str) {
@@ -150,6 +212,7 @@ fn emit_named_policy(cx: &LateContext<'_>, span: Span, name: &str) {
         MethodPolicy::Unwrap => emit_unwrap(cx, span),
         MethodPolicy::Expect => emit_expect(cx, span),
         MethodPolicy::UnwrapOr => emit_unwrap_or(cx, span),
+        MethodPolicy::Ok => emit_result_ok(cx, span),
     }
 }
 
@@ -184,6 +247,66 @@ fn identify_method(cx: &LateContext<'_>, expr: &HirExpr<'_>) -> MethodIdentity {
     } else {
         MethodIdentity::Other
     }
+}
+
+/// Classify an `ok` method call by resolved receiver identity.
+///
+/// `CoreStd` covers the inherent `Result::ok` erasure in `core`. `Other`
+/// covers unrelated same-name methods (custom types, foreign traits).
+/// `Unknown` covers unresolvable receivers; callers fail closed toward
+/// emission so real violations are never skipped silently.
+fn identify_result_method(cx: &LateContext<'_>, expr: &HirExpr<'_>) -> MethodIdentity {
+    let HirExprKind::MethodCall(..) = &expr.kind else {
+        return MethodIdentity::Unknown;
+    };
+    let Some(typeck) = cx.maybe_typeck_results() else {
+        return MethodIdentity::Unknown;
+    };
+    let Some((DefKind::AssocFn, def_id)) = typeck.type_dependent_def(expr.hir_id) else {
+        return MethodIdentity::Unknown;
+    };
+    if is_core_result_ok_method(cx, def_id) {
+        MethodIdentity::CoreStd
+    } else {
+        MethodIdentity::Other
+    }
+}
+
+/// Return `true` when `def_id` is the inherent `ok` on core `Result`.
+///
+/// Trait-provided same-name methods resolve to `Other`; `ok_or` and
+/// `ok_or_else` never reach this predicate (exact-name table).
+fn is_core_result_ok_method(cx: &LateContext<'_>, def_id: DefId) -> bool {
+    let Some(assoc) = cx.tcx.opt_associated_item(def_id) else {
+        return false;
+    };
+    if assoc.container != ty::AssocContainer::InherentImpl {
+        return false;
+    }
+    let Some(impl_id) = cx.tcx.opt_parent(def_id) else {
+        return false;
+    };
+    let self_ty = cx.tcx.type_of(impl_id).skip_binder();
+    let TyKind::Adt(adt, _) = *self_ty.kind() else {
+        return false;
+    };
+    if !is_core_result_adt(cx, adt.did()) {
+        return false;
+    }
+    assoc.name().as_str() == "ok"
+}
+
+/// Return `true` when `adt_id` is the `core` `Result` enum (local impostors
+/// and foreign same-name enums excluded).
+fn is_core_result_adt(cx: &LateContext<'_>, adt_id: DefId) -> bool {
+    if adt_id.is_local() {
+        return false;
+    }
+    if cx.tcx.crate_name(adt_id.krate).as_str() != "core" {
+        return false;
+    }
+    // `def_path_str` renders `core` items through their `std` re-export path.
+    matches!(cx.tcx.def_path_str(adt_id).as_str(), "core::result::Result" | "std::result::Result")
 }
 
 /// Return `true` when `def_id` is an inherent method on `core`'s `Option` or
@@ -236,13 +359,25 @@ fn actionable_span(span: Span) -> Span {
     unfolded.map_or(span, |found| found)
 }
 
-fn emit_loop_policy(cx: &EarlyContext<'_>, expr: &AstExpr) {
+/// `for` loops are permitted (finite-input iteration); only condition
+/// `while` loops and `loop` blocks are checked against the bound policy.
+fn emit_bounded_policy(cx: &EarlyContext<'_>, expr: &AstExpr) {
     match &expr.kind {
-        AstExprKind::ForLoop { .. } => emit_for_loop(cx, expr.span),
-        AstExprKind::While(_, _, _) => emit_while_loop(cx, expr.span),
-        AstExprKind::Loop(_, _, _) => emit_loop_block(cx, expr.span),
+        AstExprKind::While(condition, _, _) => emit_condition_loop(cx, expr.span, condition),
+        AstExprKind::Loop(_, _, _) => emit_unbounded_loop(cx, expr.span),
         _ => (),
     }
+}
+
+fn emit_condition_loop(cx: &EarlyContext<'_>, span: Span, condition: &AstExpr) {
+    if is_let_condition(condition) {
+        return;
+    }
+    emit_unbounded_loop(cx, span);
+}
+
+const fn is_let_condition(condition: &AstExpr) -> bool {
+    matches!(condition.kind, AstExprKind::Let(..))
 }
 
 const fn outside_test_module(test_module_depth: usize) -> bool {
@@ -275,6 +410,7 @@ enum MethodPolicy {
     Unwrap,
     Expect,
     UnwrapOr,
+    Ok,
 }
 
 fn method_policy(name: &str) -> MethodPolicy {
@@ -282,6 +418,7 @@ fn method_policy(name: &str) -> MethodPolicy {
         "unwrap" => MethodPolicy::Unwrap,
         "expect" => MethodPolicy::Expect,
         "unwrap_or" | "unwrap_or_else" | "unwrap_or_default" => MethodPolicy::UnwrapOr,
+        "ok" => MethodPolicy::Ok,
         _ => MethodPolicy::None,
     }
 }
@@ -326,40 +463,90 @@ fn emit_unwrap_or(cx: &LateContext<'_>, span: Span) {
     );
 }
 
-fn emit_for_loop(cx: &EarlyContext<'_>, span: Span) {
+fn emit_result_ok(cx: &LateContext<'_>, span: Span) {
     cx.emit_span_lint(
-        FUNC_LOOPS_FOR,
+        FUNC_RESULT_OK,
         span,
         DiagDecorator(|diag| {
             let _decorated = diag
                 .primary_message(
-                    "FUNC_LOOPS_FOR: replace imperative for loops with iterator pipelines",
+                    "FUNC_RESULT_OK: replace ok() erasure with explicit typed error handling",
                 )
-                .help("use map/filter/fold/try_fold/try_for_each with explicit bounds and errors");
+                .help("match on the result, propagate with ?, or map the error instead of discarding it into Option");
         }),
     );
 }
 
-fn emit_while_loop(cx: &EarlyContext<'_>, span: Span) {
+fn emit_unbounded_loop(cx: &EarlyContext<'_>, span: Span) {
     cx.emit_span_lint(
-        FUNC_LOOPS_WHILE,
+        BOUNDED_EXECUTION_UNBOUNDED_LOOP,
         span,
         DiagDecorator(|diag| {
             let _decorated = diag
-                .primary_message("FUNC_LOOPS_WHILE: replace while loops with bounded iterator or state-machine transitions")
-                .help("encode the bound in data or use an explicit transition function");
+                .primary_message("BOUNDED_EXECUTION_UNBOUNDED_LOOP: unbounded retry requires a named bound with cited evidence")
+                .help("cite Bound::FiniteInput, Bound::Capped with a regression test, or Bound::ProtocolTerminal; `for` over finite input and `while let` are permitted");
         }),
     );
 }
 
-fn emit_loop_block(cx: &EarlyContext<'_>, span: Span) {
+fn emit_unbounded_iterator(cx: &LateContext<'_>, span: Span) {
     cx.emit_span_lint(
-        FUNC_LOOPS_LOOP,
+        BOUNDED_EXECUTION_UNBOUNDED_ITERATOR,
         span,
         DiagDecorator(|diag| {
             let _decorated = diag
-                .primary_message("FUNC_LOOPS_LOOP: replace open-ended loop blocks with explicit bounded control flow")
-                .help("use a bounded iterator, transition table, or cancellation-aware protocol");
+                .primary_message("BOUNDED_EXECUTION_UNBOUNDED_ITERATOR: unbounded iterator source requires a named bound with cited evidence")
+                .help("bound with take/take_while/nth or a checked-in termination claim; combinator syntax never establishes boundedness");
         }),
     );
+}
+
+fn emit_iterator_method_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>) {
+    let HirExprKind::MethodCall(segment, _, args, _) = &expr.kind else {
+        return;
+    };
+    if segment.ident.name.as_str() != "cycle" || !args.is_empty() {
+        return;
+    }
+    emit_unbounded_iterator(cx, actionable_span(segment.ident.span));
+}
+
+fn emit_iterator_call_policy(cx: &LateContext<'_>, expr: &HirExpr<'_>, func: &HirExpr<'_>) {
+    let HirExprKind::Path(qpath) = &func.kind else {
+        return;
+    };
+    let Some(name) = qpath_final_name(qpath) else {
+        return;
+    };
+    if !is_unbounded_iterator_name(name) {
+        return;
+    }
+    if !is_core_iter_fn(cx, func) {
+        return;
+    }
+    emit_unbounded_iterator(cx, actionable_span(expr.span));
+}
+
+fn is_unbounded_iterator_name(name: &str) -> bool {
+    matches!(name, "repeat" | "repeat_with" | "successors" | "from_fn")
+}
+
+fn is_core_iter_fn(cx: &LateContext<'_>, func: &HirExpr<'_>) -> bool {
+    let HirExprKind::Path(qpath) = &func.kind else {
+        return false;
+    };
+    let Res::Def(DefKind::Fn, def_id) = cx.qpath_res(qpath, func.hir_id) else {
+        return false;
+    };
+    if def_id.is_local() {
+        return false;
+    }
+    if !is_core_or_std_crate(cx, def_id) {
+        return false;
+    }
+    cx.tcx.def_path_str(def_id).contains("iter::")
+}
+
+fn is_core_or_std_crate(cx: &LateContext<'_>, def_id: DefId) -> bool {
+    matches!(cx.tcx.crate_name(def_id.krate).as_str(), "core" | "std")
 }

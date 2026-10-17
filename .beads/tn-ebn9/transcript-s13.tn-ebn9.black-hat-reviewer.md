@@ -1,0 +1,1 @@
+State 13 (black-hat-reviewer): attacked parity (syntax bypass, iterator bypass, comment smuggling, catalog drift, gate weakening, evidence fraud). All attacks hold or fail closed. STATUS: APPROVED with parity matrix.

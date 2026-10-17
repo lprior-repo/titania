@@ -22,12 +22,15 @@ const ARCHITECTURE_YAML: &str = include_str!("../rules/architecture.yml");
 // Required rule IDs and their expected metadata.
 // ---------------------------------------------------------------------------
 
-/// The four architecture rule IDs that MUST appear in the catalog.
+/// The seven architecture rule IDs that MUST appear in the catalog.
 const REQUIRED_RULE_IDS: &[&str] = &[
     "ARCHITECTURE_IMPORT_CORE_INFRA",
     "ARCHITECTURE_IMPORT_CORE_FS",
     "ARCHITECTURE_IMPORT_CORE_TIME",
     "ARCHITECTURE_IMPORT_CORE_RANDOM",
+    "ARCHITECTURE_IMPORT_CORE_PROCESS",
+    "ARCHITECTURE_EFFECT_CORE_ASYNC",
+    "ARCHITECTURE_EFFECT_CORE_STATE",
 ];
 
 /// Path segments that MUST be excluded from production scanning.
@@ -38,6 +41,7 @@ const FIXTURE_NAMES: &[&[&str]] = &[
     &[
         "architecture_import_core_infra_violation.rs",
         "architecture_import_core_infra_direct_violation.rs",
+        "architecture_import_core_infra_fq_violation.rs",
         "allowed_no_core_infra_import.rs",
     ],
     &[
@@ -45,20 +49,32 @@ const FIXTURE_NAMES: &[&[&str]] = &[
         "architecture_import_core_fs_direct_violation.rs",
         "architecture_import_core_fs_grouped_violation.rs",
         "architecture_import_core_fs_module_violation.rs",
+        "architecture_import_core_fs_fq_violation.rs",
+        "architecture_import_core_fs_alias_violation.rs",
+        "architecture_import_core_fs_macro_violation.rs",
         "allowed_no_core_fs_import.rs",
     ],
     &[
         "architecture_import_core_time_violation.rs",
         "architecture_import_core_time_direct_violation.rs",
         "architecture_import_core_time_grouped_violation.rs",
+        "architecture_import_core_time_fq_violation.rs",
         "allowed_no_core_time_import.rs",
     ],
     &[
         "architecture_import_core_random_violation.rs",
         "architecture_import_core_random_direct_violation.rs",
         "architecture_import_core_random_grouped_violation.rs",
+        "architecture_import_core_random_fq_violation.rs",
         "allowed_no_core_random_import.rs",
     ],
+    &[
+        "architecture_import_core_process_violation.rs",
+        "architecture_import_core_process_fq_violation.rs",
+        "allowed_no_core_process_import.rs",
+    ],
+    &["architecture_effect_core_async_violation.rs", "allowed_no_core_async_effect.rs"],
+    &["architecture_effect_core_state_violation.rs", "allowed_no_core_state_effect.rs"],
 ];
 
 // ---------------------------------------------------------------------------
@@ -234,6 +250,9 @@ fn ast_grep_architecture_repair_hints_per_rule() {
         ("ARCHITECTURE_IMPORT_CORE_FS", "RequiresHumanReview"),
         ("ARCHITECTURE_IMPORT_CORE_TIME", "RequiresHumanReview"),
         ("ARCHITECTURE_IMPORT_CORE_RANDOM", "RequiresHumanReview"),
+        ("ARCHITECTURE_IMPORT_CORE_PROCESS", "RequiresHumanReview"),
+        ("ARCHITECTURE_EFFECT_CORE_ASYNC", "ReplaceDependency"),
+        ("ARCHITECTURE_EFFECT_CORE_STATE", "RequiresHumanReview"),
     ]
     .into_iter()
     .collect();
@@ -284,6 +303,38 @@ fn ast_grep_architecture_direct_import_patterns_present() {
     assert!(
         ARCHITECTURE_YAML.contains(r"rand::\\{"),
         "Random rule must catch grouped rand imports",
+    );
+}
+
+/// Fully-qualified-path regexes close the no-import bypass: effects spelled
+/// as `std::fs::read_to_string` (or `tokio::spawn`, `std::time::SystemTime`,
+/// `rand::thread_rng`) with no `use` line must still match the catalog.
+#[test]
+fn ast_grep_architecture_fully_qualified_patterns_present() {
+    assert!(
+        ARCHITECTURE_YAML.contains(r"\\b(tokio|axum|sqlx|reqwest)::"),
+        "Infra rule must catch fully-qualified infra paths with no import",
+    );
+    assert!(
+        ARCHITECTURE_YAML.contains(r"\\bstd::(fs|env|net)::"),
+        "Filesystem rule must catch fully-qualified std paths with no import",
+    );
+    assert!(
+        ARCHITECTURE_YAML.contains(r"\\bstd::time::(SystemTime|Instant)\\b"),
+        "Time rule must catch fully-qualified clock reads with no import",
+    );
+    assert!(
+        ARCHITECTURE_YAML.contains(r"\\brand::(thread_rng|Rng)\\b"),
+        "Random rule must catch fully-qualified entropy use with no import",
+    );
+    assert!(
+        ARCHITECTURE_YAML.contains(r"\\bstd::process::"),
+        "Process rule must catch fully-qualified process spawns",
+    );
+    assert!(ARCHITECTURE_YAML.contains(r"\\.await\\b"), "Async rule must catch await expressions",);
+    assert!(
+        ARCHITECTURE_YAML.contains(r"\\bstatic\\s+mut\\b"),
+        "State rule must catch static mut declarations",
     );
 }
 
@@ -364,6 +415,32 @@ fn ast_grep_architecture_allowed_fixtures_have_no_violations() {
         !allowed_random.contains("use rand::thread_rng")
             && !allowed_random.contains("use rand::Rng"),
         "allowed_no_core_random_import.rs must not import rand entropy APIs",
+    );
+
+    // Process imports
+    let allowed_process = read_fixture(&fixtures_dir, "allowed_no_core_process_import.rs");
+    assert!(
+        !allowed_process.contains("std::process") && !allowed_process.contains("tokio::process"),
+        "allowed_no_core_process_import.rs must not import process APIs",
+    );
+
+    // Async effects
+    let allowed_async = read_fixture(&fixtures_dir, "allowed_no_core_async_effect.rs");
+    assert!(
+        !allowed_async.contains("async fn")
+            && !allowed_async.contains(".await")
+            && !allowed_async.contains("tokio::"),
+        "allowed_no_core_async_effect.rs must stay synchronous",
+    );
+
+    // Ambient mutable state
+    let allowed_state = read_fixture(&fixtures_dir, "allowed_no_core_state_effect.rs");
+    assert!(
+        !allowed_state.contains("static mut")
+            && !allowed_state.contains("std::sync::Mutex")
+            && !allowed_state.contains("std::sync::RwLock")
+            && !allowed_state.contains("std::cell::RefCell"),
+        "allowed_no_core_state_effect.rs must not use ambient mutable state",
     );
 }
 
@@ -453,6 +530,94 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
         random_grouped.contains("use rand::{Rng, thread_rng}"),
         "architecture_import_core_random_grouped_violation.rs must contain grouped rand imports",
     );
+
+    // Fully-qualified bypasses: effect with no `use` import
+    let infra_fq = read_fixture(&fixtures_dir, "architecture_import_core_infra_fq_violation.rs");
+    assert!(
+        infra_fq.contains("tokio::spawn"),
+        "architecture_import_core_infra_fq_violation.rs must use tokio with no import",
+    );
+    let fs_fq = read_fixture(&fixtures_dir, "architecture_import_core_fs_fq_violation.rs");
+    assert!(
+        fs_fq.contains("std::fs::read_to_string")
+            && fs_fq.contains("std::env::var")
+            && fs_fq.contains("std::net::TcpStream"),
+        "architecture_import_core_fs_fq_violation.rs must use std fs/env/net with no import",
+    );
+    let fs_alias = read_fixture(&fixtures_dir, "architecture_import_core_fs_alias_violation.rs");
+    assert!(
+        fs_alias.contains("use std::fs as filesystem"),
+        "architecture_import_core_fs_alias_violation.rs must alias the fs import",
+    );
+    let fs_macro = read_fixture(&fixtures_dir, "architecture_import_core_fs_macro_violation.rs");
+    assert!(
+        fs_macro.contains("macro_rules!") && fs_macro.contains("std::fs::read_to_string"),
+        "architecture_import_core_fs_macro_violation.rs must hide fs I/O in a macro body",
+    );
+    let time_fq = read_fixture(&fixtures_dir, "architecture_import_core_time_fq_violation.rs");
+    assert!(
+        time_fq.contains("std::time::SystemTime::now")
+            && time_fq.contains("std::time::Instant::now"),
+        "architecture_import_core_time_fq_violation.rs must read the clock with no import",
+    );
+    let random_fq = read_fixture(&fixtures_dir, "architecture_import_core_random_fq_violation.rs");
+    assert!(
+        random_fq.contains("rand::thread_rng"),
+        "architecture_import_core_random_fq_violation.rs must draw entropy with no import",
+    );
+
+    // Process violations
+    let process = read_fixture(&fixtures_dir, "architecture_import_core_process_violation.rs");
+    assert!(
+        process.contains("use std::process::Command"),
+        "architecture_import_core_process_violation.rs must import std::process",
+    );
+    let process_fq =
+        read_fixture(&fixtures_dir, "architecture_import_core_process_fq_violation.rs");
+    assert!(
+        process_fq.contains("std::process::Command::new"),
+        "architecture_import_core_process_fq_violation.rs must spawn with no import",
+    );
+
+    // Async effect violation: async fn plus await plus a runtime spawn
+    let async_fx = read_fixture(&fixtures_dir, "architecture_effect_core_async_violation.rs");
+    assert!(
+        async_fx.contains("async fn")
+            && async_fx.contains(".await")
+            && async_fx.contains("tokio::spawn"),
+        "architecture_effect_core_async_violation.rs must contain async effects",
+    );
+
+    // Ambient-state violation: static mut plus a blocking lock
+    let state_fx = read_fixture(&fixtures_dir, "architecture_effect_core_state_violation.rs");
+    assert!(
+        state_fx.contains("static mut") && state_fx.contains("std::sync::Mutex"),
+        "architecture_effect_core_state_violation.rs must contain ambient mutable state",
+    );
+}
+
+/// The designated pure-core manifest must not depend on infrastructure or
+/// entropy crates: a `Cargo.toml` dependency would bypass every source-level
+/// capability rule, so the manifest itself is a checked boundary.
+#[test]
+fn ast_grep_architecture_core_manifest_has_no_effect_dependencies() {
+    let base = env!("CARGO_MANIFEST_DIR");
+    let manifest_path = format!("{base}/../titania-core/Cargo.toml");
+    let manifest = std::fs::read_to_string(&manifest_path)
+        .unwrap_or_else(|e| panic!("Cannot read '{manifest_path}': {e}"));
+
+    for banned in ["tokio", "axum", "sqlx", "reqwest", "rand", "futures", "async-std", "smol"] {
+        let direct = format!("{banned} =");
+        let quoted = format!("\"{banned}\"");
+        assert!(
+            !manifest.lines().any(|line| {
+                let trimmed = line.trim();
+                !trimmed.starts_with('#')
+                    && (trimmed.starts_with(&direct) || trimmed.contains(&quoted))
+            }),
+            "titania-core/Cargo.toml must not depend on '{banned}'",
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

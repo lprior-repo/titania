@@ -86,13 +86,16 @@ pub fn catalog_rows() -> &'static [CatalogRow] {
 /// Resolve a `ReplaceDependency` catalog row into a [`RepairHint`].
 ///
 /// Extracted from `row_to_repair_hint` to keep nesting under the clippy
-/// `excessive_nesting` threshold. The single `ReplaceDependency` row today
-/// is `ARCHITECTURE_IMPORT_CORE_INFRA`; if a future row adds a second, the
-/// catalog should grow a 7th column and this function should switch on it.
+/// `excessive_nesting` threshold. Each `ReplaceDependency` row is matched
+/// on its `(rule_id, pattern)` pair; unknown pairs fall back to human
+/// review so catalog drift stays visible instead of silently mapped.
 fn replace_dependency_hint(row: &CatalogRow) -> RepairHint {
     match (row.rule_id, row.pattern) {
         ("ARCHITECTURE_IMPORT_CORE_INFRA", "core/domain imports infrastructure") => {
             RepairHint::replace_dependency("infrastructure".to_owned(), "typed port".to_owned())
+        }
+        ("ARCHITECTURE_EFFECT_CORE_ASYNC", "core/domain uses async runtime") => {
+            RepairHint::replace_dependency("async runtime".to_owned(), "typed port".to_owned())
         }
         _ => RepairHint::requires_human_review(format!(
             "ReplaceDependency: unknown pattern {:?} for {}",
@@ -163,8 +166,8 @@ mod tests {
         // so reviewers notice the catalog drift.
         assert_eq!(
             catalog_rows().len(),
-            80,
-            "catalog row count drifted from 80; update catalog_parses_to_expected_row_count"
+            82,
+            "catalog row count drifted from 82; update catalog_parses_to_expected_row_count"
         );
     }
 

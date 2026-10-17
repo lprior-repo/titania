@@ -1,0 +1,12 @@
+=== proptest obligations ===
+   Compiling titania-lanes v0.1.0 (/home/lewis/src/titania/.muse/worktrees/subagent-v2-01a14623-5a8f-76e0-be4a-be4eb153aaf7-01a146d6-84d3-7002-a503-6dac4a90e808/crates/titania-lanes)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.37s
+     Running unittests src/lib.rs (target/debug/deps/titania_lanes-a2b1c6cde4721201)
+
+running 2 tests
+test ast_grep_lane::rules::detectors::tn_bvv7_property_tests::tn_bvv7_effect_boundary_property ... ok
+test ast_grep_lane::rules::detectors::tn_bvv7_property_tests::tn_bvv7_fq_bypass_property ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 152 filtered out; finished in 0.00s
+
+EXIT:0

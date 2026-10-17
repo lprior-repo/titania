@@ -89,25 +89,48 @@ impl AstEngine {
             .min_by_key(|site| site.start_byte)
     }
 
-    /// Byte-range site of the first `for $LOOP in $ITER { $$$BODY }` match
-    /// (`FUNC_LOOPS_FOR`).
-    pub(super) fn detect_for_loop(&self) -> Option<MatchSite> {
-        let pat = Pattern::new("for $LOOP in $ITER { $$$BODY }", Rust);
-        self.first_match_site_skipping_tests(&pat)
+    /// Byte-range site of the first unbounded retry: a `loop { $$$BODY }`
+    /// block or a `while $COND { $$$BODY }` condition loop outside
+    /// `#[cfg(test)]` modules (`BOUNDED_EXECUTION_UNBOUNDED_LOOP`).
+    ///
+    /// `for` loops are permitted (finite-input iteration) and `while let`
+    /// loops are permitted (bounded by `Option`/iterator exhaustion); only
+    /// bare-condition `while` loops require a named bound.
+    pub(super) fn detect_unbounded_loop(&self) -> Option<MatchSite> {
+        let loop_pat = Pattern::new("loop { $$$BODY }", Rust);
+        let while_pat = Pattern::new("while $COND { $$$BODY }", Rust);
+        let loop_site = self.first_match_site_skipping_tests(&loop_pat);
+        let while_site = self
+            .grep
+            .root()
+            .find_all(&while_pat)
+            .filter(|node_match| !self.is_in_test_code(node_match.range().start))
+            .filter(|node_match| !is_while_let_match(node_match))
+            .map(|node_match| MatchSite::from_range(node_match.range()))
+            .min_by_key(|site| site.start_byte);
+        loop_site.into_iter().chain(while_site).min_by_key(|site| site.start_byte)
     }
 
-    /// Byte-range site of the first `while $COND { $$$BODY }` match
-    /// (`FUNC_LOOPS_WHILE`).
-    pub(super) fn detect_while_loop(&self) -> Option<MatchSite> {
-        let pat = Pattern::new("while $COND { $$$BODY }", Rust);
-        self.first_match_site_skipping_tests(&pat)
-    }
-
-    /// Byte-range site of the first `loop { $$$BODY }` match
-    /// (`FUNC_LOOPS_LOOP`).
-    pub(super) fn detect_loop_block(&self) -> Option<MatchSite> {
-        let pat = Pattern::new("loop { $$$BODY }", Rust);
-        self.first_match_site_skipping_tests(&pat)
+    /// Byte-range site of the first unbounded iterator source outside
+    /// `#[cfg(test)]` modules (`BOUNDED_EXECUTION_UNBOUNDED_ITERATOR`).
+    ///
+    /// Infinite constructors (`repeat`, `repeat_with`, `successors`,
+    /// `from_fn`, `.cycle()`) never establish boundedness by syntax; a
+    /// named bound (`take`/`take_while`/`nth` or a checked-in termination
+    /// claim) is required. Finite ranges such as `(0..max)` are permitted.
+    pub(super) fn detect_unbounded_iterator(&self) -> Option<MatchSite> {
+        let cycle = Pattern::new("$ITER.cycle()", Rust);
+        let repeat = Pattern::new("repeat($$$ARGS)", Rust);
+        let repeat_with = Pattern::new("repeat_with($$$ARGS)", Rust);
+        let successors = Pattern::new("successors($$$ARGS)", Rust);
+        let from_fn = Pattern::new("from_fn($$$ARGS)", Rust);
+        self.first_match_site_any_skipping_tests([
+            &cycle,
+            &repeat,
+            &repeat_with,
+            &successors,
+            &from_fn,
+        ])
     }
 
     /// Byte-range site of the first `print!`/`println!` match
@@ -301,6 +324,15 @@ fn many_include_site(
             && paths.iter().any(path_non_empty))
         .then(|| MatchSite::from_range(node_match.range()))
     })
+}
+
+/// `true` when a `while` match is a `while let` loop, which is permitted as
+/// bounded by `Option`/iterator exhaustion rather than an unbounded retry.
+fn is_while_let_match(node: &Node<'_, StrDoc<Rust>>) -> bool {
+    let text = node.text();
+    let trimmed = text.trim_start();
+    let after_while = trimmed.strip_prefix("while").map_or(trimmed, |rest| rest);
+    after_while.trim_start().starts_with("let")
 }
 
 /// `true` when `node`'s source text is not pure whitespace.

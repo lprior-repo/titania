@@ -338,6 +338,28 @@ mod tests {
         assert_eq!(argv.len(), CARGO_PREFIX + 2 * DENY_PAIRS);
     }
 
+    /// Negative property: no static lane argv may carry a lint ceiling.
+    /// A `--cap-lints` token anywhere in the effective rustc invocation
+    /// would ceiling every `-D` deny the lane relies on.
+    #[test]
+    fn no_lane_argv_carries_cap_lints() {
+        for lane in [
+            CargoLane::Fmt,
+            CargoLane::Compile,
+            CargoLane::Clippy,
+            CargoLane::Test,
+            CargoLane::Build,
+        ] {
+            let ceiling = args_for_lane(lane)
+                .iter()
+                .find(|arg| crate::policy_scan::invocation::is_cap_lints_flag(arg));
+            assert!(
+                ceiling.is_none(),
+                "static argv for {lane:?} must not cap lints; found {ceiling:?}",
+            );
+        }
+    }
+
     #[test]
     fn args_for_lane_is_deterministic_and_bounded() {
         let compile_a = args_for_lane(CargoLane::Compile);

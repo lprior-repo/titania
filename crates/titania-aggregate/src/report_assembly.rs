@@ -8,8 +8,10 @@
 use thiserror::Error;
 use titania_core::{
     Finding, GateScope, InputDiagnostic, Lane, LaneFailure, LaneOutcome, LaneReceipt, PerLaneEntry,
-    PolicyDiagnostic, QualityReceiptV1 as QualityReceipt, Report, ReportError,
+    PolicyDiagnostic, QualityReceiptV1 as QualityReceipt, Report, ReportError, SkipReason,
 };
+
+use crate::obligations::ObligationSet;
 
 /// Errors produced while assembling a [`Report`] from in-memory lane outcomes.
 #[derive(Debug, Error)]
@@ -66,23 +68,14 @@ pub enum ReportAssemblyError {
 
 /// Assemble a typed [`Report`] from lane outcomes and diagnostics.
 ///
-/// Diagnostics take precedence over lane verdicts. A pass report is emitted only
-/// when all supplied findings are informational and no lane failed; the required
-/// receipt must be supplied by the caller because receipt digests are computed
-/// outside this pure classification step.
+/// This is the legacy v1 entry point: every scoped lane is treated as optional
+/// and `Skipped` outcomes stay pass-shaped. It delegates to
+/// [`assemble_report_with_obligations`] with [`ObligationSet::v1_legacy`], so
+/// v1 behaviour is defined once and cannot drift.
 ///
 /// # Errors
-/// - [`ReportAssemblyError::EmptyOutcomes`] when no lane outcomes or diagnostics
-///   are supplied.
-/// - [`ReportAssemblyError::LaneIdentityMismatch`] when lane outcomes do not
-///   match the canonical lane sequence of `scope` (omission, duplicate,
-///   substitution, or reordering).
-/// - [`ReportAssemblyError::ReceiptScopeMismatch`] when `pass_receipt` belongs
-///   to a different scope.
-/// - [`ReportAssemblyError::ReceiptLaneIdentityMismatch`] when `pass_receipt`
-///   lane list does not match the canonical lane sequence of `scope`.
-/// - [`ReportAssemblyError::Report`] when the core [`Report`] constructor rejects
-///   the assembled fields.
+/// See [`assemble_report_with_obligations`]; with the legacy set the required
+/// obligation rule never fires.
 pub fn assemble_report(
     scope: GateScope,
     outcomes: Box<[PerLaneEntry]>,
@@ -90,6 +83,43 @@ pub fn assemble_report(
     policy_diagnostics: Box<[PolicyDiagnostic]>,
     input_diagnostics: Box<[InputDiagnostic]>,
 ) -> Result<Report, ReportAssemblyError> {
+    assemble_report_with_obligations(
+        &ObligationSet::v1_legacy(scope),
+        outcomes,
+        pass_receipt,
+        policy_diagnostics,
+        input_diagnostics,
+    )
+}
+
+/// Assemble a typed [`Report`] under a versioned obligation contract.
+///
+/// Diagnostics take precedence over lane verdicts. A pass report is emitted only
+/// when all supplied findings are informational, no lane failed, and no lane
+/// marked required by `obligations` was skipped; the required receipt must be
+/// supplied by the caller because receipt digests are computed outside this
+/// pure classification step. The scope is carried by `obligations`.
+///
+/// # Errors
+/// - [`ReportAssemblyError::EmptyOutcomes`] when no lane outcomes or diagnostics
+///   are supplied.
+/// - [`ReportAssemblyError::LaneIdentityMismatch`] when lane outcomes do not
+///   match the canonical lane sequence of the obligation scope (omission,
+///   duplicate, substitution, or reordering).
+/// - [`ReportAssemblyError::ReceiptScopeMismatch`] when `pass_receipt` belongs
+///   to a different scope.
+/// - [`ReportAssemblyError::ReceiptLaneIdentityMismatch`] when `pass_receipt`
+///   lane list does not match the canonical lane sequence of the scope.
+/// - [`ReportAssemblyError::Report`] when the core [`Report`] constructor rejects
+///   the assembled fields.
+pub fn assemble_report_with_obligations(
+    obligations: &ObligationSet,
+    outcomes: Box<[PerLaneEntry]>,
+    pass_receipt: QualityReceipt,
+    policy_diagnostics: Box<[PolicyDiagnostic]>,
+    input_diagnostics: Box<[InputDiagnostic]>,
+) -> Result<Report, ReportAssemblyError> {
+    let scope = obligations.scope();
     if !input_diagnostics.is_empty() {
         return Ok(Report::input_error(input_diagnostics));
     }
@@ -104,13 +134,59 @@ pub fn assemble_report(
 
     let code_findings = rejecting_findings(&outcomes);
     let gate_failures = gate_failures(&outcomes);
+    let required_skips = required_skip_failures(&outcomes, obligations);
 
-    if has_rejection(&code_findings, &gate_failures) {
-        return Report::reject(scope, code_findings, gate_failures, outcomes).map_err(Into::into);
+    if has_rejection(&code_findings, &gate_failures) || !required_skips.is_empty() {
+        let failures = append_failures(&gate_failures, &required_skips);
+        return Report::reject(scope, code_findings, failures, outcomes).map_err(Into::into);
     }
 
     validate_pass_candidate(scope, &pass_receipt)?;
     Report::pass(pass_receipt, outcomes).map_err(Into::into)
+}
+
+/// Collect one gate failure per required lane that was skipped.
+///
+/// The skip match is exhaustive over [`LaneOutcome`] by contract design: a
+/// future outcome variant fails compilation here until the obligation contract
+/// classifies it, so new non-evidence statuses cannot inherit pass treatment.
+fn required_skip_failures(
+    entries: &[PerLaneEntry],
+    obligations: &ObligationSet,
+) -> Box<[LaneFailure]> {
+    entries
+        .iter()
+        .filter(|entry| obligations.is_required(*entry.lane()))
+        .filter_map(required_skip_failure)
+        .collect::<Vec<_>>()
+        .into_boxed_slice()
+}
+
+/// Build the gate failure for one required-but-skipped lane entry.
+///
+/// Returns `None` for outcomes that already decide the report on their own
+/// (`Clean` and informational findings pass; rejecting findings and `Failed`
+/// outcomes reject through the standard collections).
+fn required_skip_failure(entry: &PerLaneEntry) -> Option<LaneFailure> {
+    match entry.outcome() {
+        LaneOutcome::Skipped { reason } => Some(LaneFailure::Infra {
+            tool: entry.lane().name().to_owned(),
+            reason: skip_reason_text(*reason),
+        }),
+        LaneOutcome::Clean { .. } | LaneOutcome::Findings { .. } | LaneOutcome::Failed { .. } => {
+            None
+        }
+    }
+}
+
+/// Stable machine-readable reason for a required-lane skip gate failure.
+fn skip_reason_text(reason: SkipReason) -> String {
+    format!("required lane skipped: {reason:?}")
+}
+
+/// Concatenate the standard gate failures with required-skip failures.
+fn append_failures(first: &[LaneFailure], second: &[LaneFailure]) -> Box<[LaneFailure]> {
+    first.iter().chain(second.iter()).cloned().collect::<Vec<_>>().into_boxed_slice()
 }
 
 fn rejecting_findings(entries: &[PerLaneEntry]) -> Box<[Finding]> {

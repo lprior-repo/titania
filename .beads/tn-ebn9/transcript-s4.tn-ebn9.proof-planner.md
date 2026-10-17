@@ -1,0 +1,1 @@
+State 4 (proof-planner): 16 lane decisions (4 seeds x proptest/kani/verus/flux-rs) + 4 planned proptest obligations + strategy/matrix/coverage/base plan + 1 non-behavior waiver candidate (R1 refinement). No blocked_tooling; no behavior waivers.

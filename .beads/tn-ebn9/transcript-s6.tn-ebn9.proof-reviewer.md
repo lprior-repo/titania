@@ -1,0 +1,1 @@
+State 6 (proof-reviewer): adversarial review - no production copies, no vacuity (exact assertions), no harness-as-behavior substitution, closed-world marker scan clean. STATUS: APPROVED. Two informational notes (R1/R2) as owner_approved_no_action.

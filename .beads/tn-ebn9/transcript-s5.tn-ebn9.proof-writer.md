@@ -1,0 +1,1 @@
+State 5 (proof-writer): proof artifacts are executable detector-corpus checks (no copied models; checks run production detector code). Wrote report + evidence + closed-world base declaration. Typecheck smoke via cargo check on both detector crates (exit 0).
