@@ -102,11 +102,68 @@ enum LibraryProbe {
 
 fn probe_libtitania_dylint(target: &TargetProject) -> Result<LibraryProbe, LaneFailure> {
     let sibling_path = sibling_library_path()?;
-    Ok(resolve_libtitania_dylint(
+    let probe = resolve_libtitania_dylint(
         env_library_path(),
         workspace_metadata_dylint_configured(target.as_std_path()),
         sibling_path,
-    ))
+    );
+    Ok(match probe {
+        LibraryProbe::Compatible(DylintLoad::LibraryPath { source, path }) => {
+            match rustc_version_mismatch(&path, target) {
+                Some(reason) => LibraryProbe::Incompatible { path, reason },
+                None => LibraryProbe::Compatible(DylintLoad::LibraryPath { source, path }),
+            }
+        }
+        other => other,
+    })
+}
+
+fn rustc_version_mismatch(path: &Path, target: &TargetProject) -> Option<String> {
+    let embedded = std::fs::read(path).ok().and_then(|bytes| embedded_rustc_version(&bytes))?;
+    let active = active_rustc_version(target)?;
+    (embedded != active).then(|| {
+        format!(
+            "library was built with rustc version {embedded} but the active toolchain is rustc {active}"
+        )
+    })
+}
+
+fn embedded_rustc_version(bytes: &[u8]) -> Option<String> {
+    const MARKER: &[u8] = b"rustc version ";
+
+    let start = bytes
+        .windows(MARKER.len())
+        .position(|window| window == MARKER)?
+        .checked_add(MARKER.len())?;
+    let rest = bytes.get(start..)?;
+    let end = rest.iter().position(|byte| *byte == b')')?.checked_add(1)?;
+    normalize_rustc_version_identity(std::str::from_utf8(rest.get(..end)?).ok()?)
+}
+
+fn active_rustc_version(target: &TargetProject) -> Option<String> {
+    let output = crate::command::CommandIn::new(target, "rustc")
+        .and_then(|mut cmd| cmd.inherit_env().args(&["--version"]).run_capture_raw())
+        .ok()?;
+    if !output.success() {
+        return None;
+    }
+    let stdout = output.stdout_str().ok()?;
+    parse_rustc_version_output(stdout)
+}
+
+fn parse_rustc_version_output(raw: &str) -> Option<String> {
+    normalize_rustc_version_identity(raw.lines().next()?.trim().strip_prefix("rustc ")?.trim())
+}
+
+fn normalize_rustc_version_identity(candidate: &str) -> Option<String> {
+    let open = candidate.find('(')?;
+    let version = candidate.get(..open)?.trim();
+    let parenthesized = candidate.get(open..)?;
+    let valid = version.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+        && !version.contains(char::is_whitespace)
+        && parenthesized.ends_with(')')
+        && parenthesized.len() > 2;
+    valid.then(|| format!("{version} {parenthesized}"))
 }
 
 fn resolve_libtitania_dylint(
@@ -409,8 +466,38 @@ mod tests {
 
     use super::{
         DylintLibrarySource, DylintLoad, LibraryProbe, cargo_manifest_names_titania_dylint,
-        resolve_libtitania_dylint,
+        embedded_rustc_version, parse_rustc_version_output, resolve_libtitania_dylint,
     };
+
+    #[test]
+    fn embedded_rustc_version_extracts_compiler_identity() {
+        let bytes = b"\x7fELF noise rustc version 1.97.0-nightly (ca9a134e0 2026-04-26) tail";
+        assert_eq!(
+            embedded_rustc_version(bytes).as_deref(),
+            Some("1.97.0-nightly (ca9a134e0 2026-04-26)")
+        );
+    }
+
+    #[test]
+    fn embedded_rustc_version_absent_without_compiler_stamp() {
+        let bytes = b"\x7fELFfake-dylint-library";
+        assert_eq!(embedded_rustc_version(bytes), None);
+    }
+
+    #[test]
+    fn parse_rustc_version_output_normalizes_active_toolchain() {
+        let raw = "rustc 1.97.0-nightly (ca9a134e0 2026-04-26)\nbinary: rustc\n";
+        assert_eq!(
+            parse_rustc_version_output(raw).as_deref(),
+            Some("1.97.0-nightly (ca9a134e0 2026-04-26)")
+        );
+    }
+
+    #[test]
+    fn parse_rustc_version_output_rejects_foreign_text() {
+        assert_eq!(parse_rustc_version_output("cargo 1.97.0\n"), None);
+        assert_eq!(parse_rustc_version_output(""), None);
+    }
 
     #[test]
     fn metadata_must_name_titania_library() {

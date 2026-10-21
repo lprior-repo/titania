@@ -369,8 +369,11 @@ fn probe_dylint_link(required: bool, path: Option<PathBuf>) -> ToolRow {
 }
 
 fn dylint_library_row(required: bool, path: PathBuf) -> ToolRow {
-    let (installed, version) =
-        if abi_is_compatible(&path) { (true, "abi:verified") } else { (false, "abi:mismatch") };
+    let (installed, version) = match abi_verdict(&path) {
+        AbiVerdict::Verified => (true, "abi:verified"),
+        AbiVerdict::Mismatch => (false, "abi:mismatch"),
+        AbiVerdict::Unverified => (true, "abi:unverified"),
+    };
 
     ToolRow::external(
         "libtitania_dylint",
@@ -380,15 +383,67 @@ fn dylint_library_row(required: bool, path: PathBuf) -> ToolRow {
     )
 }
 
-fn abi_is_compatible(path: &Path) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AbiVerdict {
+    Verified,
+    Mismatch,
+    Unverified,
+}
+
+fn abi_verdict(path: &Path) -> AbiVerdict {
+    let Ok(bytes) = std::fs::read(path) else {
+        return AbiVerdict::Mismatch;
+    };
+    if !looks_like_dynamic_library(&bytes) || !has_dylint_markers(&bytes) {
+        return AbiVerdict::Mismatch;
+    }
+    match (embedded_rustc_version(&bytes), active_rustc_version()) {
+        (Some(library), Some(active)) if library == active => AbiVerdict::Verified,
+        (Some(_), Some(_)) => AbiVerdict::Mismatch,
+        _ => AbiVerdict::Unverified,
+    }
+}
+
+fn has_dylint_markers(bytes: &[u8]) -> bool {
     const MARKERS: [&[u8]; 2] = [b"dylint_version", b"register_lints"];
 
-    std::fs::read(path).is_ok_and(|bytes| {
-        looks_like_dynamic_library(&bytes)
-            && MARKERS
-                .iter()
-                .all(|marker| bytes.windows(marker.len()).any(|window| window == *marker))
-    })
+    MARKERS.iter().all(|marker| bytes.windows(marker.len()).any(|window| window == *marker))
+}
+
+fn embedded_rustc_version(bytes: &[u8]) -> Option<String> {
+    const MARKER: &[u8] = b"rustc version ";
+
+    let start = bytes
+        .windows(MARKER.len())
+        .position(|window| window == MARKER)?
+        .checked_add(MARKER.len())?;
+    let rest = bytes.get(start..)?;
+    let end = rest.iter().position(|byte| *byte == b')')?.checked_add(1)?;
+    normalize_rustc_version_identity(std::str::from_utf8(rest.get(..end)?).ok()?)
+}
+
+fn active_rustc_version() -> Option<String> {
+    let rustc = find_on_path("rustc")?;
+    let output = std::process::Command::new(rustc).arg("--version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_rustc_version_output(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_rustc_version_output(raw: &str) -> Option<String> {
+    normalize_rustc_version_identity(raw.lines().next()?.trim().strip_prefix("rustc ")?.trim())
+}
+
+fn normalize_rustc_version_identity(candidate: &str) -> Option<String> {
+    let open = candidate.find('(')?;
+    let version = candidate.get(..open)?.trim();
+    let parenthesized = candidate.get(open..)?;
+    let valid = version.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+        && !version.contains(char::is_whitespace)
+        && parenthesized.ends_with(')')
+        && parenthesized.len() > 2;
+    valid.then(|| format!("{version} {parenthesized}"))
 }
 
 fn looks_like_dynamic_library(bytes: &[u8]) -> bool {
@@ -425,7 +480,45 @@ pub fn doctor_report(scope: GateScope) -> Result<DoctorReport, OutputError> {
 
 #[cfg(test)]
 mod tests {
-    use super::manifest_names_titania_dylint;
+    use super::{
+        embedded_rustc_version, manifest_names_titania_dylint, parse_rustc_version_output,
+    };
+
+    #[test]
+    fn embedded_rustc_version_extracts_compiler_identity() {
+        let bytes = b"\x7fELF noise rustc version 1.97.0-nightly (ca9a134e0 2026-04-26) tail";
+        assert_eq!(
+            embedded_rustc_version(bytes).as_deref(),
+            Some("1.97.0-nightly (ca9a134e0 2026-04-26)")
+        );
+    }
+
+    #[test]
+    fn embedded_rustc_version_absent_without_compiler_stamp() {
+        let bytes = b"\x7fELFsynthetic-dylint-fixture\0dylint_version\0register_lints\0";
+        assert_eq!(embedded_rustc_version(bytes), None);
+    }
+
+    #[test]
+    fn embedded_rustc_version_rejects_unterminated_stamp() {
+        let bytes = b"rustc version 1.97.0-nightly (ca9a134e0 2026-04-26";
+        assert_eq!(embedded_rustc_version(bytes), None);
+    }
+
+    #[test]
+    fn parse_rustc_version_output_normalizes_active_toolchain() {
+        let raw = "rustc 1.97.0-nightly (ca9a134e0 2026-04-26)\nbinary: rustc\n";
+        assert_eq!(
+            parse_rustc_version_output(raw).as_deref(),
+            Some("1.97.0-nightly (ca9a134e0 2026-04-26)")
+        );
+    }
+
+    #[test]
+    fn parse_rustc_version_output_rejects_foreign_text() {
+        assert_eq!(parse_rustc_version_output("cargo 1.97.0\n"), None);
+        assert_eq!(parse_rustc_version_output(""), None);
+    }
 
     #[test]
     fn metadata_manifest_naming_titania_hyphen_is_detected() {

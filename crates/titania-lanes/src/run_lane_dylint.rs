@@ -10,6 +10,7 @@ use crate::{
 };
 
 const CARGO_DYLINT_TOOL: &str = "cargo-dylint";
+const DYLINT_LOAD_FAILURE_MARKER: &str = "could not find `dylint_version`";
 const DYLINT_LOCATION_LOOKAHEAD: usize = 6;
 const DYLINT_BASE_ARGS: &[&str] =
     &["dylint", "--workspace", "--all", "--", "--lib", "--bins", "--examples"];
@@ -129,12 +130,24 @@ fn nonzero_outcome(target: &TargetProject, output: &CommandOutput) -> LaneOutcom
     if !report.is_clean() {
         return super::run_lane_outcome::findings_outcome(Lane::Dylint, &report);
     }
+    if let Some(failure) = load_failure(output) {
+        return LaneOutcome::Failed { failure };
+    }
     LaneOutcome::Failed {
         failure: LaneFailure::Suspicious {
             tool: String::from(CARGO_DYLINT_TOOL),
             evidence: failure_evidence(output),
         },
     }
+}
+
+fn load_failure(output: &CommandOutput) -> Option<LaneFailure> {
+    let text = combined_output(output).ok()?;
+    let line = text.lines().find(|line| line.contains(DYLINT_LOAD_FAILURE_MARKER))?;
+    Some(LaneFailure::Infra {
+        tool: String::from(CARGO_DYLINT_TOOL),
+        reason: format!("cargo-dylint could not load the dylint library: {}", line.trim()),
+    })
 }
 
 fn dylint_report(
@@ -442,5 +455,25 @@ mod tests {
             panic!("non-BYPASS output must remain a failure");
         };
         assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(!failure.is_infra(), "compile errors must not become infra failures");
+    }
+
+    #[test]
+    fn driver_load_failure_becomes_infra_failure() {
+        let target = current_target_project().expect("test target project must resolve");
+        let output = mock_output(
+            1,
+            b"",
+            b"error: could not find `dylint_version` in `/tmp/libtitania_dylint@nightly.so`\n\nerror: aborting due to 1 previous error\n",
+        )
+        .expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output);
+
+        let LaneOutcome::Failed { failure } = outcome else {
+            panic!("driver load failure must become a lane failure");
+        };
+        assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(failure.is_infra(), "driver load failure must be an infra failure: {failure:?}");
     }
 }

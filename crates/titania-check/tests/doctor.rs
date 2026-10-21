@@ -173,9 +173,9 @@ fn doctor_json_edit_scope_contains_required_tool_matrix() {
     assert_eq!(tool(&report, "moon")["required"], true);
     assert_eq!(tool(&report, "cargo")["required"], true);
     assert_eq!(tool(&report, "rustfmt")["required"], true);
-    assert_eq!(tool(&report, "clippy-driver")["required"], true);
-    assert_eq!(tool(&report, "cargo-dylint")["required"], true);
-    assert_eq!(tool(&report, "libtitania_dylint")["required"], true);
+    assert_eq!(tool(&report, "clippy")["required"], true);
+    assert_eq!(tool(&report, "dylint")["required"], true);
+    assert_eq!(tool(&report, "dylint-lib")["required"], true);
     assert_eq!(tool(&report, "cargo-deny")["required"], false);
     assert_eq!(tool(&report, "sccache")["required"], false);
 }
@@ -211,7 +211,7 @@ fn doctor_empty_path_reports_missing_required_tools_exit_3() {
     assert_eq!(report["status"], "MissingRequiredTools");
 
     let missing = report["missing_required"].as_array().expect("missing_required array");
-    for required in ["moon", "cargo", "rustfmt", "clippy-driver", "cargo-dylint"] {
+    for required in ["moon", "cargo", "rustfmt", "clippy", "dylint"] {
         assert!(missing.iter().any(|n| n == required), "{required} must be missing: {report:#}");
     }
     assert!(
@@ -223,10 +223,10 @@ fn doctor_empty_path_reports_missing_required_tools_exit_3() {
         "optional sccache must not be in missing_required: {report:#}"
     );
     assert!(
-        !missing.iter().any(|n| n == "libtitania_dylint"),
-        "libtitania_dylint must not be required when cargo-dylint is absent: {report:#}"
+        !missing.iter().any(|n| n == "dylint-lib"),
+        "dylint-lib must not be required when cargo-dylint is absent: {report:#}"
     );
-    let dylint_lib = tool(&report, "libtitania_dylint");
+    let dylint_lib = tool(&report, "dylint-lib");
     assert_eq!(dylint_lib["required"], false);
 
     let ast_grep = tool(&report, "ast-grep");
@@ -285,18 +285,18 @@ fn doctor_abi_mismatch_yields_missing_required_library() {
 
     let missing = report["missing_required"].as_array().expect("missing_required array");
     assert!(
-        missing.iter().any(|n| n == "libtitania_dylint"),
-        "libtitania_dylint must be in missing_required on ABI mismatch: {report:#}"
+        missing.iter().any(|n| n == "dylint-lib"),
+        "dylint-lib must be in missing_required on ABI mismatch: {report:#}"
     );
 
-    let lib_row = tool(&report, "libtitania_dylint");
+    let lib_row = tool(&report, "dylint-lib");
     assert_eq!(lib_row["installed"], false, "incompatible lib must show installed=false");
     assert_eq!(
         lib_row["version"].as_str(),
         Some("abi:mismatch"),
         "incompatible lib version must be abi:mismatch"
     );
-    let cargo_dylint = tool(&report, "cargo-dylint");
+    let cargo_dylint = tool(&report, "dylint");
     assert_eq!(cargo_dylint["installed"], true, "fake cargo-dylint should be installed");
 }
 
@@ -322,17 +322,17 @@ fn doctor_abi_probe_no_nm_dependency() {
     assert!(stderr.is_empty(), "doctor must not write stderr: {stderr}");
 
     let report: Value = serde_json::from_str(&stdout).expect("doctor JSON must be parseable");
-    let lib_row = tool(&report, "libtitania_dylint");
+    let lib_row = tool(&report, "dylint-lib");
     assert_eq!(lib_row["installed"], true, "marker fixture must show installed=true");
     assert_eq!(
         lib_row["version"].as_str(),
-        Some("abi:verified"),
-        "marker fixture version must be abi:verified"
+        Some("abi:unverified"),
+        "marker fixture carries no rustc version stamp, so version must be abi:unverified"
     );
 
     let missing = report["missing_required"].as_array().expect("missing_required array");
     assert!(
-        !missing.iter().any(|n| n == "libtitania_dylint"),
+        !missing.iter().any(|n| n == "dylint-lib"),
         "marker fixture must not be in missing_required: {report:#}"
     );
 }
@@ -395,7 +395,7 @@ fn doctor_metadata_mode_reports_library_built_on_demand() {
 
     let report: Value =
         serde_json::from_str(&stdout).expect("doctor JSON must be parseable: {stdout}");
-    let lib_row = tool(&report, "libtitania_dylint");
+    let lib_row = tool(&report, "dylint-lib");
     assert_eq!(
         lib_row["installed"], true,
         "metadata mode must report dylint-lib as installed: {lib_row:#}"
@@ -407,7 +407,7 @@ fn doctor_metadata_mode_reports_library_built_on_demand() {
     );
     let missing = report["missing_required"].as_array().expect("missing_required must be an array");
     assert!(
-        !missing.iter().any(|n| n == "libtitania_dylint"),
+        !missing.iter().any(|n| n == "dylint-lib"),
         "metadata-mode dylint-lib must not be in missing_required: {report:#}"
     );
 }
@@ -449,7 +449,7 @@ fn doctor_no_metadata_and_no_lib_reports_abi_unknown() {
 
     let report: Value =
         serde_json::from_str(&stdout).expect("doctor JSON must be parseable: {stdout}");
-    let lib_row = tool(&report, "libtitania_dylint");
+    let lib_row = tool(&report, "dylint-lib");
     assert_eq!(
         lib_row["installed"], false,
         "no metadata + no lib must report installed=false: {lib_row:#}"
@@ -504,7 +504,7 @@ fn doctor_dylint_link_absent_no_prebuilt_lib_reports_missing() {
         "dylint-link must be in missing_required: {report:#}"
     );
 
-    let lib_row = tool(&report, "libtitania_dylint");
+    let lib_row = tool(&report, "dylint-lib");
     assert_eq!(
         lib_row["installed"], false,
         "lib must be installed=false when dylint-link is absent: {lib_row:#}"
@@ -540,15 +540,15 @@ fn doctor_prebuilt_lib_available_regardless_of_dylint_link() {
     let report: Value =
         serde_json::from_str(&stdout).expect("doctor JSON must be parseable: {stdout}");
 
-    let lib_row = tool(&report, "libtitania_dylint");
+    let lib_row = tool(&report, "dylint-lib");
     assert_eq!(
         lib_row["installed"], true,
         "prebuilt lib must report installed=true regardless of dylint-link: {lib_row:#}"
     );
     assert_eq!(
         lib_row["version"].as_str(),
-        Some("abi:verified"),
-        "prebuilt lib version must be abi:verified: {lib_row:#}"
+        Some("abi:unverified"),
+        "prebuilt fixture carries no rustc version stamp, so version must be abi:unverified: {lib_row:#}"
     );
 
     let missing = report["missing_required"].as_array().expect("missing_required array");
@@ -561,5 +561,85 @@ fn doctor_prebuilt_lib_available_regardless_of_dylint_link() {
     assert_eq!(
         dylint_link_row["required"], false,
         "dylint-link must not be required when prebuilt lib exists: {dylint_link_row:#}"
+    );
+}
+
+#[cfg(unix)]
+fn write_executable(dir: &std::path::Path, name: &str, body: &str) {
+    let path = dir.join(name);
+    std::fs::write(&path, body).expect("must write fake executable");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+        .expect("must chmod fake executable");
+}
+
+#[cfg(unix)]
+fn doctor_with_stamped_lib(lib_stamp: &str, rustc_line: &str) -> (i32, Value) {
+    let tmp = tempfile::tempdir().expect("must create temp dir");
+    let bin_dir = tmp.path();
+
+    write_executable(bin_dir, "cargo-dylint", "#!/bin/sh\necho \"cargo-dylint 0.0.0\"\n");
+    write_executable(bin_dir, "rustc", &format!("#!/bin/sh\necho \"{rustc_line}\"\n"));
+
+    let lib_bytes =
+        format!("\u{7f}ELF\0dylint_version\0register_lints\0rustc version {lib_stamp}\0");
+    std::fs::write(bin_dir.join("libtitania_dylint.so"), lib_bytes)
+        .expect("must write stamped fake lib");
+
+    let path = bin_dir.to_string_lossy();
+    let (code, stdout, stderr) =
+        run_with_path(&["doctor", "--scope", "edit", "--emit", "json"], Some(&path));
+    assert!(stderr.is_empty(), "doctor must not write stderr: {stderr}");
+    let report: Value = serde_json::from_str(&stdout).expect("doctor JSON must be parseable");
+    (code, report)
+}
+
+#[cfg(unix)]
+#[test]
+fn doctor_abi_verified_when_library_stamp_matches_active_rustc() {
+    let (_code, report) = doctor_with_stamped_lib(
+        "1.97.0-nightly (ca9a134e0 2026-04-26)",
+        "rustc 1.97.0-nightly (ca9a134e0 2026-04-26)",
+    );
+
+    let lib_row = tool(&report, "dylint-lib");
+    assert_eq!(
+        lib_row["installed"], true,
+        "stamp-matching lib must report installed=true: {lib_row:#}"
+    );
+    assert_eq!(
+        lib_row["version"].as_str(),
+        Some("abi:verified"),
+        "stamp-matching lib must earn abi:verified by real comparison: {lib_row:#}"
+    );
+    let missing = report["missing_required"].as_array().expect("missing_required array");
+    assert!(
+        !missing.iter().any(|n| n == "dylint-lib"),
+        "stamp-matching lib must not be in missing_required: {report:#}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn doctor_abi_mismatch_when_library_stamp_differs_from_active_rustc() {
+    let (code, report) = doctor_with_stamped_lib(
+        "1.97.0-nightly (ca9a134e0 2026-04-26)",
+        "rustc 1.85.0 (4d91de4e4 2025-02-17)",
+    );
+
+    assert_eq!(code, 3, "stamp-mismatched lib must exit 3");
+    let lib_row = tool(&report, "dylint-lib");
+    assert_eq!(
+        lib_row["installed"], false,
+        "stamp-mismatched lib must report installed=false: {lib_row:#}"
+    );
+    assert_eq!(
+        lib_row["version"].as_str(),
+        Some("abi:mismatch"),
+        "stamp-mismatched lib version must be abi:mismatch: {lib_row:#}"
+    );
+    let missing = report["missing_required"].as_array().expect("missing_required array");
+    assert!(
+        missing.iter().any(|n| n == "dylint-lib"),
+        "stamp-mismatched lib must be in missing_required: {report:#}"
     );
 }
