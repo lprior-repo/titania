@@ -413,7 +413,7 @@ fn bounded_for_with_question_passes() {
          for value in items {\n        \
          out.push(checked(*value)?);\n    }\n    \
          Ok(out)\n}\n\nconst fn checked(value: i32) -> Result<i32, &'static str> {\n    \
-         if value < 0 {\n        return Err(\"negative input\");\n    }\n    \
+         if value < 0_i32 {\n        return Err(\"negative input\");\n    }\n    \
          Ok(value)\n}\n",
     );
     std::fs::write(&lib, source).expect("bounded function must be appendable");
