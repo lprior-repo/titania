@@ -81,6 +81,12 @@ const CLIPPY_ARGS: &[&str] = &[
     "clippy::disallowed_types",
     "-D",
     "clippy::disallowed_fields",
+    "-A",
+    "clippy::missing_errors_doc",
+    "-A",
+    "clippy::missing_panics_doc",
+    "-A",
+    "clippy::missing_safety_doc",
 ];
 const TEST_ARGS: &[&str] = &["test", "--workspace", "--frozen", "--", "--test-threads=1"];
 const BUILD_ARGS: &[&str] = &["build", "--workspace", "--release", "--frozen"];
@@ -138,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn clippy_args_match_v1_section_9_2_exactly() {
+    fn clippy_args_match_canonical_gate_exactly() {
         let argv = args_for_lane(CargoLane::Clippy);
         assert_eq!(
             argv,
@@ -220,8 +226,33 @@ mod tests {
                 "clippy::disallowed_types",
                 "-D",
                 "clippy::disallowed_fields",
+                "-A",
+                "clippy::missing_errors_doc",
+                "-A",
+                "clippy::missing_panics_doc",
+                "-A",
+                "clippy::missing_safety_doc",
             ],
         );
+    }
+
+    fn assert_allow_pair(argv: &[&str], lint: &str) {
+        let marker = argv.iter().enumerate().find_map(|(idx, arg)| {
+            if *arg == lint && idx > 0 { argv.get(idx - 1).copied() } else { None }
+        });
+        assert!(marker == Some("-A"), "lint `{lint}` must be preceded by `-A`; got {:?}", argv,);
+    }
+
+    #[test]
+    fn clippy_args_allow_comment_free_doc_lints() {
+        let argv = args_for_lane(CargoLane::Clippy);
+        for lint in [
+            "clippy::missing_errors_doc",
+            "clippy::missing_panics_doc",
+            "clippy::missing_safety_doc",
+        ] {
+            assert_allow_pair(argv, lint);
+        }
     }
 
     #[test]
@@ -319,11 +350,12 @@ mod tests {
     }
 
     #[test]
-    fn clippy_args_have_exact_section_9_2_length() {
+    fn clippy_args_have_exact_canonical_gate_length() {
         let argv = args_for_lane(CargoLane::Clippy);
         const DENY_PAIRS: usize = 34;
+        const ALLOW_PAIRS: usize = 3;
         const CARGO_PREFIX: usize = 9;
-        assert_eq!(argv.len(), CARGO_PREFIX + 2 * DENY_PAIRS);
+        assert_eq!(argv.len(), CARGO_PREFIX + 2 * DENY_PAIRS + 2 * ALLOW_PAIRS);
     }
 
     #[test]

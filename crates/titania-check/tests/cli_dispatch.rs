@@ -753,9 +753,10 @@ fn h1_lane_failure_maps_to_internal_error() {
     let temp = package("h1_lane_failure", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
         .expect("temp package must be created");
 
-    let artifact_dir = temp.path().join(".titania").join("out").join("edit");
-    std::fs::create_dir_all(&artifact_dir).expect("artifact dir must be pre-created");
-    make_read_only(&artifact_dir);
+    let out_path = temp.path().join(".titania").join("out");
+    std::fs::create_dir_all(out_path.parent().expect("out path must have a parent"))
+        .expect(".titania dir must be pre-created");
+    std::fs::write(&out_path, b"").expect("out path must be a file, not a directory");
 
     let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "fmt"]);
     assert_eq!(
@@ -768,18 +769,6 @@ fn h1_lane_failure_maps_to_internal_error() {
     );
     assert!(!stderr.is_empty(), "Failure path must write a diagnostic to stderr, got empty stderr",);
 }
-
-#[cfg(unix)]
-fn make_read_only(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms =
-        std::fs::metadata(path).expect("readonly dir metadata must be readable").permissions();
-    perms.set_mode(0o555);
-    std::fs::set_permissions(path, perms).expect("dir must be made read-only");
-}
-
-#[cfg(not(unix))]
-fn make_read_only(_path: &Path) {}
 
 #[test]
 fn help_long_flag_prints_usage_and_exits_zero() {
