@@ -8,10 +8,15 @@ use titania_aggregate::{
     compute_evidence_digest, read_lane_artifacts,
 };
 use titania_core::{
-    Digest, GateScope, Lane, LaneOutcome, LaneReceipt, QualityReceipt, ReceiptDigests, Report,
-    ReportKind,
+    DiagnosticSeverity, Digest, GateScope, Lane, LaneOutcome, LaneReceipt, PolicyDiagnostic,
+    QualityReceipt, ReceiptDigests, Report, ReportKind, WorkspacePath,
 };
-use titania_policy::{PolicyDefaults, PolicyDigest};
+use titania_policy::{
+    ExceptionError, PolicyDefaults, PolicyDigest, ProfileError, parse_exceptions, parse_profile,
+};
+
+const POLICY_PROFILE_PATH: &str = ".titania/profiles/strict-ai/policy.toml";
+const POLICY_EXCEPTIONS_PATH: &str = ".titania/profiles/strict-ai/exceptions.toml";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReportJson {
@@ -119,11 +124,106 @@ pub(crate) fn report_json(
         .into_iter()
         .map(|(lane, outcome)| titania_core::PerLaneEntry::new(lane, outcome))
         .collect();
-    let report = assemble_report(scope, entries, receipt, Box::new([]), Box::new([]))?;
+    let diagnostics = policy_diagnostics(target_root)?;
+    let report = assemble_report(scope, entries, receipt, diagnostics, Box::new([]))?;
     let status = ReportStatus::from_report(&report);
     serde_json::to_string(&report)
         .map(|json| ReportJson { json, status })
         .map_err(AggregateError::Serialize)
+}
+
+fn policy_diagnostics(target_root: &Path) -> Result<Box<[PolicyDiagnostic]>, AggregateError> {
+    let profile_dir = target_root.join(".titania").join("profiles").join("strict-ai");
+    let mut diagnostics = Vec::new();
+    if let Some(diagnostic) = profile_file_diagnostic(&profile_dir)? {
+        diagnostics.push(diagnostic);
+    }
+    if let Some(diagnostic) = exceptions_file_diagnostic(target_root, &profile_dir)? {
+        diagnostics.push(diagnostic);
+    }
+    Ok(diagnostics.into_boxed_slice())
+}
+
+fn profile_file_diagnostic(profile_dir: &Path) -> Result<Option<PolicyDiagnostic>, AggregateError> {
+    let Some(content) = read_optional_text(&profile_dir.join("policy.toml"))? else {
+        return Ok(None);
+    };
+    Ok(parse_profile(&content).err().as_ref().map(profile_diagnostic))
+}
+
+fn exceptions_file_diagnostic(
+    target_root: &Path,
+    profile_dir: &Path,
+) -> Result<Option<PolicyDiagnostic>, AggregateError> {
+    let Some(content) = read_optional_text(&profile_dir.join("exceptions.toml"))? else {
+        return Ok(None);
+    };
+    let today = policy_today(target_root)?;
+    Ok(parse_exceptions(&content, &today).err().as_ref().map(exception_diagnostic))
+}
+
+fn profile_diagnostic(error: &ProfileError) -> PolicyDiagnostic {
+    PolicyDiagnostic::new(
+        format!("invalid strict-ai policy profile: {}", profile_error_detail(error)),
+        policy_file_path(POLICY_PROFILE_PATH),
+        DiagnosticSeverity::Error,
+    )
+}
+
+fn exception_diagnostic(error: &ExceptionError) -> PolicyDiagnostic {
+    PolicyDiagnostic::new(
+        format!("{}: {}", error.code(), exception_error_detail(error)),
+        policy_file_path(POLICY_EXCEPTIONS_PATH),
+        DiagnosticSeverity::Error,
+    )
+}
+
+fn policy_file_path(relative: &str) -> Option<WorkspacePath> {
+    WorkspacePath::new(relative).ok()
+}
+
+fn profile_error_detail(error: &ProfileError) -> String {
+    match error {
+        ProfileError::ParseError { message } => format!("{message}"),
+        ProfileError::MissingField { field } => format!("missing required field: {field}"),
+        ProfileError::InvalidField { field, message } => format!("{field}: {message}"),
+    }
+}
+
+fn exception_error_detail(error: &ExceptionError) -> String {
+    match error {
+        ExceptionError::ParseError { message } => format!("{message}"),
+        ExceptionError::MissingField { field } => format!("missing required field: {field}"),
+        ExceptionError::InvalidField { field, message } => format!("{field}: {message}"),
+        ExceptionError::ExceptionExpired { rule_id, expires_on, today } => {
+            format!("exception for rule {rule_id} expired on {expires_on} (today {today})")
+        }
+    }
+}
+
+fn policy_today(target_root: &Path) -> Result<String, AggregateError> {
+    let output = std::process::Command::new("date")
+        .arg("+%F")
+        .current_dir(target_root)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .map_err(|error| AggregateError::PolicyDate(error.to_string()))?;
+    if !output.status.success() {
+        return Err(AggregateError::PolicyDate(format!(
+            "date +%F exited with {status}",
+            status = output.status
+        )));
+    }
+    let text = String::from_utf8(output.stdout)
+        .map_err(|error| AggregateError::PolicyDate(error.to_string()))?
+        .trim()
+        .to_owned();
+    if text.is_empty() {
+        return Err(AggregateError::PolicyDate("date +%F produced empty stdout".to_owned()));
+    }
+    Ok(text)
 }
 
 #[derive(Debug)]
@@ -134,6 +234,7 @@ pub(crate) enum AggregateError {
     Serialize(serde_json::Error),
     Digest(std::io::Error),
     ToolchainProbe(String),
+    PolicyDate(String),
 }
 
 impl AggregateError {
@@ -146,6 +247,7 @@ impl AggregateError {
             Self::Serialize(error) => serialize_diagnostic(error),
             Self::Digest(error) => format!("InputError: aggregate digest failed: {error}"),
             Self::ToolchainProbe(error) => toolchain_probe_diagnostic(error),
+            Self::PolicyDate(error) => format!("InternalError: policy date probe failed: {error}"),
         }
     }
 }
