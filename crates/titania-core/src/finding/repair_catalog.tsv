@@ -8,6 +8,7 @@ FUNC_WILDCARD_IMPORT	ast-grep	Informational	—	use $PATH::*	Reports wildcard im
 FUNC_UNWRAP_USED	dylint	Reject	RequiresHumanReview	unwrap()	Rejects panic-prone unwrap calls in production source.
 FUNC_EXPECT_USED	dylint	Reject	RequiresHumanReview	expect(...)	Rejects panic-prone expect calls in production source.
 FUNC_UNWRAP_OR	ast-grep+dylint	Reject	RequiresHumanReview	unwrap_or / unwrap_or_else / unwrap_or_default	Rejects hidden default recovery through unwrap_or variants.
+FUNC_RESULT_OK	dylint	Reject	RequiresHumanReview	.ok()	Rejects .ok() erasure of typed errors in production source.
 FUNC_RESULT_STRING	ast-grep	Reject	RequiresHumanReview	Result<T, String>	Rejects stringly typed core errors.
 BYPASS_ALLOW_ATTR	ast-grep	Reject	RemoveAllowAttribute	#[allow(...)]	Rejects item-level allow suppressions.
 BYPASS_EXPECT_ATTR	ast-grep	Reject	RemoveAllowAttribute	#[expect(...)]	Rejects item-level expect suppressions.

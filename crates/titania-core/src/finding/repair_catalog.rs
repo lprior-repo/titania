@@ -88,8 +88,8 @@ mod tests {
     fn catalog_parses_to_expected_row_count() {
         assert_eq!(
             catalog_rows().len(),
-            82,
-            "catalog row count drifted from 82; update catalog_parses_to_expected_row_count"
+            83,
+            "catalog row count drifted from 83; update catalog_parses_to_expected_row_count"
         );
     }
 

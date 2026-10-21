@@ -24,6 +24,14 @@ expires_on = "2027-04-16"
 review = "tn-mudh"
 
 [[exceptions]]
+rule_id = "DENY_ADVISORY"
+path = "deny.toml"
+owner = "titania-maintainers"
+reason = "cargo-deny ignore for RUSTSEC-2024-0436 (paste 1.0.15 flagged unmaintained; a warning, not a vulnerability). paste reaches this workspace only transitively via dylint_linting 6.0.1 into crates/titania-dylint and is a build-time proc-macro helper with no runtime presence in the shipped titania-check binary; dylint_linting 6.0.1, pinned by nightly-2026-04-27, offers no maintained alternative and the dependency cannot be removed without dropping the dylint lane. Registered 2026-10-21 per §9.8 so the deny.toml suppression is no longer invisible; revisit when dylint_linting drops its paste dependency."
+expires_on = "2027-04-16"
+review = "audit-2026-10-21"
+
+[[exceptions]]
 rule_id = "BOUNDED_EXECUTION_UNBOUNDED_LOOP"
 path = "crates/titania-core/src/kani.rs"
 owner = "titania-maintainers"

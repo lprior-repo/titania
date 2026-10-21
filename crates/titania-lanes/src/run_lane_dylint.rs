@@ -17,6 +17,7 @@ const DYLINT_RULE_IDS: &[&str] = &[
     "FUNC_UNWRAP_USED",
     "FUNC_EXPECT_USED",
     "FUNC_UNWRAP_OR",
+    "FUNC_RESULT_OK",
     "BOUNDED_EXECUTION_UNBOUNDED_LOOP",
     "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR",
     "HOLZMAN_PANIC_PANIC",
@@ -400,6 +401,33 @@ mod tests {
         let rule_ids =
             findings.iter().map(|finding| finding.rule_id().as_str()).collect::<Vec<_>>();
         assert_eq!(rule_ids, vec!["BYPASS_INTERNAL_UNSAFE", "BYPASS_REQUIRED_LINT_WEAKENING"]);
+    }
+
+    #[test]
+    fn result_ok_output_becomes_typed_finding() {
+        let target = current_target_project().expect("test target project must resolve");
+        let output = mock_output(
+            1,
+            b"",
+            b"warning: FUNC_RESULT_OK: replace ok() erasure with explicit typed error handling\n  --> src/lib.rs:9:1\n",
+        )
+        .expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output);
+
+        let LaneOutcome::Findings { findings } = outcome else {
+            panic!("FUNC_RESULT_OK output must become findings, not a suspicious failure");
+        };
+        assert_eq!(findings.len(), 1);
+        let first = findings.first().expect("one finding must exist");
+        assert_eq!(first.rule_id().as_str(), "FUNC_RESULT_OK");
+        assert!(first.is_reject(), "FUNC_RESULT_OK must carry the Reject effect");
+        assert_eq!(
+            first.repair().class(),
+            titania_core::RepairHintClass::RequiresHumanReview,
+            "FUNC_RESULT_OK must resolve to its catalog repair hint, not an unmapped fallback"
+        );
+        assert!(first.location().is_span(), "Dylint arrow location must become a span");
     }
 
     #[test]
