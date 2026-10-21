@@ -152,7 +152,10 @@ fn diagnostic_message(fields: &Value) -> String {
 
 fn rule_for_diagnostic(fields: &Value, message: &str) -> Option<RuleId> {
     let code = fields.get("code").and_then(Value::as_str);
-    RuleId::new(rule_name(code, message)).ok()
+    let Ok(rule) = RuleId::new(rule_name(code, message)) else {
+        return None;
+    };
+    Some(rule)
 }
 
 fn rule_name(code: Option<&str>, message: &str) -> &'static str {
@@ -194,11 +197,17 @@ fn label_span(label: &Value) -> String {
 }
 
 fn label_line(label: &Value) -> u32 {
-    label
-        .get("line")
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-        .map_or(0, |value| value)
+    let Some(raw) = label.get("line").and_then(Value::as_u64) else {
+        return 0;
+    };
+    fit_line(raw)
+}
+
+fn fit_line(raw: u64) -> u32 {
+    let Ok(line) = u32::try_from(raw) else {
+        return 0;
+    };
+    line
 }
 
 fn suspicious_candidate(is_clean: bool, malformed_lines: usize) -> Option<LaneFailure> {
@@ -210,10 +219,9 @@ fn suspicious_candidate(is_clean: bool, malformed_lines: usize) -> Option<LaneFa
 
 fn single_finding_report(rule: &str, path: &str, line: u32, message: &str) -> LaneReport {
     let mut report = LaneReport::new();
-    RuleId::new(rule)
-        .ok()
-        .map(|rule_id| Finding::new(rule_id, path, line, message.to_owned()))
-        .into_iter()
-        .for_each(|finding| report.push(finding));
+    let Ok(rule_id) = RuleId::new(rule) else {
+        return report;
+    };
+    report.push(Finding::new(rule_id, path, line, message.to_owned()));
     report
 }

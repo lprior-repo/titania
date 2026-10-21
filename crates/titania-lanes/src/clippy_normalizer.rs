@@ -139,11 +139,17 @@ fn lint_code(message: &Value) -> Option<&str> {
 
 fn rule_for_lint(raw: &str, message: &Value) -> Option<RuleId> {
     let lint = normalized_lint_name(raw);
-    is_unknown_lint_message(message)
-        .then(|| RuleId::new(CLIPPY_UNKNOWN).ok())
-        .flatten()
-        .or_else(|| typed_rule(&lint))
-        .or_else(|| RuleId::new(CLIPPY_UNKNOWN).ok())
+    if is_unknown_lint_message(message) {
+        return unknown_rule();
+    }
+    typed_rule(&lint).or_else(unknown_rule)
+}
+
+fn unknown_rule() -> Option<RuleId> {
+    let Ok(rule) = RuleId::new(CLIPPY_UNKNOWN) else {
+        return None;
+    };
+    Some(rule)
 }
 
 fn is_unknown_lint_message(message: &Value) -> bool {
@@ -159,7 +165,10 @@ fn normalized_lint_name(raw: &str) -> String {
 }
 
 fn typed_rule(lint: &str) -> Option<RuleId> {
-    RuleId::new(&format!("CLIPPY_{}", lint.to_ascii_uppercase())).ok()
+    let Ok(rule) = RuleId::new(&format!("CLIPPY_{}", lint.to_ascii_uppercase())) else {
+        return None;
+    };
+    Some(rule)
 }
 
 fn message_location(message: &Value) -> (String, u32) {
@@ -187,10 +196,17 @@ fn span_file_name(span: &Value) -> String {
 }
 
 fn span_line(span: &Value) -> u32 {
-    span.get("line_start")
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-        .map_or(0, |value| value)
+    let Some(raw) = span.get("line_start").and_then(Value::as_u64) else {
+        return 0;
+    };
+    fit_line(raw)
+}
+
+fn fit_line(raw: u64) -> u32 {
+    let Ok(line) = u32::try_from(raw) else {
+        return 0;
+    };
+    line
 }
 
 fn message_text(message: &Value, lint: &str) -> String {

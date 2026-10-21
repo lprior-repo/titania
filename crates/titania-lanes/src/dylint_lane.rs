@@ -73,7 +73,12 @@ pub fn probe_dylint_toolchain(target: &TargetProject) -> DylintProbe {
         return unavailable_probe("cargo-dylint", String::from("subcommand unavailable"));
     }
 
-    match probe_libtitania_dylint(target) {
+    let probe = match probe_libtitania_dylint(target) {
+        Ok(probe) => probe,
+        Err(failure) => return infra_probe(failure),
+    };
+
+    match probe {
         LibraryProbe::Compatible(load) => DylintProbe::Ready(load),
         LibraryProbe::Absent => unavailable_probe(
             LIB_TITANIA_DYLINT,
@@ -95,12 +100,13 @@ enum LibraryProbe {
     Incompatible { path: std::path::PathBuf, reason: String },
 }
 
-fn probe_libtitania_dylint(target: &TargetProject) -> LibraryProbe {
-    resolve_libtitania_dylint(
+fn probe_libtitania_dylint(target: &TargetProject) -> Result<LibraryProbe, LaneFailure> {
+    let sibling_path = sibling_library_path()?;
+    Ok(resolve_libtitania_dylint(
         env_library_path(),
         workspace_metadata_dylint_configured(target.as_std_path()),
-        sibling_library_path(),
-    )
+        sibling_path,
+    ))
 }
 
 fn resolve_libtitania_dylint(
@@ -223,10 +229,17 @@ fn strip_dynamic_library_extension(segment: &str) -> &str {
     segment
 }
 
-fn sibling_library_path() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
-    dylint_library_names().into_iter().map(|name| dir.join(name)).find(|path| path.is_file())
+fn sibling_library_path() -> Result<Option<PathBuf>, LaneFailure> {
+    let exe = std::env::current_exe().map_err(|error| LaneFailure::Infra {
+        tool: String::from(LIB_TITANIA_DYLINT),
+        reason: format!(
+            "cannot determine current executable for dylint sibling library lookup: {error}"
+        ),
+    })?;
+    let Some(dir) = exe.parent() else {
+        return Ok(None);
+    };
+    Ok(dylint_library_names().into_iter().map(|name| dir.join(name)).find(|path| path.is_file()))
 }
 
 fn dylint_library_names() -> [String; 3] {
@@ -284,15 +297,35 @@ pub(crate) fn path_needs_staging(path: &Path) -> bool {
     path.file_name().and_then(|name| name.to_str()).is_none_or(|name| !name.contains('@'))
 }
 
-fn active_toolchain_string(target: &TargetProject) -> Option<String> {
+fn active_toolchain_string(target: &TargetProject) -> Result<String, LaneFailure> {
     let output = crate::command::CommandIn::new(target, "rustup")
         .and_then(|mut cmd| cmd.inherit_env().args(&["show", "active-toolchain"]).run_capture_raw())
-        .ok()?;
+        .map_err(|error| LaneFailure::Infra {
+            tool: String::from(LIB_TITANIA_DYLINT),
+            reason: format!(
+                "cannot run rustup show active-toolchain for dylint library staging: {error}"
+            ),
+        })?;
     if !output.success() {
-        return None;
+        return Err(LaneFailure::Infra {
+            tool: String::from(LIB_TITANIA_DYLINT),
+            reason: String::from(
+                "rustup show active-toolchain reported failure for dylint library staging",
+            ),
+        });
     }
-    let stdout = output.stdout_str().ok()?;
-    stdout.split_ascii_whitespace().next().map(str::to_owned)
+    let stdout = output.stdout_str().map_err(|error| LaneFailure::Infra {
+        tool: String::from(LIB_TITANIA_DYLINT),
+        reason: format!(
+            "rustup show active-toolchain output is not UTF-8 for dylint library staging: {error}"
+        ),
+    })?;
+    stdout.split_ascii_whitespace().next().map(str::to_owned).ok_or_else(|| LaneFailure::Infra {
+        tool: String::from(LIB_TITANIA_DYLINT),
+        reason: String::from(
+            "rustup show active-toolchain produced empty output for dylint library staging",
+        ),
+    })
 }
 
 fn toolchain_library_filename(toolchain: &str) -> String {
@@ -328,13 +361,7 @@ impl DylintLibStaging {
     }
 
     pub(crate) fn stage(source: &Path, target: &TargetProject) -> Result<Self, LaneFailure> {
-        let toolchain = active_toolchain_string(target).ok_or_else(|| LaneFailure::Infra {
-            tool: String::from(LIB_TITANIA_DYLINT),
-            reason: String::from(
-                "cannot determine active rust toolchain (rustup show active-toolchain failed) \
-                 for dylint library staging",
-            ),
-        })?;
+        let toolchain = active_toolchain_string(target)?;
         let dir = create_staging_dir().ok_or_else(|| LaneFailure::Infra {
             tool: String::from(LIB_TITANIA_DYLINT),
             reason: String::from("cannot create temp directory for dylint library staging"),
@@ -354,13 +381,15 @@ impl Drop for DylintLibStaging {
     }
 }
 
-fn unavailable_probe(tool: &str, reason: String) -> DylintProbe {
-    let failure = LaneFailure::Infra { tool: tool.to_owned(), reason };
-
-    match infra_report(tool) {
+fn infra_probe(failure: LaneFailure) -> DylintProbe {
+    match infra_report(failure.tool()) {
         Ok(report) => DylintProbe::Infra(failure, report),
         Err(report_failure) => DylintProbe::Infra(report_failure, LaneReport::new()),
     }
+}
+
+fn unavailable_probe(tool: &str, reason: String) -> DylintProbe {
+    infra_probe(LaneFailure::Infra { tool: tool.to_owned(), reason })
 }
 
 fn infra_report(tool: &str) -> Result<LaneReport, LaneFailure> {

@@ -218,5 +218,8 @@ fn is_sccache_wrapper(value: &str) -> bool {
 }
 
 pub(crate) fn real_env(name: &str) -> Option<String> {
-    std::env::var(name).ok()
+    let Ok(value) = std::env::var(name) else {
+        return None;
+    };
+    Some(value)
 }

@@ -130,7 +130,10 @@ fn undiscovered_proof_failure(
 }
 
 fn ok_ref(outcome: &Result<String, AuditFailure>) -> Option<String> {
-    outcome.as_ref().ok().cloned()
+    let Ok(value) = outcome else {
+        return None;
+    };
+    Some(value.clone())
 }
 
 fn err_val(outcome: Result<String, AuditFailure>) -> Option<AuditFailure> {

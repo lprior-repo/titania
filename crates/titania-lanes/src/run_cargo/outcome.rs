@@ -1,5 +1,7 @@
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
+#[cfg(unix)]
+use titania_core::FailureError;
 
 use titania_core::{
     CommandEvidence, Digest, Finding as CoreFinding, LaneEvidence, Location, ProcessTermination,
@@ -63,10 +65,13 @@ pub(super) fn process_termination(status: std::process::ExitStatus) -> ProcessTe
 
 #[cfg(unix)]
 fn termination_from_signal(status: std::process::ExitStatus) -> ProcessTermination {
-    status
-        .signal()
-        .and_then(|signal| ProcessTermination::signaled(signal).ok())
-        .map_or(ProcessTermination::SpawnFailed, std::convert::identity)
+    let Some(signal) = status.signal() else {
+        return ProcessTermination::SpawnFailed;
+    };
+    match ProcessTermination::signaled(signal) {
+        Ok(termination) => termination,
+        Err(FailureError::InvalidSignal(_)) => ProcessTermination::SpawnFailed,
+    }
 }
 
 #[cfg(not(unix))]

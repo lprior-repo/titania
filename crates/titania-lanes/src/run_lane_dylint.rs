@@ -273,7 +273,9 @@ fn parse_diagnostic_location(target: &TargetProject, line: &str) -> Option<Diagn
 fn parse_colon_location(target: &TargetProject, text: &str) -> Option<DiagnosticLocation> {
     let (path_and_line, _column) = text.rsplit_once(':')?;
     let (path, line_text) = path_and_line.rsplit_once(':')?;
-    let line = line_text.parse::<u32>().ok()?;
+    let Ok(line) = line_text.parse::<u32>() else {
+        return None;
+    };
     Some(DiagnosticLocation { path: relative_output_path(target.as_std_path(), path), line })
 }
 
@@ -282,11 +284,10 @@ fn relative_output_path(root: &Path, path: &str) -> String {
     if !candidate.is_absolute() {
         return path.to_owned();
     }
-    candidate
-        .strip_prefix(root)
-        .ok()
-        .and_then(Path::to_str)
-        .map_or_else(|| path.to_owned(), ToOwned::to_owned)
+    let Ok(stripped) = candidate.strip_prefix(root) else {
+        return path.to_owned();
+    };
+    stripped.to_str().map_or_else(|| path.to_owned(), ToOwned::to_owned)
 }
 
 fn failure_evidence(output: &CommandOutput) -> String {

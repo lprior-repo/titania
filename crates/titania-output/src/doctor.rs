@@ -173,12 +173,13 @@ fn probe_version(bin_path: &Path) -> Option<String> {
 }
 
 fn probe_version_arg(bin_path: &Path, arg: &str) -> Option<String> {
-    std::process::Command::new(bin_path)
-        .arg(arg)
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .and_then(|output| extract_version(&String::from_utf8_lossy(&output.stdout)))
+    let Ok(output) = std::process::Command::new(bin_path).arg(arg).output() else {
+        return None;
+    };
+    if !output.status.success() {
+        return None;
+    }
+    extract_version(&String::from_utf8_lossy(&output.stdout))
 }
 
 fn clean_version_token(token: &str) -> String {
@@ -238,8 +239,10 @@ fn installed_cargo_dylint_row(required: bool, path: &Path) -> ToolRow {
 }
 
 fn probe_cargo_subcommand_version(subcommand: &str) -> Option<String> {
-    let output =
-        std::process::Command::new("cargo").arg(subcommand).arg("--version").output().ok()?;
+    let Ok(output) = std::process::Command::new("cargo").arg(subcommand).arg("--version").output()
+    else {
+        return None;
+    };
     if !output.status.success() {
         return None;
     }

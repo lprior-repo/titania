@@ -16,7 +16,11 @@ pub(super) fn build_new_survivors(
     workspace_root: &Path,
     now_unix: u64,
 ) -> Result<Vec<NewSurvivor>, MutantsLaneError> {
-    let baseline = load_baseline(&super::baseline::baseline_path(workspace_root)).ok();
+    let baseline = match load_baseline(&super::baseline::baseline_path(workspace_root)) {
+        Ok(loaded) => Some(loaded),
+        Err(MutantsLaneError::BaselineMissing(_)) => None,
+        Err(error) => return Err(error),
+    };
     survivor_names
         .iter()
         .map(|mutation_id| {
