@@ -78,22 +78,15 @@ pub(crate) fn tasks_for_scope(scope: GateScope) -> Vec<&'static str> {
     if includes_release(scope) {
         tasks.extend_from_slice(RELEASE_TASKS);
     }
-    if includes_full(scope) {
-        tasks.extend_from_slice(FULL_TASKS);
-    }
     tasks
 }
 
 const fn includes_prepush(scope: GateScope) -> bool {
-    matches!(scope, GateScope::Prepush | GateScope::Release | GateScope::Full)
+    matches!(scope, GateScope::Prepush | GateScope::Release)
 }
 
 const fn includes_release(scope: GateScope) -> bool {
-    matches!(scope, GateScope::Release | GateScope::Full)
-}
-
-const fn includes_full(scope: GateScope) -> bool {
-    matches!(scope, GateScope::Full)
+    matches!(scope, GateScope::Release)
 }
 
 const EDIT_TASKS: &[&str] = &[
@@ -109,8 +102,6 @@ const EDIT_TASKS: &[&str] = &[
 const PREPUSH_TASKS: &[&str] = &[":titania-test", ":titania-deny"];
 
 const RELEASE_TASKS: &[&str] = &[":titania-build"];
-
-const FULL_TASKS: &[&str] = &[":titania-kani", ":titania-mutants"];
 
 const TIMEOUT_ENV: &str = "TITANIA_MOON_TIMEOUT_SECS";
 const DEFAULT_TIMEOUT_SECS: u64 = 600;

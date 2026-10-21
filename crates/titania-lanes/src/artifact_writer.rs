@@ -30,7 +30,7 @@ pub fn write_lane_artifact(
 ) -> Result<PathBuf, ArtifactWriterError> {
     validate_target_root(target_root)?;
 
-    let artifact_dir = target_root.join(".titania").join("out").join(scope_dir(scope));
+    let artifact_dir = target_root.join(".titania").join("out").join(scope.name());
     fs::create_dir_all(&artifact_dir)
         .map_err(|source| ArtifactWriterError::CreateDir { path: artifact_dir.clone(), source })?;
 
@@ -60,15 +60,6 @@ fn validate_target_root(target_root: &Path) -> Result<(), ArtifactWriterError> {
         Ok(())
     } else {
         Err(ArtifactWriterError::TargetRootNotDirectory { path: target_root.to_path_buf() })
-    }
-}
-
-const fn scope_dir(scope: GateScope) -> &'static str {
-    match scope {
-        GateScope::Edit => "edit",
-        GateScope::Prepush => "prepush",
-        GateScope::Release => "release",
-        GateScope::Full => "full",
     }
 }
 

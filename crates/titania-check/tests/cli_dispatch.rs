@@ -20,7 +20,7 @@ USAGE:
     titania-check setup-hermetic            Create hermetic CARGO_HOME / RUSTUP_HOME symlinks.
 
 OPTIONS:
-    --scope <edit|prepush|release|full>     Gate scope (default: edit).
+    --scope <edit|prepush|release>          Gate scope (default: edit).
     --emit <json>                           Check/aggregate output (default: json); doctor accepts json|human (default: human).
     --out <path>                            Write report to file instead of stdout.
     --version, -V                           Print version and git SHA, then exit 0.
@@ -243,7 +243,7 @@ fn cli_args_unknown_scope_rejected() {
     assert_input_error(code, &stdout, &stderr);
     assert_eq!(
         stderr,
-        "InputError: unknown scope 'definitely-unknown-scope'; expected one of: edit, prepush, release, full\n"
+        "InputError: unknown scope 'definitely-unknown-scope'; expected one of: edit, prepush, release\n"
     );
 }
 
@@ -251,7 +251,7 @@ fn cli_args_unknown_scope_rejected() {
 fn aggregate_missing_scope_lists_accepted_spellings() {
     let (code, stdout, stderr) = run(&["aggregate"]);
     assert_input_error(code, &stdout, &stderr);
-    assert_eq!(stderr, "InputError: aggregate requires --scope <edit|prepush|release|full>\n");
+    assert_eq!(stderr, "InputError: aggregate requires --scope <edit|prepush|release>\n");
 }
 
 #[cfg(unix)]

@@ -344,7 +344,7 @@ fn doctor_unknown_scope_remains_input_error() {
     assert!(stdout.is_empty(), "unknown scope must not write stdout: {stdout}");
     assert_eq!(
         stderr,
-        "InputError: unknown scope 'definitely-unknown-scope'; expected one of: edit, prepush, release, full\n"
+        "InputError: unknown scope 'definitely-unknown-scope'; expected one of: edit, prepush, release\n"
     );
 }
 

@@ -1,9 +1,9 @@
 use core::str::FromStr;
 
 use crate::{
-    CommandEvidence, Digest, Finding, GateScope, KANI_HARNESS_ID_MAX_LEN, KaniHarnessId,
-    KaniHarnessIdError, Lane, LaneDigest, LaneEvidence, LaneFailure, LaneName, LaneOutcome,
-    Location, MutantBaselineEntry, MutantId, MutantOperator, MutantsBaseline, ProcessTermination,
+    CommandEvidence, Digest, Finding, KANI_HARNESS_ID_MAX_LEN, KaniHarnessId, KaniHarnessIdError,
+    Lane, LaneDigest, LaneEvidence, LaneFailure, LaneName, LaneOutcome, Location,
+    MutantBaselineEntry, MutantId, MutantOperator, MutantsBaseline, ProcessTermination,
     ReceiptError, ReceiptLaneExit, RecordedTargetRoot, RepairHint, RuleId, SkipReason,
     WorkspacePath,
 };
@@ -271,15 +271,30 @@ fn bounded_kani_lane_name(lane: Lane) -> String {
     name
 }
 
+const ALL_LANES: [Lane; 12] = [
+    Lane::Fmt,
+    Lane::Compile,
+    Lane::Clippy,
+    Lane::AstGrep,
+    Lane::Dylint,
+    Lane::PanicScan,
+    Lane::PolicyScan,
+    Lane::Test,
+    Lane::Deny,
+    Lane::Build,
+    Lane::Kani,
+    Lane::Mutants,
+];
+
 #[kani::proof]
 #[kani::unwind(32)]
 fn kani_kani_lane_name_roundtrip() {
-    kani::assert(!GateScope::Full.lanes().is_empty(), "full scope exposes at least one lane");
-    GateScope::Full.lanes().iter().for_each(|lane| {
+    kani::assert(!ALL_LANES.is_empty(), "the lane catalog is non-empty");
+    ALL_LANES.iter().for_each(|lane| {
         let harness_name = bounded_kani_lane_name(*lane);
         kani::assert(
             harness_name.len() <= KANI_ID_CONTRACT_BOUND,
-            "every full-scope lane maps to a bounded Kani-style name",
+            "every lane maps to a bounded Kani-style name",
         );
         kani::assert(
             harness_name
@@ -292,14 +307,14 @@ fn kani_kani_lane_name_roundtrip() {
                 identifier.as_str() == harness_name,
                 "the production constructor accepts and preserves the mapped lane name",
             ),
-            Err(_) => kani::assert(false, "every full-scope mapped lane name must be accepted"),
+            Err(_) => kani::assert(false, "every mapped lane name must be accepted"),
         }
         kani::assert(
             Lane::from_str(lane.name()) == Ok(*lane),
             "the production lane name parses back to the same lane",
         );
-        kani::cover!(*lane == Lane::Kani, "the Full scope reaches Lane::Kani");
-        kani::cover!(*lane == Lane::Mutants, "the Full scope reaches Lane::Mutants");
+        kani::cover!(*lane == Lane::Kani, "the lane catalog reaches Lane::Kani");
+        kani::cover!(*lane == Lane::Mutants, "the lane catalog reaches Lane::Mutants");
     });
 }
 

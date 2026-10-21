@@ -113,7 +113,7 @@ impl CliError {
             Self::UnknownFlag(value) => format!("InputError: unknown flag '{value}'"),
             Self::MissingValue(flag) => format!("InputError: missing value for {flag}"),
             Self::UnknownScope(value) => format!(
-                "InputError: unknown scope '{value}'; expected one of: edit, prepush, release, full"
+                "InputError: unknown scope '{value}'; expected one of: edit, prepush, release"
             ),
             Self::UnknownEmit(value) => format!("InputError: unknown emit format '{value}'"),
             Self::UnknownLane(value) => format!(
@@ -167,7 +167,7 @@ fn diagnostic_rule_id(value: &str, reason: &str) -> String {
 }
 
 fn diagnostic_aggregate_scope_required() -> String {
-    String::from("InputError: aggregate requires --scope <edit|prepush|release|full>")
+    String::from("InputError: aggregate requires --scope <edit|prepush|release>")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -218,7 +218,7 @@ USAGE:
     titania-check setup-hermetic            Create hermetic CARGO_HOME / RUSTUP_HOME symlinks.
 
 OPTIONS:
-    --scope <edit|prepush|release|full>     Gate scope (default: edit).
+    --scope <edit|prepush|release>          Gate scope (default: edit).
     --emit <json>                           Check/aggregate output (default: json); doctor accepts json|human (default: human).
     --out <path>                            Write report to file instead of stdout.
     --version, -V                           Print version and git SHA, then exit 0.

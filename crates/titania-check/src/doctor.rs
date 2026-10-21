@@ -28,7 +28,7 @@ pub fn render_human(report: &DoctorReport) -> String {
     let rows = report.tools.iter().map(|tool| to_human_row(report.scope, tool)).collect::<String>();
     format!(
         "titania-check doctor — scope: {scope}\n\n{header}{rows}\nStatus: {status}\n",
-        scope = scope_name(report.scope),
+        scope = report.scope.name(),
         header = format_headers(),
         status = report.status.as_str(),
     )
@@ -97,7 +97,7 @@ pub fn render_json(report: &DoctorReport) -> String {
         .map(|name| serde_json::Value::String(name.clone()))
         .collect::<Vec<_>>();
     let root = serde_json::Map::from_iter([
-        ("scope".to_owned(), serde_json::Value::String(scope_name(report.scope).to_owned())),
+        ("scope".to_owned(), serde_json::Value::String(report.scope.name().to_owned())),
         ("tools".to_owned(), serde_json::Value::Array(tools)),
         ("missing_required".to_owned(), serde_json::Value::Array(missing)),
         ("status".to_owned(), serde_json::Value::String(report.status.as_str().to_owned())),
@@ -121,13 +121,4 @@ fn to_json_row(tool: &ToolRow) -> serde_json::Value {
         ("path".to_owned(), path),
     ]);
     serde_json::Value::Object(row)
-}
-
-const fn scope_name(scope: GateScope) -> &'static str {
-    match scope {
-        GateScope::Edit => "edit",
-        GateScope::Prepush => "prepush",
-        GateScope::Release => "release",
-        GateScope::Full => "full",
-    }
 }

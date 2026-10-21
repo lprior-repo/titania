@@ -21,7 +21,7 @@ pub enum ReaderError {
 pub type ReaderResult = Result<Vec<(Lane, LaneOutcome)>, ReaderError>;
 
 pub fn read_lane_artifacts(target_root: &Path, scope: GateScope) -> ReaderResult {
-    let scope_dir: &'static str = scope_dir(scope);
+    let scope_dir: &'static str = scope.name();
     let out_dir = artifact_dir(target_root, scope_dir);
     let expected: &[Lane] = scope.lanes();
     let scoped_lanes = scoped_lane_set(scope);
@@ -201,15 +201,6 @@ fn missing_lane_outcome(lane: Lane) -> LaneOutcome {
             tool: lane.name().to_owned(),
             reason: "output file missing".to_owned(),
         },
-    }
-}
-
-const fn scope_dir(scope: GateScope) -> &'static str {
-    match scope {
-        GateScope::Edit => "edit",
-        GateScope::Prepush => "prepush",
-        GateScope::Release => "release",
-        GateScope::Full => "full",
     }
 }
 

@@ -196,7 +196,7 @@ fn link_if_needed(target: &std::path::Path, link: &std::path::Path) -> Result<()
 }
 
 fn clear_scope_outputs(target_root: &std::path::Path, scope: GateScope) -> Result<(), io::Error> {
-    let out_dir = target_root.join(".titania").join("out").join(scope_dir(scope));
+    let out_dir = target_root.join(".titania").join("out").join(scope.name());
     scope.lanes().iter().try_for_each(|lane| remove_lane_artifact(&out_dir, *lane))
 }
 
@@ -205,15 +205,6 @@ fn remove_lane_artifact(out_dir: &std::path::Path, lane: Lane) -> Result<(), io:
         Ok(()) => Ok(()),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
-    }
-}
-
-const fn scope_dir(scope: GateScope) -> &'static str {
-    match scope {
-        GateScope::Edit => "edit",
-        GateScope::Prepush => "prepush",
-        GateScope::Release => "release",
-        GateScope::Full => "full",
     }
 }
 
@@ -252,7 +243,7 @@ fn emit_hermetic_hint() {
 
 fn policy_scan_has_env_bypass(target_root: &std::path::Path, scope: GateScope) -> bool {
     let artifact =
-        target_root.join(".titania").join("out").join(scope_dir(scope)).join("policy-scan.json");
+        target_root.join(".titania").join("out").join(scope.name()).join("policy-scan.json");
     let Ok(content) = std::fs::read_to_string(&artifact) else {
         return false;
     };

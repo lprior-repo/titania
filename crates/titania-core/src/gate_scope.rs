@@ -3,11 +3,11 @@ use serde::{Deserialize, Serialize};
 use crate::{error::GateScopeError, lane::Lane};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum GateScope {
     Edit,
     Prepush,
     Release,
-    Full,
 }
 
 const EDIT_LANES: &[Lane] = &[
@@ -19,21 +19,6 @@ const EDIT_LANES: &[Lane] = &[
     Lane::PanicScan,
     Lane::PolicyScan,
 ];
-const FULL_LANES: &[Lane] = &[
-    Lane::Fmt,
-    Lane::Compile,
-    Lane::Clippy,
-    Lane::AstGrep,
-    Lane::Dylint,
-    Lane::PanicScan,
-    Lane::PolicyScan,
-    Lane::Test,
-    Lane::Deny,
-    Lane::Build,
-    Lane::Kani,
-    Lane::Mutants,
-];
-
 const PREPUSH_LANES: &[Lane] = &[
     Lane::Fmt,
     Lane::Compile,
@@ -61,12 +46,20 @@ const RELEASE_LANES: &[Lane] = &[
 
 impl GateScope {
     #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Edit => "edit",
+            Self::Prepush => "prepush",
+            Self::Release => "release",
+        }
+    }
+
+    #[must_use]
     pub const fn lanes(self) -> &'static [Lane] {
         match self {
             Self::Edit => EDIT_LANES,
             Self::Prepush => PREPUSH_LANES,
             Self::Release => RELEASE_LANES,
-            Self::Full => FULL_LANES,
         }
     }
 }
@@ -79,7 +72,6 @@ impl core::str::FromStr for GateScope {
             "edit" => Ok(Self::Edit),
             "prepush" => Ok(Self::Prepush),
             "release" => Ok(Self::Release),
-            "full" => Ok(Self::Full),
             _ => Err(GateScopeError::UnknownScope(s.to_owned())),
         }
     }
