@@ -371,12 +371,18 @@ const fn simple_escape(character: char) -> Option<char> {
     }
 }
 
-fn parse_hex_byte(digits: &str) -> Option<u8> {
-    u8::from_str_radix(digits, 16).ok()
+const fn parse_hex_byte(digits: &str) -> Option<u8> {
+    let Ok(byte) = u8::from_str_radix(digits, 16) else {
+        return None;
+    };
+    Some(byte)
 }
 
-fn parse_hex_codepoint(digits: &str) -> Option<u32> {
-    u32::from_str_radix(digits, 16).ok()
+const fn parse_hex_codepoint(digits: &str) -> Option<u32> {
+    let Ok(codepoint) = u32::from_str_radix(digits, 16) else {
+        return None;
+    };
+    Some(codepoint)
 }
 
 fn push_decoded(mut decoded: String, character: char) -> (String, EscapeMode) {

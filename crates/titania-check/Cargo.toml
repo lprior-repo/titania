@@ -1,6 +1,6 @@
 [package]
 name = "titania-check"
-version = "0.1.0"
+version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -16,11 +16,11 @@ name = "titania-check"
 path = "src/main.rs"
 
 [dependencies]
-titania-core = { version = "0.1.0", path = "../titania-core" }
-titania-aggregate = { version = "0.1.0", path = "../titania-aggregate" }
-titania-output = { version = "0.1.0", path = "../titania-output" }
-titania-lanes = { version = "0.1.0", path = "../titania-lanes" }
-titania-policy = { version = "0.1.0", path = "../titania-policy" }
+titania-core = { version = "1.0.0", path = "../titania-core" }
+titania-aggregate = { version = "1.0.0", path = "../titania-aggregate" }
+titania-output = { version = "1.0.0", path = "../titania-output" }
+titania-lanes = { version = "1.0.0", path = "../titania-lanes" }
+titania-policy = { version = "1.0.0", path = "../titania-policy" }
 serde_json = "1.0"
 wait-timeout = "0.2.1"
 

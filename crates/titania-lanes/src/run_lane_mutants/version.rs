@@ -31,7 +31,9 @@ pub(super) fn parse_cargo_mutants_major(stdout: &str) -> Option<u32> {
     let trimmed = stdout.trim();
     let after_prefix = trimmed.strip_prefix("cargo-mutants ")?;
     let major_str = after_prefix.split('.').next()?;
-    let major = major_str.parse::<u32>().ok()?;
+    let Ok(major) = major_str.parse::<u32>() else {
+        return None;
+    };
     Some(major)
 }
 

@@ -22,7 +22,9 @@ pub(super) fn terminate_child_tree(child: &mut Child, program: String) -> Result
 fn terminate_process_group(child_id: u32) {
     let group = format!("-{child_id}");
     let status = Command::new("/bin/kill")
-        .arg("-TERM")
+        .arg("-s")
+        .arg("TERM")
+        .arg("--")
         .arg(group)
         .stdout(Stdio::null())
         .stderr(Stdio::null())

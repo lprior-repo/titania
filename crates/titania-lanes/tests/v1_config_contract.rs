@@ -10,8 +10,8 @@ const REQUIRED_RUST_LINTS: &[(&str, &str)] = &[
     ("unsafe_code", "forbid"),
     ("unused_must_use", "deny"),
     ("unreachable_pub", "deny"),
-    ("missing_docs", "deny"),
-    ("missing_debug_implementations", "deny"),
+    ("missing_docs", "allow"),
+    ("missing_debug_implementations", "allow"),
     ("unsafe_op_in_unsafe_fn", "deny"),
 ];
 
@@ -19,8 +19,8 @@ const DYLINT_REQUIRED_RUST_LINTS: &[(&str, &str)] = &[
     ("unsafe_code", "deny"),
     ("unused_must_use", "deny"),
     ("unreachable_pub", "deny"),
-    ("missing_docs", "deny"),
-    ("missing_debug_implementations", "deny"),
+    ("missing_docs", "allow"),
+    ("missing_debug_implementations", "allow"),
     ("unsafe_op_in_unsafe_fn", "deny"),
 ];
 
@@ -39,7 +39,7 @@ const REQUIRED_CLIPPY_LINTS: &[(&str, &str)] = &[
     ("dbg_macro", "deny"),
     ("as_conversions", "deny"),
     ("await_holding_lock", "deny"),
-    ("missing_errors_doc", "deny"),
+    ("missing_errors_doc", "allow"),
     ("panic_in_result_fn", "deny"),
     ("print_stdout", "deny"),
     ("print_stderr", "deny"),
@@ -52,8 +52,8 @@ const REQUIRED_CLIPPY_LINTS: &[(&str, &str)] = &[
     ("result_large_err", "deny"),
     ("result_unit_err", "deny"),
     ("map_err_ignore", "deny"),
-    ("missing_panics_doc", "deny"),
-    ("missing_safety_doc", "deny"),
+    ("missing_panics_doc", "allow"),
+    ("missing_safety_doc", "allow"),
     ("large_enum_variant", "deny"),
     ("cognitive_complexity", "deny"),
     ("too_many_arguments", "deny"),
@@ -235,7 +235,7 @@ fn strict_ai_exceptions_all_fields_present() {
     let exceptions =
         parse_exceptions(EXCEPTIONS, POLICY_TODAY).expect("checked-in exceptions.toml must parse");
 
-    assert_eq!(exceptions.len(), 3, "expected exactly three reviewed strict-ai exceptions");
+    assert_eq!(exceptions.len(), 4, "expected exactly four reviewed strict-ai exceptions");
 
     exceptions.iter().for_each(|exception| {
         assert!(!exception.rule_id.as_str().is_empty(), "rule_id must be present");

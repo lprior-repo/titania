@@ -155,14 +155,17 @@ fn detect_match(
 }
 
 fn checked_line_number(index: usize) -> Result<u32, AstGrepLaneError> {
-    u32::try_from(index)
-        .ok()
-        .and_then(|line| line.checked_add(1))
-        .ok_or(AstGrepLaneError::LineNumberOverflow { index })
+    let Ok(line) = u32::try_from(index) else {
+        return Err(AstGrepLaneError::LineNumberOverflow { index });
+    };
+    line.checked_add(1).ok_or(AstGrepLaneError::LineNumberOverflow { index })
 }
 
 fn checked_column(column: usize) -> Result<u32, AstGrepLaneError> {
-    u32::try_from(column).ok().ok_or(AstGrepLaneError::ColumnOverflow { column })
+    let Ok(column) = u32::try_from(column) else {
+        return Err(AstGrepLaneError::ColumnOverflow { column });
+    };
+    Ok(column)
 }
 
 fn suppress_exceptions(findings: Vec<Finding>, exceptions: &[(RuleId, String)]) -> Vec<Finding> {

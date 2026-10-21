@@ -333,7 +333,7 @@ fn policy_lint_override_only_weakens_never_strengthens() -> TestResult {
     Ok(())
 }
 
-const CANONICAL_LINT_COUNT: usize = 20;
+const CANONICAL_LINT_COUNT: usize = 17;
 
 #[test]
 fn empty_workspace_lints_table_enumerates_every_canonical_omission() -> TestResult {

@@ -1,6 +1,6 @@
 [package]
 name = "titania-output"
-version = "0.1.0"
+version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -16,7 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 thiserror = "2"
-titania-core = { version = "0.1.0", path = "../titania-core" }
+titania-core = { version = "1.0.0", path = "../titania-core" }
 
 [lints]
 workspace = true

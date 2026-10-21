@@ -321,6 +321,58 @@ fn exact_controlled_paths_pass_strict_check() -> TestResult {
 }
 
 #[test]
+fn canonical_home_through_controlled_symlink_is_clean() -> TestResult {
+    let tmp = tempdir()?;
+    let root = tmp.path();
+    let real_cargo = root.join("real-cargo-home");
+    let real_rustup = root.join("real-rustup-home");
+    std::fs::create_dir(&real_cargo)?;
+    std::fs::create_dir(&real_rustup)?;
+    let controlled_cargo = expected_home(root, CONTROLLED_CARGO_HOME_SUFFIX);
+    let controlled_rustup = expected_home(root, CONTROLLED_RUSTUP_HOME_SUFFIX);
+    std::fs::create_dir_all(controlled_cargo.parent().expect("cargo hermetic parent"))?;
+    std::os::unix::fs::symlink(&real_cargo, &controlled_cargo)?;
+    std::os::unix::fs::symlink(&real_rustup, &controlled_rustup)?;
+
+    let env_map = BTreeMap::from([
+        ("CARGO_HOME", Some(real_cargo.to_str().expect("utf-8 cargo path"))),
+        ("RUSTUP_HOME", Some(real_rustup.to_str().expect("utf-8 rustup path"))),
+    ]);
+    let report = scan_target_with(&env_map, root)?;
+
+    assert!(
+        report.is_clean(),
+        "canonical homes resolving through the controlled symlinks must be clean; got: {:?}",
+        report.findings().iter().map(|f| (f.rule().as_str(), f.message())).collect::<Vec<_>>(),
+    );
+    Ok(())
+}
+
+#[test]
+fn canonical_home_pointing_elsewhere_still_fails() -> TestResult {
+    let tmp = tempdir()?;
+    let root = tmp.path();
+    let real_cargo = root.join("real-cargo-home");
+    let elsewhere = root.join("elsewhere");
+    std::fs::create_dir(&real_cargo)?;
+    std::fs::create_dir(&elsewhere)?;
+    let controlled_cargo = expected_home(root, CONTROLLED_CARGO_HOME_SUFFIX);
+    std::fs::create_dir_all(controlled_cargo.parent().expect("cargo hermetic parent"))?;
+    std::os::unix::fs::symlink(&real_cargo, &controlled_cargo)?;
+
+    let env_map = BTreeMap::from([("CARGO_HOME", Some(elsewhere.to_str().expect("utf-8 path")))]);
+    let report = scan_target_with(&env_map, root)?;
+
+    assert_eq!(report.finding_count(), 2);
+    assert!(
+        finding_for(&report, "BYPASS_ENV_CARGO_HOME")
+            .message()
+            .contains(elsewhere.to_str().expect("utf-8 path"))
+    );
+    Ok(())
+}
+
+#[test]
 fn empty_bootstrap_remains_a_finding_under_strict_homes() -> TestResult {
     let tmp = tempdir()?;
     let root = tmp.path();

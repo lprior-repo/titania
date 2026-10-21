@@ -96,7 +96,10 @@ fn scan_config_path(base: &Path, path: &Path, rules: &CargoConfigRules) -> Vec<F
 }
 
 fn parse_config(content: &str) -> Option<DocumentMut> {
-    content.parse::<DocumentMut>().ok()
+    let Ok(document) = content.parse::<DocumentMut>() else {
+        return None;
+    };
+    Some(document)
 }
 
 fn document_findings(

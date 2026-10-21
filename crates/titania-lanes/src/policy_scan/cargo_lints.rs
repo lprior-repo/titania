@@ -171,7 +171,10 @@ fn scan_manifest_content(
 }
 
 fn parse_manifest(content: &str) -> Option<DocumentMut> {
-    content.parse::<DocumentMut>().ok()
+    let Ok(document) = content.parse::<DocumentMut>() else {
+        return None;
+    };
+    Some(document)
 }
 
 fn manifest_has_lints(document: &DocumentMut) -> bool {

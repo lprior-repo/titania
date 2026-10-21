@@ -1,12 +1,11 @@
 # MOON CI/CD IS THE ABSOLUTE FOUNDATION FOR ALL OF THIS WORK.
-# Rust toolchain pinned to a dated nightly. Moon installs the v1 lane
-# toolchain extensions so cargo-deny, cargo-binstall, and cargo-dylint are
-# available wherever the Moon graph runs.
+# Rust toolchain pinned to a dated nightly.
+# Lane tools (cargo-deny, cargo-dylint) are PATH prerequisites and must be
+# installed separately; the bins list is intentionally empty because moon's
+# rust plugin unconditionally source-builds cargo-binstall whenever bins is
+# non-empty, which is impractical on constrained hardware.
 
 rust:
   version: 'nightly-2026-04-27'
-  bins:
-    - 'cargo-deny'
-    - 'cargo-binstall'
-    - 'cargo-dylint'
+  bins: []
   syncToolchainConfig: true

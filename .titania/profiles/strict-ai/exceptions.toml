@@ -22,3 +22,11 @@ owner = "titania-maintainers"
 reason = "build_kani_diff_candidate retries once with the known-good line=1 shape after assert-failing; totality is documented at the site and the fallback path already fails verification by construction. An iterative rewrite would need Kani re-verification, which currently times out in this environment; re-evaluate when the kani lane executes within timeout."
 expires_on = "2027-04-16"
 review = "tn-mudh"
+
+[[exceptions]]
+rule_id = "BOUNDED_EXECUTION_UNBOUNDED_LOOP"
+path = "crates/titania-core/src/kani.rs"
+owner = "titania-maintainers"
+reason = "build_kani_diff_candidate retries once with the known-good line=1 shape after kani::assert(false, ...): the Err branch always sets candidate_line = 1 and MutantId::new validates the fixed (p, a, 1, 1, AndOr) shape, so the second iteration cannot fail and the loop terminates. A bounded rewrite would need Kani re-verification, which currently times out in this environment; re-evaluate if this site changes or when the kani lane executes within timeout."
+expires_on = "2027-04-16"
+review = "tn-mudh"

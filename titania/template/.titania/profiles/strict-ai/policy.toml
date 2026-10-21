@@ -2,6 +2,21 @@
 # Overrides binary defaults. Changes require CODEOWNER approval.
 
 [lints]
+# §9.1 override, registered per §9.7 (owner decision 2026-10-21). The
+# comment-free code law forbids all comment syntax including doc
+# comments, so doc lints must stay off — they would demand the very
+# comments the law forbids. Docs live in Markdown, bead artifacts,
+# `reason = "..."` attribute strings, assertion messages, and lint
+# text instead.
+"rust::missing_docs" = "allow"
+"rust::missing_debug_implementations" = "allow"
+"rustdoc::broken_intra_doc_links" = "allow"
+"rustdoc::private_intra_doc_links" = "allow"
+"rustdoc::invalid_codeblock_attributes" = "allow"
+"rustdoc::missing_crate_level_docs" = "allow"
+"clippy::missing_errors_doc" = "allow"
+"clippy::missing_panics_doc" = "allow"
+"clippy::missing_safety_doc" = "allow"
 
 [thresholds]
 

@@ -1,4 +1,3 @@
-#![allow(missing_docs, reason = "comment-free law: prose lives in Markdown, never in code")]
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,

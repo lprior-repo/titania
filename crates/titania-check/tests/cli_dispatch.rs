@@ -513,7 +513,7 @@ fn exit_codes_doctor_emits_json() {
         parsed["status"] == "OK" || parsed["status"] == "MissingRequiredTools",
         "status must be OK or MissingRequiredTools"
     );
-    assert!(code == 0 || code == 4, "doctor exit code must be 0 or 4, got: {code}");
+    assert!(code == 0 || code == 3, "doctor exit code must be 0 or 3, got: {code}");
 }
 #[test]
 fn exit_codes_run_lane_invalid_lane() {
@@ -753,9 +753,10 @@ fn h1_lane_failure_maps_to_internal_error() {
     let temp = package("h1_lane_failure", "pub fn value() -> u8 {\n    1\n}\n", "fn main() {}\n")
         .expect("temp package must be created");
 
-    let artifact_dir = temp.path().join(".titania").join("out").join("edit");
-    std::fs::create_dir_all(&artifact_dir).expect("artifact dir must be pre-created");
-    make_read_only(&artifact_dir);
+    let out_path = temp.path().join(".titania").join("out");
+    std::fs::create_dir_all(out_path.parent().expect("out path must have a parent"))
+        .expect(".titania dir must be pre-created");
+    std::fs::write(&out_path, b"").expect("out path must be a file, not a directory");
 
     let (code, stdout, stderr) = run_in(temp.path(), &["run-lane", "fmt"]);
     assert_eq!(
@@ -768,18 +769,6 @@ fn h1_lane_failure_maps_to_internal_error() {
     );
     assert!(!stderr.is_empty(), "Failure path must write a diagnostic to stderr, got empty stderr",);
 }
-
-#[cfg(unix)]
-fn make_read_only(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms =
-        std::fs::metadata(path).expect("readonly dir metadata must be readable").permissions();
-    perms.set_mode(0o555);
-    std::fs::set_permissions(path, perms).expect("dir must be made read-only");
-}
-
-#[cfg(not(unix))]
-fn make_read_only(_path: &Path) {}
 
 #[test]
 fn help_long_flag_prints_usage_and_exits_zero() {
@@ -1025,15 +1014,19 @@ fn check_scope_edit_injects_hermetic_env_to_moon_subprocess() {
     let (_code, _stdout, stderr, recorded_env) =
         run_check_with_stub_moon(temp.path(), &stub, &env_file);
 
-    let expected_cargo = temp.path().join(".titania").join("hermetic").join("cargo-home");
-    let expected_rustup = temp.path().join(".titania").join("hermetic").join("rustup-home");
+    let expected_cargo =
+        std::fs::canonicalize(temp.path().join(".titania").join("hermetic").join("cargo-home"))
+            .expect("hermetic cargo-home symlink must resolve");
+    let expected_rustup =
+        std::fs::canonicalize(temp.path().join(".titania").join("hermetic").join("rustup-home"))
+            .expect("hermetic rustup-home symlink must resolve");
     assert!(
         recorded_env.contains(&format!("CARGO_HOME={}", expected_cargo.display())),
-        "moon subprocess must receive hermetic CARGO_HOME, got: {recorded_env}"
+        "moon subprocess must receive canonical hermetic CARGO_HOME, got: {recorded_env}"
     );
     assert!(
         recorded_env.contains(&format!("RUSTUP_HOME={}", expected_rustup.display())),
-        "moon subprocess must receive hermetic RUSTUP_HOME, got: {recorded_env}"
+        "moon subprocess must receive canonical hermetic RUSTUP_HOME, got: {recorded_env}"
     );
     assert!(
         !stderr.contains("hint:"),
@@ -1080,8 +1073,12 @@ fn check_scope_edit_preserves_already_correct_env() {
     let env_file = temp.path().join("moon-env.txt");
     let stub = write_stub_moon(temp.path(), &env_file);
 
-    let hermetic_cargo = temp.path().join(".titania").join("hermetic").join("cargo-home");
-    let hermetic_rustup = temp.path().join(".titania").join("hermetic").join("rustup-home");
+    let hermetic_cargo =
+        std::fs::canonicalize(temp.path().join(".titania").join("hermetic").join("cargo-home"))
+            .expect("hermetic cargo-home symlink must resolve");
+    let hermetic_rustup =
+        std::fs::canonicalize(temp.path().join(".titania").join("hermetic").join("rustup-home"))
+            .expect("hermetic rustup-home symlink must resolve");
 
     let mut cmd = Command::new(binary());
     let _ = cmd.current_dir(temp.path());

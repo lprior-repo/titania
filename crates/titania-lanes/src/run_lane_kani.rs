@@ -44,6 +44,8 @@ pub(super) enum KaniLaneError {
     Inventory(#[from] KaniInventoryError),
     #[error("cargo-kani execution failed: {0}")]
     Package(#[from] KaniRunError),
+    #[error("cargo kani version probe failed: {0}")]
+    VersionProbe(#[from] KaniVersionError),
     #[error("clean-outcome evidence build failed: {0}")]
     Outcome(#[from] OutcomeError),
 }
@@ -125,6 +127,14 @@ pub(super) enum KaniRunError {
     },
     #[error("captured {program} {stream} pipe was not valid UTF-8")]
     PipeNonUtf8 { program: String, stream: &'static str },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub(super) enum KaniVersionError {
+    #[error("cargo kani --version emitted non-UTF-8 stdout")]
+    NonUtf8Output,
+    #[error("cargo kani --version output was not parseable: {output}")]
+    UnparseableOutput { output: Box<str> },
 }
 
 #[derive(Debug, Clone)]
@@ -262,7 +272,8 @@ fn drain_pipe<R: Read>(
 
 pub(super) fn outcome(target: &TargetProject) -> Result<LaneOutcome, KaniLaneError> {
     let workspace_root = target.as_std_path();
-    if cargo_kani_supported().is_none() {
+    let version_probe = cargo_kani_supported()?;
+    if version_probe.is_none() {
         return Ok(LaneOutcome::Skipped {
             reason: SkipReason::ToolUnavailable(ToolKind::CargoKani),
         });
@@ -558,7 +569,10 @@ fn canonical_harness_id(full_name: &str) -> Option<KaniHarnessId> {
         .map(|c| if c.is_ascii_lowercase() { c.to_ascii_uppercase() } else { c })
         .map(|c| if c.is_ascii_uppercase() || c.is_ascii_digit() { c } else { '_' })
         .collect();
-    KaniHarnessId::new(&upper).ok()
+    let Ok(id) = KaniHarnessId::new(&upper) else {
+        return None;
+    };
+    Some(id)
 }
 
 fn has_workspace_root(manifest_path: &Path) -> bool {
@@ -581,16 +595,20 @@ fn group_by_package(inventory: &[KaniHarness]) -> Vec<PackageGroup> {
         .collect()
 }
 
-fn cargo_kani_supported() -> Option<DetectedCargoKani> {
-    static CACHED: OnceLock<Option<DetectedCargoKani>> = OnceLock::new();
+type CachedKaniProbe = Result<Option<DetectedCargoKani>, KaniVersionError>;
+
+fn cargo_kani_supported() -> CachedKaniProbe {
+    static CACHED: OnceLock<CachedKaniProbe> = OnceLock::new();
     CACHED.get_or_init(detect_cargo_kani).clone()
 }
 
 fn current_kani_version() -> String {
-    cargo_kani_supported().map_or_else(
-        || format!("{}.{}.{}", MIN_KANI_VERSION.0, MIN_KANI_VERSION.1, MIN_KANI_VERSION.2),
-        |d| d.version,
-    )
+    let fallback =
+        || format!("{}.{}.{}", MIN_KANI_VERSION.0, MIN_KANI_VERSION.1, MIN_KANI_VERSION.2);
+    match cargo_kani_supported() {
+        Ok(Some(detected)) => detected.version,
+        Ok(None) | Err(_) => fallback(),
+    }
 }
 
 fn probe_systemd_run() -> bool {
@@ -608,7 +626,7 @@ fn detect_systemd_run() -> bool {
         .is_ok_and(|status| status.success())
 }
 
-fn detect_cargo_kani() -> Option<DetectedCargoKani> {
+fn detect_cargo_kani() -> Result<Option<DetectedCargoKani>, KaniVersionError> {
     let output = Command::new("cargo")
         .arg("kani")
         .arg("--version")
@@ -617,29 +635,46 @@ fn detect_cargo_kani() -> Option<DetectedCargoKani> {
         .stderr(Stdio::piped())
         .output();
     let Ok(output) = output else {
-        return None;
+        return Ok(None);
     };
     if !output.status.success() {
-        return None;
+        return Ok(None);
     }
-    let text = std::str::from_utf8(&output.stdout).ok()?;
+    let Ok(text) = std::str::from_utf8(&output.stdout) else {
+        return Err(KaniVersionError::NonUtf8Output);
+    };
     parse_kani_version(text)
 }
 
-fn parse_kani_version(stdout: &str) -> Option<DetectedCargoKani> {
-    let head = stdout.lines().next()?;
+fn parse_kani_version(stdout: &str) -> Result<Option<DetectedCargoKani>, KaniVersionError> {
+    let head = stdout.lines().next().ok_or_else(|| unparseable_version(stdout))?;
     let mut tokens = head.split_whitespace();
-    let name = tokens.next()?;
+    let name = tokens.next().ok_or_else(|| unparseable_version(stdout))?;
     if name != "cargo-kani" {
-        return None;
+        return Err(unparseable_version(stdout));
     }
-    let version_str = tokens.next()?;
+    let version_str = tokens.next().ok_or_else(|| unparseable_version(stdout))?;
     let mut parts = version_str.split('.');
-    let major = parts.next()?.parse::<u64>().ok()?;
-    let minor = parts.next()?.parse::<u64>().ok()?;
-    let patch = parts.next()?.parse::<u64>().ok()?;
+    let major = parse_version_part(&mut parts, stdout)?;
+    let minor = parse_version_part(&mut parts, stdout)?;
+    let patch = parse_version_part(&mut parts, stdout)?;
     let detected = DetectedCargoKani { version: version_str.to_owned(), major, minor, patch };
-    detected.meets_floor().then_some(detected)
+    Ok(detected.meets_floor().then_some(detected))
+}
+
+fn unparseable_version(output: &str) -> KaniVersionError {
+    KaniVersionError::UnparseableOutput { output: output.into() }
+}
+
+fn parse_version_part<'a>(
+    parts: &mut impl Iterator<Item = &'a str>,
+    output: &str,
+) -> Result<u64, KaniVersionError> {
+    let part = parts.next().ok_or_else(|| unparseable_version(output))?;
+    let Ok(number) = part.parse() else {
+        return Err(unparseable_version(output));
+    };
+    Ok(number)
 }
 
 fn run_package(
@@ -927,8 +962,8 @@ mod tests {
     use super::{
         DetectedCargoKani, FALLBACK_RULE_BLOCKED, FALLBACK_RULE_INFRA, FALLBACK_RULE_NO_HARNESSES,
         FALLBACK_RULE_NO_VERDICT, HarnessVerdict, HarnessVerdictMap, KaniHarness,
-        KaniInventoryError, KaniLaneError, KaniRunError, LaneRunState, MIN_KANI_VERSION,
-        PER_PACKAGE_TIMEOUT_SECS, PIPE_BYTE_CAP, PackageCmd, PackageRun,
+        KaniInventoryError, KaniLaneError, KaniRunError, KaniVersionError, LaneRunState,
+        MIN_KANI_VERSION, PER_PACKAGE_TIMEOUT_SECS, PIPE_BYTE_CAP, PackageCmd, PackageRun,
         blocked_findings_for_package, build_clean_outcome, build_no_harness_outcome,
         canonical_harness_id, checking_harness_name, findings_for_package, inventory_error_outcome,
         is_subcommand_missing, parse_kani_version, verdict_from_line,
@@ -997,7 +1032,8 @@ VERIFICATION:- FAILED
     #[test]
     fn parse_kani_version_accepts_supported_release() {
         let version = parse_kani_version("cargo-kani 0.67.0 (cargo plugin)")
-            .expect("0.67.0 must parse and meet the floor");
+            .expect("0.67.0 must probe cleanly")
+            .expect("0.67.0 must meet the floor");
         assert_eq!(version.version, "0.67.0");
         assert_eq!(version.major, 0);
         assert_eq!(version.minor, 67);
@@ -1007,15 +1043,26 @@ VERIFICATION:- FAILED
 
     #[test]
     fn parse_kani_version_rejects_too_old_release() {
-        assert!(parse_kani_version("cargo-kani 0.49.3 (cargo plugin)").is_none());
+        let probe = parse_kani_version("cargo-kani 0.49.3 (cargo plugin)")
+            .expect("well-formed output must probe cleanly");
+        assert!(probe.is_none());
     }
 
     #[test]
     fn parse_kani_version_rejects_garbled_output() {
-        assert!(parse_kani_version("cargo-kani 0.67").is_none());
-        assert!(parse_kani_version("cargo-kani x.y.z").is_none());
-        assert!(parse_kani_version("kani 0.67.0").is_none());
-        assert!(parse_kani_version("").is_none());
+        assert!(matches!(
+            parse_kani_version("cargo-kani 0.67"),
+            Err(KaniVersionError::UnparseableOutput { .. })
+        ));
+        assert!(matches!(
+            parse_kani_version("cargo-kani x.y.z"),
+            Err(KaniVersionError::UnparseableOutput { .. })
+        ));
+        assert!(matches!(
+            parse_kani_version("kani 0.67.0"),
+            Err(KaniVersionError::UnparseableOutput { .. })
+        ));
+        assert!(matches!(parse_kani_version(""), Err(KaniVersionError::UnparseableOutput { .. })));
     }
 
     #[test]

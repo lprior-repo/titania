@@ -47,7 +47,13 @@ impl HermeticEnv {
 }
 
 fn existing_path(path: &std::path::Path) -> Option<PathBuf> {
-    path.exists().then(|| path.to_path_buf())
+    if !path.exists() {
+        return None;
+    }
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        return Some(canonical);
+    }
+    Some(path.to_path_buf())
 }
 
 fn apply_env_var(cmd: &mut std::process::Command, name: &str, hermetic: Option<&PathBuf>) {
@@ -112,11 +118,13 @@ const MAX_TIMEOUT_SECS: u64 = 24 * 60 * 60;
 
 #[must_use]
 pub(crate) fn timeout_seconds() -> u64 {
-    let parsed = env::var(TIMEOUT_ENV)
-        .ok()
-        .and_then(|raw| raw.trim().parse::<u64>().ok())
-        .filter(|v| *v > 0 && *v <= MAX_TIMEOUT_SECS);
-    parsed.map_or(DEFAULT_TIMEOUT_SECS, std::convert::identity)
+    let Ok(raw) = env::var(TIMEOUT_ENV) else {
+        return DEFAULT_TIMEOUT_SECS;
+    };
+    let Ok(parsed) = raw.trim().parse::<u64>() else {
+        return DEFAULT_TIMEOUT_SECS;
+    };
+    if parsed > 0 && parsed <= MAX_TIMEOUT_SECS { parsed } else { DEFAULT_TIMEOUT_SECS }
 }
 
 #[derive(Debug)]
