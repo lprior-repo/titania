@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-21
+
+First release verified end to end against the v1 Definition of Done
+(v1-spec §15): this repository now passes `titania-check --scope release`,
+and all three Moon-orchestrated gate scopes emit typed Pass reports.
+
+### Added
+
+- **v1.0.0 release packaging**: every first-party crate bumped 0.1.0 →
+  1.0.0; README install section updated from "coming with v1.0"; a
+  `.github/workflows/release.yml` workflow added so version tags produce
+  Moon-built release binaries.
+- **Release-scope dogfood evidence**: `titania:gate-edit`, `gate-prepush`,
+  and `gate-release` each emit a typed Pass `Report` JSON plus a
+  `QualityReceipt` with `schema_version=1` and source/lock/policy/
+  toolchain digests (v1-spec §11.1).
+- **`KaniVersionError` taxonomy** (`NonUtf8Output`, `UnparseableOutput`):
+  malformed `cargo kani` version probes now fail the kani lane loudly
+  instead of degrading to `Skipped`.
+- Policy exception for `build_kani_diff_candidate` registered in
+  `.titania/profiles/strict-ai/exceptions.toml` with owner, reason, expiry
+  (2027-04-16), and review, per the exceptions mechanism (v1-spec §15.8).
+
+### Changed
+
+- Eliminated all `Result::ok()` erasures from the tool's own code (33 sites
+  in 17 files): real failures now propagate as typed domain errors
+  (`LaneFailure::Infra`, `KaniVersionError`, `MutantsLaneError`); genuine
+  absence signals use explicit `let-else`, the unique form satisfying both
+  the dylint `FUNC_RESULT_OK` rule and clippy pedantic's `manual_ok`
+  family. Dylint lane green, 1186 tests / 0 failed (88 binaries).
+- `CLIPPY_ARGS` now carries `-A clippy::missing_{errors,panics,safety}_doc`,
+  matching the operative comment-free lint policy.
+- cargo-deny lane runs `--offline` for a hermetic, deterministic gate;
+  template `.moon/toolchains.yml` sets `bins: []` so Moon does not
+  source-build `cargo-binstall`.
+- Test-contract updates: `CANONICAL_LINT_COUNT` 20→17, doc-lint
+  deny→allow per operative policy, exception counts 3→4, `cli_dispatch`
+  `ENOTDIR` failure injection made root-proof.
+
+### Fixed
+
+- **Process-group kill bug** (`titania-lanes/src/command/process.rs`):
+  timeout kills now pass `--` to `/bin/kill` so `-<pgid>` is not misparsed
+  as a signal spec — it previously degraded to `kill(-1, SIGTERM)`.
+- rustfmt re-layout of `deny_outcome` (pre-existing fmt drift); dropped a
+  redundant `#![allow(missing_docs)]` in `titania-output`.
+
 ## [0.1.0] - 2026-10-16
 
 First typed, evidence-bearing release of titania-check — the Moon-orchestrated
@@ -60,5 +108,6 @@ Rust QA gate for the `strict-ai` coding standard. Single binary
   control characters sanitized), so hostile `argv[0]`/executable values can
   no longer produce multi-kilobyte unbounded error strings.
 
-[Unreleased]: https://github.com/lprior-repo/titania/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/lprior-repo/titania/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/lprior-repo/titania/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/lprior-repo/titania/tree/v0.1.0

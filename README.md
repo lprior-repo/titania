@@ -226,10 +226,30 @@ binary, the same policy, the same receipts.
 
 ## Install
 
+Titania 1.0 ships as release binaries built by Moon on the pinned Rust
+toolchain. Download the archive for your target from the
+[releases page](https://github.com/lprior-repo/titania/releases), extract it,
+and put `titania-check` on your `PATH`:
+
 ```bash
-# Coming with v1.0 release.
-cargo install titania-check
+curl -LO https://github.com/lprior-repo/titania/releases/download/v1.0.0/titania-check-v1.0.0.tar.gz
+tar xzf titania-check-v1.0.0.tar.gz
+./titania-check doctor
 ```
+
+To build from source you need the pinned toolchain
+(`nightly-2026-04-27` with `rustfmt`, `clippy`, `rust-src`,
+`llvm-tools-preview`, `rustc-dev` — see `rust-toolchain.toml`) and
+[Moon 2.x](https://moonrepo.dev). From a checkout:
+
+```bash
+cargo install titania-check   # or: moon run :titania-build
+```
+
+The release archive co-locates the `titania-dylint` cdylib
+(`libtitania_dylint.so` / `libtitania_dylint.dylib` / `titania_dylint.dll`)
+with the `titania-check` binary; the clippy driver loads it for the
+type-aware lanes, so no separate install step is needed.
 
 For pre-v1 development, see [`v1-spec.md`](./v1-spec.md) for the buildable
 contract and `cargo generate titania/template` for workspace adoption.

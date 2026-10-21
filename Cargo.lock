@@ -789,7 +789,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "titania-aggregate"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "titania-check"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -814,7 +814,7 @@ dependencies = [
 
 [[package]]
 name = "titania-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "blake3",
  "camino",
@@ -829,7 +829,7 @@ dependencies = [
 
 [[package]]
 name = "titania-dylint"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "dylint_linting",
  "proptest",
@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "titania-lanes"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -858,7 +858,7 @@ dependencies = [
 
 [[package]]
 name = "titania-output"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "thiserror",
  "titania-core",
@@ -866,7 +866,7 @@ dependencies = [
 
 [[package]]
 name = "titania-policy"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "titania-core",
