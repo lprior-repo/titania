@@ -1014,15 +1014,19 @@ fn check_scope_edit_injects_hermetic_env_to_moon_subprocess() {
     let (_code, _stdout, stderr, recorded_env) =
         run_check_with_stub_moon(temp.path(), &stub, &env_file);
 
-    let expected_cargo = temp.path().join(".titania").join("hermetic").join("cargo-home");
-    let expected_rustup = temp.path().join(".titania").join("hermetic").join("rustup-home");
+    let expected_cargo =
+        std::fs::canonicalize(temp.path().join(".titania").join("hermetic").join("cargo-home"))
+            .expect("hermetic cargo-home symlink must resolve");
+    let expected_rustup =
+        std::fs::canonicalize(temp.path().join(".titania").join("hermetic").join("rustup-home"))
+            .expect("hermetic rustup-home symlink must resolve");
     assert!(
         recorded_env.contains(&format!("CARGO_HOME={}", expected_cargo.display())),
-        "moon subprocess must receive hermetic CARGO_HOME, got: {recorded_env}"
+        "moon subprocess must receive canonical hermetic CARGO_HOME, got: {recorded_env}"
     );
     assert!(
         recorded_env.contains(&format!("RUSTUP_HOME={}", expected_rustup.display())),
-        "moon subprocess must receive hermetic RUSTUP_HOME, got: {recorded_env}"
+        "moon subprocess must receive canonical hermetic RUSTUP_HOME, got: {recorded_env}"
     );
     assert!(
         !stderr.contains("hint:"),
@@ -1069,8 +1073,12 @@ fn check_scope_edit_preserves_already_correct_env() {
     let env_file = temp.path().join("moon-env.txt");
     let stub = write_stub_moon(temp.path(), &env_file);
 
-    let hermetic_cargo = temp.path().join(".titania").join("hermetic").join("cargo-home");
-    let hermetic_rustup = temp.path().join(".titania").join("hermetic").join("rustup-home");
+    let hermetic_cargo =
+        std::fs::canonicalize(temp.path().join(".titania").join("hermetic").join("cargo-home"))
+            .expect("hermetic cargo-home symlink must resolve");
+    let hermetic_rustup =
+        std::fs::canonicalize(temp.path().join(".titania").join("hermetic").join("rustup-home"))
+            .expect("hermetic rustup-home symlink must resolve");
 
     let mut cmd = Command::new(binary());
     let _ = cmd.current_dir(temp.path());

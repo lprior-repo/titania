@@ -113,6 +113,26 @@ fn controlled_home_message(name: &str, controlled: &Path, supplied: Option<&str>
     }
 }
 
+fn controlled_home_matches(value: &str, controlled: &Path) -> bool {
+    if value.is_empty() {
+        return false;
+    }
+    if Path::new(value) == controlled {
+        return true;
+    }
+    canonical_equals(Path::new(value), controlled)
+}
+
+fn canonical_equals(first: &Path, second: &Path) -> bool {
+    let Ok(first) = std::fs::canonicalize(first) else {
+        return false;
+    };
+    let Ok(second) = std::fs::canonicalize(second) else {
+        return false;
+    };
+    first == second
+}
+
 fn check_controlled_home(
     spec: ControlledHomeSpec,
     report: &mut LaneReport,
@@ -122,9 +142,8 @@ fn check_controlled_home(
     let ControlledHomeSpec { name, rule_id, suffix } = spec;
     let controlled = controlled_home_path(root, suffix);
     let supplied = env(name);
-    let matches_controlled = supplied
-        .as_deref()
-        .is_some_and(|value| !value.is_empty() && Path::new(value) == controlled.as_path());
+    let matches_controlled =
+        supplied.as_deref().is_some_and(|value| controlled_home_matches(value, &controlled));
     if matches_controlled {
         return Ok(());
     }

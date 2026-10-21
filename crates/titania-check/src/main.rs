@@ -138,8 +138,8 @@ fn setup_hermetic() -> CliDisposition {
 
     let output = format!(
         "export CARGO_HOME=\"{}\"\nexport RUSTUP_HOME=\"{}\"",
-        cargo_link.display(),
-        rustup_link.display()
+        real_cargo_home.display(),
+        real_rustup_home.display()
     );
     CliDisposition::report(output, EXIT_PASS)
 }

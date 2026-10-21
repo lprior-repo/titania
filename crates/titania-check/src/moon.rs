@@ -47,7 +47,13 @@ impl HermeticEnv {
 }
 
 fn existing_path(path: &std::path::Path) -> Option<PathBuf> {
-    path.exists().then(|| path.to_path_buf())
+    if !path.exists() {
+        return None;
+    }
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        return Some(canonical);
+    }
+    Some(path.to_path_buf())
 }
 
 fn apply_env_var(cmd: &mut std::process::Command, name: &str, hermetic: Option<&PathBuf>) {
