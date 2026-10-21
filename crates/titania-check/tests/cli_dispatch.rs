@@ -513,7 +513,7 @@ fn exit_codes_doctor_emits_json() {
         parsed["status"] == "OK" || parsed["status"] == "MissingRequiredTools",
         "status must be OK or MissingRequiredTools"
     );
-    assert!(code == 0 || code == 4, "doctor exit code must be 0 or 4, got: {code}");
+    assert!(code == 0 || code == 3, "doctor exit code must be 0 or 3, got: {code}");
 }
 #[test]
 fn exit_codes_run_lane_invalid_lane() {

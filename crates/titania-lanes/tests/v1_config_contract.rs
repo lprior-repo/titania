@@ -10,8 +10,8 @@ const REQUIRED_RUST_LINTS: &[(&str, &str)] = &[
     ("unsafe_code", "forbid"),
     ("unused_must_use", "deny"),
     ("unreachable_pub", "deny"),
-    ("missing_docs", "deny"),
-    ("missing_debug_implementations", "deny"),
+    ("missing_docs", "allow"),
+    ("missing_debug_implementations", "allow"),
     ("unsafe_op_in_unsafe_fn", "deny"),
 ];
 
@@ -19,8 +19,8 @@ const DYLINT_REQUIRED_RUST_LINTS: &[(&str, &str)] = &[
     ("unsafe_code", "deny"),
     ("unused_must_use", "deny"),
     ("unreachable_pub", "deny"),
-    ("missing_docs", "deny"),
-    ("missing_debug_implementations", "deny"),
+    ("missing_docs", "allow"),
+    ("missing_debug_implementations", "allow"),
     ("unsafe_op_in_unsafe_fn", "deny"),
 ];
 

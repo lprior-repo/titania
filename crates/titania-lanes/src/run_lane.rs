@@ -167,7 +167,7 @@ fn policy_scan_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneErr
 }
 
 fn deny_outcome(target: &TargetProject) -> Result<LaneOutcome, RunLaneError> {
-    let output = match command_output(target, DENY_TOOL, &["--format", "json", "check"]) {
+    let output = match command_output(target, DENY_TOOL, &["--format", "json", "--offline", "check"]) {
         Ok(output) => output,
         Err(error) => return Ok(deny_failure_outcome(&error)),
     };
