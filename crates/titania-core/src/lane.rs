@@ -41,6 +41,11 @@ impl Lane {
     }
 
     #[must_use]
+    pub const fn depends_on_compile(self) -> bool {
+        matches!(self, Self::Clippy | Self::Test | Self::Build)
+    }
+
+    #[must_use]
     pub const fn file_stem(self) -> &'static str {
         match self {
             Self::Fmt => "fmt",

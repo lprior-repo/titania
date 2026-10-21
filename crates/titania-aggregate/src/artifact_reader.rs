@@ -6,7 +6,7 @@ use std::{
 type ArtifactVisitor<'a> = dyn FnMut(&Path) -> Result<(), ReaderError> + 'a;
 
 use thiserror::Error;
-use titania_core::{GateScope, Lane, LaneArtifact, LaneFailure, LaneOutcome};
+use titania_core::{Finding, GateScope, Lane, LaneArtifact, LaneFailure, LaneOutcome, SkipReason};
 
 #[derive(Debug, Error)]
 pub enum ReaderError {
@@ -20,6 +20,9 @@ pub enum ReaderError {
 
 pub type ReaderResult = Result<Vec<(Lane, LaneOutcome)>, ReaderError>;
 
+type LaneRecord = (Lane, LaneOutcome);
+type PresentLaneRecord = (Lane, Option<LaneOutcome>);
+
 pub fn read_lane_artifacts(target_root: &Path, scope: GateScope) -> ReaderResult {
     let scope_dir: &'static str = scope.name();
     let out_dir = artifact_dir(target_root, scope_dir);
@@ -32,14 +35,46 @@ pub fn read_lane_artifacts(target_root: &Path, scope: GateScope) -> ReaderResult
     })?;
 
     let parse = |contents: String, lane: Lane| parse_artifact(&contents, lane);
-    expected
+    let present = expected
         .iter()
         .map(|lane| {
-            by_lane
-                .remove(lane)
-                .map_or_else(|| Ok((*lane, missing_lane_outcome(*lane))), |c| parse(c, *lane))
+            by_lane.remove(lane).map_or_else(
+                || Ok((*lane, None)),
+                |contents| parse(contents, *lane).map(|(lane, outcome)| (lane, Some(outcome))),
+            )
         })
+        .collect::<Result<Vec<_>, ReaderError>>()?;
+    Ok(apply_compile_skip_rule(present))
+}
+
+fn apply_compile_skip_rule(present: Vec<PresentLaneRecord>) -> Vec<LaneRecord> {
+    let compile_failed = present
+        .iter()
+        .find(|(lane, _)| *lane == Lane::Compile)
+        .and_then(|(_, outcome)| outcome.as_ref())
+        .is_some_and(compilation_failed);
+    present
+        .into_iter()
+        .map(|(lane, outcome)| resolve_outcome(lane, outcome, compile_failed))
         .collect()
+}
+
+fn resolve_outcome(lane: Lane, outcome: Option<LaneOutcome>, compile_failed: bool) -> LaneRecord {
+    if compile_failed && lane.depends_on_compile() {
+        return (lane, LaneOutcome::Skipped { reason: SkipReason::PriorCompilationFailure });
+    }
+    if let Some(present) = outcome {
+        return (lane, present);
+    }
+    (lane, missing_lane_outcome(lane))
+}
+
+fn compilation_failed(outcome: &LaneOutcome) -> bool {
+    match outcome {
+        LaneOutcome::Failed { .. } => true,
+        LaneOutcome::Findings { findings } => findings.iter().any(Finding::is_reject),
+        LaneOutcome::Clean { .. } | LaneOutcome::Skipped { .. } => false,
+    }
 }
 
 fn classify_and_record(

@@ -183,6 +183,59 @@ fn required_skip_tool_unavailable_rejects() {
 }
 
 #[test]
+fn required_prior_compilation_skip_adds_no_gate_failure() {
+    let scope = GateScope::Release;
+    let obligations = ObligationSet::all_required(scope);
+    let outcomes: Box<[PerLaneEntry]> = scope
+        .lanes()
+        .iter()
+        .copied()
+        .map(|lane| {
+            let outcome = match lane {
+                Lane::Compile => timeout_outcome("cargo-check"),
+                Lane::Clippy | Lane::Test | Lane::Build => {
+                    skipped_outcome(SkipReason::PriorCompilationFailure)
+                }
+                _ => clean_outcome(),
+            };
+            PerLaneEntry::new(lane, outcome)
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+
+    let report = assemble_report_with_obligations(
+        &obligations,
+        outcomes,
+        test_receipt(scope),
+        Box::from([]),
+        Box::from([]),
+    )
+    .expect("report assembled");
+
+    assert!(report.is_reject(), "the failed Compile lane must still reject the gate");
+    let failures = report.gate_failures().expect("Reject must carry gate failures");
+    assert_eq!(failures.len(), 1, "only the Compile failure may appear, got {failures:?}");
+    match &failures[0] {
+        LaneFailure::Tool { tool, .. } => {
+            assert_eq!(tool, "cargo-check", "sole gate failure must be the Compile tool failure");
+        }
+        other => panic!("expected Compile Tool failure, got {other:?}"),
+    }
+    let per_lane = report.per_lane().expect("Reject must carry per-lane entries");
+    for lane in [Lane::Clippy, Lane::Test, Lane::Build] {
+        let entry = per_lane.iter().find(|entry| *entry.lane() == lane).expect("entry present");
+        assert!(
+            matches!(
+                entry.outcome(),
+                LaneOutcome::Skipped { reason: SkipReason::PriorCompilationFailure }
+            ),
+            "{lane} must stay Skipped(PriorCompilationFailure), got {:?}",
+            entry.outcome()
+        );
+    }
+}
+
+#[test]
 fn legacy_assemble_report_still_passes_with_skip() {
     let scope = GateScope::Edit;
     let outcomes = entries_with(scope, 0, skipped_outcome(SkipReason::NotSelectedByScope));
