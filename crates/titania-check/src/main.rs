@@ -323,7 +323,7 @@ fn doctor_scope(scope: GateScope, emit: args::EmitFormat) -> CliDisposition {
 
 fn explain_rule(rule_id: &str) -> CliDisposition {
     explain::render(rule_id).map_or_else(
-        |error| CliDisposition::input_error(format!("InputError: {error}")),
+        |error| CliDisposition::input_error(error.to_string()),
         |output| CliDisposition::report(output, EXIT_PASS),
     )
 }

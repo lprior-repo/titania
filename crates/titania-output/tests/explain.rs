@@ -52,9 +52,13 @@ fn explain_func_loops_for_returns_catalog_entry() {
         .expect("BOUNDED_EXECUTION_UNBOUNDED_LOOP exists");
     assert_eq!(entry.rule_id, "BOUNDED_EXECUTION_UNBOUNDED_LOOP");
     assert!(entry.pattern.contains("loop"));
+    assert!(entry.pattern.contains("(excluding `while let`)"));
     assert_eq!(entry.repair, "RequiresHumanReview");
-    assert!(entry.example_violation.contains("loop"));
-    assert!(entry.example_repair.contains("Bound::FiniteInput"));
+    assert!(entry.repair_note.contains("Bound::FiniteInput"));
+    assert!(entry.repair_note.contains("Bound::Capped"));
+    assert!(entry.repair_note.contains("Bound::ProtocolTerminal"));
+    assert_eq!(entry.example_violation, "for item in items { process(item); }");
+    assert_eq!(entry.example_repair, "items.iter().for_each(|item| process(item));");
 }
 
 #[test]

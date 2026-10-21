@@ -12,6 +12,7 @@ pub struct RuleExplanation {
     pub pattern: Cow<'static, str>,
     pub effect: Cow<'static, str>,
     pub repair: Cow<'static, str>,
+    pub repair_note: Cow<'static, str>,
     pub example_violation: Cow<'static, str>,
     pub example_repair: Cow<'static, str>,
 }
@@ -59,6 +60,7 @@ fn row_entry(row: Row) -> RuleExplanation {
         repair: Cow::Owned(
             titania_core::RepairHint::for_rule(row.rule_id).class().as_str().to_owned(),
         ),
+        repair_note: repair_note(row.rule_id),
         pattern: Cow::Borrowed(row.pattern),
         description: Cow::Borrowed(row.description),
         example_violation: example_violation(row.rule_id, row.pattern),
@@ -66,11 +68,18 @@ fn row_entry(row: Row) -> RuleExplanation {
     }
 }
 
-fn example_violation(rule_id: &str, pattern: &str) -> Cow<'static, str> {
+fn repair_note(rule_id: &str) -> Cow<'static, str> {
     match rule_id {
         "BOUNDED_EXECUTION_UNBOUNDED_LOOP" => {
-            Cow::Borrowed("loop { if ready() { break; } retry(); }")
+            Cow::Borrowed(" — cite Bound::FiniteInput, Bound::Capped, or Bound::ProtocolTerminal")
         }
+        _ => Cow::Borrowed(""),
+    }
+}
+
+fn example_violation(rule_id: &str, pattern: &str) -> Cow<'static, str> {
+    match rule_id {
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP" => Cow::Borrowed("for item in items { process(item); }"),
         "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR" => {
             Cow::Borrowed("std::iter::repeat(work).map(|job| run(job))")
         }
@@ -80,9 +89,9 @@ fn example_violation(rule_id: &str, pattern: &str) -> Cow<'static, str> {
 
 fn example_repair(rule_id: &str, repair: &str) -> Cow<'static, str> {
     match rule_id {
-        "BOUNDED_EXECUTION_UNBOUNDED_LOOP" => Cow::Borrowed(
-            "for item in items { process(item)?; } // Bound::FiniteInput + cited test",
-        ),
+        "BOUNDED_EXECUTION_UNBOUNDED_LOOP" => {
+            Cow::Borrowed("items.iter().for_each(|item| process(item));")
+        }
         "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR" => Cow::Borrowed(
             "std::iter::repeat(work).take(max).map(|job| run(job)) // Bound::Capped + cited test",
         ),
@@ -100,6 +109,7 @@ fn dynamic_clippy_rule(rule_id: &str) -> Option<RuleExplanation> {
         pattern: Cow::Owned(pattern.clone()),
         effect: Cow::Borrowed("Reject"),
         repair: Cow::Borrowed("RequiresHumanReview"),
+        repair_note: Cow::Borrowed(""),
         example_violation: Cow::Owned(format!("code triggering `{pattern}`")),
         example_repair: Cow::Borrowed("change the code so Clippy no longer emits the lint"),
     })
@@ -128,6 +138,7 @@ fn dynamic_proof_kani_rule(rule_id: &str) -> Option<RuleExplanation> {
                 pattern: Cow::Owned(pattern),
                 effect: Cow::Borrowed("Reject"),
                 repair: Cow::Borrowed("RequiresHumanReview"),
+                repair_note: Cow::Borrowed(""),
                 example_violation: Cow::Owned(format!(
                     "Kani harness `{lower}` produced a failing verification verdict."
                 )),
@@ -145,6 +156,7 @@ fn dynamic_proof_kani_rule(rule_id: &str) -> Option<RuleExplanation> {
         pattern: Cow::Owned(pattern),
         effect: Cow::Borrowed(effect),
         repair: Cow::Borrowed("RequiresHumanReview"),
+        repair_note: Cow::Borrowed(""),
         example_violation: Cow::Owned(format!(
             "Kani harness `{suffix}` produced a non-SUCCESSFUL verdict."
         )),
@@ -169,6 +181,7 @@ fn dynamic_mutant_rule(rule_id: &str) -> Option<RuleExplanation> {
             pattern: Cow::Owned(pattern),
             effect: Cow::Borrowed("Reject"),
             repair: Cow::Borrowed("RequiresHumanReview"),
+            repair_note: Cow::Borrowed(""),
             example_violation: Cow::Owned(format!(
                 "mutation `{suffix}` survives cargo mutants without a baseline bypass"
             )),
@@ -197,6 +210,7 @@ fn dynamic_mutant_rule(rule_id: &str) -> Option<RuleExplanation> {
         pattern: Cow::Owned(rule_id.to_owned()),
         effect: Cow::Borrowed(effect),
         repair: Cow::Borrowed("RequiresHumanReview"),
+        repair_note: Cow::Borrowed(""),
         example_violation: Cow::Owned(format!("mutant event {rule_id} observed")),
         example_repair: Cow::Borrowed(
             "add a regression test that kills the mutant, or bootstrap a baseline entry with owner/reason/expiry",

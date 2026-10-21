@@ -14,7 +14,7 @@ fn render_entry(entry: &RuleExplanation) -> String {
             "  {description}\n\n",
             "  Pattern: {pattern}\n",
             "  Effect: {effect}\n",
-            "  Repair: {repair}\n\n",
+            "  Repair: {repair}{repair_note}\n\n",
             "  Example violation:\n",
             "    {example_violation}\n\n",
             "  Example repair:\n",
@@ -25,6 +25,7 @@ fn render_entry(entry: &RuleExplanation) -> String {
         pattern = entry.pattern.as_ref(),
         effect = entry.effect.as_ref(),
         repair = entry.repair.as_ref(),
+        repair_note = entry.repair_note.as_ref(),
         example_violation = entry.example_violation.as_ref(),
         example_repair = entry.example_repair.as_ref(),
     )

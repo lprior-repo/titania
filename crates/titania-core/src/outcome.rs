@@ -85,7 +85,7 @@ pub enum CommandMode {
 pub struct CommandEvidence {
     executable: String,
     argv: Box<[String]>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing)]
     mode: Option<CommandMode>,
 }
 
@@ -130,7 +130,7 @@ impl CommandEvidence {
 struct CommandEvidenceWire {
     executable: String,
     argv: Box<[String]>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     mode: Option<CommandMode>,
 }
 
