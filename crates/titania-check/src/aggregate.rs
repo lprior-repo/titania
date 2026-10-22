@@ -19,6 +19,18 @@ const POLICY_PROFILE_PATH: &str = ".titania/profiles/strict-ai/policy.toml";
 const POLICY_EXCEPTIONS_PATH: &str = ".titania/profiles/strict-ai/exceptions.toml";
 const DATE_TOOL: &str = "date";
 const DATE_FORMAT: &str = "+%F";
+const RUSTC_TOOL: &str = "rustc";
+const CARGO_TOOL: &str = "cargo";
+const VERSION_ARG: &str = "--version";
+const RUSTUP_HOME_VAR: &str = "RUSTUP_HOME";
+const RUSTUP_HOME_SUFFIX: &str = ".rustup";
+const TOOLCHAINS_DIR: &str = "toolchains";
+const TOOLCHAIN_BIN_DIR: &str = "bin";
+const RUST_TOOLCHAIN_FILE: &str = "rust-toolchain.toml";
+const RUST_TOOLCHAIN_LEGACY_FILE: &str = "rust-toolchain";
+const RUSTUP_SETTINGS_FILE: &str = "settings.toml";
+const CHANNEL_KEY: &str = "channel";
+const DEFAULT_TOOLCHAIN_KEY: &str = "default_toolchain";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReportJson {
@@ -398,8 +410,8 @@ fn policy_digest(target_root: &Path) -> Result<Digest, AggregateError> {
 }
 
 fn toolchain_digest(target_root: &Path) -> Result<Digest, AggregateError> {
-    let rustc_version = probe_version(target_root, "rustc", &["--version"])?;
-    let cargo_version = probe_version(target_root, "cargo", &["--version"])?;
+    let rustc_version = probe_version(target_root, RUSTC_TOOL, &[VERSION_ARG])?;
+    let cargo_version = probe_version(target_root, CARGO_TOOL, &[VERSION_ARG])?;
     let toolchain_toml = read_optional_text(&target_root.join("rust-toolchain.toml"))?;
     let toolchain_legacy = read_optional_text(&target_root.join("rust-toolchain"))?;
     let toolchain_text = toolchain_toml.or(toolchain_legacy);
@@ -416,32 +428,162 @@ fn probe_version(
     program: &str,
     args: &[&str],
 ) -> Result<String, AggregateError> {
-    let output = std::process::Command::new(program)
-        .args(args)
-        .current_dir(target_root)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
+    let target = toolchain_target_project(target_root)?;
+    let program_path = resolve_toolchain_program(target_root, program)?;
+    let program_text = program_path.to_string_lossy().into_owned();
+    let output = titania_lanes::CommandIn::new(&target, program_text.as_str())
+        .and_then(|mut cmd| cmd.args(args).run_capture_raw())
         .map_err(|error| AggregateError::ToolchainProbe(error.to_string()))?;
-    if !output.status.success() {
+    if !output.success() {
         return Err(AggregateError::ToolchainProbe(format!(
             "{program} {} exited with {status}",
             args.join(" "),
-            status = output.status,
+            status = output.status(),
         )));
     }
-    let text = String::from_utf8(output.stdout)
+    let text = String::from_utf8(output.into_stdout())
         .map_err(|error| AggregateError::ToolchainProbe(error.to_string()))?
         .trim()
         .to_owned();
     if text.is_empty() {
         return Err(AggregateError::ToolchainProbe(format!(
             "{program} {} produced empty stdout",
-            args.join(" "),
+            args.join(" ")
         )));
     }
     Ok(text)
+}
+
+fn toolchain_target_project(target_root: &Path) -> Result<TargetProject, AggregateError> {
+    let text = target_root.to_str().ok_or_else(|| {
+        AggregateError::ToolchainProbe("target root is not valid UTF-8".to_owned())
+    })?;
+    serde_json::from_value::<TargetProject>(serde_json::Value::String(text.to_owned()))
+        .map_err(|error| AggregateError::ToolchainProbe(error.to_string()))
+}
+
+fn resolve_toolchain_program(target_root: &Path, program: &str) -> Result<PathBuf, AggregateError> {
+    let rustup_home = crate::resolve_real_home(RUSTUP_HOME_VAR, RUSTUP_HOME_SUFFIX)
+        .map_err(|error| AggregateError::ToolchainProbe(error.to_string()))?;
+    let name = resolve_toolchain_name(target_root, &rustup_home)?;
+    let candidate =
+        rustup_home.join(TOOLCHAINS_DIR).join(name).join(TOOLCHAIN_BIN_DIR).join(program);
+    if candidate.is_file() {
+        Ok(candidate)
+    } else {
+        Err(AggregateError::ToolchainProbe(format!(
+            "resolved toolchain program is missing: {}",
+            candidate.display()
+        )))
+    }
+}
+
+fn resolve_toolchain_name(
+    target_root: &Path,
+    rustup_home: &Path,
+) -> Result<String, AggregateError> {
+    let installed = installed_toolchain_dirs(&rustup_home.join(TOOLCHAINS_DIR))?;
+    pinned_channel(target_root)?.map_or_else(
+        || default_toolchain(rustup_home, &installed),
+        |channel| pinned_toolchain(&installed, &channel),
+    )
+}
+
+fn installed_toolchain_dirs(toolchains_dir: &Path) -> Result<Vec<String>, AggregateError> {
+    let mut names = Vec::new();
+    std::fs::read_dir(toolchains_dir)
+        .map_err(|error| AggregateError::ToolchainProbe(error.to_string()))?
+        .try_for_each(|entry| collect_toolchain_dir(entry, &mut names))?;
+    names.sort();
+    Ok(names)
+}
+
+fn collect_toolchain_dir(
+    entry: io::Result<std::fs::DirEntry>,
+    names: &mut Vec<String>,
+) -> Result<(), AggregateError> {
+    let entry = entry.map_err(|error| AggregateError::ToolchainProbe(error.to_string()))?;
+    if !entry.path().is_dir() {
+        return Ok(());
+    }
+    if let Some(name) = entry.file_name().to_str() {
+        names.push(name.to_owned());
+    }
+    Ok(())
+}
+
+fn pinned_toolchain(installed: &[String], channel: &str) -> Result<String, AggregateError> {
+    let matches: Vec<&String> = installed
+        .iter()
+        .filter(|name| {
+            name.as_str() == channel
+                || name.strip_prefix(channel).is_some_and(|rest| rest.starts_with('-'))
+        })
+        .collect();
+    match matches.as_slice() {
+        [only] => Ok((*only).clone()),
+        [] => Err(AggregateError::ToolchainProbe(format!(
+            "pinned toolchain {channel} is not installed"
+        ))),
+        _ => Err(AggregateError::ToolchainProbe(format!(
+            "pinned toolchain {channel} matches multiple installed toolchains"
+        ))),
+    }
+}
+
+fn default_toolchain(rustup_home: &Path, installed: &[String]) -> Result<String, AggregateError> {
+    let settings = read_toolchain_text(&rustup_home.join(RUSTUP_SETTINGS_FILE))?;
+    let configured =
+        settings.as_deref().and_then(|text| toml_string_assignment(text, DEFAULT_TOOLCHAIN_KEY));
+    match configured {
+        Some(name) if installed.iter().any(|entry| entry == &name) => Ok(name),
+        Some(name) => Err(AggregateError::ToolchainProbe(format!(
+            "default toolchain {name} is not installed"
+        ))),
+        None => match installed {
+            [only] => Ok(only.clone()),
+            _ => Err(AggregateError::ToolchainProbe(
+                "cannot resolve the active toolchain".to_owned(),
+            )),
+        },
+    }
+}
+
+fn pinned_channel(target_root: &Path) -> Result<Option<String>, AggregateError> {
+    let toml_text = read_optional_text(&target_root.join(RUST_TOOLCHAIN_FILE))?;
+    if let Some(channel) =
+        toml_text.as_deref().and_then(|text| toml_string_assignment(text, CHANNEL_KEY))
+    {
+        return Ok(Some(channel));
+    }
+    let legacy_text = read_optional_text(&target_root.join(RUST_TOOLCHAIN_LEGACY_FILE))?;
+    Ok(legacy_text
+        .as_deref()
+        .and_then(|text| text.lines().next())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned))
+}
+
+fn read_toolchain_text(path: &Path) -> Result<Option<String>, AggregateError> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(AggregateError::ToolchainProbe(err.to_string())),
+    }
+}
+
+fn toml_string_assignment(text: &str, key: &str) -> Option<String> {
+    text.lines().find_map(|line| toml_line_value(line, key))
+}
+
+fn toml_line_value(line: &str, key: &str) -> Option<String> {
+    let (head, raw_value) = line.split_once('=')?;
+    if head.trim() == key {
+        raw_value.trim().strip_prefix('"')?.strip_suffix('"').map(str::to_owned)
+    } else {
+        None
+    }
 }
 
 fn push_segment(payload: &mut String, label: &str, text: &str) {
