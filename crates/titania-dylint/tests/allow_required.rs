@@ -511,6 +511,36 @@ const FIXTURE_PROC_MACRO_CONSUMER_BENIGN: &str = r#"
 pub fn plain_api() {}
 "#;
 
+const FIXTURE_PROC_MACRO_HELPER_CONCEAL_ALLOW: &str = r##"
+extern crate proc_macro;
+
+use proc_macro::TokenStream;
+use std::str::FromStr;
+
+#[proc_macro_attribute]
+pub fn conceal_allow(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let concealed =
+        TokenStream::from_str("#[allow(dead_code)]").unwrap_or_else(|_| TokenStream::new());
+    let mut output = concealed;
+    output.extend(item);
+    output
+}
+"##;
+
+const FIXTURE_PROC_MACRO_CONSUMER_CONCEALED_FN: &str = r#"
+#[allow_shim::conceal_allow]
+pub fn concealed_api() {}
+"#;
+
+const FIXTURE_PROC_MACRO_CONSUMER_CONCEALED_ASSOC_FN: &str = r#"
+pub struct Api;
+
+impl Api {
+    #[allow_shim::conceal_allow]
+    pub fn concealed_method(&self) {}
+}
+"#;
+
 fn run_dylint_on_proc_macro_fixture(
     test_name: &str,
     helper_code: &str,
@@ -565,6 +595,44 @@ fn bypass_attr_context_ignores_benign_proc_macro() {
     assert!(
         !output_contains(&output, "BYPASS_PUB_ALLOW"),
         "BYPASS_PUB_ALLOW must not fire when a proc-macro injects nothing:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bypass_attr_context_detects_proc_macro_injected_allow() {
+    let output = run_dylint_on_proc_macro_fixture(
+        "proc_macro_concealed_fn",
+        FIXTURE_PROC_MACRO_HELPER_CONCEAL_ALLOW,
+        FIXTURE_PROC_MACRO_CONSUMER_CONCEALED_FN,
+    );
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow(...)]` injected by proc-macro on pub fn",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow(...)] is injected by a proc-macro:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bypass_attr_context_detects_proc_macro_injected_associated_allow() {
+    let output = run_dylint_on_proc_macro_fixture(
+        "proc_macro_concealed_assoc_fn",
+        FIXTURE_PROC_MACRO_HELPER_CONCEAL_ALLOW,
+        FIXTURE_PROC_MACRO_CONSUMER_CONCEALED_ASSOC_FN,
+    );
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow(...)]` injected by proc-macro on pub associated fn",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow(...)] is injected by a proc-macro:\n{}",
         combined_output(&output)
     );
 }

@@ -154,7 +154,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
 
 fn emit_pub_allow_attr(cx: &LateContext<'_>, span: Span) {
     if span.from_expansion() {
-        emit_attr_context(cx, span);
+        emit_attr_context(cx, span.source_callsite());
     } else {
         emit_pub_allow(cx, span);
     }
