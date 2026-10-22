@@ -176,9 +176,8 @@ fn quoted_path_names_expected_lib(quoted_path: &str, expected: &Path) -> bool {
 }
 
 fn canonical_path_text(path: &Path) -> Option<String> {
-    let canonical = match std::fs::canonicalize(path) {
-        Ok(canonical) => canonical,
-        Err(_) => return None,
+    let Ok(canonical) = std::fs::canonicalize(path) else {
+        return None;
     };
     canonical.to_str().map(str::to_owned)
 }
