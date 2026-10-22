@@ -33,11 +33,7 @@ fn run_in_with_path_prefix(root: &Path, args: &[&str], prefix: &Path) -> std::pr
 }
 
 #[cfg(unix)]
-fn run_in_with_rustup_home(
-    root: &Path,
-    args: &[&str],
-    rustup_home: &Path,
-) -> std::process::Output {
+fn run_in_with_rustup_home(root: &Path, args: &[&str], rustup_home: &Path) -> std::process::Output {
     let mut cmd = Command::new(binary());
     let _ = cmd.args(args);
     let _ = cmd.current_dir(root);
