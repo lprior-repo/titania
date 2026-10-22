@@ -60,13 +60,17 @@ fn apply_compile_skip_rule(present: Vec<PresentLaneRecord>) -> Vec<LaneRecord> {
 }
 
 fn resolve_outcome(lane: Lane, outcome: Option<LaneOutcome>, compile_failed: bool) -> LaneRecord {
-    if compile_failed && lane.depends_on_compile() {
+    if compile_failed && lane.depends_on_compile() && !records_findings(outcome.as_ref()) {
         return (lane, LaneOutcome::Skipped { reason: SkipReason::PriorCompilationFailure });
     }
     if let Some(present) = outcome {
         return (lane, present);
     }
     (lane, missing_lane_outcome(lane))
+}
+
+const fn records_findings(outcome: Option<&LaneOutcome>) -> bool {
+    matches!(outcome, Some(LaneOutcome::Findings { .. }))
 }
 
 fn compilation_failed(outcome: &LaneOutcome) -> bool {
