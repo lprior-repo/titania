@@ -1107,8 +1107,7 @@ fn fq_spelled_unbounded_iterators_each_fire_exactly_once() -> TestResult {
     ] {
         let findings = run_functional_fixture(name);
         let ids: Vec<&str> = findings.iter().map(|f| f.rule_id().as_str()).collect();
-        let count =
-            ids.iter().filter(|id| **id == "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR").count();
+        let count = ids.iter().filter(|id| **id == "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR").count();
         assert_eq!(count, 1, "{name} must emit exactly one unbounded-iterator finding: {ids:?}");
     }
     Ok(())

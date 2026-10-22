@@ -267,9 +267,7 @@ fn is_spaced_bare_task_statement(statement: &str) -> bool {
 fn module_binding_sites(code: &str, module: &str, members: &[&str]) -> Vec<MatchSite> {
     module_bindings(code, module)
         .iter()
-        .flat_map(|binding| {
-            members.iter().map(move |member| format!("{binding}::{member}"))
-        })
+        .flat_map(|binding| members.iter().map(move |member| format!("{binding}::{member}")))
         .flat_map(|needle| path_head_sites(code, &needle))
         .collect()
 }
@@ -415,10 +413,7 @@ fn grouped_import_body_span<'a>(
     let after_open = after_prefix.trim_start().strip_prefix('{')?;
     let close = matching_close_brace(after_open)?;
     let (body, _) = after_open.split_at_checked(close)?;
-    let body_start = start
-        .checked_add(prefix.len())?
-        .checked_add(skipped)?
-        .checked_add(1)?;
+    let body_start = start.checked_add(prefix.len())?.checked_add(skipped)?.checked_add(1)?;
     Some((body, body_start))
 }
 
@@ -443,7 +438,12 @@ fn member_name_sites(
         .collect()
 }
 
-fn leaf_site(member: &str, member_start: usize, body_start: usize, path: &str) -> Option<MatchSite> {
+fn leaf_site(
+    member: &str,
+    member_start: usize,
+    body_start: usize,
+    path: &str,
+) -> Option<MatchSite> {
     let leaf = path.rsplit("::").next().map_or(path, |leaf| leaf);
     let leaf_offset = member.rfind(leaf)?;
     let start = body_start.checked_add(member_start)?.checked_add(leaf_offset)?;
@@ -451,9 +451,8 @@ fn leaf_site(member: &str, member_start: usize, body_start: usize, path: &str) -
 }
 
 fn top_level_member_spans(body: &str) -> Vec<(usize, usize)> {
-    let (spans, _, member_start) = body
-        .char_indices()
-        .fold((Vec::new(), 0usize, 0usize), advance_member_span_scan);
+    let (spans, _, member_start) =
+        body.char_indices().fold((Vec::new(), 0usize, 0usize), advance_member_span_scan);
     spans
         .into_iter()
         .chain((member_start < body.len()).then_some((member_start, body.len())))
