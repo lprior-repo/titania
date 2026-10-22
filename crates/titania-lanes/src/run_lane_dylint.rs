@@ -11,7 +11,6 @@ use crate::{
 
 const CARGO_DYLINT_TOOL: &str = "cargo-dylint";
 const DYLINT_LOAD_FAILURE_MARKER: &str = "could not find `dylint_version` in `";
-const DYLINT_LIBRARY_ARTIFACT_PREFIXES: &[&str] = &["libtitania_dylint@", "titania_dylint@"];
 const DYLINT_LOCATION_LOOKAHEAD: usize = 6;
 const DYLINT_BASE_ARGS: &[&str] =
     &["dylint", "--workspace", "--all", "--", "--lib", "--bins", "--examples"];
@@ -67,7 +66,7 @@ pub(super) fn outcome(target: &TargetProject) -> LaneOutcome {
             output.stdout(),
         );
     }
-    nonzero_outcome(target, &output)
+    nonzero_outcome(target, &output, effective_path.as_deref())
 }
 
 type StagedLibPath = (Option<PathBuf>, Option<DylintLibStaging>);
@@ -123,7 +122,11 @@ fn dylint_output(target: &TargetProject, args: &[String]) -> Result<CommandOutpu
     command.run_capture_raw()
 }
 
-fn nonzero_outcome(target: &TargetProject, output: &CommandOutput) -> LaneOutcome {
+fn nonzero_outcome(
+    target: &TargetProject,
+    output: &CommandOutput,
+    expected_lib_path: Option<&Path>,
+) -> LaneOutcome {
     let report = match dylint_report(target, output) {
         Ok(report) => report,
         Err(failure) => return LaneOutcome::Failed { failure },
@@ -131,7 +134,7 @@ fn nonzero_outcome(target: &TargetProject, output: &CommandOutput) -> LaneOutcom
     if !report.is_clean() {
         return super::run_lane_outcome::findings_outcome(Lane::Dylint, &report);
     }
-    if let Some(failure) = load_failure(output) {
+    if let Some(failure) = load_failure(output, expected_lib_path) {
         return LaneOutcome::Failed { failure };
     }
     LaneOutcome::Failed {
@@ -142,43 +145,38 @@ fn nonzero_outcome(target: &TargetProject, output: &CommandOutput) -> LaneOutcom
     }
 }
 
-fn load_failure(output: &CommandOutput) -> Option<LaneFailure> {
+fn load_failure(output: &CommandOutput, expected_lib_path: Option<&Path>) -> Option<LaneFailure> {
     let text = match combined_output(output) {
         Ok(text) => text,
         Err(_output_error) => return None,
     };
-    let line = text.lines().find(|line| is_driver_load_failure(line))?;
+    let line = text.lines().find(|line| is_driver_load_failure(line, expected_lib_path))?;
     Some(LaneFailure::Infra {
         tool: String::from(CARGO_DYLINT_TOOL),
         reason: format!("cargo-dylint could not load the dylint library: {}", line.trim()),
     })
 }
 
-fn is_driver_load_failure(line: &str) -> bool {
+fn is_driver_load_failure(line: &str, expected_lib_path: Option<&Path>) -> bool {
+    let Some(expected) = expected_lib_path else {
+        return false;
+    };
     let Some((_, rest)) = line.split_once(DYLINT_LOAD_FAILURE_MARKER) else {
         return false;
     };
     let Some((quoted_path, _)) = rest.split_once('`') else {
         return false;
     };
-    names_dylint_library_artifact(quoted_path)
+    quoted_path_names_expected_lib(quoted_path, expected)
 }
 
-fn names_dylint_library_artifact(path: &str) -> bool {
-    let file_name = match path.rsplit_once('/') {
-        Some((_, name)) => name,
-        None => path,
-    };
-    DYLINT_LIBRARY_ARTIFACT_PREFIXES
-        .iter()
-        .any(|prefix| has_toolchain_artifact_suffix(file_name, prefix))
+fn quoted_path_names_expected_lib(quoted_path: &str, expected: &Path) -> bool {
+    expected.to_str().is_some_and(|text| text == quoted_path)
+        || canonical_path_text(expected).is_some_and(|text| text == quoted_path)
 }
 
-fn has_toolchain_artifact_suffix(file_name: &str, prefix: &str) -> bool {
-    let Some(rest) = file_name.strip_prefix(prefix) else {
-        return false;
-    };
-    rest.strip_suffix(std::env::consts::DLL_SUFFIX).is_some_and(|toolchain| !toolchain.is_empty())
+fn canonical_path_text(path: &Path) -> Option<String> {
+    std::fs::canonicalize(path).ok()?.to_str().map(str::to_owned)
 }
 
 fn dylint_report(
@@ -359,12 +357,18 @@ fn lane_error_failure(error: &LaneError) -> LaneFailure {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use titania_core::LaneOutcome;
 
     use super::{CARGO_DYLINT_TOOL, cargo_dylint_args, nonzero_outcome};
     use crate::{command::mock_output, current_target_project};
+
+    fn staged_lib_path() -> PathBuf {
+        PathBuf::from(
+            "/tmp/titania-dylint-4242/libtitania_dylint@nightly-2026-04-27-x86_64-unknown-linux-gnu.so",
+        )
+    }
 
     #[test]
     fn env_library_load_uses_lib_path_args() {
@@ -416,7 +420,7 @@ mod tests {
         )
         .expect("mock output must build");
 
-        let outcome = nonzero_outcome(&target, &output);
+        let outcome = nonzero_outcome(&target, &output, None);
 
         let LaneOutcome::Findings { findings } = outcome else {
             panic!("BYPASS lint output must become findings");
@@ -437,7 +441,7 @@ mod tests {
         )
         .expect("mock output must build");
 
-        let outcome = nonzero_outcome(&target, &output);
+        let outcome = nonzero_outcome(&target, &output, None);
 
         let LaneOutcome::Findings { findings } = outcome else {
             panic!("BYPASS lint output must become findings");
@@ -457,7 +461,7 @@ mod tests {
         )
         .expect("mock output must build");
 
-        let outcome = nonzero_outcome(&target, &output);
+        let outcome = nonzero_outcome(&target, &output, None);
 
         let LaneOutcome::Findings { findings } = outcome else {
             panic!("FUNC_RESULT_OK output must become findings, not a suspicious failure");
@@ -480,7 +484,7 @@ mod tests {
         let output = mock_output(1, b"", b"error: could not compile fixture\n")
             .expect("mock output must build");
 
-        let outcome = nonzero_outcome(&target, &output);
+        let outcome = nonzero_outcome(&target, &output, Some(staged_lib_path().as_path()));
 
         let LaneOutcome::Failed { failure } = outcome else {
             panic!("non-BYPASS output must remain a failure");
@@ -499,7 +503,8 @@ mod tests {
         )
         .expect("mock output must build");
 
-        let outcome = nonzero_outcome(&target, &output);
+        let outcome =
+            nonzero_outcome(&target, &output, Some(Path::new("/tmp/libtitania_dylint@nightly.so")));
 
         let LaneOutcome::Failed { failure } = outcome else {
             panic!("driver load failure must become a lane failure");
@@ -518,7 +523,8 @@ mod tests {
         )
         .expect("mock output must build");
 
-        let outcome = nonzero_outcome(&target, &output);
+        let outcome =
+            nonzero_outcome(&target, &output, Some(Path::new("/tmp/libtitania_dylint@nightly.so")));
 
         let LaneOutcome::Failed { failure } = outcome else {
             panic!("forged marker output must become a lane failure");
@@ -540,7 +546,8 @@ mod tests {
         )
         .expect("mock output must build");
 
-        let outcome = nonzero_outcome(&target, &output);
+        let outcome =
+            nonzero_outcome(&target, &output, Some(Path::new("/tmp/libtitania_dylint@nightly.so")));
 
         let LaneOutcome::Failed { failure } = outcome else {
             panic!("unversioned marker output must become a lane failure");
@@ -549,6 +556,119 @@ mod tests {
         assert!(
             !failure.is_infra(),
             "marker without the toolchain-versioned artifact name must not become an infra failure: {failure:?}"
+        );
+    }
+
+    #[test]
+    fn driver_load_failure_naming_staged_path_becomes_infra_failure() {
+        let target = current_target_project().expect("test target project must resolve");
+        let expected = staged_lib_path();
+        let stderr = format!(
+            "error: could not find `dylint_version` in `{}`\n\nerror: aborting due to 1 previous error\n",
+            expected.display()
+        );
+        let output = mock_output(1, b"", stderr.as_bytes()).expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, Some(expected.as_path()));
+
+        let LaneOutcome::Failed { failure } = outcome else {
+            panic!("driver load failure naming the staged path must become a lane failure");
+        };
+        assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(
+            failure.is_infra(),
+            "driver load failure naming the staged path must be an infra failure: {failure:?}"
+        );
+    }
+
+    #[test]
+    fn forged_marker_naming_public_artifact_path_remains_suspicious_failure() {
+        let target = current_target_project().expect("test target project must resolve");
+        let expected = staged_lib_path();
+        let output = mock_output(
+            1,
+            b"",
+            b"   Compiling forge-named v0.1.0 (/tmp/forge-named)\nerror: failed to run custom build command for `forge-named v0.1.0 (/tmp/forge-named)`\n\nCaused by:\n  process didn't exit successfully: `/tmp/forge-named/build-script-build` (exit status: 1)\n  --- stderr\n  error: could not find `dylint_version` in `/tmp/forged/libtitania_dylint@nightly-2026-04-27.so`\n",
+        )
+        .expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, Some(expected.as_path()));
+
+        let LaneOutcome::Failed { failure } = outcome else {
+            panic!("forged marker output must become a lane failure");
+        };
+        assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(
+            !failure.is_infra(),
+            "subject-printed marker naming a public forged path must not become an infra failure: {failure:?}"
+        );
+    }
+
+    #[test]
+    fn compile_error_marker_naming_forged_path_remains_suspicious_failure() {
+        let target = current_target_project().expect("test target project must resolve");
+        let expected = staged_lib_path();
+        let output = mock_output(
+            1,
+            b"",
+            b"error: could not find `dylint_version` in `/tmp/forged/libtitania_dylint@nightly-2026-04-27.so`\n --> src/lib.rs:1:1\n  |\n1 | compile_error!(\"could not find `dylint_version` in `/tmp/forged/libtitania_dylint@nightly-2026-04-27.so`\");\n  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nerror: aborting due to 1 previous error\n",
+        )
+        .expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, Some(expected.as_path()));
+
+        let LaneOutcome::Failed { failure } = outcome else {
+            panic!("compile_error marker output must become a lane failure");
+        };
+        assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(
+            !failure.is_infra(),
+            "compile_error! carrying the marker text must not become an infra failure: {failure:?}"
+        );
+    }
+
+    #[test]
+    fn marker_without_known_lib_path_remains_suspicious_failure() {
+        let target = current_target_project().expect("test target project must resolve");
+        let expected = staged_lib_path();
+        let stderr = format!(
+            "error: could not find `dylint_version` in `{}`\n\nerror: aborting due to 1 previous error\n",
+            expected.display()
+        );
+        let output = mock_output(1, b"", stderr.as_bytes()).expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, None);
+
+        let LaneOutcome::Failed { failure } = outcome else {
+            panic!("marker output without a known lib path must become a lane failure");
+        };
+        assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(
+            !failure.is_infra(),
+            "marker line must not become an infra failure when the lane staged no library path: {failure:?}"
+        );
+    }
+
+    #[test]
+    fn marker_naming_other_toolchain_path_remains_suspicious_failure() {
+        let target = current_target_project().expect("test target project must resolve");
+        let expected = staged_lib_path();
+        let output = mock_output(
+            1,
+            b"",
+            b"error: could not find `dylint_version` in `/tmp/titania-dylint-4242/libtitania_dylint@nightly-1999-01-01-x86_64-unknown-linux-gnu.so`\n\nerror: aborting due to 1 previous error\n",
+        )
+        .expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, Some(expected.as_path()));
+
+        let LaneOutcome::Failed { failure } = outcome else {
+            panic!("other-toolchain marker output must become a lane failure");
+        };
+        assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(
+            !failure.is_infra(),
+            "marker naming a different artifact path in the same directory must not become an infra failure: {failure:?}"
         );
     }
 }
