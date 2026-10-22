@@ -23,6 +23,7 @@ pub(super) fn detect_core_time_import(source: &str) -> bool {
         || grouped_import_contains(source, "use std::time::", &["SystemTime", "Instant"])
         || grouped_std_import_contains(source, &["time::SystemTime", "time::Instant"])
         || fully_qualified_uses_path(source, &["std::time::SystemTime", "std::time::Instant"])
+        || module_binding_used(source, "time", &["SystemTime", "Instant"])
 }
 
 pub(super) fn detect_core_random_import(source: &str) -> bool {
@@ -51,6 +52,7 @@ pub(super) fn detect_core_async_effect(source: &str) -> bool {
         || code_contains_token(&code, "async unsafe fn")
         || contains_await_expression(&code)
         || fully_qualified_uses_path(source, &["tokio::spawn", "tokio::time"])
+        || grouped_import_contains(source, "use tokio::", &["task::spawn"])
         || tokio_task_used(&code)
         || tokio_alias_effect_used(source)
 }
@@ -100,10 +102,21 @@ fn statement_text(code: &str, start: usize, end: usize) -> Option<&str> {
 }
 
 fn is_bare_task_statement(statement: &str) -> bool {
+    is_compact_bare_task_statement(statement) || is_spaced_bare_task_statement(statement)
+}
+
+fn is_compact_bare_task_statement(statement: &str) -> bool {
     let compact: String = statement.chars().filter(|ch| !ch.is_whitespace()).collect();
     compact == "usetokio::task;"
         || compact == "usetokio::task::{self};"
         || compact == "usetokio::task::{self,};"
+}
+
+fn is_spaced_bare_task_statement(statement: &str) -> bool {
+    let spaced = statement.split_whitespace().collect::<Vec<_>>().join(" ");
+    spaced == "use tokio::task as task;"
+        || spaced == "use tokio::task::{self as task};"
+        || spaced == "use tokio::task::{self as task,};"
 }
 
 fn tokio_alias_effect_used(source: &str) -> bool {
@@ -133,6 +146,78 @@ pub(super) fn detect_core_state_effect(source: &str) -> bool {
         || grouped_std_import_contains(source, &["cell::RefCell"])
         || grouped_import_contains(source, "use std::thread::", &["spawn"])
         || grouped_std_import_contains(source, &["thread::spawn"])
+        || module_binding_used(source, "sync", &["Mutex", "RwLock"])
+        || module_binding_used(source, "cell", &["RefCell"])
+        || module_binding_used(source, "thread", &["spawn"])
+}
+
+fn module_binding_used(source: &str, module: &str, members: &[&str]) -> bool {
+    let code = code_only_source(source);
+    module_bindings(&code, module).iter().any(|binding| {
+        members.iter().any(|member| code_contains_path_head(&code, &format!("{binding}::{member}")))
+    })
+}
+
+fn code_contains_path_head(code: &str, needle: &str) -> bool {
+    code.match_indices(needle).any(|(start, _)| {
+        path_head_boundary_ok(code, start) && trailing_boundary_ok(code, start, needle)
+    })
+}
+
+fn path_head_boundary_ok(code: &str, start: usize) -> bool {
+    code.split_at_checked(start).is_some_and(|(before, _)| {
+        before.chars().next_back().is_none_or(|prev| !is_ident_char(prev) && prev != ':')
+    })
+}
+
+fn module_bindings(code: &str, module: &str) -> Vec<String> {
+    code.match_indices("use ")
+        .filter_map(|(start, _)| use_statement_path_text(code, start))
+        .flat_map(|statement| statement_module_bindings(&statement, module))
+        .collect()
+}
+
+fn use_statement_path_text(source: &str, start: usize) -> Option<String> {
+    use_item_prefix_allowed(source, start).then_some(())?;
+    let statement = source.split_at_checked(start)?.1.strip_prefix("use ")?.split_once(';')?.0;
+    Some(statement.trim().to_owned())
+}
+
+fn statement_module_bindings(statement: &str, module: &str) -> Vec<String> {
+    let Some(rest) = statement.strip_prefix("std::") else {
+        return Vec::new();
+    };
+    std_relative_paths(rest)
+        .iter()
+        .filter_map(|path| module_binding_from_path(path, module))
+        .collect()
+}
+
+fn std_relative_paths(rest: &str) -> Vec<String> {
+    let rest = rest.trim();
+    rest.strip_prefix('{').map_or_else(
+        || flatten_member(rest),
+        |grouped| grouped.strip_suffix('}').map_or_else(Vec::new, flattened_member_paths),
+    )
+}
+
+fn module_binding_from_path(path: &str, module: &str) -> Option<String> {
+    let rest = path.strip_prefix(module)?;
+    match rest {
+        "" => Some(module.to_owned()),
+        _ => self_binding_from_rest(rest, module),
+    }
+}
+
+fn self_binding_from_rest(rest: &str, module: &str) -> Option<String> {
+    if let Some(alias) = rest.strip_prefix(" as ") {
+        return valid_alias(alias.trim());
+    }
+    let after_self = rest.strip_prefix("::self")?;
+    match after_self {
+        "" => Some(module.to_owned()),
+        _ => after_self.strip_prefix(" as ").and_then(|alias| valid_alias(alias.trim())),
+    }
 }
 
 fn fully_qualified_uses_path(source: &str, needles: &[&str]) -> bool {

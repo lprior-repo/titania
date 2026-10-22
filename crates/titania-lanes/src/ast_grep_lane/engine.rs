@@ -435,7 +435,7 @@ fn parse_literal(source: &str) -> Option<LiteralParts<'_>> {
 }
 
 const STD_RESULT_SPELLINGS: &[&str] = &["Result", "std::result::Result", "core::result::Result"];
-const STD_STRING_SPELLINGS: &[&str] = &["String", "std::string::String", "core::string::String"];
+const STD_STRING_SPELLINGS: &[&str] = &["String", "std::string::String", "alloc::string::String"];
 
 fn is_result_with_string_error(node: &Node<'_, StrDoc<Rust>>) -> Option<()> {
     (node.kind() == "generic_type").then_some(())?;
@@ -454,7 +454,11 @@ fn is_result_with_string_error(node: &Node<'_, StrDoc<Rust>>) -> Option<()> {
 fn type_path_is_std(node: &Node<'_, StrDoc<Rust>>, spellings: &[&str]) -> bool {
     let text = node.text();
     let compact: String = text.chars().filter(|ch| !ch.is_whitespace()).collect();
-    spellings.iter().any(|spelling| compact == *spelling)
+    let normalized = match compact.strip_prefix("::") {
+        Some(rest) => rest,
+        None => &compact,
+    };
+    spellings.contains(&normalized)
 }
 
 fn function_has_excess_nesting(func: &Node<'_, StrDoc<Rust>>) -> Option<usize> {

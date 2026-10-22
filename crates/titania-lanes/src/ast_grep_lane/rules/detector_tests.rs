@@ -289,6 +289,124 @@ fn bh2_alias_chain_requires_tokio_root() {
 }
 
 #[test]
+fn bh3_module_self_import_state_is_violation() {
+    assert!(detect_core_state_effect(
+        "use std::sync::{self};\npub fn f() { let _m = sync::Mutex::new(0); }"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::{sync::{self}};\npub fn f() { let _m = sync::Mutex::new(0); }"
+    ));
+    assert!(detect_core_state_effect(
+        "pub use std::sync::{self};\npub fn f() { let _m = sync::Mutex::new(0); }"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::sync;\npub fn f() { let _m = sync::Mutex::new(0); }"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::sync::{self};\npub fn f(m: &sync::RwLock<i32>) -> i32 { 1 }"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::cell::{self};\npub fn f() { let _c = cell::RefCell::new(0); }"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::thread::{self};\npub fn f() { let _h = thread::spawn(|| 1); }"
+    ));
+}
+
+#[test]
+fn bh3_module_self_import_time_is_violation() {
+    assert!(detect_core_time_import(
+        "use std::time::{self};\npub fn f() { let _t = time::Instant::now(); }"
+    ));
+    assert!(detect_core_time_import(
+        "use std::{time::{self}};\npub fn f() { let _t = time::SystemTime::now(); }"
+    ));
+    assert!(detect_core_time_import(
+        "use std::time;\npub fn f() { let _t = time::Instant::now(); }"
+    ));
+}
+
+#[test]
+fn bh3_module_renamed_binding_is_violation() {
+    assert!(detect_core_state_effect(
+        "use std::sync as s;\npub fn f() { let _m = s::Mutex::new(0); }"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::sync::{self as s};\npub fn f() { let _m = s::RwLock::new(0); }"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::{sync as s};\npub fn f() { let _m = s::Mutex::new(0); }"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::{sync::{self as s}};\npub fn f() { let _m = s::Mutex::new(0); }"
+    ));
+}
+
+#[test]
+fn bh3_module_binding_requires_member_use() {
+    assert!(!detect_core_state_effect("use std::sync::{self};\npub fn f() -> i32 { 1 }"));
+    assert!(!detect_core_time_import("use std::time::{self};\npub fn f() -> i32 { 1 }"));
+    assert!(!detect_core_state_effect(
+        "use std::sync::{self};\npub fn f() { let _l = sync::LazyLock::new(|| 1); }"
+    ));
+    assert!(!detect_core_state_effect(
+        "use std::sync::{self};\npub fn f(g: sync::MutexGuard<'_, i32>) {}"
+    ));
+    assert!(!detect_core_time_import(
+        "use std::time::{self};\npub fn f() { let _d = time::Duration::from_secs(1); }"
+    ));
+}
+
+#[test]
+fn bh3_module_shadow_does_not_fire() {
+    assert!(!detect_core_state_effect(
+        "mod sync { pub struct Mutex; }\npub fn f() { let _m = sync::Mutex::new(0); }"
+    ));
+    assert!(!detect_core_state_effect(
+        "use mycrate::sync;\npub fn f() { let _m = sync::Mutex::new(0); }"
+    ));
+    assert!(!detect_core_state_effect(
+        "use crate::sync::{self};\npub fn f() { let _m = sync::Mutex::new(0); }"
+    ));
+    assert!(!detect_core_state_effect(
+        "use std::sync::{self};\npub fn f() { let _m = other::sync::Mutex::new(0); }"
+    ));
+}
+
+#[test]
+fn bh3_module_self_import_fs_process_stay_violations() {
+    assert!(detect_core_fs_import(
+        "use std::fs::{self};\npub fn load() { let _c = fs::read_to_string(\"c\"); }"
+    ));
+    assert!(detect_core_fs_import(
+        "use std::fs;\npub fn load() { let _c = fs::read_to_string(\"c\"); }"
+    ));
+    assert!(detect_core_process_import(
+        "use std::process::{self};\npub fn sh() { let _c = process::Command::new(\"ls\"); }"
+    ));
+}
+
+#[test]
+fn bh3_bare_task_redundant_alias_is_not_async_effect() {
+    assert!(!detect_core_async_effect("use tokio::task::{self as task};"));
+    assert!(!detect_core_async_effect("use tokio::task as task;"));
+    assert!(detect_core_infra_import("use tokio::task::{self as task};"));
+    assert!(detect_core_infra_import("use tokio::task as task;"));
+    assert!(detect_core_async_effect("use tokio::task::{self as task, spawn};"));
+    assert!(detect_core_async_effect("use tokio::task as other;"));
+}
+
+#[test]
+fn bh3_grouped_tokio_task_spawn_is_async_effect() {
+    assert!(detect_core_async_effect(
+        "use tokio::{task::spawn};\npub fn go() { spawn(async { 1 }); }"
+    ));
+    assert!(detect_core_async_effect(
+        "use tokio::{task::{spawn}};\npub fn go() { spawn(async { 1 }); }"
+    ));
+}
+
+#[test]
 fn bh2_bare_task_import_spellings_are_not_async_effect() {
     assert!(!detect_core_async_effect("use tokio::task::{\n    self,\n};\npub fn f() {}"));
     assert!(!detect_core_async_effect("use tokio::task::{\n    self\n};\npub fn f() {}"));

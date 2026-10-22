@@ -456,7 +456,30 @@ fn ast_grep_lane_rejects_core_result_string_error() -> TestResult {
         other => panic!("expected core:: Result<String> findings, got {other:?}"),
     };
 
-    assert_eq!(count, 1, "core::result::Result<_, core::string::String> must be rejected");
+    assert_eq!(count, 1, "core::result::Result<_, alloc::string::String> must be rejected");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_absolute_and_alloc_result_string_spellings() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_result_string_absolute_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "FUNC_RESULT_STRING")
+            .count(),
+        other => panic!("expected absolute/alloc Result<String> findings, got {other:?}"),
+    };
+
+    assert_eq!(
+        count, 4,
+        "::std::result::Result, alloc::string::String and ::std::string::String spellings must each be rejected"
+    );
     Ok(())
 }
 
@@ -528,6 +551,74 @@ fn ast_grep_lane_rejects_two_hop_alias_chain() -> TestResult {
     assert!(
         ids.contains("ARCHITECTURE_IMPORT_CORE_INFRA"),
         "t2::spawn through a two-hop alias chain must be rejected as infra: {ids:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_module_self_state_and_time_imports() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = [
+        "crates/example-core/src/architecture_effect_core_state_module_self_violation.rs",
+        "crates/example-core/src/architecture_import_core_time_module_self_violation.rs",
+    ]
+    .map(|path| fixture_root("ast_grep", path))
+    .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|finding| finding.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected module-self import findings, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("ARCHITECTURE_EFFECT_CORE_STATE"),
+        "use std::sync::{{self}} with sync::Mutex use must be rejected: {ids:?}"
+    );
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_TIME"),
+        "use std::time::{{self}} with time::Instant use must be rejected: {ids:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_allows_shadowed_module_names() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = ["crates/example-core/src/allowed_core_module_shadow.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "a local mod sync with its own Mutex must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_grouped_tokio_task_spawn() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths =
+        ["crates/example-core/src/architecture_effect_core_async_grouped_violation.rs"]
+            .map(|path| fixture_root("ast_grep", path))
+            .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|finding| finding.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected grouped tokio findings, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("ARCHITECTURE_EFFECT_CORE_ASYNC"),
+        "use tokio::{{task::spawn}} must be rejected as an async effect: {ids:?}"
     );
     Ok(())
 }
