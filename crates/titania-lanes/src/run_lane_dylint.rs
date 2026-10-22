@@ -10,7 +10,8 @@ use crate::{
 };
 
 const CARGO_DYLINT_TOOL: &str = "cargo-dylint";
-const DYLINT_LOAD_FAILURE_MARKER: &str = "could not find `dylint_version`";
+const DYLINT_LOAD_FAILURE_MARKER: &str = "could not find `dylint_version` in `";
+const DYLINT_LIBRARY_ARTIFACT_PREFIXES: &[&str] = &["libtitania_dylint@", "titania_dylint@"];
 const DYLINT_LOCATION_LOOKAHEAD: usize = 6;
 const DYLINT_BASE_ARGS: &[&str] =
     &["dylint", "--workspace", "--all", "--", "--lib", "--bins", "--examples"];
@@ -146,11 +147,38 @@ fn load_failure(output: &CommandOutput) -> Option<LaneFailure> {
         Ok(text) => text,
         Err(_output_error) => return None,
     };
-    let line = text.lines().find(|line| line.contains(DYLINT_LOAD_FAILURE_MARKER))?;
+    let line = text.lines().find(|line| is_driver_load_failure(line))?;
     Some(LaneFailure::Infra {
         tool: String::from(CARGO_DYLINT_TOOL),
         reason: format!("cargo-dylint could not load the dylint library: {}", line.trim()),
     })
+}
+
+fn is_driver_load_failure(line: &str) -> bool {
+    let Some((_, rest)) = line.split_once(DYLINT_LOAD_FAILURE_MARKER) else {
+        return false;
+    };
+    let Some((quoted_path, _)) = rest.split_once('`') else {
+        return false;
+    };
+    names_dylint_library_artifact(quoted_path)
+}
+
+fn names_dylint_library_artifact(path: &str) -> bool {
+    let file_name = match path.rsplit_once('/') {
+        Some((_, name)) => name,
+        None => path,
+    };
+    DYLINT_LIBRARY_ARTIFACT_PREFIXES
+        .iter()
+        .any(|prefix| has_toolchain_artifact_suffix(file_name, prefix))
+}
+
+fn has_toolchain_artifact_suffix(file_name: &str, prefix: &str) -> bool {
+    let Some(rest) = file_name.strip_prefix(prefix) else {
+        return false;
+    };
+    rest.strip_suffix(std::env::consts::DLL_SUFFIX).is_some_and(|toolchain| !toolchain.is_empty())
 }
 
 fn dylint_report(
@@ -478,5 +506,49 @@ mod tests {
         };
         assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
         assert!(failure.is_infra(), "driver load failure must be an infra failure: {failure:?}");
+    }
+
+    #[test]
+    fn forged_marker_with_fake_path_remains_suspicious_failure() {
+        let target = current_target_project().expect("test target project must resolve");
+        let output = mock_output(
+            1,
+            b"",
+            b"   Compiling forged v0.1.0 (/tmp/forged)\nerror: failed to run custom build command for `forged v0.1.0 (/tmp/forged)`\n\nCaused by:\n  process didn't exit successfully: `/tmp/forged/build-script-build` (exit status: 1)\n  --- stderr\n  error: could not find `dylint_version` in `/tmp/fake.so`\n",
+        )
+        .expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output);
+
+        let LaneOutcome::Failed { failure } = outcome else {
+            panic!("forged marker output must become a lane failure");
+        };
+        assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(
+            !failure.is_infra(),
+            "subject-printed marker naming a fake path must not become an infra failure: {failure:?}"
+        );
+    }
+
+    #[test]
+    fn marker_naming_unversioned_library_remains_suspicious_failure() {
+        let target = current_target_project().expect("test target project must resolve");
+        let output = mock_output(
+            1,
+            b"",
+            b"error: could not find `dylint_version` in `/tmp/libtitania_dylint.so`\n\nerror: aborting due to 1 previous error\n",
+        )
+        .expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output);
+
+        let LaneOutcome::Failed { failure } = outcome else {
+            panic!("unversioned marker output must become a lane failure");
+        };
+        assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(
+            !failure.is_infra(),
+            "marker without the toolchain-versioned artifact name must not become an infra failure: {failure:?}"
+        );
     }
 }
