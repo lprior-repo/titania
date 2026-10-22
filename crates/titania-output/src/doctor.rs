@@ -419,12 +419,19 @@ fn embedded_rustc_version(bytes: &[u8]) -> Option<String> {
         .checked_add(MARKER.len())?;
     let rest = bytes.get(start..)?;
     let end = rest.iter().position(|byte| *byte == b')')?.checked_add(1)?;
-    normalize_rustc_version_identity(std::str::from_utf8(rest.get(..end)?).ok()?)
+    let text = match std::str::from_utf8(rest.get(..end)?) {
+        Ok(text) => text,
+        Err(_invalid_utf8) => return None,
+    };
+    normalize_rustc_version_identity(text)
 }
 
 fn active_rustc_version() -> Option<String> {
     let rustc = find_on_path("rustc")?;
-    let output = std::process::Command::new(rustc).arg("--version").output().ok()?;
+    let output = match std::process::Command::new(rustc).arg("--version").output() {
+        Ok(output) => output,
+        Err(_spawn_error) => return None,
+    };
     if !output.status.success() {
         return None;
     }

@@ -119,7 +119,11 @@ fn probe_libtitania_dylint(target: &TargetProject) -> Result<LibraryProbe, LaneF
 }
 
 fn rustc_version_mismatch(path: &Path, target: &TargetProject) -> Option<String> {
-    let embedded = std::fs::read(path).ok().and_then(|bytes| embedded_rustc_version(&bytes))?;
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(_read_error) => return None,
+    };
+    let embedded = embedded_rustc_version(&bytes)?;
     let active = active_rustc_version(target)?;
     (embedded != active).then(|| {
         format!(
@@ -137,17 +141,30 @@ fn embedded_rustc_version(bytes: &[u8]) -> Option<String> {
         .checked_add(MARKER.len())?;
     let rest = bytes.get(start..)?;
     let end = rest.iter().position(|byte| *byte == b')')?.checked_add(1)?;
-    normalize_rustc_version_identity(std::str::from_utf8(rest.get(..end)?).ok()?)
+    let text = match std::str::from_utf8(rest.get(..end)?) {
+        Ok(text) => text,
+        Err(_invalid_utf8) => return None,
+    };
+    normalize_rustc_version_identity(text)
 }
 
 fn active_rustc_version(target: &TargetProject) -> Option<String> {
-    let output = crate::command::CommandIn::new(target, "rustc")
-        .and_then(|mut cmd| cmd.inherit_env().args(&["--version"]).run_capture_raw())
-        .ok()?;
+    let mut command = match crate::command::CommandIn::new(target, "rustc") {
+        Ok(command) => command,
+        Err(_command_error) => return None,
+    };
+    let _ = command.inherit_env().args(&["--version"]);
+    let output = match command.run_capture_raw() {
+        Ok(output) => output,
+        Err(_command_error) => return None,
+    };
     if !output.success() {
         return None;
     }
-    let stdout = output.stdout_str().ok()?;
+    let stdout = match output.stdout_str() {
+        Ok(stdout) => stdout,
+        Err(_stdout_error) => return None,
+    };
     parse_rustc_version_output(stdout)
 }
 

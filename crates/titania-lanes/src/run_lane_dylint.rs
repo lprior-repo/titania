@@ -142,7 +142,10 @@ fn nonzero_outcome(target: &TargetProject, output: &CommandOutput) -> LaneOutcom
 }
 
 fn load_failure(output: &CommandOutput) -> Option<LaneFailure> {
-    let text = combined_output(output).ok()?;
+    let text = match combined_output(output) {
+        Ok(text) => text,
+        Err(_output_error) => return None,
+    };
     let line = text.lines().find(|line| line.contains(DYLINT_LOAD_FAILURE_MARKER))?;
     Some(LaneFailure::Infra {
         tool: String::from(CARGO_DYLINT_TOOL),
