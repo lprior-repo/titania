@@ -618,6 +618,78 @@ fn bypass_attr_context_detects_proc_macro_injected_allow() {
     );
 }
 
+const FIXTURE_COMPILER_SCAFFOLDING: &str = r#"
+#![feature(rustc_private)]
+
+extern crate rustc_lint;
+extern crate rustc_session;
+
+use rustc_lint::LateLintPass;
+use rustc_session::{declare_lint, impl_lint_pass};
+
+declare_lint! {
+    pub FIXTURE_SCAFFOLD_LINT,
+    Allow,
+    "FIXTURE_SCAFFOLD_LINT: fixture lint declared through compiler scaffolding"
+}
+
+struct FixturePass;
+
+impl_lint_pass!(FixturePass => [FIXTURE_SCAFFOLD_LINT]);
+
+impl<'tcx> LateLintPass<'tcx> for FixturePass {}
+"#;
+
+const FIXTURE_SPOOFED_SCAFFOLDING_MACRO: &str = r#"
+macro_rules! impl_lint_pass {
+    () => {
+        pub struct SpoofedPass;
+
+        impl SpoofedPass {
+            #[allow(unused)]
+            pub fn lint_vec(&self) {}
+        }
+    };
+}
+
+impl_lint_pass!();
+"#;
+
+#[test]
+fn bypass_attr_context_ignores_compiler_lint_scaffolding() {
+    let output = run_dylint_on_fixture("compiler_scaffolding", FIXTURE_COMPILER_SCAFFOLDING);
+    assert!(
+        output.status.success(),
+        "compiler scaffolding fixture should pass dylint execution:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_ATTR_CONTEXT"),
+        "BYPASS_ATTR_CONTEXT must not fire on rustc declare_lint!/impl_lint_pass! scaffolding:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire on rustc declare_lint!/impl_lint_pass! scaffolding:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bypass_attr_context_detects_spoofed_scaffolding_macro() {
+    let output = run_dylint_on_fixture("spoofed_scaffolding", FIXTURE_SPOOFED_SCAFFOLDING_MACRO);
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow]` hidden by a local macro merely named impl_lint_pass",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow] comes from macro expansion:\n{}",
+        combined_output(&output)
+    );
+}
+
 #[test]
 fn bypass_attr_context_detects_proc_macro_injected_associated_allow() {
     let output = run_dylint_on_proc_macro_fixture(

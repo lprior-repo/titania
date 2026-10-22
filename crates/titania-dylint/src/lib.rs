@@ -153,11 +153,21 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
 }
 
 fn emit_pub_allow_attr(cx: &LateContext<'_>, span: Span) {
+    if is_compiler_lint_scaffolding(cx, span) {
+        return;
+    }
     if span.from_expansion() {
         emit_attr_context(cx, span.source_callsite());
     } else {
         emit_pub_allow(cx, span);
     }
+}
+
+fn is_compiler_lint_scaffolding(cx: &LateContext<'_>, span: Span) -> bool {
+    let expn = span.ctxt().outer_expn_data();
+    expn.macro_def_id.map(|def_id| cx.tcx.def_path_str(def_id)).is_some_and(|path| {
+        matches!(path.as_str(), "rustc_session::declare_lint" | "rustc_session::impl_lint_pass")
+    })
 }
 
 fn emit_pub_allow(cx: &LateContext<'_>, span: Span) {
