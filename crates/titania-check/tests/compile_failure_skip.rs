@@ -201,6 +201,38 @@ fn assert_prior_compilation_skip(report: &Value, lane: &str) {
     );
 }
 
+fn assert_recorded_clippy_findings(report: &Value) {
+    let outcome = lane_outcome(report, "Clippy");
+    assert_eq!(
+        outcome_tag(outcome),
+        "Findings",
+        "Clippy outcome must be its recorded Findings, got: {outcome}"
+    );
+    let findings = outcome["Findings"].as_array().expect("Clippy Findings must be an array");
+    assert_eq!(findings.len(), 1, "Clippy must record exactly one finding, got: {findings:?}");
+    let finding = &findings[0];
+    assert_eq!(finding["lane"], "Clippy", "recorded finding must belong to Clippy: {finding}");
+    assert_eq!(
+        finding["rule_id"], "CLIPPY_E0308",
+        "recorded finding must be CLIPPY_E0308: {finding}"
+    );
+    assert_eq!(
+        finding["location"]["Span"]["file"], "src/lib.rs",
+        "recorded finding must point at src/lib.rs: {finding}"
+    );
+    assert_eq!(
+        finding["location"]["Span"]["line_start"], 2,
+        "recorded finding must point at line 2: {finding}"
+    );
+    let code_findings = report["code_findings"].as_array().expect("code_findings is array");
+    assert!(
+        code_findings
+            .iter()
+            .any(|entry| entry["lane"] == "Clippy" && entry["rule_id"] == "CLIPPY_E0308"),
+        "code_findings must surface the recorded CLIPPY_E0308 finding, got: {code_findings:?}"
+    );
+}
+
 fn gate_failure_tools(report: &Value) -> Vec<String> {
     report["gate_failures"]
         .as_array()
@@ -250,7 +282,7 @@ fn assert_compile_failure_report(report: &Value) {
 
 #[cfg(unix)]
 #[test]
-fn edit_scope_skips_clippy_on_compile_failure() {
+fn edit_scope_preserves_clippy_findings_on_compile_failure() {
     let workspace = fixture_workspace();
 
     let (code, stdout, stderr) = run_check(workspace.path(), "edit");
@@ -260,13 +292,13 @@ fn edit_scope_skips_clippy_on_compile_failure() {
     let report: Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|_| panic!("stdout must be valid JSON: {stdout}"));
     assert_compile_failure_report(&report);
-    assert_prior_compilation_skip(&report, "Clippy");
+    assert_recorded_clippy_findings(&report);
     assert_no_gate_failure_from(&report, &["Clippy", "cargo-clippy"]);
 }
 
 #[cfg(unix)]
 #[test]
-fn prepush_scope_skips_clippy_and_test_on_compile_failure() {
+fn prepush_scope_preserves_clippy_findings_and_skips_test_on_compile_failure() {
     let workspace = fixture_workspace();
 
     let (code, stdout, stderr) = run_check(workspace.path(), "prepush");
@@ -276,14 +308,14 @@ fn prepush_scope_skips_clippy_and_test_on_compile_failure() {
     let report: Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|_| panic!("stdout must be valid JSON: {stdout}"));
     assert_compile_failure_report(&report);
-    assert_prior_compilation_skip(&report, "Clippy");
+    assert_recorded_clippy_findings(&report);
     assert_prior_compilation_skip(&report, "Test");
     assert_no_gate_failure_from(&report, &["Clippy", "cargo-clippy", "Test", "cargo-test"]);
 }
 
 #[cfg(unix)]
 #[test]
-fn release_scope_skips_clippy_test_and_build_on_compile_failure() {
+fn release_scope_preserves_clippy_findings_and_skips_test_and_build_on_compile_failure() {
     let workspace = fixture_workspace();
 
     let (code, stdout, stderr) = run_check(workspace.path(), "release");
@@ -293,7 +325,7 @@ fn release_scope_skips_clippy_test_and_build_on_compile_failure() {
     let report: Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|_| panic!("stdout must be valid JSON: {stdout}"));
     assert_compile_failure_report(&report);
-    assert_prior_compilation_skip(&report, "Clippy");
+    assert_recorded_clippy_findings(&report);
     assert_prior_compilation_skip(&report, "Test");
     assert_prior_compilation_skip(&report, "Build");
     assert_no_gate_failure_from(
