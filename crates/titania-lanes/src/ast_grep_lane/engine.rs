@@ -26,133 +26,146 @@ impl AstEngine {
         self.test_ranges.iter().any(|(start, end)| byte_offset >= *start && byte_offset < *end)
     }
 
-    fn first_match_site(&self, pattern: &Pattern) -> Option<MatchSite> {
-        let node_match = self.grep.root().find_all(pattern).next()?;
-        Some(MatchSite::from_range(node_match.range()))
-    }
-
-    fn first_match_site_skipping_tests(&self, pattern: &Pattern) -> Option<MatchSite> {
+    fn match_sites(&self, pattern: &Pattern) -> Vec<MatchSite> {
         self.grep
             .root()
             .find_all(pattern)
-            .find(|node_match| !self.is_in_test_code(node_match.range().start))
             .map(|node_match| MatchSite::from_range(node_match.range()))
+            .collect()
     }
 
-    fn first_match_site_any_skipping_tests<'p>(
+    fn match_sites_skipping_tests(&self, pattern: &Pattern) -> Vec<MatchSite> {
+        self.grep
+            .root()
+            .find_all(pattern)
+            .filter(|node_match| !self.is_in_test_code(node_match.range().start))
+            .map(|node_match| MatchSite::from_range(node_match.range()))
+            .collect()
+    }
+
+    fn match_sites_any_skipping_tests<'p>(
         &self,
         patterns: impl IntoIterator<Item = &'p Pattern>,
-    ) -> Option<MatchSite> {
-        patterns
-            .into_iter()
-            .filter_map(|pat| self.first_match_site_skipping_tests(pat))
-            .min_by_key(|site| site.start_byte)
+    ) -> Vec<MatchSite> {
+        let sites =
+            patterns.into_iter().flat_map(|pat| self.match_sites_skipping_tests(pat)).collect();
+        sorted_sites(sites)
     }
 
-    pub(super) fn detect_unbounded_loop(&self) -> Option<MatchSite> {
+    pub(super) fn detect_unbounded_loop(&self) -> Vec<MatchSite> {
         let loop_pat = Pattern::new("loop { $$$BODY }", Rust);
         let while_pat = Pattern::new("while $COND { $$$BODY }", Rust);
-        let loop_site = self.first_match_site_skipping_tests(&loop_pat);
-        let while_site = self
+        let loop_sites = self.match_sites_skipping_tests(&loop_pat);
+        let while_sites = self
             .grep
             .root()
             .find_all(&while_pat)
             .filter(|node_match| !self.is_in_test_code(node_match.range().start))
             .filter(|node_match| !is_while_let_match(node_match))
             .map(|node_match| MatchSite::from_range(node_match.range()))
-            .min_by_key(|site| site.start_byte);
-        loop_site.into_iter().chain(while_site).min_by_key(|site| site.start_byte)
+            .collect::<Vec<_>>();
+        sorted_sites(loop_sites.into_iter().chain(while_sites).collect())
     }
 
-    pub(super) fn detect_unbounded_iterator(&self) -> Option<MatchSite> {
+    pub(super) fn detect_unbounded_iterator(&self) -> Vec<MatchSite> {
         let cycle = Pattern::new("$ITER.cycle()", Rust);
         let repeat = Pattern::new("repeat($$$ARGS)", Rust);
         let repeat_with = Pattern::new("repeat_with($$$ARGS)", Rust);
         let successors = Pattern::new("successors($$$ARGS)", Rust);
         let from_fn = Pattern::new("from_fn($$$ARGS)", Rust);
-        self.first_match_site_any_skipping_tests([
-            &cycle,
-            &repeat,
-            &repeat_with,
-            &successors,
-            &from_fn,
-        ])
+        self.match_sites_any_skipping_tests([&cycle, &repeat, &repeat_with, &successors, &from_fn])
     }
 
-    pub(super) fn detect_print_stdout(&self) -> Option<MatchSite> {
+    pub(super) fn detect_print_stdout(&self) -> Vec<MatchSite> {
         let print = Pattern::new("print!($$$ARGS)", Rust);
         let println = Pattern::new("println!($$$ARGS)", Rust);
-        self.first_match_site_any_skipping_tests([&print, &println])
+        self.match_sites_any_skipping_tests([&print, &println])
     }
 
-    pub(super) fn detect_print_stderr(&self) -> Option<MatchSite> {
+    pub(super) fn detect_print_stderr(&self) -> Vec<MatchSite> {
         let eprint = Pattern::new("eprint!($$$ARGS)", Rust);
         let eprintln = Pattern::new("eprintln!($$$ARGS)", Rust);
-        self.first_match_site_any_skipping_tests([&eprint, &eprintln])
+        self.match_sites_any_skipping_tests([&eprint, &eprintln])
     }
 
-    pub(super) fn detect_wildcard_import(&self) -> Option<MatchSite> {
+    pub(super) fn detect_wildcard_import(&self) -> Vec<MatchSite> {
         let pat = Pattern::new("use $PATH::*;", Rust);
-        self.first_match_site_skipping_tests(&pat)
+        self.match_sites_skipping_tests(&pat)
     }
 
-    pub(super) fn detect_unwrap_or(&self) -> Option<MatchSite> {
+    pub(super) fn detect_unwrap_or(&self) -> Vec<MatchSite> {
         let or = Pattern::new("$VALUE.unwrap_or($DEFAULT)", Rust);
         let or_else = Pattern::new("$VALUE.unwrap_or_else($DEFAULT)", Rust);
         let or_default = Pattern::new("$VALUE.unwrap_or_default()", Rust);
-        self.first_match_site_any_skipping_tests([&or, &or_else, &or_default])
+        self.match_sites_any_skipping_tests([&or, &or_else, &or_default])
     }
 
-    pub(super) fn detect_result_string(&self) -> Option<MatchSite> {
-        self.grep.root().dfs().filter(|node| !self.is_in_test_code(node.range().start)).find_map(
-            |node| is_result_with_string_error(&node).map(|()| MatchSite::from_range(node.range())),
-        )
+    pub(super) fn detect_result_string(&self) -> Vec<MatchSite> {
+        self.grep
+            .root()
+            .dfs()
+            .filter(|node| !self.is_in_test_code(node.range().start))
+            .filter(|node| is_result_with_string_error(node).is_some())
+            .map(|node| MatchSite::from_range(node.range()))
+            .collect()
     }
 
-    pub(super) fn detect_nesting_depth(&self) -> Option<MatchSite> {
+    pub(super) fn detect_nesting_depth(&self) -> Vec<MatchSite> {
         self.grep
             .root()
             .dfs()
             .filter(|node| node.kind() == "function_item")
             .filter(|node| !self.is_in_test_code(node.range().start))
-            .find_map(|node| function_excess_nesting_site(&node))
+            .filter_map(|node| function_excess_nesting_site(&node))
+            .collect()
     }
 
-    pub(super) fn detect_recursion_direct(&self) -> Option<MatchSite> {
+    pub(super) fn detect_recursion_direct(&self) -> Vec<MatchSite> {
         self.grep
             .root()
             .dfs()
             .filter(|node| node.kind() == "function_item")
             .filter(|node| !self.is_in_test_code(node.range().start))
-            .find_map(|node| function_recursion_site(&node))
+            .filter_map(|node| function_recursion_site(&node))
+            .collect()
     }
 
-    pub(super) fn detect_allow_attr(&self) -> Option<MatchSite> {
+    pub(super) fn detect_allow_attr(&self) -> Vec<MatchSite> {
         let pat = Pattern::new("#[allow($$$LINTS)]", Rust);
-        self.first_match_site(&pat)
+        self.match_sites(&pat)
     }
 
-    pub(super) fn detect_expect_attr(&self) -> Option<MatchSite> {
+    pub(super) fn detect_expect_attr(&self) -> Vec<MatchSite> {
         let pat = Pattern::new("#[expect($$$LINTS)]", Rust);
-        self.first_match_site(&pat)
+        self.match_sites(&pat)
     }
 
-    pub(super) fn detect_cfg_attr_allow(&self) -> Option<MatchSite> {
+    pub(super) fn detect_cfg_attr_allow(&self) -> Vec<MatchSite> {
         let pat = Pattern::new("#[cfg_attr($COND, allow($$$LINTS))]", Rust);
-        self.first_match_site(&pat)
+        self.match_sites(&pat)
     }
 
-    pub(super) fn detect_crate_allow(&self) -> Option<MatchSite> {
+    pub(super) fn detect_crate_allow(&self) -> Vec<MatchSite> {
         let pat = Pattern::new("#![allow($$$LINTS)]", Rust);
-        self.first_match_site(&pat)
+        self.match_sites(&pat)
     }
 
-    pub(super) fn detect_crate_expect(&self) -> Option<MatchSite> {
+    pub(super) fn detect_crate_expect(&self) -> Vec<MatchSite> {
         let pat = Pattern::new("#![expect($$$LINTS)]", Rust);
-        self.first_match_site(&pat)
+        self.match_sites(&pat)
     }
 
-    pub(super) fn detect_generated_include(&self) -> Option<MatchSite> {
+    pub(super) fn detect_inline_suppression(&self) -> Vec<MatchSite> {
+        self.grep
+            .root()
+            .dfs()
+            .filter(|node| matches!(node.kind().as_ref(), "line_comment" | "block_comment"))
+            .filter(|node| contains_inline_suppression_marker(node.text().as_ref()))
+            .map(|node| MatchSite::from_range(node.range()))
+            .collect()
+    }
+
+    pub(super) fn detect_generated_include(&self) -> Vec<MatchSite> {
         let concat_pattern = Pattern::new("concat!($$$PARTS)", Rust);
         let direct_pattern = Pattern::new("include!(concat!(env!($ENV), $PATH))", Rust);
         let message_pattern =
@@ -160,16 +173,27 @@ impl AstEngine {
         let many_pattern = Pattern::new("include!(concat!(env!($ENV), $$$PATHS))", Rust);
         let many_message_pattern =
             Pattern::new("include!(concat!(env!($ENV, $$$MESSAGE), $$$PATHS))", Rust);
-        [
-            single_include_site(&self.grep, &direct_pattern, &concat_pattern),
-            single_include_site(&self.grep, &message_pattern, &concat_pattern),
-            many_include_site(&self.grep, &many_pattern, &concat_pattern),
-            many_include_site(&self.grep, &many_message_pattern, &concat_pattern),
+        let sites = [
+            single_include_sites(&self.grep, &direct_pattern, &concat_pattern),
+            single_include_sites(&self.grep, &message_pattern, &concat_pattern),
+            many_include_sites(&self.grep, &many_pattern, &concat_pattern),
+            many_include_sites(&self.grep, &many_message_pattern, &concat_pattern),
         ]
         .into_iter()
         .flatten()
-        .min_by_key(|site| site.start_byte)
+        .collect();
+        sorted_sites(sites)
     }
+}
+
+fn sorted_sites(mut sites: Vec<MatchSite>) -> Vec<MatchSite> {
+    sites.sort_by_key(|site| (site.start_byte, site.end_byte));
+    sites.dedup_by_key(|site| (site.start_byte, site.end_byte));
+    sites
+}
+
+fn contains_inline_suppression_marker(comment: &str) -> bool {
+    comment.contains("ast-grep-ignore") || comment.contains("sg-ignore")
 }
 
 fn is_out_dir_expression(node: &Node<'_, StrDoc<Rust>>, concat_pattern: &Pattern) -> bool {
@@ -202,32 +226,38 @@ fn append_decoded_part(mut output: String, part: &Node<'_, StrDoc<Rust>>) -> Opt
     Some(output)
 }
 
-fn single_include_site(
+fn single_include_sites(
     grep: &AstGrep<StrDoc<Rust>>,
     pattern: &Pattern,
     concat_pattern: &Pattern,
-) -> Option<MatchSite> {
-    grep.root().find_all(pattern).find_map(|node_match| {
-        let environment = node_match.get_env().get_match("ENV")?;
-        let path = node_match.get_env().get_match("PATH")?;
-        (is_out_dir_expression(environment, concat_pattern) && path_non_empty(path))
-            .then(|| MatchSite::from_range(node_match.range()))
-    })
+) -> Vec<MatchSite> {
+    grep.root()
+        .find_all(pattern)
+        .filter_map(|node_match| {
+            let environment = node_match.get_env().get_match("ENV")?;
+            let path = node_match.get_env().get_match("PATH")?;
+            (is_out_dir_expression(environment, concat_pattern) && path_non_empty(path))
+                .then(|| MatchSite::from_range(node_match.range()))
+        })
+        .collect()
 }
 
-fn many_include_site(
+fn many_include_sites(
     grep: &AstGrep<StrDoc<Rust>>,
     pattern: &Pattern,
     concat_pattern: &Pattern,
-) -> Option<MatchSite> {
-    grep.root().find_all(pattern).find_map(|node_match| {
-        let environment = node_match.get_env().get_match("ENV")?;
-        let paths = node_match.get_env().get_multiple_matches("PATHS");
-        (!paths.is_empty()
-            && is_out_dir_expression(environment, concat_pattern)
-            && paths.iter().any(path_non_empty))
-        .then(|| MatchSite::from_range(node_match.range()))
-    })
+) -> Vec<MatchSite> {
+    grep.root()
+        .find_all(pattern)
+        .filter_map(|node_match| {
+            let environment = node_match.get_env().get_match("ENV")?;
+            let paths = node_match.get_env().get_multiple_matches("PATHS");
+            (!paths.is_empty()
+                && is_out_dir_expression(environment, concat_pattern)
+                && paths.iter().any(path_non_empty))
+            .then(|| MatchSite::from_range(node_match.range()))
+        })
+        .collect()
 }
 
 fn is_while_let_match(node: &Node<'_, StrDoc<Rust>>) -> bool {
@@ -407,18 +437,20 @@ fn parse_literal(source: &str) -> Option<LiteralParts<'_>> {
 fn is_result_with_string_error(node: &Node<'_, StrDoc<Rust>>) -> Option<()> {
     (node.kind() == "generic_type").then_some(())?;
     let mut named = node.children().filter(Node::is_named);
-    let head_is_result = named.next().is_some_and(|t| type_text_is(&t, "Result"));
+    let head_is_result = named.next().is_some_and(|t| type_path_is(&t, "Result"));
     let args = named.next()?;
     (args.kind() == "type_arguments").then_some(())?;
     let mut arg_children = args.children().filter(Node::is_named);
     let _first_arg = arg_children.next();
-    let second_is_string = arg_children.next().is_some_and(|t| type_text_is(&t, "String"));
+    let second_is_string = arg_children.next().is_some_and(|t| type_path_is(&t, "String"));
     let no_more_args = arg_children.next().is_none();
     (head_is_result && second_is_string && no_more_args).then_some(())
 }
 
-fn type_text_is(node: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
-    node.text().trim() == name
+fn type_path_is(node: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
+    let text = node.text();
+    let compact: String = text.chars().filter(|ch| !ch.is_whitespace()).collect();
+    compact == name || compact.ends_with(&format!("::{name}"))
 }
 
 fn function_has_excess_nesting(func: &Node<'_, StrDoc<Rust>>) -> Option<usize> {
@@ -483,11 +515,34 @@ fn is_call_to(node: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
     }
     node.children()
         .find(|child| is_callee_kind(&child.kind()))
-        .is_some_and(|callee| callee.text().trim() == name)
+        .is_some_and(|callee| callee_resolves_to(&callee, name))
 }
 
 fn is_callee_kind(kind: &str) -> bool {
-    matches!(kind, "identifier" | "field_expression")
+    matches!(kind, "identifier" | "field_expression" | "scoped_identifier")
+}
+
+fn callee_resolves_to(callee: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
+    match callee.kind().as_ref() {
+        "identifier" => callee.text().trim() == name,
+        "field_expression" => is_self_field_call(callee, name),
+        "scoped_identifier" => is_scoped_call(callee, "Self", name),
+        _ => false,
+    }
+}
+
+fn is_self_field_call(callee: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
+    let mut named = callee.children().filter(Node::is_named);
+    let object_is_self = named.next().is_some_and(|object| object.text().trim() == "self");
+    let field_is_name = named.next().is_some_and(|field| field.text().trim() == name);
+    object_is_self && field_is_name
+}
+
+fn is_scoped_call(callee: &Node<'_, StrDoc<Rust>>, scope: &str, name: &str) -> bool {
+    let mut named = callee.children().filter(Node::is_named);
+    let scope_matches = named.next().is_some_and(|head| head.text().trim() == scope);
+    let name_matches = named.next().is_some_and(|leaf| leaf.text().trim() == name);
+    scope_matches && name_matches
 }
 
 fn collect_test_ranges(root: &Node<'_, StrDoc<Rust>>) -> Vec<(usize, usize)> {

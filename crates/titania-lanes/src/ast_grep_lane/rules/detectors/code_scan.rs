@@ -90,6 +90,7 @@ impl LineScan {
         match self.mode {
             ScanMode::Code => self.accept_code(ch),
             ScanMode::Text => self.accept_text(ch),
+            ScanMode::CharLiteral => self.accept_char_literal(ch),
             ScanMode::RawStart => self.accept_raw_start(ch),
             ScanMode::RawText => self.accept_raw_text(ch),
             ScanMode::RawEnd => self.accept_raw_end(ch),
@@ -102,6 +103,8 @@ impl LineScan {
         match self.pending {
             CodePending::Slash => self.accept_after_slash(ch),
             CodePending::RawPrefix => self.accept_after_raw_prefix(ch),
+            CodePending::QuoteStart => self.accept_after_quote_start(ch),
+            CodePending::QuoteChar(first) => self.accept_after_quote_char(first, ch),
             CodePending::None => self.accept_visible_code(ch),
         }
     }
@@ -129,8 +132,62 @@ impl LineScan {
             '/' => self.pending = CodePending::Slash,
             '"' => self.enter_text(),
             'r' => self.pending = CodePending::RawPrefix,
+            '\'' => self.pending = CodePending::QuoteStart,
             _ => self.code.push(ch),
         }
+        self
+    }
+
+    const fn accept_after_quote_start(mut self, ch: char) -> Self {
+        self.pending = CodePending::None;
+        match ch {
+            '\\' => self.enter_char_literal(TextEscape::Escaped),
+            '\'' => self,
+            _ => self.defer_quote_char(ch),
+        }
+    }
+
+    const fn defer_quote_char(mut self, ch: char) -> Self {
+        self.pending = CodePending::QuoteChar(ch);
+        self
+    }
+
+    fn accept_after_quote_char(mut self, first: char, ch: char) -> Self {
+        self.pending = CodePending::None;
+        match ch {
+            '\'' => self,
+            _ => self.emit_lifetime_then(first, ch),
+        }
+    }
+
+    fn emit_lifetime_then(mut self, first: char, ch: char) -> Self {
+        self.code.push('\'');
+        self.code.push(first);
+        self.accept_visible_code(ch)
+    }
+
+    const fn enter_char_literal(mut self, escape: TextEscape) -> Self {
+        self.mode = ScanMode::CharLiteral;
+        self.escape = escape;
+        self
+    }
+
+    const fn accept_char_literal(self, ch: char) -> Self {
+        match (self.escape, ch) {
+            (TextEscape::Escaped, _) => self.consume_escaped_char(),
+            (TextEscape::Normal, '\\') => self.enter_char_literal(TextEscape::Escaped),
+            (TextEscape::Normal, '\'') => self.exit_char_literal(),
+            (TextEscape::Normal, _) => self,
+        }
+    }
+
+    const fn consume_escaped_char(mut self) -> Self {
+        self.escape = TextEscape::Normal;
+        self
+    }
+
+    const fn exit_char_literal(mut self) -> Self {
+        self.mode = ScanMode::Code;
         self
     }
 
@@ -156,9 +213,31 @@ impl LineScan {
     fn finish(self) -> StrippedLine {
         self.finish_pending_raw_prefix()
             .finish_pending_slash()
+            .finish_pending_quote()
             .finish_line_comment()
             .finish_raw_end()
             .stripped()
+    }
+
+    fn finish_pending_quote(self) -> Self {
+        match self.pending {
+            CodePending::QuoteStart => self.emit_pending_quote(),
+            CodePending::QuoteChar(first) => self.emit_pending_quote_char(first),
+            _ => self,
+        }
+    }
+
+    fn emit_pending_quote(mut self) -> Self {
+        self.code.push('\'');
+        self.pending = CodePending::None;
+        self
+    }
+
+    fn emit_pending_quote_char(mut self, first: char) -> Self {
+        self.code.push('\'');
+        self.code.push(first);
+        self.pending = CodePending::None;
+        self
     }
 
     fn finish_pending_raw_prefix(self) -> Self {

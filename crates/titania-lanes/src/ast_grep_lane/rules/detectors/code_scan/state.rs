@@ -3,6 +3,7 @@ pub(super) enum ScanMode {
     #[default]
     Code,
     Text,
+    CharLiteral,
     RawStart,
     RawText,
     RawEnd,
@@ -13,7 +14,7 @@ pub(super) enum ScanMode {
 impl ScanMode {
     pub(super) const fn finish_line(self) -> Self {
         match self {
-            Self::LineComment => Self::Code,
+            Self::LineComment | Self::CharLiteral => Self::Code,
             mode => mode,
         }
     }
@@ -39,6 +40,8 @@ pub(super) enum CodePending {
     None,
     Slash,
     RawPrefix,
+    QuoteStart,
+    QuoteChar(char),
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

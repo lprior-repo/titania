@@ -1,5 +1,5 @@
-pub(crate) use rand::Rng;
+pub(crate) use rand::thread_rng;
 
-pub fn expose_rng<T>(rng: T) -> T {
-    rng
+pub fn pick() -> u8 {
+    thread_rng().gen_range(0..10)
 }

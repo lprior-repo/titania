@@ -147,6 +147,86 @@ fn tn_bvv7_state_effect_allows_frozen_catalog_pattern() {
     assert!(!detect_core_state_effect("// static mut COUNTER in a comment"));
 }
 
+#[test]
+fn audit6_random_injected_rng_trait_is_allowed() {
+    assert!(!detect_core_random_import("use rand::Rng;"));
+    assert!(!detect_core_random_import(
+        "pub fn choose<R: Rng>(rng: &mut R, len: usize) -> usize { rng.gen_range(0..len) }"
+    ));
+    assert!(detect_core_random_import("use rand::thread_rng;"));
+    assert!(detect_core_random_import("use rand::{Rng, thread_rng};"));
+}
+
+#[test]
+fn audit6_state_grouped_imports_are_violations() {
+    assert!(detect_core_state_effect(
+        "use std::sync::{Mutex, RwLock};\nstatic HITS: Mutex<i32> = Mutex::new(0);"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::cell::{RefCell};\nthread_local! { static C: RefCell<i32> = const { RefCell::new(0) }; }"
+    ));
+    assert!(detect_core_state_effect("use std::thread::{spawn};\npub fn bg() { spawn(|| 1); }"));
+}
+
+#[test]
+fn audit6_state_beyond_spec_constructs_are_allowed() {
+    assert!(!detect_core_state_effect("pub fn f(cell: &std::cell::Cell<i32>) {}"));
+    assert!(!detect_core_state_effect("pub fn f(cell: &std::cell::UnsafeCell<i32>) {}"));
+    assert!(!detect_core_state_effect("use std::cell::Cell;\npub fn f(cell: &Cell<i32>) {}"));
+    assert!(!detect_core_state_effect(
+        "pub fn nap() { std::thread::sleep(std::time::Duration::from_secs(1)); }"
+    ));
+}
+
+#[test]
+fn audit6_async_field_named_await_does_not_fire() {
+    assert!(!detect_core_async_effect("pub fn count(stats: &Stats) -> u32 { stats.await_count }"));
+    assert!(!detect_core_async_effect("pub fn count(stats: &Stats) -> u32 { stats.awaiting }"));
+    assert!(detect_core_async_effect(
+        "pub fn run(fut: impl Future<Output = i32>) -> i32 { fut.await }"
+    ));
+}
+
+#[test]
+fn audit6_async_unsafe_fn_is_violation() {
+    assert!(detect_core_async_effect("pub async unsafe fn fetch() -> i32 { 1 }"));
+}
+
+#[test]
+fn audit6_bare_tokio_task_import_alone_is_not_async_effect() {
+    assert!(!detect_core_async_effect("use tokio::task;"));
+    assert!(!detect_core_async_effect("pub use tokio::task;"));
+    assert!(detect_core_async_effect("use tokio::task::JoinSet;"));
+    assert!(detect_core_async_effect("pub fn go() { tokio::task::spawn_local(async { 1 }); }"));
+}
+
+#[test]
+fn audit6_crate_root_alias_infra_is_violation() {
+    assert!(detect_core_infra_import("use tokio as tk;\npub fn go() { tk::spawn(async { 1 }); }"));
+    assert!(detect_core_infra_import(
+        "use tokio::{self as tk};\npub fn go() { tk::spawn(async { 1 }); }"
+    ));
+    assert!(detect_core_async_effect("use tokio as tk;\npub fn go() { tk::spawn(async { 1 }); }"));
+    assert!(!detect_core_infra_import("use tokio as tk;\npub fn go() -> i32 { 1 }"));
+    assert!(!detect_core_infra_import(
+        "use tokio_util as tk;\npub fn go() { tk::spawn(async { 1 }); }"
+    ));
+}
+
+#[test]
+fn audit6_char_literal_quote_does_not_hide_following_code() {
+    assert!(detect_core_fs_import(
+        "pub const QUOTE: char = '\"';\npub fn load() -> String { std::fs::read_to_string(\"c\").unwrap_or_default() }"
+    ));
+    assert!(detect_core_fs_import(
+        "pub const BACKSLASH: char = '\\\\';\npub fn load() -> String { std::fs::read_to_string(\"c\").unwrap_or_default() }"
+    ));
+    assert!(!detect_core_fs_import("pub fn id<'a>(value: &'a str) -> &'a str { value }"));
+    assert!(!detect_core_fs_import(
+        "pub const QUOTE: char = '\"';\npub fn pure(x: i32) -> i32 { x + 1 }"
+    ));
+}
+
 use proptest::prelude::*;
 
 fn padding() -> impl Strategy<Value = String> {

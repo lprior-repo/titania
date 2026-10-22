@@ -10,7 +10,7 @@ use super::{
     span::{FILE_LEVEL_SITE, MatchSite},
 };
 
-type EngineDetector = fn(&AstEngine) -> Option<MatchSite>;
+type EngineDetector = fn(&AstEngine) -> Vec<MatchSite>;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct RuleDef {
@@ -29,10 +29,10 @@ pub(super) enum Detector {
 }
 
 impl Detector {
-    pub(super) fn run(self, engine: &AstEngine, source: &str) -> Option<MatchSite> {
+    pub(super) fn run(self, engine: &AstEngine, source: &str) -> Vec<MatchSite> {
         match self {
             Self::Engine(detect) => detect(engine),
-            Self::String(detect) => detect(source).then_some(FILE_LEVEL_SITE),
+            Self::String(detect) => detect(source).then_some(FILE_LEVEL_SITE).into_iter().collect(),
         }
     }
 }
@@ -189,7 +189,7 @@ pub(super) const RULES: &[RuleDef] = &[
         message: "BYPASS_INLINE_SUPPRESSION: remove ast-grep-ignore or sg-ignore inline suppression",
         effect: FindingEffect::Reject,
         repair: RepairKind::RequiresHumanReview,
-        detect: Detector::String(detectors::detect_inline_suppression),
+        detect: Detector::Engine(AstEngine::detect_inline_suppression),
         scope: RuleScope::ProductionRust,
     },
     RuleDef {

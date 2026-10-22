@@ -342,6 +342,113 @@ fn ast_grep_lane_rejects_multiline_result_string_error() -> TestResult {
 }
 
 #[test]
+fn ast_grep_lane_rejects_fully_qualified_result_string_error() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_result_string_fq_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "FUNC_RESULT_STRING")
+            .count(),
+        other => panic!("expected fully-qualified Result<String> findings, got {other:?}"),
+    };
+
+    assert_eq!(count, 2, "both fully-qualified Result<String> spellings must be rejected");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_method_and_self_type_recursion() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_recursion_method_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "FUNC_RECURSION_DIRECT")
+            .count(),
+        other => panic!("expected method recursion findings, got {other:?}"),
+    };
+
+    assert_eq!(count, 2, "self.walk() and Self::descend() must each be rejected");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_emits_one_finding_per_occurrence() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths =
+        ["functional/func_print_stdout_violation.rs", "functional/func_unwrap_or_violation.rs"]
+            .map(|path| fixture_root("ast_grep", path))
+            .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let (stdout_count, unwrap_or_count) = match outcome {
+        LaneOutcome::Findings { findings } => (
+            findings.iter().filter(|f| f.rule_id().as_str() == "FUNC_PRINT_STDOUT").count(),
+            findings.iter().filter(|f| f.rule_id().as_str() == "FUNC_UNWRAP_OR").count(),
+        ),
+        other => panic!("expected per-occurrence findings, got {other:?}"),
+    };
+
+    assert_eq!(stdout_count, 3, "three print macros must emit three findings");
+    assert_eq!(unwrap_or_count, 3, "three unwrap_or forms must emit three findings");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_inline_suppression_ignores_string_literals() -> TestResult {
+    let rules_yaml = [include_str!("../rules/bypass.yml")];
+    let allowed_paths = ["bypass/allowed_inline_suppression_in_string_literal.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &allowed_paths, &[])?;
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "marker text inside string literals must not fire BYPASS_INLINE_SUPPRESSION: {outcome:?}"
+    );
+
+    let violation_paths = ["bypass/bypass_inline_suppression_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &violation_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "BYPASS_INLINE_SUPPRESSION")
+            .count(),
+        other => panic!("expected inline suppression findings, got {other:?}"),
+    };
+
+    assert_eq!(count, 3, "three real marker comments must emit three findings");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_allows_injected_rng_trait() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = ["crates/example-core/src/allowed_core_rand_rng_injection.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "an injected rand::Rng trait parameter must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn ast_grep_lane_rejects_pub_and_multiline_architecture_imports() -> TestResult {
     let rules_yaml = [include_str!("../rules/architecture.yml")];
     let fixture_paths = [
@@ -366,7 +473,10 @@ fn ast_grep_lane_rejects_pub_and_multiline_architecture_imports() -> TestResult 
         ids.contains("ARCHITECTURE_IMPORT_CORE_TIME"),
         "multiline std::time::Instant grouped import must be rejected"
     );
-    assert!(ids.contains("ARCHITECTURE_IMPORT_CORE_RANDOM"), "pub use rand::Rng must be rejected");
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_RANDOM"),
+        "pub use rand::thread_rng must be rejected"
+    );
     Ok(())
 }
 

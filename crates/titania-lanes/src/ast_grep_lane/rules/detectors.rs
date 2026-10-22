@@ -2,24 +2,6 @@ mod code_scan;
 
 use code_scan::{code_only_source, detect_code_line};
 
-pub(super) fn detect_inline_suppression(source: &str) -> bool {
-    source.lines().any(line_comment_contains_inline_suppression)
-}
-
-fn line_comment_contains_inline_suppression(line: &str) -> bool {
-    line.split_once("//")
-        .map(|(_, comment)| comment)
-        .is_some_and(contains_inline_suppression_marker)
-        || line
-            .split_once("/*")
-            .map(|(_, comment)| comment)
-            .is_some_and(contains_inline_suppression_marker)
-}
-
-fn contains_inline_suppression_marker(comment: &str) -> bool {
-    comment.contains("ast-grep-ignore") || comment.contains("sg-ignore")
-}
-
 pub(super) fn detect_core_infra_import(source: &str) -> bool {
     detect_code_line(source, |line| {
         line.contains("use tokio::")
@@ -27,6 +9,7 @@ pub(super) fn detect_core_infra_import(source: &str) -> bool {
             || line.contains("use sqlx::")
             || line.contains("use reqwest::")
     }) || fully_qualified_uses_path(source, &["tokio::", "axum::", "sqlx::", "reqwest::"])
+        || crate_alias_path_used(source, &["tokio", "axum", "sqlx", "reqwest"])
 }
 
 pub(super) fn detect_core_fs_import(source: &str) -> bool {
@@ -42,9 +25,9 @@ pub(super) fn detect_core_time_import(source: &str) -> bool {
 }
 
 pub(super) fn detect_core_random_import(source: &str) -> bool {
-    direct_import_contains(source, "rand::", &["thread_rng", "Rng"])
-        || grouped_rand_import_contains(source, &["thread_rng", "Rng"])
-        || fully_qualified_uses_path(source, &["rand::thread_rng", "rand::Rng"])
+    direct_import_contains(source, "rand::", &["thread_rng"])
+        || grouped_rand_import_contains(source, &["thread_rng"])
+        || fully_qualified_uses_path(source, &["rand::thread_rng"])
 }
 
 pub(super) fn detect_core_process_import(source: &str) -> bool {
@@ -64,8 +47,40 @@ pub(super) fn detect_core_process_import(source: &str) -> bool {
 pub(super) fn detect_core_async_effect(source: &str) -> bool {
     let code = code_only_source(source);
     code_contains_token(&code, "async fn")
-        || code.contains(".await")
-        || fully_qualified_uses_path(source, &["tokio::spawn", "tokio::task", "tokio::time"])
+        || code_contains_token(&code, "async unsafe fn")
+        || contains_await_expression(&code)
+        || fully_qualified_uses_path(source, &["tokio::spawn", "tokio::time"])
+        || tokio_task_used(&code)
+        || tokio_alias_effect_used(source)
+}
+
+fn contains_await_expression(code: &str) -> bool {
+    code.match_indices(".await").any(|(start, _)| {
+        code.split_at_checked(start.saturating_add(".await".len()))
+            .is_none_or(|(_, after)| after.chars().next().is_none_or(|next| !is_ident_char(next)))
+    })
+}
+
+fn tokio_task_used(code: &str) -> bool {
+    code.lines().any(|line| code_contains_token(line, "tokio::task") && !is_bare_task_import(line))
+}
+
+fn is_bare_task_import(line: &str) -> bool {
+    let statement = line.trim().trim_start_matches("pub ").trim_start();
+    let statement = statement
+        .strip_prefix("pub(")
+        .and_then(|rest| rest.split_once(')'))
+        .map_or(statement, |(_, tail)| tail.trim_start());
+    statement == "use tokio::task;" || statement == "use tokio::task::{self};"
+}
+
+fn tokio_alias_effect_used(source: &str) -> bool {
+    let code = code_only_source(source);
+    crate_root_aliases(&code, "tokio").iter().any(|alias| {
+        ["spawn", "task", "time"]
+            .iter()
+            .any(|member| code_contains_token(&code, &format!("{alias}::{member}")))
+    })
 }
 
 pub(super) fn detect_core_state_effect(source: &str) -> bool {
@@ -75,13 +90,14 @@ pub(super) fn detect_core_state_effect(source: &str) -> bool {
             "static mut",
             "std::sync::Mutex",
             "std::sync::RwLock",
-            "std::cell::Cell",
             "std::cell::RefCell",
-            "std::cell::UnsafeCell",
             "std::thread::spawn",
-            "std::thread::sleep",
         ],
-    )
+    ) || direct_import_contains(source, "std::sync::", &["Mutex", "RwLock"])
+        || grouped_import_contains(source, "use std::sync::", &["Mutex", "RwLock"])
+        || direct_import_contains(source, "std::cell::", &["RefCell"])
+        || grouped_import_contains(source, "use std::cell::", &["RefCell"])
+        || grouped_import_contains(source, "use std::thread::", &["spawn"])
 }
 
 fn fully_qualified_uses_path(source: &str, needles: &[&str]) -> bool {
@@ -173,4 +189,42 @@ fn grouped_member_matches(member: &str, name: &str) -> bool {
     member
         .strip_prefix(name)
         .is_some_and(|rest| rest.is_empty() || rest.starts_with("::") || rest.starts_with(" as "))
+}
+
+fn crate_alias_path_used(source: &str, crates: &[&str]) -> bool {
+    let code = code_only_source(source);
+    crates.iter().any(|krate| {
+        crate_root_aliases(&code, krate)
+            .iter()
+            .any(|alias| code_contains_token(&code, &format!("{alias}::")))
+    })
+}
+
+pub(super) fn crate_root_aliases(code: &str, krate: &str) -> Vec<String> {
+    code.match_indices("use ")
+        .filter_map(|(start, _)| crate_root_alias_at(code, start, krate))
+        .collect()
+}
+
+fn crate_root_alias_at(source: &str, start: usize, krate: &str) -> Option<String> {
+    use_item_prefix_allowed(source, start).then_some(())?;
+    let statement =
+        source.split_at_checked(start)?.1.strip_prefix("use ")?.split_once(';')?.0.trim();
+    statement.strip_prefix(krate).and_then(alias_from_use_rest)
+}
+
+fn alias_from_use_rest(rest: &str) -> Option<String> {
+    if let Some(alias) = rest.trim().strip_prefix("as ") {
+        return valid_alias(alias.trim());
+    }
+    let grouped = rest.trim().strip_prefix("::{")?.strip_suffix('}')?;
+    grouped
+        .split(',')
+        .map(str::trim)
+        .find_map(|member| member.strip_prefix("self as "))
+        .and_then(|alias| valid_alias(alias.trim()))
+}
+
+fn valid_alias(alias: &str) -> Option<String> {
+    (!alias.is_empty() && alias.chars().all(is_ident_char)).then(|| alias.to_owned())
 }
