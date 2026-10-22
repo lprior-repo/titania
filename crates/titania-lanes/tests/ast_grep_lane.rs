@@ -1121,6 +1121,52 @@ fn own_repeat_method_and_local_iter_module_stay_clean() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn turbofish_unbounded_iterators_each_fire_exactly_once() -> TestResult {
+    for name in [
+        "bounded_execution_unbounded_iterator_turbofish_violation.rs",
+        "bounded_execution_unbounded_iterator_turbofish_bare_violation.rs",
+        "bounded_execution_unbounded_iterator_turbofish_leading_violation.rs",
+    ] {
+        let findings = run_functional_fixture(name);
+        let ids: Vec<&str> = findings.iter().map(|f| f.rule_id().as_str()).collect();
+        let count = ids.iter().filter(|id| **id == "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR").count();
+        assert_eq!(count, 1, "{name} must emit exactly one unbounded-iterator finding: {ids:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn bound_and_aliased_unbounded_iterators_each_fire_exactly_once() -> TestResult {
+    for name in [
+        "bounded_execution_unbounded_iterator_module_binding_violation.rs",
+        "bounded_execution_unbounded_iterator_module_binding_turbofish_violation.rs",
+        "bounded_execution_unbounded_iterator_module_binding_renamed_violation.rs",
+        "bounded_execution_unbounded_iterator_alias_violation.rs",
+        "bounded_execution_unbounded_iterator_alias_turbofish_violation.rs",
+    ] {
+        let findings = run_functional_fixture(name);
+        let ids: Vec<&str> = findings.iter().map(|f| f.rule_id().as_str()).collect();
+        let count = ids.iter().filter(|id| **id == "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR").count();
+        assert_eq!(count, 1, "{name} must emit exactly one unbounded-iterator finding: {ids:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn foreign_generic_repeat_and_shadowed_bindings_stay_clean() -> TestResult {
+    for name in [
+        "allowed_iterator_generic_repeat_neighbor.rs",
+        "allowed_iterator_foreign_bindings.rs",
+        "allowed_iterator_head_shadow.rs",
+    ] {
+        let findings = run_functional_fixture(name);
+        let ids: Vec<&str> = findings.iter().map(|f| f.rule_id().as_str()).collect();
+        assert!(ids.is_empty(), "{name} must stay clean, got: {ids:?}");
+    }
+    Ok(())
+}
+
 fn run_architecture_fixture(name: &str) -> Vec<titania_core::Finding> {
     let rules_yaml = [include_str!("../rules/architecture.yml")];
     let paths = vec![fixture_root("ast_grep", &format!("crates/example-core/src/{name}"))];
