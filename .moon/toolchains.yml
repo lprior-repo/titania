@@ -3,13 +3,14 @@
 # toolchain extensions so cargo-deny, cargo-binstall, cargo-dylint, and
 # dylint-link are available wherever the Moon graph runs. dylint-link is
 # required by cargo-dylint 6.0.1 to link cdylib lint libraries when
-# building from source (metadata mode).
+# building from source (metadata mode); it is not listed in v1-spec §13
+# but the dylint lane cannot run without it, so it stays.
 
 rust:
   version: 'nightly-2026-04-27'
   bins:
-    - 'cargo-deny'
-    - 'cargo-binstall'
-    - 'cargo-dylint'
-    - 'dylint-link'
+    - 'cargo-deny@latest'
+    - 'cargo-binstall@latest'
+    - 'cargo-dylint@latest'
+    - 'dylint-link@latest'
   syncToolchainConfig: true

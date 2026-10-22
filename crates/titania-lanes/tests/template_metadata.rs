@@ -417,7 +417,13 @@ fn template_policy_rust_configs() -> Result<()> {
     let rustc_wrapper = nested_str(&cargo_config_doc, "build", "rustc-wrapper")?;
     assert_eq!(
         rustc_wrapper, None,
-        "template .cargo/config.toml must not require optional sccache on fresh workspaces"
+        "template .cargo/config.toml must not hard-require sccache on fresh workspaces \
+         (§4: sccache is strongly recommended, not hard-required); the §14 sccache \
+         wrapper hook ships as a documented opt-in line instead"
+    );
+    assert!(
+        cargo_config_text.contains("rustc-wrapper = \"sccache\""),
+        "template .cargo/config.toml must document the §14 sccache wrapper hook line"
     );
     assert!(
         cargo_config_text.contains("non_exhaustive_omitted_patterns"),

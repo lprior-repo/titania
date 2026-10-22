@@ -14,6 +14,14 @@ fileGroups:
     - 'crates/**/examples/**/*.rs'
 
 tasks:
+  setup-hermetic:
+    # Create hermetic CARGO_HOME / RUSTUP_HOME symlinks (§9.5).
+    # Uses script: (not command:) because the > redirect requires shell syntax.
+    script: 'titania-check setup-hermetic > /dev/null'
+    toolchains: [rust]
+    options: { runInCI: true }
+    inputs: ['@globs(sources)']
+
   # Lane runners — each invokes titania-check run-lane
   titania-fmt:
     command: 'titania-check run-lane fmt'
@@ -64,6 +72,10 @@ tasks:
 
   titania-policy-scan:
     command: 'titania-check run-lane policy-scan'
+    deps: ['~:setup-hermetic']
+    env:
+      CARGO_HOME: '${workspace.root}/.titania/hermetic/cargo-home'
+      RUSTUP_HOME: '${workspace.root}/.titania/hermetic/rustup-home'
     options: { runInCI: true }
     inputs: ['@globs(sources)', 'Cargo.toml', '**/Cargo.toml', '.cargo/**', '.titania/**', '!.titania/cache/**', '!.titania/out/**']
     outputs: ['.titania/out/edit/policy-scan.json', '.titania/out/prepush/policy-scan.json', '.titania/out/release/policy-scan.json']
