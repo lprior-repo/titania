@@ -15,7 +15,8 @@ impl BlockClose {
 }
 
 impl LineScan {
-    pub(super) fn accept_block_comment(self, ch: char) -> Self {
+    pub(super) fn accept_block_comment(mut self, ch: char) -> Self {
+        self.blank(ch);
         match (self.block_mark, ch) {
             (BlockMark::Star, '/') => self.close_block_comment(),
             (BlockMark::Slash, '*') => self.open_nested_block_comment(),

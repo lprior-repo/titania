@@ -1,76 +1,221 @@
 mod code_scan;
 
-use code_scan::{code_only_source, detect_code_line};
+use code_scan::code_only_source;
 
-pub(super) fn detect_core_infra_import(source: &str) -> bool {
-    detect_code_line(source, |line| {
-        line.contains("use tokio::")
-            || line.contains("use axum::")
-            || line.contains("use sqlx::")
-            || line.contains("use reqwest::")
-    }) || fully_qualified_uses_path(source, &["tokio::", "axum::", "sqlx::", "reqwest::"])
-        || crate_alias_path_used(source, &["tokio", "axum", "sqlx", "reqwest"])
+use super::super::span::MatchSite;
+
+pub(super) fn detect_core_infra_import(source: &str) -> Vec<MatchSite> {
+    let code = code_only_source(source);
+    merge_sites(
+        use_line_sites(&code, &["use tokio::", "use axum::", "use sqlx::", "use reqwest::"])
+            .into_iter()
+            .chain(fully_qualified_sites(&code, &["tokio::", "axum::", "sqlx::", "reqwest::"]))
+            .chain(crate_alias_sites(&code, &["tokio", "axum", "sqlx", "reqwest"]))
+            .collect(),
+    )
 }
 
-pub(super) fn detect_core_fs_import(source: &str) -> bool {
-    direct_import_contains(source, "std::", &["fs", "env", "net"])
-        || grouped_std_import_contains(source, &["fs", "env", "net"])
-        || fully_qualified_uses_path(source, &["std::fs::", "std::env::", "std::net::"])
+pub(super) fn detect_core_fs_import(source: &str) -> Vec<MatchSite> {
+    let code = code_only_source(source);
+    merge_sites(
+        direct_import_sites(&code, "std::", &["fs", "env", "net"])
+            .into_iter()
+            .chain(grouped_import_sites(&code, "use std::", &["fs", "env", "net"]))
+            .chain(fully_qualified_sites(&code, &["std::fs::", "std::env::", "std::net::"]))
+            .collect(),
+    )
 }
 
-pub(super) fn detect_core_time_import(source: &str) -> bool {
-    direct_import_contains(source, "std::time::", &["SystemTime", "Instant"])
-        || grouped_import_contains(source, "use std::time::", &["SystemTime", "Instant"])
-        || grouped_std_import_contains(source, &["time::SystemTime", "time::Instant"])
-        || fully_qualified_uses_path(source, &["std::time::SystemTime", "std::time::Instant"])
-        || module_binding_used(source, "time", &["SystemTime", "Instant"])
+pub(super) fn detect_core_time_import(source: &str) -> Vec<MatchSite> {
+    let code = code_only_source(source);
+    merge_sites(
+        direct_import_sites(&code, "std::time::", &["SystemTime", "Instant"])
+            .into_iter()
+            .chain(grouped_import_sites(&code, "use std::time::", &["SystemTime", "Instant"]))
+            .chain(grouped_import_sites(&code, "use std::", &["time::SystemTime", "time::Instant"]))
+            .chain(fully_qualified_sites(&code, &["std::time::SystemTime", "std::time::Instant"]))
+            .chain(module_binding_sites(&code, "time", &["SystemTime", "Instant"]))
+            .collect(),
+    )
 }
 
-pub(super) fn detect_core_random_import(source: &str) -> bool {
-    direct_import_contains(source, "rand::", &["thread_rng"])
-        || grouped_rand_import_contains(source, &["thread_rng"])
-        || fully_qualified_uses_path(source, &["rand::thread_rng"])
+pub(super) fn detect_core_random_import(source: &str) -> Vec<MatchSite> {
+    let code = code_only_source(source);
+    merge_sites(
+        direct_import_sites(&code, "rand::", &["thread_rng"])
+            .into_iter()
+            .chain(grouped_import_sites(&code, "use rand::", &["thread_rng"]))
+            .chain(fully_qualified_sites(&code, &["rand::thread_rng"]))
+            .collect(),
+    )
 }
 
-pub(super) fn detect_core_process_import(source: &str) -> bool {
-    direct_import_contains(source, "std::", &["process"])
-        || grouped_std_import_contains(source, &["process"])
-        || fully_qualified_uses_path(
-            source,
+pub(super) fn detect_core_process_import(source: &str) -> Vec<MatchSite> {
+    let code = code_only_source(source);
+    merge_sites(
+        direct_import_sites(&code, "std::", &["process"])
+            .into_iter()
+            .chain(grouped_import_sites(&code, "use std::", &["process"]))
+            .chain(fully_qualified_sites(
+                &code,
+                &[
+                    "std::process::",
+                    "tokio::process",
+                    "std::os::unix::process",
+                    "std::os::windows::process",
+                ],
+            ))
+            .collect(),
+    )
+}
+
+pub(super) fn detect_core_async_effect(source: &str) -> Vec<MatchSite> {
+    let code = code_only_source(source);
+    merge_sites(
+        token_sites(&code, "async fn")
+            .into_iter()
+            .chain(token_sites(&code, "async unsafe fn"))
+            .chain(await_sites(&code))
+            .chain(fully_qualified_sites(&code, &["tokio::spawn", "tokio::time"]))
+            .chain(grouped_import_sites(&code, "use tokio::", &["task::spawn"]))
+            .chain(tokio_task_sites(&code))
+            .chain(tokio_alias_effect_sites(&code))
+            .collect(),
+    )
+}
+
+pub(super) fn detect_core_state_effect(source: &str) -> Vec<MatchSite> {
+    let code = code_only_source(source);
+    merge_sites(
+        fully_qualified_sites(
+            &code,
             &[
-                "std::process::",
-                "tokio::process",
-                "std::os::unix::process",
-                "std::os::windows::process",
+                "static mut",
+                "std::sync::Mutex",
+                "std::sync::RwLock",
+                "std::cell::RefCell",
+                "std::thread::spawn",
             ],
         )
+        .into_iter()
+        .chain(direct_import_sites(&code, "std::sync::", &["Mutex", "RwLock"]))
+        .chain(grouped_import_sites(&code, "use std::sync::", &["Mutex", "RwLock"]))
+        .chain(grouped_import_sites(&code, "use std::", &["sync::Mutex", "sync::RwLock"]))
+        .chain(direct_import_sites(&code, "std::cell::", &["RefCell"]))
+        .chain(grouped_import_sites(&code, "use std::cell::", &["RefCell"]))
+        .chain(grouped_import_sites(&code, "use std::", &["cell::RefCell"]))
+        .chain(grouped_import_sites(&code, "use std::thread::", &["spawn"]))
+        .chain(grouped_import_sites(&code, "use std::", &["thread::spawn"]))
+        .chain(module_binding_sites(&code, "sync", &["Mutex", "RwLock"]))
+        .chain(module_binding_sites(&code, "cell", &["RefCell"]))
+        .chain(module_binding_sites(&code, "thread", &["spawn"]))
+        .collect(),
+    )
 }
 
-pub(super) fn detect_core_async_effect(source: &str) -> bool {
-    let code = code_only_source(source);
-    code_contains_token(&code, "async fn")
-        || code_contains_token(&code, "async unsafe fn")
-        || contains_await_expression(&code)
-        || fully_qualified_uses_path(source, &["tokio::spawn", "tokio::time"])
-        || grouped_import_contains(source, "use tokio::", &["task::spawn"])
-        || tokio_task_used(&code)
-        || tokio_alias_effect_used(source)
+fn merge_sites(sites: Vec<MatchSite>) -> Vec<MatchSite> {
+    let mut sorted = sites;
+    sorted.sort_by_key(|site| (site.start_byte, std::cmp::Reverse(site.end_byte)));
+    sorted.into_iter().fold(Vec::new(), push_if_unoverlapped)
 }
 
-fn contains_await_expression(code: &str) -> bool {
-    code.match_indices(".await").any(|(start, _)| {
-        code.split_at_checked(start.saturating_add(".await".len()))
-            .is_none_or(|(_, after)| after.chars().next().is_none_or(|next| !is_ident_char(next)))
-    })
+fn push_if_unoverlapped(mut kept: Vec<MatchSite>, site: MatchSite) -> Vec<MatchSite> {
+    if kept.iter().all(|prior| !sites_overlap(*prior, site)) {
+        kept.push(site);
+    }
+    kept
 }
 
-fn tokio_task_used(code: &str) -> bool {
+const fn sites_overlap(first: MatchSite, second: MatchSite) -> bool {
+    first.start_byte < second.end_byte && second.start_byte < first.end_byte
+}
+
+fn site_at(start: usize, len: usize) -> Option<MatchSite> {
+    start.checked_add(len).map(|end| MatchSite::from_range(start..end))
+}
+
+fn token_sites(code: &str, needle: &str) -> Vec<MatchSite> {
+    code.match_indices(needle)
+        .filter(|(start, _)| {
+            leading_boundary_ok(code, *start) && trailing_boundary_ok(code, *start, needle)
+        })
+        .filter_map(|(start, _)| site_at(start, needle.len()))
+        .collect()
+}
+
+fn path_head_sites(code: &str, needle: &str) -> Vec<MatchSite> {
+    code.match_indices(needle)
+        .filter(|(start, _)| {
+            path_head_boundary_ok(code, *start) && trailing_boundary_ok(code, *start, needle)
+        })
+        .filter_map(|(start, _)| site_at(start, needle.len()))
+        .collect()
+}
+
+fn fully_qualified_sites(code: &str, needles: &[&str]) -> Vec<MatchSite> {
+    needles.iter().flat_map(|needle| token_sites(code, needle)).collect()
+}
+
+fn crate_alias_sites(code: &str, crates: &[&str]) -> Vec<MatchSite> {
+    crates
+        .iter()
+        .flat_map(|krate| crate_root_aliases(code, krate))
+        .flat_map(|alias| token_sites(code, &format!("{alias}::")))
+        .collect()
+}
+
+fn use_line_sites(code: &str, needles: &[&str]) -> Vec<MatchSite> {
+    code.split('\n')
+        .fold((Vec::new(), 0usize), |(mut sites, offset), line| {
+            sites.extend(line_sites_at(line, offset, needles));
+            (sites, offset.saturating_add(line.len()).saturating_add(1))
+        })
+        .0
+}
+
+fn line_sites_at(line: &str, offset: usize, needles: &[&str]) -> Vec<MatchSite> {
+    needles
+        .iter()
+        .flat_map(|needle| {
+            line.match_indices(needle)
+                .filter_map(|(index, _)| offset.checked_add(index))
+                .filter_map(|start| site_at(start, needle.len()))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn await_sites(code: &str) -> Vec<MatchSite> {
+    code.match_indices(".await")
+        .filter(|(start, _)| await_boundary_ok(code, *start))
+        .filter_map(|(start, _)| site_at(start, ".await".len()))
+        .collect()
+}
+
+fn await_boundary_ok(code: &str, start: usize) -> bool {
+    code.split_at_checked(start.saturating_add(".await".len()))
+        .is_none_or(|(_, after)| after.chars().next().is_none_or(|next| !is_ident_char(next)))
+}
+
+fn tokio_task_sites(code: &str) -> Vec<MatchSite> {
     let statements = use_statement_ranges(code);
-    code.match_indices("tokio::task").any(|(start, _)| {
-        leading_boundary_ok(code, start)
-            && trailing_boundary_ok(code, start, "tokio::task")
-            && !is_bare_task_import_at(code, &statements, start)
-    })
+    code.match_indices("tokio::task")
+        .filter(|(start, _)| {
+            leading_boundary_ok(code, *start) && trailing_boundary_ok(code, *start, "tokio::task")
+        })
+        .filter(|(start, _)| !is_bare_task_import_at(code, &statements, *start))
+        .filter_map(|(start, _)| site_at(start, "tokio::task".len()))
+        .collect()
+}
+
+fn tokio_alias_effect_sites(code: &str) -> Vec<MatchSite> {
+    crate_root_aliases(code, "tokio")
+        .iter()
+        .flat_map(|alias| {
+            ["spawn", "task", "time"].iter().map(move |member| format!("{alias}::{member}"))
+        })
+        .flat_map(|needle| token_sites(code, &needle))
+        .collect()
 }
 
 fn use_statement_ranges(code: &str) -> Vec<(usize, usize)> {
@@ -119,55 +264,14 @@ fn is_spaced_bare_task_statement(statement: &str) -> bool {
         || spaced == "use tokio::task::{self as task,};"
 }
 
-fn tokio_alias_effect_used(source: &str) -> bool {
-    let code = code_only_source(source);
-    crate_root_aliases(&code, "tokio").iter().any(|alias| {
-        ["spawn", "task", "time"]
-            .iter()
-            .any(|member| code_contains_token(&code, &format!("{alias}::{member}")))
-    })
-}
-
-pub(super) fn detect_core_state_effect(source: &str) -> bool {
-    fully_qualified_uses_path(
-        source,
-        &[
-            "static mut",
-            "std::sync::Mutex",
-            "std::sync::RwLock",
-            "std::cell::RefCell",
-            "std::thread::spawn",
-        ],
-    ) || direct_import_contains(source, "std::sync::", &["Mutex", "RwLock"])
-        || grouped_import_contains(source, "use std::sync::", &["Mutex", "RwLock"])
-        || grouped_std_import_contains(source, &["sync::Mutex", "sync::RwLock"])
-        || direct_import_contains(source, "std::cell::", &["RefCell"])
-        || grouped_import_contains(source, "use std::cell::", &["RefCell"])
-        || grouped_std_import_contains(source, &["cell::RefCell"])
-        || grouped_import_contains(source, "use std::thread::", &["spawn"])
-        || grouped_std_import_contains(source, &["thread::spawn"])
-        || module_binding_used(source, "sync", &["Mutex", "RwLock"])
-        || module_binding_used(source, "cell", &["RefCell"])
-        || module_binding_used(source, "thread", &["spawn"])
-}
-
-fn module_binding_used(source: &str, module: &str, members: &[&str]) -> bool {
-    let code = code_only_source(source);
-    module_bindings(&code, module).iter().any(|binding| {
-        members.iter().any(|member| code_contains_path_head(&code, &format!("{binding}::{member}")))
-    })
-}
-
-fn code_contains_path_head(code: &str, needle: &str) -> bool {
-    code.match_indices(needle).any(|(start, _)| {
-        path_head_boundary_ok(code, start) && trailing_boundary_ok(code, start, needle)
-    })
-}
-
-fn path_head_boundary_ok(code: &str, start: usize) -> bool {
-    code.split_at_checked(start).is_some_and(|(before, _)| {
-        before.chars().next_back().is_none_or(|prev| !is_ident_char(prev) && prev != ':')
-    })
+fn module_binding_sites(code: &str, module: &str, members: &[&str]) -> Vec<MatchSite> {
+    module_bindings(code, module)
+        .iter()
+        .flat_map(|binding| {
+            members.iter().map(move |member| format!("{binding}::{member}"))
+        })
+        .flat_map(|needle| path_head_sites(code, &needle))
+        .collect()
 }
 
 fn module_bindings(code: &str, module: &str) -> Vec<String> {
@@ -220,17 +324,6 @@ fn self_binding_from_rest(rest: &str, module: &str) -> Option<String> {
     }
 }
 
-fn fully_qualified_uses_path(source: &str, needles: &[&str]) -> bool {
-    let code = code_only_source(source);
-    needles.iter().any(|needle| code_contains_token(&code, needle))
-}
-
-fn code_contains_token(code: &str, needle: &str) -> bool {
-    code.match_indices(needle).any(|(start, _)| {
-        leading_boundary_ok(code, start) && trailing_boundary_ok(code, start, needle)
-    })
-}
-
 fn leading_boundary_ok(code: &str, start: usize) -> bool {
     code.split_at_checked(start).is_some_and(|(before, _)| {
         before.chars().next_back().is_none_or(|prev| !is_ident_char(prev))
@@ -244,21 +337,41 @@ fn trailing_boundary_ok(code: &str, start: usize, needle: &str) -> bool {
             .is_none_or(|(_, after)| after.chars().next().is_none_or(|next| !is_ident_char(next)))
 }
 
+fn path_head_boundary_ok(code: &str, start: usize) -> bool {
+    code.split_at_checked(start).is_some_and(|(before, _)| {
+        before.chars().next_back().is_none_or(|prev| !is_ident_char(prev) && prev != ':')
+    })
+}
+
 fn is_ident_char(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }
 
-fn direct_import_contains(source: &str, path_prefix: &str, names: &[&str]) -> bool {
-    let code = code_only_source(source);
+fn direct_import_sites(code: &str, path_prefix: &str, names: &[&str]) -> Vec<MatchSite> {
     code.match_indices("use ")
-        .filter_map(|(start, _)| direct_import_member(&code, start, path_prefix))
-        .any(|member| names.iter().any(|name| grouped_member_matches(member, name)))
+        .filter_map(|(start, _)| direct_import_member_span(code, start, path_prefix))
+        .filter_map(|(member, member_start)| matched_name_site(member, member_start, names))
+        .collect()
 }
 
-fn direct_import_member<'a>(source: &'a str, start: usize, path_prefix: &str) -> Option<&'a str> {
-    let (_, from_use) = source.split_at_checked(start)?;
-    use_item_prefix_allowed(source, start).then_some(())?;
-    Some(from_use.strip_prefix("use ")?.strip_prefix(path_prefix)?.split_once(';')?.0.trim())
+fn direct_import_member_span<'a>(
+    code: &'a str,
+    start: usize,
+    path_prefix: &str,
+) -> Option<(&'a str, usize)> {
+    let (_, from_use) = code.split_at_checked(start)?;
+    use_item_prefix_allowed(code, start).then_some(())?;
+    let untrimmed = from_use.strip_prefix("use ")?.strip_prefix(path_prefix)?.split_once(';')?.0;
+    let leading = untrimmed.len().saturating_sub(untrimmed.trim_start().len());
+    let member_start = start.checked_add("use ".len())?.checked_add(path_prefix.len())?;
+    Some((untrimmed.trim(), member_start.checked_add(leading)?))
+}
+
+fn matched_name_site(member: &str, member_start: usize, names: &[&str]) -> Option<MatchSite> {
+    names
+        .iter()
+        .find(|name| grouped_member_matches(member, name))
+        .and_then(|name| site_at(member_start, name.len()))
 }
 
 fn use_item_prefix_allowed(source: &str, start: usize) -> bool {
@@ -283,81 +396,82 @@ fn visibility_prefix_allows_use(prefix: &str) -> bool {
         || prefix.ends_with('}')
 }
 
-fn grouped_std_import_contains(source: &str, names: &[&str]) -> bool {
-    grouped_import_contains(source, "use std::", names)
-}
-
-fn grouped_rand_import_contains(source: &str, names: &[&str]) -> bool {
-    grouped_import_contains(source, "use rand::", names)
-}
-
-fn grouped_import_contains(source: &str, prefix: &str, names: &[&str]) -> bool {
-    let code = code_only_source(source);
+fn grouped_import_sites(code: &str, prefix: &str, names: &[&str]) -> Vec<MatchSite> {
     code.match_indices(prefix)
-        .filter_map(|(start, _)| grouped_import_body(&code, start, prefix))
-        .any(|body| names.iter().any(|name| grouped_body_contains_name(body, name)))
-}
-
-fn grouped_import_body<'a>(source: &'a str, start: usize, prefix: &str) -> Option<&'a str> {
-    let (_, from_prefix) = source.split_at_checked(start)?;
-    use_item_prefix_allowed(source, start).then_some(())?;
-    let after_open = from_prefix.strip_prefix(prefix)?.trim_start().strip_prefix('{')?;
-    let close = matching_close_brace(after_open)?;
-    after_open.split_at_checked(close).map(|(body, _)| body)
-}
-
-fn matching_close_brace(source: &str) -> Option<usize> {
-    let mut depth = 1usize;
-    source.char_indices().find_map(|(index, ch)| {
-        depth = brace_depth_after(depth, ch)?;
-        (depth == 0).then_some(index)
-    })
-}
-
-const fn brace_depth_after(depth: usize, ch: char) -> Option<usize> {
-    match ch {
-        '{' => depth.checked_add(1),
-        '}' => depth.checked_sub(1),
-        _ => Some(depth),
-    }
-}
-
-fn grouped_body_contains_name(body: &str, name: &str) -> bool {
-    flattened_member_paths(body).iter().any(|path| grouped_member_matches(path, name))
-}
-
-fn flattened_member_paths(body: &str) -> Vec<String> {
-    top_level_members(body).iter().flat_map(|member| flatten_member(member)).collect()
-}
-
-fn top_level_members(body: &str) -> Vec<&str> {
-    let (members, _, member_start) =
-        body.char_indices().fold((Vec::new(), 0usize, 0usize), |state, (index, ch)| {
-            advance_member_scan(body, state, index, ch)
-        });
-    members
-        .into_iter()
-        .chain(member_slice(body, member_start, body.len()))
-        .map(str::trim)
-        .filter(|member| !member.is_empty())
+        .filter_map(|(start, _)| grouped_import_body_span(code, start, prefix))
+        .flat_map(|(body, body_start)| grouped_body_sites(body, body_start, names))
         .collect()
 }
 
-fn advance_member_scan<'a>(
-    body: &'a str,
-    state: (Vec<&'a str>, usize, usize),
-    index: usize,
-    ch: char,
-) -> (Vec<&'a str>, usize, usize) {
-    let (mut members, depth, member_start) = state;
+fn grouped_import_body_span<'a>(
+    code: &'a str,
+    start: usize,
+    prefix: &str,
+) -> Option<(&'a str, usize)> {
+    let (_, from_prefix) = code.split_at_checked(start)?;
+    use_item_prefix_allowed(code, start).then_some(())?;
+    let after_prefix = from_prefix.strip_prefix(prefix)?;
+    let skipped = after_prefix.len().saturating_sub(after_prefix.trim_start().len());
+    let after_open = after_prefix.trim_start().strip_prefix('{')?;
+    let close = matching_close_brace(after_open)?;
+    let (body, _) = after_open.split_at_checked(close)?;
+    let body_start = start
+        .checked_add(prefix.len())?
+        .checked_add(skipped)?
+        .checked_add(1)?;
+    Some((body, body_start))
+}
+
+fn grouped_body_sites(body: &str, body_start: usize, names: &[&str]) -> Vec<MatchSite> {
+    top_level_member_spans(body)
+        .into_iter()
+        .filter_map(|(start, end)| member_slice(body, start, end).map(|text| (text, start)))
+        .flat_map(|(text, start)| member_name_sites(text, start, body_start, names))
+        .collect()
+}
+
+fn member_name_sites(
+    member: &str,
+    member_start: usize,
+    body_start: usize,
+    names: &[&str],
+) -> Vec<MatchSite> {
+    flatten_member(member)
+        .iter()
+        .filter(|path| names.iter().any(|name| grouped_member_matches(path, name)))
+        .filter_map(|path| leaf_site(member, member_start, body_start, path))
+        .collect()
+}
+
+fn leaf_site(member: &str, member_start: usize, body_start: usize, path: &str) -> Option<MatchSite> {
+    let leaf = path.rsplit("::").next().map_or(path, |leaf| leaf);
+    let leaf_offset = member.rfind(leaf)?;
+    let start = body_start.checked_add(member_start)?.checked_add(leaf_offset)?;
+    site_at(start, leaf.len())
+}
+
+fn top_level_member_spans(body: &str) -> Vec<(usize, usize)> {
+    let (spans, _, member_start) = body
+        .char_indices()
+        .fold((Vec::new(), 0usize, 0usize), advance_member_span_scan);
+    spans
+        .into_iter()
+        .chain((member_start < body.len()).then_some((member_start, body.len())))
+        .collect()
+}
+
+type MemberSpanScan = (Vec<(usize, usize)>, usize, usize);
+
+fn advance_member_span_scan(state: MemberSpanScan, (index, ch): (usize, char)) -> MemberSpanScan {
+    let (mut spans, depth, member_start) = state;
     match ch {
-        '{' => (members, depth.saturating_add(1), member_start),
-        '}' => (members, depth.saturating_sub(1), member_start),
+        '{' => (spans, depth.saturating_add(1), member_start),
+        '}' => (spans, depth.saturating_sub(1), member_start),
         ',' if depth == 0 => {
-            members.extend(member_slice(body, member_start, index));
-            (members, depth, index.saturating_add(1))
+            spans.push((member_start, index));
+            (spans, depth, index.saturating_add(1))
         }
-        _ => (members, depth, member_start),
+        _ => (spans, depth, member_start),
     }
 }
 
@@ -365,6 +479,19 @@ fn member_slice(body: &str, start: usize, end: usize) -> Option<&str> {
     let (_, from_start) = body.split_at_checked(start)?;
     let (member, _) = from_start.split_at_checked(end.checked_sub(start)?)?;
     Some(member)
+}
+
+fn flattened_member_paths(body: &str) -> Vec<String> {
+    top_level_member_texts(body).iter().flat_map(|member| flatten_member(member)).collect()
+}
+
+fn top_level_member_texts(body: &str) -> Vec<&str> {
+    top_level_member_spans(body)
+        .into_iter()
+        .filter_map(|(start, end)| member_slice(body, start, end))
+        .map(str::trim)
+        .filter(|member| !member.is_empty())
+        .collect()
 }
 
 fn flatten_member(member: &str) -> Vec<String> {
@@ -385,19 +512,26 @@ fn member_head_and_group(member: &str, open: usize) -> Option<(&str, &str)> {
     Some((head.trim().trim_end_matches("::").trim_end(), body))
 }
 
+fn matching_close_brace(source: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    source.char_indices().find_map(|(index, ch)| {
+        depth = brace_depth_after(depth, ch)?;
+        (depth == 0).then_some(index)
+    })
+}
+
+const fn brace_depth_after(depth: usize, ch: char) -> Option<usize> {
+    match ch {
+        '{' => depth.checked_add(1),
+        '}' => depth.checked_sub(1),
+        _ => Some(depth),
+    }
+}
+
 fn grouped_member_matches(member: &str, name: &str) -> bool {
     member
         .strip_prefix(name)
         .is_some_and(|rest| rest.is_empty() || rest.starts_with("::") || rest.starts_with(" as "))
-}
-
-fn crate_alias_path_used(source: &str, crates: &[&str]) -> bool {
-    let code = code_only_source(source);
-    crates.iter().any(|krate| {
-        crate_root_aliases(&code, krate)
-            .iter()
-            .any(|alias| code_contains_token(&code, &format!("{alias}::")))
-    })
 }
 
 pub(super) fn crate_root_aliases(code: &str, krate: &str) -> Vec<String> {

@@ -1085,3 +1085,77 @@ fn all_rule_fixture_paths() -> Vec<PathBuf> {
     .map(|path| fixture_root("ast_grep", path))
     .to_vec()
 }
+
+fn run_functional_fixture(name: &str) -> Vec<titania_core::Finding> {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let paths = vec![fixture_root("ast_grep", &format!("functional/{name}"))];
+    match titania_lanes::ast_grep_lane::run(&rules_yaml, &paths, &[]) {
+        Ok(LaneOutcome::Findings { findings }) => findings.into_vec(),
+        Ok(LaneOutcome::Clean { .. }) => Vec::new(),
+        Ok(other) => panic!("unexpected lane outcome for {name}: {other:?}"),
+        Err(err) => panic!("lane error for {name}: {err}"),
+    }
+}
+
+#[test]
+fn fq_spelled_unbounded_iterators_each_fire_exactly_once() -> TestResult {
+    for name in [
+        "bounded_execution_unbounded_iterator_std_repeat_violation.rs",
+        "bounded_execution_unbounded_iterator_core_repeat_with_violation.rs",
+        "bounded_execution_unbounded_iterator_leading_std_successors_violation.rs",
+        "bounded_execution_unbounded_iterator_leading_core_from_fn_violation.rs",
+    ] {
+        let findings = run_functional_fixture(name);
+        let ids: Vec<&str> = findings.iter().map(|f| f.rule_id().as_str()).collect();
+        let count =
+            ids.iter().filter(|id| **id == "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR").count();
+        assert_eq!(count, 1, "{name} must emit exactly one unbounded-iterator finding: {ids:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn own_repeat_method_and_local_iter_module_stay_clean() -> TestResult {
+    let findings = run_functional_fixture("allowed_iterator_own_repeat_names.rs");
+    let ids: Vec<&str> = findings.iter().map(|f| f.rule_id().as_str()).collect();
+    assert!(ids.is_empty(), "own repeat names must stay clean, got: {ids:?}");
+    Ok(())
+}
+
+fn run_architecture_fixture(name: &str) -> Vec<titania_core::Finding> {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let paths = vec![fixture_root("ast_grep", &format!("crates/example-core/src/{name}"))];
+    match titania_lanes::ast_grep_lane::run(&rules_yaml, &paths, &[]) {
+        Ok(LaneOutcome::Findings { findings }) => findings.into_vec(),
+        Ok(LaneOutcome::Clean { .. }) => Vec::new(),
+        Ok(other) => panic!("unexpected lane outcome for {name}: {other:?}"),
+        Err(err) => panic!("lane error for {name}: {err}"),
+    }
+}
+
+fn span_line_col(finding: &titania_core::Finding) -> (u64, u64) {
+    let value = serde_json::to_value(finding.location()).expect("location must serialize");
+    let span = value.get("Span").expect("ast-grep findings must use Location::Span");
+    let line = span.get("line_start").and_then(serde_json::Value::as_u64);
+    let col = span.get("col_start").and_then(serde_json::Value::as_u64);
+    match (line, col) {
+        (Some(line), Some(col)) => (line, col),
+        _ => panic!("ast-grep finding span must carry line_start and col_start"),
+    }
+}
+
+#[test]
+fn architecture_fs_multi_violation_reports_three_findings_at_the_right_lines() -> TestResult {
+    let findings = run_architecture_fixture("architecture_import_core_fs_multi_violation.rs");
+    let fs_spans: Vec<(u64, u64)> = findings
+        .iter()
+        .filter(|f| f.rule_id().as_str() == "ARCHITECTURE_IMPORT_CORE_FS")
+        .map(span_line_col)
+        .collect();
+    assert_eq!(
+        fs_spans,
+        [(2, 4), (6, 4), (10, 4)],
+        "expected exactly 3 FS findings at the std::fs / std::env / std::net use sites"
+    );
+    Ok(())
+}

@@ -24,8 +24,6 @@ impl MatchSite {
     }
 }
 
-pub(super) const FILE_LEVEL_SITE: MatchSite = MatchSite { start_byte: 0, end_byte: 1 };
-
 pub(super) fn line_offsets(source: &str) -> Vec<usize> {
     let mut offsets: Vec<usize> = vec![0];
     offsets.extend(source.match_indices('\n').map(|(i, _)| i.saturating_add(1)));
@@ -54,7 +52,7 @@ pub(super) fn line_col(source: &str, offsets: &[usize], byte: usize) -> (usize, 
 
 #[cfg(test)]
 mod tests {
-    use super::{FILE_LEVEL_SITE, MatchSite, line_at_byte, line_col, line_offsets};
+    use super::{MatchSite, line_at_byte, line_col, line_offsets};
 
     #[test]
     fn empty_source_has_single_line_offset() {
@@ -176,11 +174,5 @@ mod tests {
         let site = MatchSite::from_range(4..7);
         assert_eq!(site.start_byte, 4);
         assert_eq!(site.end_byte, 7);
-    }
-
-    #[test]
-    fn file_level_site_anchors_at_first_byte_pair() {
-        assert_eq!(FILE_LEVEL_SITE.start_byte, 0);
-        assert_eq!(FILE_LEVEL_SITE.end_byte, 1);
     }
 }

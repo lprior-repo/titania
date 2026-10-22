@@ -5,6 +5,34 @@ use super::span::{MatchSite, line_offsets};
 
 const MAX_NESTING_DEPTH: usize = 2;
 
+const UNBOUNDED_ITERATOR_SPELLINGS: &[&str] = &[
+    "$ITER.cycle()",
+    "repeat($$$ARGS)",
+    "repeat_with($$$ARGS)",
+    "successors($$$ARGS)",
+    "from_fn($$$ARGS)",
+    "std::iter::repeat($$$ARGS)",
+    "std::iter::repeat_with($$$ARGS)",
+    "std::iter::successors($$$ARGS)",
+    "std::iter::from_fn($$$ARGS)",
+    "core::iter::repeat($$$ARGS)",
+    "core::iter::repeat_with($$$ARGS)",
+    "core::iter::successors($$$ARGS)",
+    "core::iter::from_fn($$$ARGS)",
+    "::std::iter::repeat($$$ARGS)",
+    "::std::iter::repeat_with($$$ARGS)",
+    "::std::iter::successors($$$ARGS)",
+    "::std::iter::from_fn($$$ARGS)",
+    "::core::iter::repeat($$$ARGS)",
+    "::core::iter::repeat_with($$$ARGS)",
+    "::core::iter::successors($$$ARGS)",
+    "::core::iter::from_fn($$$ARGS)",
+];
+
+fn unbounded_iterator_patterns() -> Vec<Pattern> {
+    UNBOUNDED_ITERATOR_SPELLINGS.iter().map(|text| Pattern::new(text, Rust)).collect()
+}
+
 pub(super) struct AstEngine {
     grep: AstGrep<StrDoc<Rust>>,
     line_offsets: Vec<usize>,
@@ -68,12 +96,8 @@ impl AstEngine {
     }
 
     pub(super) fn detect_unbounded_iterator(&self) -> Vec<MatchSite> {
-        let cycle = Pattern::new("$ITER.cycle()", Rust);
-        let repeat = Pattern::new("repeat($$$ARGS)", Rust);
-        let repeat_with = Pattern::new("repeat_with($$$ARGS)", Rust);
-        let successors = Pattern::new("successors($$$ARGS)", Rust);
-        let from_fn = Pattern::new("from_fn($$$ARGS)", Rust);
-        self.match_sites_any_skipping_tests([&cycle, &repeat, &repeat_with, &successors, &from_fn])
+        let patterns = unbounded_iterator_patterns();
+        self.match_sites_any_skipping_tests(patterns.iter())
     }
 
     pub(super) fn detect_print_stdout(&self) -> Vec<MatchSite> {
