@@ -46,6 +46,20 @@ fn run_in(root: &Path, args: &[&str]) -> std::process::Output {
     cmd.output().expect("failed to spawn titania-check")
 }
 
+#[cfg(unix)]
+fn run_in_with_path_prefix(root: &Path, args: &[&str], prefix: &Path) -> std::process::Output {
+    let mut cmd = Command::new(binary());
+    let _ = cmd.args(args);
+    let _ = cmd.current_dir(root);
+    let _ = cmd.env("TITANIA_MOON_BIN", "/bin/true");
+    let inherited = env::var_os("PATH").unwrap_or_default();
+    let mut entries = vec![prefix.to_path_buf()];
+    entries.extend(env::split_paths(&inherited));
+    let joined = env::join_paths(entries).expect("PATH entries must join");
+    let _ = cmd.env("PATH", joined);
+    cmd.output().expect("failed to spawn titania-check")
+}
+
 fn workspace_with_profile(policy: Option<&str>, exceptions: Option<&str>) -> TempDir {
     let temp = tempfile::tempdir().expect("tempdir must be created");
     let edit = temp.path().join(".titania").join("out").join("edit");
@@ -150,6 +164,35 @@ fn aggregate_with_expired_exception_emits_policy_error_with_expired_code() {
     let report = parse_stdout(&output, 2);
     assert_eq!(report["variant"], "PolicyError");
     assert_eq!(report["diagnostics"].as_array().expect("diagnostics array").len(), 1);
+    assert!(
+        diagnostic_messages(&report)
+            .iter()
+            .any(|message| message.contains("POLICY_EXCEPTION_EXPIRED")),
+        "diagnostics must carry the exact POLICY_EXCEPTION_EXPIRED rule id"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn aggregate_with_path_spoofed_date_still_rejects_expired_exception() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let workspace = workspace_with_profile(Some(VALID_POLICY), Some(EXPIRED_EXCEPTIONS));
+    let fake_bin = workspace.path().join("fake-bin");
+    fs::create_dir_all(&fake_bin).expect("fake bin dir must be created");
+    let fake_date = fake_bin.join("date");
+    fs::write(&fake_date, "#!/bin/sh\necho 2019-06-01\n").expect("fake date must be written");
+    let mut permissions =
+        fs::metadata(&fake_date).expect("fake date metadata must be read").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_date, permissions).expect("fake date must be made executable");
+    let output = run_in_with_path_prefix(
+        workspace.path(),
+        &["aggregate", "--scope", "edit", "--emit", "json"],
+        &fake_bin,
+    );
+    let report = parse_stdout(&output, 2);
+    assert_eq!(report["variant"], "PolicyError");
     assert!(
         diagnostic_messages(&report)
             .iter()

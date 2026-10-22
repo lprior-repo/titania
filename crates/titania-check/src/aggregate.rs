@@ -9,7 +9,7 @@ use titania_aggregate::{
 };
 use titania_core::{
     DiagnosticSeverity, Digest, GateScope, Lane, LaneOutcome, LaneReceipt, PolicyDiagnostic,
-    QualityReceipt, ReceiptDigests, Report, ReportKind, WorkspacePath,
+    QualityReceipt, ReceiptDigests, Report, ReportKind, TargetProject, WorkspacePath,
 };
 use titania_policy::{
     ExceptionError, PolicyDefaults, PolicyDigest, ProfileError, parse_exceptions, parse_profile,
@@ -17,6 +17,8 @@ use titania_policy::{
 
 const POLICY_PROFILE_PATH: &str = ".titania/profiles/strict-ai/policy.toml";
 const POLICY_EXCEPTIONS_PATH: &str = ".titania/profiles/strict-ai/exceptions.toml";
+const DATE_TOOL: &str = "date";
+const DATE_FORMAT: &str = "+%F";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReportJson {
@@ -202,21 +204,17 @@ fn exception_error_detail(error: &ExceptionError) -> String {
 }
 
 fn policy_today(target_root: &Path) -> Result<String, AggregateError> {
-    let output = std::process::Command::new("date")
-        .arg("+%F")
-        .current_dir(target_root)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
+    let target = policy_target_project(target_root)?;
+    let output = titania_lanes::CommandIn::new(&target, DATE_TOOL)
+        .and_then(|mut cmd| cmd.arg(DATE_FORMAT).run_capture_raw())
         .map_err(|error| AggregateError::PolicyDate(error.to_string()))?;
-    if !output.status.success() {
+    if !output.success() {
         return Err(AggregateError::PolicyDate(format!(
             "date +%F exited with {status}",
-            status = output.status
+            status = output.status()
         )));
     }
-    let text = String::from_utf8(output.stdout)
+    let text = String::from_utf8(output.into_stdout())
         .map_err(|error| AggregateError::PolicyDate(error.to_string()))?
         .trim()
         .to_owned();
@@ -224,6 +222,14 @@ fn policy_today(target_root: &Path) -> Result<String, AggregateError> {
         return Err(AggregateError::PolicyDate("date +%F produced empty stdout".to_owned()));
     }
     Ok(text)
+}
+
+fn policy_target_project(target_root: &Path) -> Result<TargetProject, AggregateError> {
+    let text = target_root
+        .to_str()
+        .ok_or_else(|| AggregateError::PolicyDate("target root is not valid UTF-8".to_owned()))?;
+    serde_json::from_value::<TargetProject>(serde_json::Value::String(text.to_owned()))
+        .map_err(|error| AggregateError::PolicyDate(error.to_string()))
 }
 
 #[derive(Debug)]
