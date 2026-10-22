@@ -214,11 +214,15 @@ fn add_dylint_line_finding(
 }
 
 fn dylint_rule_id(line: &str) -> Option<&'static str> {
-    DYLINT_RULE_IDS.iter().copied().find(|rule_id| line_has_rule_id(line, rule_id))
+    let message = diagnostic_header_message(line)?;
+    let token = message.split(|ch: char| !is_rule_id_char(ch)).next()?;
+    let rule_id = DYLINT_RULE_IDS.iter().copied().find(|candidate| *candidate == token)?;
+    message.get(rule_id.len()..)?.starts_with(':').then_some(rule_id)
 }
 
-fn line_has_rule_id(line: &str, rule_id: &str) -> bool {
-    line.split(|ch: char| !is_rule_id_char(ch)).any(|token| token == rule_id)
+fn diagnostic_header_message(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    trimmed.strip_prefix("error: ").or_else(|| trimmed.strip_prefix("warning: "))
 }
 
 const fn is_rule_id_char(ch: char) -> bool {
@@ -432,6 +436,47 @@ mod tests {
         let first = findings.first().expect("one finding must exist");
         assert_eq!(first.rule_id().as_str(), "BYPASS_PUB_ALLOW");
         assert!(first.location().is_span(), "Dylint arrow location must become a span");
+    }
+
+    #[test]
+    fn snippet_lines_mentioning_rule_ids_do_not_become_findings() {
+        let target = current_target_project().expect("test target project must resolve");
+        let stderr = concat!(
+            "error: BYPASS_ATTR_CONTEXT: public #[allow(...)] comes from macro expansion\n",
+            "  --> crates/titania-dylint/src/functional_surface.rs:56:1\n",
+            "   |\n",
+            "56 | / impl_lint_pass!(FunctionalSurface => [\n",
+            "57 | |     FUNC_UNWRAP_USED,\n",
+            "58 | |     FUNC_EXPECT_USED,\n",
+            "59 | |     FUNC_UNWRAP_OR,\n",
+            "62 | |     BOUNDED_EXECUTION_UNBOUNDED_ITERATOR,\n",
+            "63 | | ]);\n",
+            "   | |__^\n",
+            "   |\n",
+            "   = help: write lint exceptions directly in reviewed source or ledger them\n",
+            "\n",
+            "error: could not compile `titania-dylint` (lib) due to 1 previous error\n",
+        );
+        let output = mock_output(1, b"", stderr.as_bytes()).expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, None);
+
+        let LaneOutcome::Findings { findings } = outcome else {
+            panic!("one header diagnostic must become exactly one finding");
+        };
+        assert_eq!(findings.len(), 1);
+        let first = findings.first().expect("one finding must exist");
+        assert_eq!(first.rule_id().as_str(), "BYPASS_ATTR_CONTEXT");
+        let location = first.location();
+        assert!(location.is_span(), "header diagnostic location must be a span");
+        assert_eq!(
+            location.span_file().map(|path| path.as_str()),
+            Some("crates/titania-dylint/src/functional_surface.rs")
+        );
+        assert!(
+            format!("{location:?}").contains("line_start: 56"),
+            "finding must anchor at the diagnostic arrow line 56: {location:?}"
+        );
     }
 
     #[test]
