@@ -128,6 +128,188 @@ fn aggregate_toolchain_digest_ignores_path_planted_fake_toolchain() {
 }
 
 #[cfg(unix)]
+const PINNED_TOOLCHAIN_DIR: &str = "nightly-2026-04-27-x86_64-unknown-linux-gnu";
+
+#[cfg(unix)]
+const DEFAULT_TOOLCHAIN_DIR: &str = "stable-x86_64-unknown-linux-gnu";
+
+#[cfg(unix)]
+fn write_logging_tool(home: &Path, toolchain_dir: &str, tag: &str, tool: &str, version_line: &str) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let bin_dir = home.join("toolchains").join(toolchain_dir).join("bin");
+    fs::create_dir_all(&bin_dir).expect("fake toolchain bin dir must be created");
+    let script = bin_dir.join(tool);
+    let body = format!(
+        "#!/bin/sh\necho \"{tag}-{tool}\" >> \"{}\"\necho \"{version_line}\"\n",
+        home.join("calls.log").display()
+    );
+    fs::write(&script, body).expect("fake logging tool must be written");
+    let mut permissions = fs::metadata(&script).expect("fake tool metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&script, permissions).expect("fake tool must be made executable");
+}
+
+#[cfg(unix)]
+fn fake_rustup_home(settings: &str) -> TempDir {
+    let home = tempfile::tempdir().expect("fake rustup home must be created");
+    write_logging_tool(
+        home.path(),
+        PINNED_TOOLCHAIN_DIR,
+        "pinned",
+        "rustc",
+        "rustc 1.97.0-nightly (ca9a134e0 2026-04-26)",
+    );
+    write_logging_tool(
+        home.path(),
+        PINNED_TOOLCHAIN_DIR,
+        "pinned",
+        "cargo",
+        "cargo 1.97.0-nightly (eb9b60f1f 2026-04-24)",
+    );
+    write_logging_tool(
+        home.path(),
+        DEFAULT_TOOLCHAIN_DIR,
+        "default",
+        "rustc",
+        "rustc 1.85.0 (4d91de4e4 2025-02-17)",
+    );
+    write_logging_tool(
+        home.path(),
+        DEFAULT_TOOLCHAIN_DIR,
+        "default",
+        "cargo",
+        "cargo 1.85.0 (d73d2caf9 2024-12-31)",
+    );
+    fs::write(home.path().join("settings.toml"), settings)
+        .expect("fake rustup settings must be written");
+    home
+}
+
+#[cfg(unix)]
+fn calls_log(home: &Path) -> String {
+    fs::read_to_string(home.join("calls.log")).expect("calls log must exist")
+}
+
+#[cfg(unix)]
+fn assert_probe_fails_closed(output: &std::process::Output, home: &Path) {
+    assert_eq!(output.status.code(), Some(3), "aggregate must exit 3");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("InternalError: toolchain digest probe failed"),
+        "stderr must carry the typed toolchain probe diagnostic, got: {stderr}"
+    );
+    assert!(!home.join("calls.log").exists(), "no toolchain binary may execute");
+}
+
+#[cfg(unix)]
+#[test]
+fn aggregate_executes_pinned_toolchain_for_commented_pin() {
+    let workspace = clean_workspace();
+    fs::write(
+        workspace.path().join("rust-toolchain.toml"),
+        "[toolchain]\nchannel = \"nightly-2026-04-27\" # pinned for reproducibility\n",
+    )
+    .expect("pin file must be written");
+    let home = fake_rustup_home("default_toolchain = \"stable-x86_64-unknown-linux-gnu\"\n");
+    let output = run_in_with_rustup_home(
+        workspace.path(),
+        &["aggregate", "--scope", "edit", "--emit", "json"],
+        home.path(),
+    );
+    let report = parse_stdout(&output, 0);
+    assert_eq!(report["variant"], "Pass");
+    assert_eq!(calls_log(home.path()), "pinned-rustc\npinned-cargo\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn aggregate_executes_pinned_toolchain_for_single_quoted_pin() {
+    let workspace = clean_workspace();
+    fs::write(
+        workspace.path().join("rust-toolchain.toml"),
+        "[toolchain]\nchannel = 'nightly-2026-04-27'\n",
+    )
+    .expect("pin file must be written");
+    let home = fake_rustup_home("default_toolchain = \"stable-x86_64-unknown-linux-gnu\"\n");
+    let output = run_in_with_rustup_home(
+        workspace.path(),
+        &["aggregate", "--scope", "edit", "--emit", "json"],
+        home.path(),
+    );
+    let report = parse_stdout(&output, 0);
+    assert_eq!(report["variant"], "Pass");
+    assert_eq!(calls_log(home.path()), "pinned-rustc\npinned-cargo\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn aggregate_executes_default_toolchain_for_commented_settings_default() {
+    let workspace = clean_workspace();
+    let home =
+        fake_rustup_home("default_toolchain = \"stable-x86_64-unknown-linux-gnu\" # the default\n");
+    let output = run_in_with_rustup_home(
+        workspace.path(),
+        &["aggregate", "--scope", "edit", "--emit", "json"],
+        home.path(),
+    );
+    let report = parse_stdout(&output, 0);
+    assert_eq!(report["variant"], "Pass");
+    assert_eq!(calls_log(home.path()), "default-rustc\ndefault-cargo\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn aggregate_rejects_malformed_toolchain_toml() {
+    let workspace = clean_workspace();
+    fs::write(
+        workspace.path().join("rust-toolchain.toml"),
+        "[toolchain]\nchannel = \"nightly-2026-04-27\n",
+    )
+    .expect("pin file must be written");
+    let home = fake_rustup_home("default_toolchain = \"stable-x86_64-unknown-linux-gnu\"\n");
+    let output = run_in_with_rustup_home(
+        workspace.path(),
+        &["aggregate", "--scope", "edit", "--emit", "json"],
+        home.path(),
+    );
+    assert_probe_fails_closed(&output, home.path());
+}
+
+#[cfg(unix)]
+#[test]
+fn aggregate_rejects_channelless_toolchain_toml_despite_legacy_file() {
+    let workspace = clean_workspace();
+    fs::write(
+        workspace.path().join("rust-toolchain.toml"),
+        "[toolchain]\ncomponents = [\"rustfmt\"]\n",
+    )
+    .expect("pin file must be written");
+    fs::write(workspace.path().join("rust-toolchain"), "nightly-2026-04-27\n")
+        .expect("legacy pin file must be written");
+    let home = fake_rustup_home("default_toolchain = \"stable-x86_64-unknown-linux-gnu\"\n");
+    let output = run_in_with_rustup_home(
+        workspace.path(),
+        &["aggregate", "--scope", "edit", "--emit", "json"],
+        home.path(),
+    );
+    assert_probe_fails_closed(&output, home.path());
+}
+
+#[cfg(unix)]
+#[test]
+fn aggregate_rejects_malformed_settings_toml() {
+    let workspace = clean_workspace();
+    let home = fake_rustup_home("default_toolchain = \"stable-x86_64-unknown-linux-gnu\n");
+    let output = run_in_with_rustup_home(
+        workspace.path(),
+        &["aggregate", "--scope", "edit", "--emit", "json"],
+        home.path(),
+    );
+    assert_probe_fails_closed(&output, home.path());
+}
+
+#[cfg(unix)]
 #[test]
 fn aggregate_with_unresolvable_toolchain_home_fails_closed() {
     let workspace = clean_workspace();

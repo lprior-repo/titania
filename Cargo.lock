@@ -802,6 +802,7 @@ dependencies = [
 name = "titania-check"
 version = "1.0.0"
 dependencies = [
+ "serde",
  "serde_json",
  "tempfile",
  "titania-aggregate",
@@ -809,6 +810,7 @@ dependencies = [
  "titania-lanes",
  "titania-output",
  "titania-policy",
+ "toml_edit",
  "wait-timeout",
 ]
 

@@ -29,8 +29,6 @@ const TOOLCHAIN_BIN_DIR: &str = "bin";
 const RUST_TOOLCHAIN_FILE: &str = "rust-toolchain.toml";
 const RUST_TOOLCHAIN_LEGACY_FILE: &str = "rust-toolchain";
 const RUSTUP_SETTINGS_FILE: &str = "settings.toml";
-const CHANNEL_KEY: &str = "channel";
-const DEFAULT_TOOLCHAIN_KEY: &str = "default_toolchain";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReportJson {
@@ -533,8 +531,10 @@ fn pinned_toolchain(installed: &[String], channel: &str) -> Result<String, Aggre
 
 fn default_toolchain(rustup_home: &Path, installed: &[String]) -> Result<String, AggregateError> {
     let settings = read_toolchain_text(&rustup_home.join(RUSTUP_SETTINGS_FILE))?;
-    let configured =
-        settings.as_deref().and_then(|text| toml_string_assignment(text, DEFAULT_TOOLCHAIN_KEY));
+    let configured = match settings.as_deref() {
+        Some(text) => settings_default_toolchain(text)?,
+        None => None,
+    };
     match configured {
         Some(name) if installed.iter().any(|entry| entry == &name) => Ok(name),
         Some(name) => Err(AggregateError::ToolchainProbe(format!(
@@ -549,12 +549,27 @@ fn default_toolchain(rustup_home: &Path, installed: &[String]) -> Result<String,
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct ToolchainFile {
+    toolchain: ToolchainTable,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ToolchainTable {
+    #[serde(default)]
+    channel: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RustupSettings {
+    #[serde(default)]
+    default_toolchain: Option<String>,
+}
+
 fn pinned_channel(target_root: &Path) -> Result<Option<String>, AggregateError> {
     let toml_text = read_optional_text(&target_root.join(RUST_TOOLCHAIN_FILE))?;
-    if let Some(channel) =
-        toml_text.as_deref().and_then(|text| toml_string_assignment(text, CHANNEL_KEY))
-    {
-        return Ok(Some(channel));
+    if let Some(text) = toml_text.as_deref() {
+        return pinned_channel_from_toml(text).map(Some);
     }
     let legacy_text = read_optional_text(&target_root.join(RUST_TOOLCHAIN_LEGACY_FILE))?;
     Ok(legacy_text
@@ -565,24 +580,27 @@ fn pinned_channel(target_root: &Path) -> Result<Option<String>, AggregateError> 
         .map(str::to_owned))
 }
 
+fn pinned_channel_from_toml(text: &str) -> Result<String, AggregateError> {
+    let document = toml_edit::de::from_str::<ToolchainFile>(text)
+        .map_err(|error| AggregateError::ToolchainProbe(error.to_string()))?;
+    document.toolchain.channel.ok_or_else(|| {
+        AggregateError::ToolchainProbe(
+            "rust-toolchain.toml does not declare a toolchain channel".to_owned(),
+        )
+    })
+}
+
+fn settings_default_toolchain(text: &str) -> Result<Option<String>, AggregateError> {
+    let document = toml_edit::de::from_str::<RustupSettings>(text)
+        .map_err(|error| AggregateError::ToolchainProbe(error.to_string()))?;
+    Ok(document.default_toolchain)
+}
+
 fn read_toolchain_text(path: &Path) -> Result<Option<String>, AggregateError> {
     match std::fs::read_to_string(path) {
         Ok(text) => Ok(Some(text)),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(err) => Err(AggregateError::ToolchainProbe(err.to_string())),
-    }
-}
-
-fn toml_string_assignment(text: &str, key: &str) -> Option<String> {
-    text.lines().find_map(|line| toml_line_value(line, key))
-}
-
-fn toml_line_value(line: &str, key: &str) -> Option<String> {
-    let (head, raw_value) = line.split_once('=')?;
-    if head.trim() == key {
-        raw_value.trim().strip_prefix('"')?.strip_suffix('"').map(str::to_owned)
-    } else {
-        None
     }
 }
 
