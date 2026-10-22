@@ -165,25 +165,23 @@ fn exceptions_file_diagnostic(
 }
 
 fn profile_diagnostic(error: &ProfileError) -> PolicyDiagnostic {
-    PolicyDiagnostic::new(
+    policy_diagnostic(
         format!("invalid strict-ai policy profile: {}", profile_error_detail(error)),
-        policy_file_path(POLICY_PROFILE_PATH),
-        DiagnosticSeverity::Error,
+        POLICY_PROFILE_PATH,
     )
 }
 
 fn exception_diagnostic(error: &ExceptionError) -> PolicyDiagnostic {
-    PolicyDiagnostic::new(
+    policy_diagnostic(
         format!("{}: {}", error.code(), exception_error_detail(error)),
-        policy_file_path(POLICY_EXCEPTIONS_PATH),
-        DiagnosticSeverity::Error,
+        POLICY_EXCEPTIONS_PATH,
     )
 }
 
-fn policy_file_path(relative: &str) -> Option<WorkspacePath> {
+fn policy_diagnostic(message: String, relative: &str) -> PolicyDiagnostic {
     match WorkspacePath::new(relative) {
-        Ok(path) => Some(path),
-        Err(_invalid_path) => None,
+        Ok(path) => PolicyDiagnostic::new(message, Some(path), DiagnosticSeverity::Error),
+        Err(_invalid_path) => PolicyDiagnostic::new(message, None, DiagnosticSeverity::Error),
     }
 }
 
