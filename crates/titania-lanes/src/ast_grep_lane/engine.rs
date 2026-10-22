@@ -526,22 +526,34 @@ fn is_callee_kind(kind: &str) -> bool {
     matches!(kind, "identifier" | "field_expression" | "scoped_identifier" | "generic_function")
 }
 
-fn callee_resolves_to(callee: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
+const MAX_TURBOFISH_PEEL_DEPTH: usize = 32;
+
+fn peel_generic_function<'r>(callee: &Node<'r, StrDoc<Rust>>) -> Node<'r, StrDoc<Rust>> {
     let mut current = callee.clone();
-    while current.kind().as_ref() == "generic_function" {
-        let next = current.children().find(Node::is_named);
-        match next {
-            Some(inner) => {
-                current = inner;
-            }
-            None => return false,
-        }
+    for _peel in 0..MAX_TURBOFISH_PEEL_DEPTH {
+        current = peel_step(current);
     }
-    match current.kind().as_ref() {
-        "identifier" => current.text().trim() == name,
-        "field_expression" => is_self_field_call(&current, name),
+    current
+}
+
+fn peel_step(current: Node<'_, StrDoc<Rust>>) -> Node<'_, StrDoc<Rust>> {
+    generic_child(&current).map_or(current, |inner| inner)
+}
+
+fn generic_child<'r>(node: &Node<'r, StrDoc<Rust>>) -> Option<Node<'r, StrDoc<Rust>>> {
+    match node.kind().as_ref() {
+        "generic_function" => node.children().find(Node::is_named),
+        _ => None,
+    }
+}
+
+fn callee_resolves_to(callee: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
+    let peeled = peel_generic_function(callee);
+    match peeled.kind().as_ref() {
+        "identifier" => peeled.text().trim() == name,
+        "field_expression" => is_self_field_call(&peeled, name),
         "scoped_identifier" => {
-            is_scoped_call(&current, "Self", name) || is_qualified_self_call(&current, name)
+            is_scoped_call(&peeled, "Self", name) || is_qualified_self_call(&peeled, name)
         }
         _ => false,
     }
