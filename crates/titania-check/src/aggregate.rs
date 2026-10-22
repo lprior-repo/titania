@@ -181,7 +181,10 @@ fn exception_diagnostic(error: &ExceptionError) -> PolicyDiagnostic {
 }
 
 fn policy_file_path(relative: &str) -> Option<WorkspacePath> {
-    WorkspacePath::new(relative).ok()
+    match WorkspacePath::new(relative) {
+        Ok(path) => Some(path),
+        Err(_invalid_path) => None,
+    }
 }
 
 fn profile_error_detail(error: &ProfileError) -> String {
