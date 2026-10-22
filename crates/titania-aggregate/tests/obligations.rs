@@ -155,13 +155,13 @@ fn required_skip_not_applicable_rejects() {
 
 #[test]
 fn required_skip_tool_unavailable_rejects() {
-    let scope = GateScope::Full;
+    let scope = GateScope::Release;
     let obligations = ObligationSet::all_required(scope);
-    let kani_index =
-        scope.lanes().iter().position(|lane| *lane == Lane::Kani).expect("Full has Kani");
+    let build_index =
+        scope.lanes().iter().position(|lane| *lane == Lane::Build).expect("Release has Build");
     let outcomes = entries_with(
         scope,
-        kani_index,
+        build_index,
         skipped_outcome(SkipReason::ToolUnavailable(ToolKind::CargoKani)),
     );
 
@@ -174,9 +174,65 @@ fn required_skip_tool_unavailable_rejects() {
     )
     .expect("report assembled");
 
-    assert!(report.is_reject(), "unproven proof lane must reject, not pass");
+    assert!(
+        report.is_reject(),
+        "required lane skipped for tool unavailability must reject, not pass"
+    );
     let failures = report.gate_failures().expect("Reject must carry gate failures");
-    assert_required_skip_failure(failures, Lane::Kani);
+    assert_required_skip_failure(failures, Lane::Build);
+}
+
+#[test]
+fn required_prior_compilation_skip_adds_no_gate_failure() {
+    let scope = GateScope::Release;
+    let obligations = ObligationSet::all_required(scope);
+    let outcomes: Box<[PerLaneEntry]> = scope
+        .lanes()
+        .iter()
+        .copied()
+        .map(|lane| {
+            let outcome = match lane {
+                Lane::Compile => timeout_outcome("cargo-check"),
+                Lane::Clippy | Lane::Test | Lane::Build => {
+                    skipped_outcome(SkipReason::PriorCompilationFailure)
+                }
+                _ => clean_outcome(),
+            };
+            PerLaneEntry::new(lane, outcome)
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+
+    let report = assemble_report_with_obligations(
+        &obligations,
+        outcomes,
+        test_receipt(scope),
+        Box::from([]),
+        Box::from([]),
+    )
+    .expect("report assembled");
+
+    assert!(report.is_reject(), "the failed Compile lane must still reject the gate");
+    let failures = report.gate_failures().expect("Reject must carry gate failures");
+    assert_eq!(failures.len(), 1, "only the Compile failure may appear, got {failures:?}");
+    match &failures[0] {
+        LaneFailure::Tool { tool, .. } => {
+            assert_eq!(tool, "cargo-check", "sole gate failure must be the Compile tool failure");
+        }
+        other => panic!("expected Compile Tool failure, got {other:?}"),
+    }
+    let per_lane = report.per_lane().expect("Reject must carry per-lane entries");
+    for lane in [Lane::Clippy, Lane::Test, Lane::Build] {
+        let entry = per_lane.iter().find(|entry| *entry.lane() == lane).expect("entry present");
+        assert!(
+            matches!(
+                entry.outcome(),
+                LaneOutcome::Skipped { reason: SkipReason::PriorCompilationFailure }
+            ),
+            "{lane} must stay Skipped(PriorCompilationFailure), got {:?}",
+            entry.outcome()
+        );
+    }
 }
 
 #[test]
@@ -250,11 +306,11 @@ fn all_required_all_clean_passes() {
 
 #[test]
 fn required_timeout_failure_rejects() {
-    let scope = GateScope::Full;
+    let scope = GateScope::Release;
     let obligations = ObligationSet::all_required(scope);
-    let kani_index =
-        scope.lanes().iter().position(|lane| *lane == Lane::Kani).expect("Full has Kani");
-    let outcomes = entries_with(scope, kani_index, timeout_outcome("cargo-kani"));
+    let build_index =
+        scope.lanes().iter().position(|lane| *lane == Lane::Build).expect("Release has Build");
+    let outcomes = entries_with(scope, build_index, timeout_outcome("cargo-build"));
 
     let report = assemble_report_with_obligations(
         &obligations,
@@ -350,11 +406,11 @@ fn required_skip_plus_reject_finding_yields_mixed() {
 
 #[test]
 fn informational_findings_on_required_still_pass() {
-    let scope = GateScope::Full;
+    let scope = GateScope::Release;
     let obligations = ObligationSet::all_required(scope);
-    let kani_index =
-        scope.lanes().iter().position(|lane| *lane == Lane::Kani).expect("Full has Kani");
-    let outcomes = entries_with(scope, kani_index, informational_outcome(Lane::Kani));
+    let build_index =
+        scope.lanes().iter().position(|lane| *lane == Lane::Build).expect("Release has Build");
+    let outcomes = entries_with(scope, build_index, informational_outcome(Lane::Build));
 
     let report = assemble_report_with_obligations(
         &obligations,
@@ -365,5 +421,5 @@ fn informational_findings_on_required_still_pass() {
     )
     .expect("report assembled");
 
-    assert!(report.is_pass(), "proven lane with advisories must still pass");
+    assert!(report.is_pass(), "mandatory lane with advisories must still pass");
 }

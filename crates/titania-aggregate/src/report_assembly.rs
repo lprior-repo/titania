@@ -90,6 +90,7 @@ fn required_skip_failures(
 
 fn required_skip_failure(entry: &PerLaneEntry) -> Option<LaneFailure> {
     match entry.outcome() {
+        LaneOutcome::Skipped { reason: SkipReason::PriorCompilationFailure } => None,
         LaneOutcome::Skipped { reason } => Some(LaneFailure::Infra {
             tool: entry.lane().name().to_owned(),
             reason: skip_reason_text(*reason),

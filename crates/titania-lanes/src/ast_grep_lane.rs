@@ -79,7 +79,12 @@ fn scan_path(
         .copied()
         .filter(|rule| rule_enabled(catalog, rule.id))
         .filter(|rule| rule_applies(rule, &workspace_path))
-        .filter_map(|rule| detect_match(rule, &engine, &source).map(|site| (rule, site)))
+        .flat_map(|rule| {
+            detect_sites(rule, &engine, &source)
+                .into_iter()
+                .map(move |site| (rule, site))
+                .collect::<Vec<_>>()
+        })
         .map(|(rule, site)| finding(rule, site, &source, offsets, &workspace_path))
         .collect::<Result<Vec<_>, _>>()
         .map(|findings| suppress_exceptions(findings, exceptions))
@@ -146,11 +151,7 @@ fn finding(
     })
 }
 
-fn detect_match(
-    rule: RuleDef,
-    engine: &engine::AstEngine,
-    source: &str,
-) -> Option<span::MatchSite> {
+fn detect_sites(rule: RuleDef, engine: &engine::AstEngine, source: &str) -> Vec<span::MatchSite> {
     rule.detect.run(engine, source)
 }
 

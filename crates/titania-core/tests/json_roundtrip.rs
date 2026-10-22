@@ -661,6 +661,48 @@ fn repair_hint_all_variants() {
     let json = serde_json::to_string(&human).unwrap();
     let parsed: RepairHint = serde_json::from_str(&json).unwrap();
     assert_eq!(human, parsed);
+
+    let none = RepairHint::none();
+    let json = serde_json::to_string(&none).unwrap();
+    assert_eq!(json, "\"None\"");
+    let parsed: RepairHint = serde_json::from_str(&json).unwrap();
+    assert_eq!(none, parsed);
+    assert!(!none.is_auto_applicable());
+}
+
+#[test]
+fn finding_without_repair_hint_serializes_repair_as_none_and_round_trips() {
+    let rule = RuleId::new("FUNC_WILDCARD_IMPORT").unwrap();
+    let file = WorkspacePath::new("src/lib.rs").unwrap();
+    let location = Location::span(file, 1, 0, 1, 24).unwrap();
+    let finding = Finding::informational(
+        Lane::AstGrep,
+        rule,
+        location,
+        "FUNC_WILDCARD_IMPORT: replace wildcard imports with explicit imports".to_owned(),
+        RepairHint::none(),
+    );
+    let json = serde_json::to_string(&finding).unwrap();
+    assert!(
+        json.contains("\"repair\":\"None\""),
+        "finding with no repair hint must serialize repair as the None value: {json}"
+    );
+    let parsed: Finding = serde_json::from_str(&json).unwrap();
+    assert_eq!(finding, parsed);
+    assert_eq!(parsed.repair(), &RepairHint::none());
+    assert!(!parsed.has_auto_repair());
+}
+
+#[test]
+fn legacy_wildcard_finding_with_human_review_repair_still_deserializes() {
+    let legacy = r#"{"lane":"AstGrep","rule_id":"FUNC_WILDCARD_IMPORT","location":{"Span":{"file":"src/lib.rs","line_start":1,"col_start":0,"line_end":1,"col_end":24}},"message":"FUNC_WILDCARD_IMPORT: replace wildcard imports with explicit imports","repair":{"RequiresHumanReview":{"note":"manual structural rewrite required"}},"effect":"Informational"}"#;
+    let parsed: Finding = serde_json::from_str(legacy).unwrap();
+    assert_eq!(parsed.rule_id().as_str(), "FUNC_WILDCARD_IMPORT");
+    assert_eq!(
+        parsed.repair(),
+        &RepairHint::requires_human_review("manual structural rewrite required".to_owned())
+    );
+    assert!(parsed.is_informational());
 }
 
 #[test]

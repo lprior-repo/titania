@@ -10,7 +10,7 @@ use super::{
     span::{FILE_LEVEL_SITE, MatchSite},
 };
 
-type EngineDetector = fn(&AstEngine) -> Option<MatchSite>;
+type EngineDetector = fn(&AstEngine) -> Vec<MatchSite>;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct RuleDef {
@@ -29,16 +29,17 @@ pub(super) enum Detector {
 }
 
 impl Detector {
-    pub(super) fn run(self, engine: &AstEngine, source: &str) -> Option<MatchSite> {
+    pub(super) fn run(self, engine: &AstEngine, source: &str) -> Vec<MatchSite> {
         match self {
             Self::Engine(detect) => detect(engine),
-            Self::String(detect) => detect(source).then_some(FILE_LEVEL_SITE),
+            Self::String(detect) => detect(source).then_some(FILE_LEVEL_SITE).into_iter().collect(),
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum RepairKind {
+    None,
     RemoveAllowAttribute,
     ReplaceDependency,
     RequiresHumanReview,
@@ -57,6 +58,7 @@ pub(super) fn rule_applies(rule: &RuleDef, workspace_path: &WorkspacePath) -> bo
 
 pub(super) fn repair_hint(kind: RepairKind) -> RepairHint {
     match kind {
+        RepairKind::None => RepairHint::none(),
         RepairKind::RemoveAllowAttribute => RepairHint::remove_allow_attribute("allow".to_owned()),
         RepairKind::ReplaceDependency => RepairHint::replace_dependency(
             "tokio/axum/sqlx/reqwest".to_owned(),
@@ -124,7 +126,7 @@ pub(super) const RULES: &[RuleDef] = &[
         id: "FUNC_WILDCARD_IMPORT",
         message: "FUNC_WILDCARD_IMPORT: replace wildcard imports with explicit imports",
         effect: FindingEffect::Informational,
-        repair: RepairKind::RequiresHumanReview,
+        repair: RepairKind::None,
         detect: Detector::Engine(AstEngine::detect_wildcard_import),
         scope: RuleScope::ProductionRust,
     },
@@ -189,7 +191,7 @@ pub(super) const RULES: &[RuleDef] = &[
         message: "BYPASS_INLINE_SUPPRESSION: remove ast-grep-ignore or sg-ignore inline suppression",
         effect: FindingEffect::Reject,
         repair: RepairKind::RequiresHumanReview,
-        detect: Detector::String(detectors::detect_inline_suppression),
+        detect: Detector::Engine(AstEngine::detect_inline_suppression),
         scope: RuleScope::ProductionRust,
     },
     RuleDef {

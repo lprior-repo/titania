@@ -37,7 +37,13 @@ fn run_one(fixture: &str) -> Vec<titania_core::Finding> {
 }
 
 fn by_rule_id(findings: &[titania_core::Finding]) -> BTreeMap<String, &titania_core::Finding> {
-    findings.iter().map(|f| (f.rule_id().as_str().to_owned(), f)).collect()
+    let mut by_id: BTreeMap<String, &titania_core::Finding> = BTreeMap::new();
+    for finding in findings {
+        if !by_id.contains_key(finding.rule_id().as_str()) {
+            let _previous = by_id.insert(finding.rule_id().as_str().to_owned(), finding);
+        }
+    }
+    by_id
 }
 
 fn line_from_coords(source: &str, line_1_based: u64) -> &str {

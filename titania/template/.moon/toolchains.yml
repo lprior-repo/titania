@@ -4,6 +4,12 @@
 # installed separately; the bins list is intentionally empty because moon's
 # rust plugin unconditionally source-builds cargo-binstall whenever bins is
 # non-empty, which is impractical on constrained hardware.
+# This is a deliberate deviation from v1-spec §13, whose canonical
+# toolchains.yml lists 'cargo-deny@latest', 'cargo-binstall@latest', and
+# 'cargo-dylint@latest': the deviation stands until moon's rust plugin can
+# install bins without source-building cargo-binstall. Generated
+# workspaces instead rely on `titania-check doctor` to verify the lane
+# tools are present on PATH.
 
 rust:
   version: 'nightly-2026-04-27'

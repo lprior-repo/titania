@@ -52,8 +52,18 @@ fn explain_known_rule_prints_metadata_on_stdout() {
         "stdout must start with rule id: {output}"
     );
     assert!(output.contains("Pattern: loop { ... }"), "stdout must include spec pattern: {output}");
+    assert!(
+        output.contains("(excluding `while let`)"),
+        "stdout must include the while-let exclusion from the spec pattern: {output}"
+    );
     assert!(output.contains("Effect: Reject"), "stdout must include effect: {output}");
     assert!(output.contains("Repair: RequiresHumanReview"), "stdout must include repair: {output}");
+    assert!(
+        output.contains(
+            "Repair: RequiresHumanReview — cite Bound::FiniteInput, Bound::Capped, or Bound::ProtocolTerminal"
+        ),
+        "stdout must include the spec repair line with the bound citation note: {output}"
+    );
 }
 
 #[test]
@@ -61,9 +71,43 @@ fn explain_known_rule_prints_examples() {
     let (code, stdout, stderr) = run(&["explain", "BOUNDED_EXECUTION_UNBOUNDED_LOOP"]);
     assert_eq!(code, 0, "must exit 0, got {code}. stderr: {stderr}");
     assert!(stdout.contains("Example violation:"), "missing violation heading: {stdout}");
-    assert!(stdout.contains("loop { if ready()"), "missing violation: {stdout}");
+    assert!(
+        stdout.contains("for item in items { process(item); }"),
+        "missing spec violation example: {stdout}"
+    );
     assert!(stdout.contains("Example repair:"), "missing repair heading: {stdout}");
+    assert!(
+        stdout.contains("items.iter().for_each(|item| process(item));"),
+        "missing spec repair example: {stdout}"
+    );
     assert!(stdout.contains("Bound::FiniteInput"), "missing repair: {stdout}");
+}
+
+#[test]
+fn explain_wildcard_import_omits_repair_content() {
+    let (code, stdout, stderr) = run(&["explain", "FUNC_WILDCARD_IMPORT"]);
+    assert_eq!(
+        code, 0,
+        "explain for FUNC_WILDCARD_IMPORT must exit 0, got {code}. stderr: {stderr}"
+    );
+    assert!(stderr.is_empty(), "explain must not write stderr: {stderr}");
+    let output = stdout.trim();
+    assert!(output.starts_with("FUNC_WILDCARD_IMPORT"), "stdout must start with rule id: {output}");
+    assert!(output.contains("Pattern: use $PATH::*"), "stdout must include pattern: {output}");
+    assert!(output.contains("Effect: Informational"), "stdout must include effect: {output}");
+    assert!(
+        !output.contains("Repair:"),
+        "a rule with no repair hint must not render a Repair line: {output}"
+    );
+    assert!(
+        !output.contains("RequiresHumanReview"),
+        "stdout must not claim a repair hint the catalog does not carry: {output}"
+    );
+    assert!(
+        !output.contains("Example repair:"),
+        "a rule with no repair hint must not render an example repair: {output}"
+    );
+    assert!(output.contains("Example violation:"), "missing violation heading: {output}");
 }
 
 #[test]
@@ -128,18 +172,27 @@ fn explain_unknown_rule_exits_three() {
 }
 
 #[test]
-fn explain_unknown_rule_stderr_contains_unknown_rule_id() {
+fn explain_unknown_rule_stderr_is_spec_message() {
     let (code, _stdout, stderr) = run(&["explain", "DOES_NOT_EXIST"]);
     assert_eq!(code, 3, "must exit 3 to read stderr: {stderr}");
     assert_stderr_contains(&stderr, "unknown rule ID");
+    assert_eq!(
+        stderr.trim(),
+        "unknown rule ID: DOES_NOT_EXIST",
+        "stderr must be the spec message with no prefix: {stderr}"
+    );
 }
 
 #[test]
-fn explain_lowercase_rule_id_is_parser_invalid() {
+fn explain_lowercase_rule_id_is_unknown_rule() {
     let (code, stdout, stderr) = run(&["explain", "does_not_exist"]);
     assert_eq!(code, 3, "lowercase rule id must exit 3, got {code}. stderr: {stderr}");
-    assert!(stdout.is_empty(), "parser-invalid path must not write stdout, got: {stdout}");
-    assert_stderr_contains(&stderr, "InputError:");
+    assert!(stdout.is_empty(), "unknown-rule path must not write stdout, got: {stdout}");
+    assert_eq!(
+        stderr.trim(),
+        "unknown rule ID: does_not_exist",
+        "stderr must be the spec message with no prefix: {stderr}"
+    );
 }
 
 #[test]

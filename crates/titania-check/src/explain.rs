@@ -8,24 +8,31 @@ pub fn render(rule_id: &str) -> Result<String, OutputError> {
 }
 
 fn render_entry(entry: &RuleExplanation) -> String {
+    let repair_block = entry
+        .repair
+        .as_deref()
+        .map_or_else(String::new, |repair| format!("  Repair: {repair}{}\n", entry.repair_note));
+    let example_repair_block =
+        entry.example_repair.as_deref().map_or_else(String::new, |example_repair| {
+            format!("\n\n  Example repair:\n    {example_repair}")
+        });
     format!(
         concat!(
             "{rule_id}\n",
             "  {description}\n\n",
             "  Pattern: {pattern}\n",
             "  Effect: {effect}\n",
-            "  Repair: {repair}\n\n",
-            "  Example violation:\n",
-            "    {example_violation}\n\n",
-            "  Example repair:\n",
-            "    {example_repair}"
+            "{repair_block}",
+            "\n  Example violation:\n",
+            "    {example_violation}",
+            "{example_repair_block}"
         ),
         rule_id = entry.rule_id.as_ref(),
         description = entry.description.as_ref(),
         pattern = entry.pattern.as_ref(),
         effect = entry.effect.as_ref(),
-        repair = entry.repair.as_ref(),
+        repair_block = repair_block,
         example_violation = entry.example_violation.as_ref(),
-        example_repair = entry.example_repair.as_ref(),
+        example_repair_block = example_repair_block,
     )
 }

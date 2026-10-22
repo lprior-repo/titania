@@ -1,6 +1,10 @@
 [build]
-# sccache is intentionally optional for generated workspaces. Install and set a
-# local rustc-wrapper yourself if your environment provides it.
+# sccache wrapper hook (v1-spec §14): the hook ships as an opt-in line
+# because §4 makes sccache strongly recommended but NOT hard-required —
+# an active rustc-wrapper would fail every build on machines without
+# sccache installed. §8 policy-scan permits a rustc-wrapper only when it
+# is absent or sccache. On a machine with sccache installed, uncomment:
+# rustc-wrapper = "sccache"
 # The unstable `non_exhaustive_omitted_patterns` lint is intentionally NOT
 # enforced: on nightly-2026-04-27 the workspace-lint path leaves clippy
 # unable to recognize it, while explicit `-Zcrate-attr` injection collides

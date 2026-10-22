@@ -156,7 +156,7 @@ fn sccache_wrappers_are_clean() -> TestResult {
     write_file(
         tmp.path(),
         ".cargo/config.toml",
-        "[build]\nrustc-wrapper = \"sccache\"\nworkspace-wrapper = \"sccache\"\n",
+        "[build]\nrustc-wrapper = \"sccache\"\nrustc-workspace-wrapper = \"sccache\"\n",
     )?;
     assert!(scan_from(tmp.path())?.is_clean());
     Ok(())
@@ -168,13 +168,40 @@ fn non_sccache_wrappers_emit_wrapper_findings() -> TestResult {
     write_file(
         tmp.path(),
         ".cargo/config.toml",
-        "[build]\nrustc-wrapper = \"ccache\"\nworkspace-wrapper = \"distccd\"\n",
+        "[build]\nrustc-wrapper = \"ccache\"\nrustc-workspace-wrapper = \"distccd\"\n",
     )?;
     let report = scan_from(tmp.path())?;
     assert_eq!(report.finding_count(), 2);
     assert!(report.findings().iter().all(|f| f.rule().as_str() == "BYPASS_CARGO_CONFIG_WRAPPER"));
     assert!(report.findings()[0].message().contains("ccache"));
     assert!(report.findings()[1].message().contains("distccd"));
+    Ok(())
+}
+
+#[test]
+fn real_rustc_workspace_wrapper_key_emits_wrapper_finding() -> TestResult {
+    let tmp = fixture()?;
+    write_file(
+        tmp.path(),
+        ".cargo/config.toml",
+        "[build]\nrustc-workspace-wrapper = \"ccache\"\n",
+    )?;
+    let report = scan_from(tmp.path())?;
+    assert_eq!(report.finding_count(), 1);
+    assert_eq!(report.findings()[0].rule().as_str(), "BYPASS_CARGO_CONFIG_WRAPPER");
+    assert!(report.findings()[0].message().contains("ccache"));
+    Ok(())
+}
+
+#[test]
+fn sccache_rustc_workspace_wrapper_is_clean() -> TestResult {
+    let tmp = fixture()?;
+    write_file(
+        tmp.path(),
+        ".cargo/config.toml",
+        "[build]\nrustc-workspace-wrapper = \"sccache\"\n",
+    )?;
+    assert!(scan_from(tmp.path())?.is_clean());
     Ok(())
 }
 

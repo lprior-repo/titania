@@ -4,6 +4,7 @@ use crate::text_range::TextRange;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 enum RepairHintInner {
+    None,
     Patch { file: String, range: TextRange, replacement: String },
     UseIteratorPipeline { suggestion: String },
     FlattenNesting { suggestion: String },
@@ -24,6 +25,11 @@ impl RepairHintInner {
 pub struct RepairHint(RepairHintInner);
 
 impl RepairHint {
+    #[must_use]
+    pub const fn none() -> Self {
+        Self(RepairHintInner::None)
+    }
+
     #[must_use]
     pub const fn patch(file: String, range: TextRange, replacement: String) -> Self {
         Self(RepairHintInner::Patch { file, range, replacement })
@@ -67,6 +73,7 @@ impl RepairHint {
 
 #[derive(Deserialize)]
 enum RepairHintReadWire {
+    None,
     Patch { file: String, range: TextRange, replacement: String },
     UseIteratorPipeline { suggestion: String },
     FlattenNesting { suggestion: String },
@@ -74,6 +81,10 @@ enum RepairHintReadWire {
     RemoveAllowAttribute { attr: String },
     ReplaceDependency { from: String, to: String },
     RequiresHumanReview { note: String },
+}
+
+const fn construct_none() -> RepairHint {
+    RepairHint(RepairHintInner::None)
 }
 
 const fn construct_patch(file: String, range: TextRange, replacement: String) -> RepairHint {
@@ -106,6 +117,7 @@ const fn human_review(note: String) -> RepairHint {
 
 fn repair_hint_from_wire(wire: RepairHintReadWire) -> RepairHint {
     match wire {
+        RepairHintReadWire::None => construct_none(),
         RepairHintReadWire::Patch { file, range, replacement } => {
             construct_patch(file, range, replacement)
         }
@@ -133,6 +145,7 @@ impl<'de> Deserialize<'de> for RepairHint {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RepairHintClass {
+    None,
     Patch,
     UseIteratorPipeline,
     FlattenNesting,
@@ -146,6 +159,7 @@ impl RepairHintClass {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::None => "None",
             Self::Patch => "Patch",
             Self::UseIteratorPipeline => "UseIteratorPipeline",
             Self::FlattenNesting => "FlattenNesting",
@@ -161,6 +175,7 @@ impl RepairHint {
     #[must_use]
     pub const fn class(&self) -> RepairHintClass {
         match &self.0 {
+            RepairHintInner::None => RepairHintClass::None,
             RepairHintInner::Patch { .. } => RepairHintClass::Patch,
             RepairHintInner::UseIteratorPipeline { .. } => RepairHintClass::UseIteratorPipeline,
             RepairHintInner::FlattenNesting { .. } => RepairHintClass::FlattenNesting,

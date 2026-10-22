@@ -342,6 +342,410 @@ fn ast_grep_lane_rejects_multiline_result_string_error() -> TestResult {
 }
 
 #[test]
+fn ast_grep_lane_rejects_fully_qualified_result_string_error() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_result_string_fq_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "FUNC_RESULT_STRING")
+            .count(),
+        other => panic!("expected fully-qualified Result<String> findings, got {other:?}"),
+    };
+
+    assert_eq!(count, 2, "both fully-qualified Result<String> spellings must be rejected");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_method_and_self_type_recursion() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_recursion_method_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "FUNC_RECURSION_DIRECT")
+            .count(),
+        other => panic!("expected method recursion findings, got {other:?}"),
+    };
+
+    assert_eq!(count, 2, "self.walk() and Self::descend() must each be rejected");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_turbofish_recursion() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_recursion_turbofish_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "FUNC_RECURSION_DIRECT")
+            .count(),
+        other => panic!("expected turbofish recursion findings, got {other:?}"),
+    };
+
+    assert_eq!(
+        count, 3,
+        "self.walk::<u8>(), Self::descend::<u8>() and spin::<u8>() must each be rejected"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_ufcs_recursion() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_recursion_ufcs_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "FUNC_RECURSION_DIRECT")
+            .count(),
+        other => panic!("expected UFCS recursion findings, got {other:?}"),
+    };
+
+    assert_eq!(count, 1, "<Self as Tr>::f() must be rejected as direct recursion");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_allows_turbofish_calls_to_other_functions() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/allowed_recursion_turbofish_other.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "turbofish calls to differently-named functions must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_core_result_string_error() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_result_string_core_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "FUNC_RESULT_STRING")
+            .count(),
+        other => panic!("expected core:: Result<String> findings, got {other:?}"),
+    };
+
+    assert_eq!(count, 1, "core::result::Result<_, alloc::string::String> must be rejected");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_absolute_and_alloc_result_string_spellings() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_result_string_absolute_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "FUNC_RESULT_STRING")
+            .count(),
+        other => panic!("expected absolute/alloc Result<String> findings, got {other:?}"),
+    };
+
+    assert_eq!(
+        count, 4,
+        "::std::result::Result, alloc::string::String and ::std::string::String spellings must each be rejected"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_allows_custom_module_result_type() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/allowed_result_custom_module.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "a user-defined sub::Result type must not fire FUNC_RESULT_STRING: {outcome:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_nested_group_state_and_time_imports() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = [
+        "crates/example-core/src/architecture_import_core_state_nested_violation.rs",
+        "crates/example-core/src/architecture_import_core_time_nested_violation.rs",
+    ]
+    .map(|path| fixture_root("ast_grep", path))
+    .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|finding| finding.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected nested-group import findings, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("ARCHITECTURE_EFFECT_CORE_STATE"),
+        "use std::{{sync::Mutex}} must be rejected: {ids:?}"
+    );
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_TIME"),
+        "use std::{{time::Instant}} must be rejected: {ids:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_two_hop_alias_chain() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths =
+        ["crates/example-core/src/architecture_effect_core_async_alias_chain_violation.rs"]
+            .map(|path| fixture_root("ast_grep", path))
+            .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|finding| finding.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected alias-chain findings, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("ARCHITECTURE_EFFECT_CORE_ASYNC"),
+        "t2::spawn through a two-hop alias chain must be rejected: {ids:?}"
+    );
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_INFRA"),
+        "t2::spawn through a two-hop alias chain must be rejected as infra: {ids:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_module_self_state_and_time_imports() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = [
+        "crates/example-core/src/architecture_effect_core_state_module_self_violation.rs",
+        "crates/example-core/src/architecture_import_core_time_module_self_violation.rs",
+    ]
+    .map(|path| fixture_root("ast_grep", path))
+    .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|finding| finding.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected module-self import findings, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("ARCHITECTURE_EFFECT_CORE_STATE"),
+        "use std::sync::{{self}} with sync::Mutex use must be rejected: {ids:?}"
+    );
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_TIME"),
+        "use std::time::{{self}} with time::Instant use must be rejected: {ids:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_allows_shadowed_module_names() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = ["crates/example-core/src/allowed_core_module_shadow.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "a local mod sync with its own Mutex must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_rejects_grouped_tokio_task_spawn() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths =
+        ["crates/example-core/src/architecture_effect_core_async_grouped_violation.rs"]
+            .map(|path| fixture_root("ast_grep", path))
+            .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|finding| finding.rule_id().as_str().to_owned()).collect()
+        }
+        other => panic!("expected grouped tokio findings, got {other:?}"),
+    };
+
+    assert!(
+        ids.contains("ARCHITECTURE_EFFECT_CORE_ASYNC"),
+        "use tokio::{{task::spawn}} must be rejected as an async effect: {ids:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_multiline_bare_task_import_is_not_async_effect() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = ["crates/example-core/src/allowed_core_bare_task_multiline.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let ids: std::collections::BTreeSet<_> = match outcome {
+        LaneOutcome::Findings { findings } => {
+            findings.iter().map(|finding| finding.rule_id().as_str().to_owned()).collect()
+        }
+        LaneOutcome::Clean { .. } => std::collections::BTreeSet::new(),
+        other => panic!("expected findings or clean, got {other:?}"),
+    };
+
+    assert!(
+        !ids.contains("ARCHITECTURE_EFFECT_CORE_ASYNC"),
+        "a multi-line bare use tokio::task::{{ self, }} import must not fire the async effect rule: {ids:?}"
+    );
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_INFRA"),
+        "the bare tokio import itself must still fire the infra rule: {ids:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_emits_one_finding_per_occurrence() -> TestResult {
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths =
+        ["functional/func_print_stdout_violation.rs", "functional/func_unwrap_or_violation.rs"]
+            .map(|path| fixture_root("ast_grep", path))
+            .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let (stdout_count, unwrap_or_count) = match outcome {
+        LaneOutcome::Findings { findings } => (
+            findings.iter().filter(|f| f.rule_id().as_str() == "FUNC_PRINT_STDOUT").count(),
+            findings.iter().filter(|f| f.rule_id().as_str() == "FUNC_UNWRAP_OR").count(),
+        ),
+        other => panic!("expected per-occurrence findings, got {other:?}"),
+    };
+
+    assert_eq!(stdout_count, 3, "three print macros must emit three findings");
+    assert_eq!(unwrap_or_count, 3, "three unwrap_or forms must emit three findings");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_wildcard_import_finding_has_no_repair_hint() -> TestResult {
+    use titania_core::{FindingEffect, RepairHint};
+
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_wildcard_import_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let LaneOutcome::Findings { findings } = outcome else {
+        panic!("expected findings for the wildcard fixture, got {outcome:?}");
+    };
+    let wildcard: Vec<_> =
+        findings.iter().filter(|f| f.rule_id().as_str() == "FUNC_WILDCARD_IMPORT").collect();
+    assert!(!wildcard.is_empty(), "wildcard fixture must emit FUNC_WILDCARD_IMPORT findings");
+    for finding in wildcard {
+        assert_eq!(finding.effect(), FindingEffect::Informational);
+        assert_eq!(
+            finding.repair(),
+            &RepairHint::none(),
+            "FUNC_WILDCARD_IMPORT carries no repair hint per the v1-spec section 6 catalog"
+        );
+        assert!(!finding.has_auto_repair());
+    }
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_inline_suppression_ignores_string_literals() -> TestResult {
+    let rules_yaml = [include_str!("../rules/bypass.yml")];
+    let allowed_paths = ["bypass/allowed_inline_suppression_in_string_literal.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &allowed_paths, &[])?;
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "marker text inside string literals must not fire BYPASS_INLINE_SUPPRESSION: {outcome:?}"
+    );
+
+    let violation_paths = ["bypass/bypass_inline_suppression_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &violation_paths, &[])?;
+    let count = match outcome {
+        LaneOutcome::Findings { findings } => findings
+            .iter()
+            .filter(|finding| finding.rule_id().as_str() == "BYPASS_INLINE_SUPPRESSION")
+            .count(),
+        other => panic!("expected inline suppression findings, got {other:?}"),
+    };
+
+    assert_eq!(count, 3, "three real marker comments must emit three findings");
+    Ok(())
+}
+
+#[test]
+fn ast_grep_lane_allows_injected_rng_trait() -> TestResult {
+    let rules_yaml = [include_str!("../rules/architecture.yml")];
+    let fixture_paths = ["crates/example-core/src/allowed_core_rand_rng_injection.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+
+    assert!(
+        matches!(outcome, LaneOutcome::Clean { .. }),
+        "an injected rand::Rng trait parameter must stay clean: {outcome:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn ast_grep_lane_rejects_pub_and_multiline_architecture_imports() -> TestResult {
     let rules_yaml = [include_str!("../rules/architecture.yml")];
     let fixture_paths = [
@@ -366,7 +770,10 @@ fn ast_grep_lane_rejects_pub_and_multiline_architecture_imports() -> TestResult 
         ids.contains("ARCHITECTURE_IMPORT_CORE_TIME"),
         "multiline std::time::Instant grouped import must be rejected"
     );
-    assert!(ids.contains("ARCHITECTURE_IMPORT_CORE_RANDOM"), "pub use rand::Rng must be rejected");
+    assert!(
+        ids.contains("ARCHITECTURE_IMPORT_CORE_RANDOM"),
+        "pub use rand::thread_rng must be rejected"
+    );
     Ok(())
 }
 

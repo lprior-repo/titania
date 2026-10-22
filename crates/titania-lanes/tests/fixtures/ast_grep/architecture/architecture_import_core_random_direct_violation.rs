@@ -1,6 +1,7 @@
 
-use rand::Rng;
+use rand::thread_rng;
 
-pub fn choose_index<R: Rng>(rng: &mut R, len: usize) -> usize {
+pub fn choose_index(len: usize) -> usize {
+    let mut rng = thread_rng();
     rng.gen_range(0..len)
 }

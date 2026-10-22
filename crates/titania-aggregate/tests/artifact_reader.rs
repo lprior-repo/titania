@@ -2,7 +2,7 @@ use std::fs;
 
 use tempfile::TempDir;
 use titania_aggregate::{ReaderError, read_lane_artifacts};
-use titania_core::{GateScope, Lane, LaneFailure, LaneOutcome};
+use titania_core::{GateScope, Lane, LaneFailure, LaneOutcome, SkipReason};
 
 fn clean_artifact_json(lane: Lane) -> String {
     format!(
@@ -325,6 +325,181 @@ fn scoped_lane_set_excludes_out_of_scope_lane() {
         }
         other => panic!("expected InputError, got {other:?}"),
     }
+}
+
+fn failed_tool_artifact_json(lane: Lane, tool: &str) -> String {
+    format!(
+        r#"{{"lane":"{}","outcome":{{"Failed":{{"ToolFailure":{{"tool":"{tool}","termination":{{"Exited":{{"code":101}}}}}}}}}}}}"#,
+        lane.name()
+    )
+}
+
+fn findings_artifact_json(lane: Lane) -> String {
+    format!(
+        r#"{{"lane":"{}","outcome":{{"Findings":[{{"lane":"{}","rule_id":"RUSTC_TYPE_ERROR","location":"Workspace","message":"mismatched types","repair":{{"RequiresHumanReview":{{"note":"fix the type error"}}}},"effect":"Reject"}}]}}}}"#,
+        lane.name(),
+        lane.name()
+    )
+}
+
+fn findings_artifact_json_with_rule(lane: Lane, rule_id: &str) -> String {
+    format!(
+        r#"{{"lane":"{}","outcome":{{"Findings":[{{"lane":"{}","rule_id":"{rule_id}","location":"Workspace","message":"recorded finding","repair":{{"RequiresHumanReview":{{"note":"address the finding"}}}},"effect":"Reject"}}]}}}}"#,
+        lane.name(),
+        lane.name()
+    )
+}
+
+fn write_clean_except(dir: &std::path::Path, scope: GateScope, skip: &[Lane]) {
+    for lane in scope.lanes() {
+        if !skip.contains(lane) {
+            fs::write(dir.join(format!("{}.json", lane_stem(*lane))), clean_artifact_json(*lane))
+                .unwrap();
+        }
+    }
+}
+
+fn outcome_of<'a>(records: &'a [(Lane, LaneOutcome)], lane: Lane) -> &'a LaneOutcome {
+    records
+        .iter()
+        .find(|(record_lane, _)| *record_lane == lane)
+        .map(|(_, outcome)| outcome)
+        .unwrap()
+}
+
+fn assert_prior_compilation_skip(records: &[(Lane, LaneOutcome)], lane: Lane) {
+    match outcome_of(records, lane) {
+        LaneOutcome::Skipped { reason: SkipReason::PriorCompilationFailure } => {}
+        other => panic!("expected PriorCompilationFailure skip for {lane}, got {other:?}"),
+    }
+}
+
+fn assert_recorded_findings(records: &[(Lane, LaneOutcome)], lane: Lane, rule_id: &str) {
+    match outcome_of(records, lane) {
+        LaneOutcome::Findings { findings } => {
+            assert_eq!(findings.len(), 1, "{lane} must carry exactly its recorded finding");
+            assert_eq!(findings[0].rule_id().as_str(), rule_id);
+            assert!(findings[0].is_reject(), "recorded finding must keep its Reject effect");
+        }
+        other => panic!("expected recorded Findings for {lane}, got {other:?}"),
+    }
+}
+
+#[test]
+fn compile_failure_turns_missing_clippy_into_prior_compilation_skip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+    write_clean_except(&dir, GateScope::Edit, &[Lane::Compile, Lane::Clippy]);
+    fs::write(dir.join("compile.json"), failed_tool_artifact_json(Lane::Compile, "cargo-check"))
+        .unwrap();
+
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_prior_compilation_skip(&records, Lane::Clippy);
+    assert!(
+        matches!(outcome_of(&records, Lane::Compile), LaneOutcome::Failed { .. }),
+        "compile outcome must stay Failed"
+    );
+    assert!(
+        matches!(outcome_of(&records, Lane::AstGrep), LaneOutcome::Clean { .. }),
+        "non-dependent lanes must stand as they ran"
+    );
+}
+
+#[test]
+fn compile_failure_skips_clippy_test_build_regardless_of_their_artifacts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Release);
+    write_clean_except(&dir, GateScope::Release, &[Lane::Compile, Lane::Test, Lane::Build]);
+    fs::write(dir.join("compile.json"), failed_tool_artifact_json(Lane::Compile, "cargo-check"))
+        .unwrap();
+    fs::write(dir.join("test.json"), failed_tool_artifact_json(Lane::Test, "cargo-test")).unwrap();
+
+    let records = read_lane_artifacts(tmp.path(), GateScope::Release).unwrap();
+    assert_prior_compilation_skip(&records, Lane::Clippy);
+    assert_prior_compilation_skip(&records, Lane::Test);
+    assert_prior_compilation_skip(&records, Lane::Build);
+    assert!(
+        matches!(outcome_of(&records, Lane::Deny), LaneOutcome::Clean { .. }),
+        "Deny does not depend on compilation and must stand as it ran"
+    );
+}
+
+#[test]
+fn compile_findings_turn_present_clippy_into_prior_compilation_skip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+    write_clean_except(&dir, GateScope::Edit, &[Lane::Compile]);
+    fs::write(dir.join("compile.json"), findings_artifact_json(Lane::Compile)).unwrap();
+
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_prior_compilation_skip(&records, Lane::Clippy);
+    assert!(
+        matches!(outcome_of(&records, Lane::Compile), LaneOutcome::Findings { .. }),
+        "compile outcome must stay Findings"
+    );
+}
+
+#[test]
+fn compile_failure_preserves_recorded_clippy_findings() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Prepush);
+    write_clean_except(&dir, GateScope::Prepush, &[Lane::Compile, Lane::Clippy, Lane::Test]);
+    fs::write(dir.join("compile.json"), failed_tool_artifact_json(Lane::Compile, "cargo-check"))
+        .unwrap();
+    fs::write(
+        dir.join("clippy.json"),
+        findings_artifact_json_with_rule(Lane::Clippy, "CLIPPY_UNWRAP_USED"),
+    )
+    .unwrap();
+
+    let records = read_lane_artifacts(tmp.path(), GateScope::Prepush).unwrap();
+    assert_recorded_findings(&records, Lane::Clippy, "CLIPPY_UNWRAP_USED");
+    assert_prior_compilation_skip(&records, Lane::Test);
+    assert!(
+        matches!(outcome_of(&records, Lane::Compile), LaneOutcome::Failed { .. }),
+        "compile outcome must stay Failed"
+    );
+}
+
+#[test]
+fn compile_findings_preserve_recorded_clippy_findings() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+    write_clean_except(&dir, GateScope::Edit, &[Lane::Compile, Lane::Clippy]);
+    fs::write(dir.join("compile.json"), findings_artifact_json(Lane::Compile)).unwrap();
+    fs::write(
+        dir.join("clippy.json"),
+        findings_artifact_json_with_rule(Lane::Clippy, "CLIPPY_UNWRAP_USED"),
+    )
+    .unwrap();
+
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_recorded_findings(&records, Lane::Clippy, "CLIPPY_UNWRAP_USED");
+    assert!(
+        matches!(outcome_of(&records, Lane::Compile), LaneOutcome::Findings { .. }),
+        "compile outcome must stay Findings"
+    );
+}
+
+#[test]
+fn clean_compile_keeps_missing_clippy_as_infra_failure() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+    write_clean_except(&dir, GateScope::Edit, &[Lane::Clippy]);
+
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_missing_lane(&records, Lane::Clippy);
+}
+
+#[test]
+fn missing_compile_keeps_missing_clippy_as_infra_failure() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = setup_scope_dir(&tmp, GateScope::Edit);
+    write_clean_except(&dir, GateScope::Edit, &[Lane::Compile, Lane::Clippy]);
+
+    let records = read_lane_artifacts(tmp.path(), GateScope::Edit).unwrap();
+    assert_missing_lane(&records, Lane::Compile);
+    assert_missing_lane(&records, Lane::Clippy);
 }
 
 fn assert_missing_lane(records: &[(Lane, LaneOutcome)], expected: Lane) {

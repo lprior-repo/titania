@@ -52,9 +52,16 @@ fn explain_func_loops_for_returns_catalog_entry() {
         .expect("BOUNDED_EXECUTION_UNBOUNDED_LOOP exists");
     assert_eq!(entry.rule_id, "BOUNDED_EXECUTION_UNBOUNDED_LOOP");
     assert!(entry.pattern.contains("loop"));
-    assert_eq!(entry.repair, "RequiresHumanReview");
-    assert!(entry.example_violation.contains("loop"));
-    assert!(entry.example_repair.contains("Bound::FiniteInput"));
+    assert!(entry.pattern.contains("(excluding `while let`)"));
+    assert_eq!(entry.repair.as_deref(), Some("RequiresHumanReview"));
+    assert!(entry.repair_note.contains("Bound::FiniteInput"));
+    assert!(entry.repair_note.contains("Bound::Capped"));
+    assert!(entry.repair_note.contains("Bound::ProtocolTerminal"));
+    assert_eq!(entry.example_violation, "for item in items { process(item); }");
+    assert_eq!(
+        entry.example_repair.as_deref(),
+        Some("items.iter().for_each(|item| process(item));")
+    );
 }
 
 #[test]
@@ -63,9 +70,15 @@ fn explain_bounded_iterator_returns_catalog_entry() {
         .expect("BOUNDED_EXECUTION_UNBOUNDED_ITERATOR exists");
     assert_eq!(entry.rule_id, "BOUNDED_EXECUTION_UNBOUNDED_ITERATOR");
     assert!(entry.pattern.contains("repeat"));
-    assert_eq!(entry.repair, "RequiresHumanReview");
+    assert_eq!(entry.repair.as_deref(), Some("RequiresHumanReview"));
     assert!(entry.example_violation.contains("repeat"));
-    assert!(entry.example_repair.contains("Bound::Capped"));
+    assert!(
+        entry
+            .example_repair
+            .as_deref()
+            .expect("iterator rule has an example repair")
+            .contains("Bound::Capped")
+    );
 }
 
 #[test]
@@ -87,10 +100,12 @@ fn dynamic_clippy_rule_covers_arbitrary_normalized_lint() {
 }
 
 #[test]
-fn explain_wildcard_import_collapse_to_human_review() {
+fn explain_wildcard_import_has_no_repair_hint() {
     let entry = explain_rule("FUNC_WILDCARD_IMPORT").expect("wildcard rule exists");
     assert_eq!(entry.effect, "Informational");
-    assert_eq!(entry.repair, "RequiresHumanReview");
+    assert_eq!(entry.repair, None);
+    assert_eq!(entry.example_repair, None);
+    assert!(entry.repair_note.is_empty());
 }
 
 #[test]
@@ -139,15 +154,23 @@ fn catalog_class_matches_repair_hint_for_rule() {
         let class_str = hint.class().as_str();
         let entry = explain_rule(row.rule_id)
             .unwrap_or_else(|e| panic!("explain_rule({}) failed: {}", row.rule_id, e));
+        let expected_repair = match hint.class() {
+            RepairHintClass::None => None,
+            _class => Some(class_str),
+        };
         assert_eq!(
-            entry.repair, class_str,
+            entry.repair.as_deref(),
+            expected_repair,
             "row {}: explain_rule.repair = {:?}, RepairHint::for_rule().class() = {:?}",
-            row.rule_id, entry.repair, class_str,
+            row.rule_id,
+            entry.repair,
+            class_str,
         );
         assert!(
             matches!(
                 hint.class(),
-                RepairHintClass::Patch
+                RepairHintClass::None
+                    | RepairHintClass::Patch
                     | RepairHintClass::UseIteratorPipeline
                     | RepairHintClass::FlattenNesting
                     | RepairHintClass::UseCheckedArithmetic

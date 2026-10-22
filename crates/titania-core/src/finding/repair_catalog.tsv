@@ -1,4 +1,4 @@
-BOUNDED_EXECUTION_UNBOUNDED_LOOP	ast-grep+dylint	Reject	RequiresHumanReview	loop { ... } / while $COND { ... }	Rejects unbounded retries without a named bound and cited evidence.
+BOUNDED_EXECUTION_UNBOUNDED_LOOP	ast-grep+dylint	Reject	RequiresHumanReview	loop { ... } / while $COND { ... } (excluding `while let`)	Rejects unbounded retries without a named bound and cited evidence.
 BOUNDED_EXECUTION_UNBOUNDED_ITERATOR	ast-grep+dylint	Reject	RequiresHumanReview	repeat / repeat_with / successors / from_fn / .cycle()	Rejects unbounded iterator sources without a named bound and cited evidence.
 FUNC_NESTING_DEPTH	ast-grep	Reject	FlattenNesting	nesting depth > 2	Rejects deeply nested production control flow.
 FUNC_RECURSION_DIRECT	ast-grep	Reject	RequiresHumanReview	function calls itself	Rejects direct recursion in production source.
@@ -8,6 +8,7 @@ FUNC_WILDCARD_IMPORT	ast-grep	Informational	—	use $PATH::*	Reports wildcard im
 FUNC_UNWRAP_USED	dylint	Reject	RequiresHumanReview	unwrap()	Rejects panic-prone unwrap calls in production source.
 FUNC_EXPECT_USED	dylint	Reject	RequiresHumanReview	expect(...)	Rejects panic-prone expect calls in production source.
 FUNC_UNWRAP_OR	ast-grep+dylint	Reject	RequiresHumanReview	unwrap_or / unwrap_or_else / unwrap_or_default	Rejects hidden default recovery through unwrap_or variants.
+FUNC_RESULT_OK	dylint	Reject	RequiresHumanReview	.ok()	Rejects .ok() erasure of typed errors in production source.
 FUNC_RESULT_STRING	ast-grep	Reject	RequiresHumanReview	Result<T, String>	Rejects stringly typed core errors.
 BYPASS_ALLOW_ATTR	ast-grep	Reject	RemoveAllowAttribute	#[allow(...)]	Rejects item-level allow suppressions.
 BYPASS_EXPECT_ATTR	ast-grep	Reject	RemoveAllowAttribute	#[expect(...)]	Rejects item-level expect suppressions.

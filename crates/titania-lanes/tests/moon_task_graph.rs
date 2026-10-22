@@ -324,12 +324,9 @@ const REQUIRED_TASKS: &[&str] = &[
     "titania-test",
     "titania-deny",
     "titania-build",
-    "titania-kani",
-    "titania-mutants",
     "gate-edit",
     "gate-prepush",
     "gate-release",
-    "gate-full",
 ];
 
 const LANE_COMMANDS: &[(&str, &str)] = &[
@@ -356,34 +353,15 @@ const LANE_COMMANDS: &[(&str, &str)] = &[
     ("titania-deny", "cargo run --frozen --quiet -p titania-check -- run-lane deny"),
     (
         "titania-build",
-        "CARGO_TARGET_DIR=\".titania/cache/build\" cargo run --frozen --quiet -p titania-check -- run-lane build",
+        "CARGO_TARGET_DIR=\".titania/cache/release\" cargo run --frozen --quiet -p titania-check -- run-lane build",
     ),
 ];
 
-const LANE_SCRIPTS: &[(&str, &str)] = &[
-    (
-        "titania-kani",
-        "CARGO_TARGET_DIR=\".titania/cache/kani\" cargo run --frozen --quiet -p titania-check -- run-lane kani",
-    ),
-    (
-        "titania-mutants",
-        "CARGO_TARGET_DIR=\".titania/cache/mutants\" cargo run --frozen --quiet -p titania-check -- run-lane mutants",
-    ),
-];
+const HEAVY_TARGET_DIRS: &[(&str, &str)] =
+    &[("titania-build", ".titania/cache/release"), ("titania-dylint", ".titania/cache/dylint")];
 
-const HEAVY_TARGET_DIRS: &[(&str, &str)] = &[
-    ("titania-build", ".titania/cache/build"),
-    ("titania-dylint", ".titania/cache/dylint"),
-    ("titania-kani", ".titania/cache/kani"),
-    ("titania-mutants", ".titania/cache/mutants"),
-];
-
-const GATE_COMMANDS: &[(&str, &str)] = &[
-    ("gate-edit", "edit"),
-    ("gate-prepush", "prepush"),
-    ("gate-release", "release"),
-    ("gate-full", "full"),
-];
+const GATE_COMMANDS: &[(&str, &str)] =
+    &[("gate-edit", "edit"), ("gate-prepush", "prepush"), ("gate-release", "release")];
 
 const RUST_TOOLCHAIN_TASKS: &[&str] = &[
     "titania-fmt",
@@ -392,15 +370,12 @@ const RUST_TOOLCHAIN_TASKS: &[&str] = &[
     "titania-dylint",
     "titania-test",
     "titania-build",
-    "titania-kani",
-    "titania-mutants",
 ];
 
 const NO_TOOLCHAIN_TASKS: &[&str] =
     &["titania-ast-grep", "titania-panic-scan", "titania-policy-scan", "titania-deny"];
 
-const GATE_NO_TOOLCHAIN_TASKS: &[&str] =
-    &["gate-edit", "gate-prepush", "gate-release", "gate-full"];
+const GATE_NO_TOOLCHAIN_TASKS: &[&str] = &["gate-edit", "gate-prepush", "gate-release"];
 
 const COMPILE_DEPS: &[&str] = &["titania-clippy", "titania-test", "titania-build"];
 
@@ -419,7 +394,6 @@ const GATE_DEPS: &[(&str, &[&str])] = &[
     ),
     ("gate-prepush", &["gate-edit", "titania-test", "titania-deny"]),
     ("gate-release", &["gate-prepush", "titania-build"]),
-    ("gate-full", &["gate-release", "titania-kani", "titania-mutants"]),
 ];
 
 const LANE_INPUTS: &[(&str, &[&str])] = &[
@@ -466,24 +440,6 @@ const LANE_INPUTS: &[(&str, &[&str])] = &[
     ("titania-test", &["@globs(sources)", "@globs(tests)"]),
     ("titania-deny", &["@globs(sources)", "Cargo.lock", "deny.toml"]),
     ("titania-build", &["@globs(sources)"]),
-    (
-        "titania-kani",
-        &[
-            "@globs(sources)",
-            "Cargo.toml",
-            "Cargo.lock",
-            ".titania/profiles/strict-ai/mutants.baseline.json",
-        ],
-    ),
-    (
-        "titania-mutants",
-        &[
-            "@globs(sources)",
-            "Cargo.toml",
-            "Cargo.lock",
-            ".titania/profiles/strict-ai/mutants.baseline.json",
-        ],
-    ),
 ];
 
 const LANE_OUTPUTS: &[(&str, &[&str])] = &[
@@ -493,7 +449,6 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/fmt.json",
             ".titania/out/prepush/fmt.json",
             ".titania/out/release/fmt.json",
-            ".titania/out/full/fmt.json",
         ],
     ),
     (
@@ -502,7 +457,6 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/compile.json",
             ".titania/out/prepush/compile.json",
             ".titania/out/release/compile.json",
-            ".titania/out/full/compile.json",
         ],
     ),
     (
@@ -511,7 +465,6 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/clippy.json",
             ".titania/out/prepush/clippy.json",
             ".titania/out/release/clippy.json",
-            ".titania/out/full/clippy.json",
         ],
     ),
     (
@@ -520,7 +473,6 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/ast-grep.json",
             ".titania/out/prepush/ast-grep.json",
             ".titania/out/release/ast-grep.json",
-            ".titania/out/full/ast-grep.json",
         ],
     ),
     (
@@ -529,7 +481,6 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/dylint.json",
             ".titania/out/prepush/dylint.json",
             ".titania/out/release/dylint.json",
-            ".titania/out/full/dylint.json",
         ],
     ),
     (
@@ -538,7 +489,6 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/panic-scan.json",
             ".titania/out/prepush/panic-scan.json",
             ".titania/out/release/panic-scan.json",
-            ".titania/out/full/panic-scan.json",
         ],
     ),
     (
@@ -547,39 +497,15 @@ const LANE_OUTPUTS: &[(&str, &[&str])] = &[
             ".titania/out/edit/policy-scan.json",
             ".titania/out/prepush/policy-scan.json",
             ".titania/out/release/policy-scan.json",
-            ".titania/out/full/policy-scan.json",
         ],
     ),
-    (
-        "titania-test",
-        &[
-            ".titania/out/prepush/test.json",
-            ".titania/out/release/test.json",
-            ".titania/out/full/test.json",
-        ],
-    ),
-    (
-        "titania-deny",
-        &[
-            ".titania/out/prepush/deny.json",
-            ".titania/out/release/deny.json",
-            ".titania/out/full/deny.json",
-        ],
-    ),
-    ("titania-build", &[".titania/out/release/build.json", ".titania/out/full/build.json"]),
-    ("titania-kani", &[".titania/out/full/kani.json"]),
-    ("titania-mutants", &[".titania/out/full/mutants.json"]),
+    ("titania-test", &[".titania/out/prepush/test.json", ".titania/out/release/test.json"]),
+    ("titania-deny", &[".titania/out/prepush/deny.json", ".titania/out/release/deny.json"]),
+    ("titania-build", &[".titania/out/release/build.json"]),
 ];
 
-const LANE_EMPTY_ENV: &[&str] = &[
-    "titania-compile",
-    "titania-clippy",
-    "titania-dylint",
-    "titania-test",
-    "titania-build",
-    "titania-kani",
-    "titania-mutants",
-];
+const LANE_EMPTY_ENV: &[&str] =
+    &["titania-compile", "titania-clippy", "titania-dylint", "titania-test", "titania-build"];
 
 const VET_INPUTS: &[&str] = &["Cargo.lock", "supply-chain/**"];
 
@@ -716,18 +642,6 @@ fn v1_moon_tasks() -> Result<()> {
         );
     }
 
-    for (task_name, expected_script) in LANE_SCRIPTS {
-        let task = task_map
-            .get(*task_name)
-            .with_context(|| format!("lane task '{task_name}' not found in parsed tasks"))?;
-        assert_eq!(
-            task.script.as_deref(),
-            Some(*expected_script),
-            "lane '{task_name}' must have script '{expected_script}' (got: {:?})",
-            task.script
-        );
-    }
-
     for (task_name, target_dir) in HEAVY_TARGET_DIRS {
         let task = task_map
             .get(*task_name)
@@ -755,7 +669,7 @@ fn v1_moon_tasks() -> Result<()> {
             .collect::<std::collections::HashSet<_>>()
             .len(),
         HEAVY_TARGET_DIRS.len(),
-        "build, dylint, Kani, and mutants target directories must be pairwise distinct"
+        "heavy lane target directories must be pairwise distinct"
     );
 
     let policy_scan =

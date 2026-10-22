@@ -66,7 +66,7 @@ fn command_evidence_deserialize_rejects_empty_argv() {
 }
 
 #[test]
-fn command_evidence_deserialize_preserves_mode_field_when_present() {
+fn command_evidence_serialization_omits_mode_field() {
     let original = CommandEvidence::embedded(
         String::from("cargo"),
         vec![String::from("cargo"), String::from("ast-grep"), String::from("scan")]
@@ -74,9 +74,24 @@ fn command_evidence_deserialize_preserves_mode_field_when_present() {
     )
     .expect("valid embedded evidence");
     let value = serde_json::to_value(&original).expect("to_value");
-    assert_eq!(value["mode"], "Embedded");
-    let back: CommandEvidence = serde_json::from_value(value).expect("from_value");
-    assert_eq!(back, original);
+    assert!(
+        value.get("mode").is_none(),
+        "mode is internal state and must not be serialized: {value}"
+    );
+}
+
+#[test]
+fn command_evidence_deserialize_accepts_legacy_mode_field() {
+    let json = r#"{"executable":"cargo","argv":["cargo","ast-grep","scan"],"mode":"Embedded"}"#;
+    let back: CommandEvidence =
+        serde_json::from_str(json).expect("legacy payload carrying mode must deserialize");
+    let expected = CommandEvidence::embedded(
+        String::from("cargo"),
+        vec![String::from("cargo"), String::from("ast-grep"), String::from("scan")]
+            .into_boxed_slice(),
+    )
+    .expect("valid embedded evidence");
+    assert_eq!(back, expected);
 }
 
 #[test]

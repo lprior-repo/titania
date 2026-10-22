@@ -52,15 +52,6 @@ fn reject<E: serde::de::Error>(
     gate_failures: Box<[LaneFailure]>,
     per_lane: Box<[PerLaneEntry]>,
 ) -> Result<Report, E> {
-    let scope = infer_reject_scope(&per_lane);
-    Report::reject(scope, code_findings, gate_failures, per_lane).map_err(E::custom)
-}
-
-fn infer_reject_scope(per_lane: &[PerLaneEntry]) -> crate::GateScope {
-    use crate::Lane;
-    if per_lane.iter().any(|e| matches!(e.lane(), Lane::Kani | Lane::Mutants)) {
-        crate::GateScope::Full
-    } else {
-        crate::GateScope::Release
-    }
+    Report::reject(crate::GateScope::Release, code_findings, gate_failures, per_lane)
+        .map_err(E::custom)
 }

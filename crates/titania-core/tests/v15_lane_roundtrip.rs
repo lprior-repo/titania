@@ -29,18 +29,18 @@ fn lane_serde_round_trip_for_new_variants() {
 }
 
 #[test]
-#[allow(let_underscore_drop)]
-fn gate_scope_full_round_trip() {
-    assert_eq!(GateScope::from_str("full"), Ok(GateScope::Full));
+fn gate_scope_full_is_not_parseable_in_v1() {
+    assert!("full".parse::<GateScope>().is_err(), "v1 must not parse a full scope");
 }
 
 #[test]
-fn gate_scope_full_includes_kani_and_mutants() {
-    let lanes = GateScope::Full.lanes();
-    assert!(lanes.contains(&Lane::Kani), "GateScope::Full must include Lane::Kani");
-    assert!(lanes.contains(&Lane::Mutants), "GateScope::Full must include Lane::Mutants");
-    for rel in GateScope::Release.lanes() {
-        assert!(lanes.contains(rel), "GateScope::Full must include {rel:?} from Release");
+fn gate_scope_v1_scopes_exclude_kani_and_mutants() {
+    for scope in [GateScope::Edit, GateScope::Prepush, GateScope::Release] {
+        assert!(!scope.lanes().contains(&Lane::Kani), "{scope:?} must not include Lane::Kani");
+        assert!(
+            !scope.lanes().contains(&Lane::Mutants),
+            "{scope:?} must not include Lane::Mutants"
+        );
     }
 }
 

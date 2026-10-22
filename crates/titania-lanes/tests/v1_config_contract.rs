@@ -235,7 +235,7 @@ fn strict_ai_exceptions_all_fields_present() {
     let exceptions =
         parse_exceptions(EXCEPTIONS, POLICY_TODAY).expect("checked-in exceptions.toml must parse");
 
-    assert_eq!(exceptions.len(), 4, "expected exactly four reviewed strict-ai exceptions");
+    assert_eq!(exceptions.len(), 5, "expected exactly five reviewed strict-ai exceptions");
 
     exceptions.iter().for_each(|exception| {
         assert!(!exception.rule_id.as_str().is_empty(), "rule_id must be present");

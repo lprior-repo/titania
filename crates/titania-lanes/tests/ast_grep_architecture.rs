@@ -243,7 +243,7 @@ fn ast_grep_architecture_direct_import_patterns_present() {
         "Time rule must catch grouped SystemTime and Instant imports",
     );
     assert!(
-        ARCHITECTURE_YAML.contains("rand::(thread_rng|Rng)"),
+        ARCHITECTURE_YAML.contains("rand::thread_rng"),
         "Random rule must catch direct rand imports",
     );
     assert!(
@@ -267,7 +267,7 @@ fn ast_grep_architecture_fully_qualified_patterns_present() {
         "Time rule must catch fully-qualified clock reads with no import",
     );
     assert!(
-        ARCHITECTURE_YAML.contains(r"\\brand::(thread_rng|Rng)\\b"),
+        ARCHITECTURE_YAML.contains(r"\\brand::thread_rng\\b"),
         "Random rule must catch fully-qualified entropy use with no import",
     );
     assert!(
@@ -447,8 +447,8 @@ fn ast_grep_architecture_violation_fixtures_contain_their_patterns() {
     let random_direct =
         read_fixture(&fixtures_dir, "architecture_import_core_random_direct_violation.rs");
     assert!(
-        random_direct.contains("use rand::Rng"),
-        "architecture_import_core_random_direct_violation.rs must import rand::Rng",
+        random_direct.contains("use rand::thread_rng"),
+        "architecture_import_core_random_direct_violation.rs must import rand::thread_rng",
     );
     let random_grouped =
         read_fixture(&fixtures_dir, "architecture_import_core_random_grouped_violation.rs");

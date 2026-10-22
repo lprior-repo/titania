@@ -130,7 +130,7 @@ fn collect_inline_rustflags(item: &Item, path: &str, rules: &CargoConfigRules) -
 fn build_findings(build: &Item, path: &str, rules: &CargoConfigRules) -> Vec<Finding> {
     let wrappers = [
         wrapper_finding(wrapper_value(build, "rustc-wrapper"), path, rules),
-        wrapper_finding(wrapper_value(build, "workspace-wrapper"), path, rules),
+        wrapper_finding(wrapper_value(build, "rustc-workspace-wrapper"), path, rules),
     ];
     wrappers
         .into_iter()

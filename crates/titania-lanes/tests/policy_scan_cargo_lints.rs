@@ -104,7 +104,7 @@ fn required_deny_and_warn_levels_are_clean() -> TestResult {
     write_manifest(
         &dir,
         "Cargo.toml",
-        "[lints.clippy]\nunwrap_used = \"deny\"\npanic = \"deny\"\n\n[lints.rust]\ndeprecated = \"warn\"\nunsafe_code = \"deny\"\n",
+        "[lints.clippy]\nunwrap_used = \"deny\"\npanic = \"deny\"\n\n[lints.rust]\ndeprecated = \"warn\"\nunsafe_code = \"forbid\"\n",
     )?;
     let mut report = LaneReport::new();
     let found = scan_cargo_lints_weakening(dir.path(), Path::new("Cargo.toml"), &mut report)?;
@@ -112,6 +112,61 @@ fn required_deny_and_warn_levels_are_clean() -> TestResult {
     assert!(report.is_clean());
     Ok(())
 }
+#[test]
+fn previously_unguarded_float_arithmetic_weakening_emits_finding() -> TestResult {
+    let report = scan_manifest("[lints.clippy]\nfloat_arithmetic = \"allow\"\n")?;
+    assert_one_finding(&report, 2, "clippy.float_arithmetic is allow");
+    Ok(())
+}
+
+#[test]
+fn previously_unguarded_nursery_group_weakening_emits_finding() -> TestResult {
+    let report = scan_manifest("[lints.clippy]\nnursery = \"warn\"\n")?;
+    assert_one_finding(&report, 2, "clippy.nursery is warn");
+    Ok(())
+}
+
+#[test]
+fn previously_unguarded_warnings_group_weakening_emits_finding() -> TestResult {
+    let report = scan_manifest("[lints.rust]\nwarnings = \"allow\"\n")?;
+    assert_one_finding(&report, 2, "rust.warnings is allow");
+    Ok(())
+}
+
+#[test]
+fn previously_unguarded_rustdoc_bare_urls_weakening_emits_finding() -> TestResult {
+    let report = scan_manifest("[lints.rustdoc]\nbare_urls = \"allow\"\n")?;
+    assert_one_finding(&report, 2, "rustdoc.bare_urls is allow");
+    Ok(())
+}
+
+#[test]
+fn unsafe_code_deny_is_weaker_than_required_forbid() -> TestResult {
+    let report = scan_manifest("[lints.rust]\nunsafe_code = \"deny\"\n")?;
+    assert_one_finding(&report, 2, "rust.unsafe_code is deny");
+    assert!(
+        report.findings()[0].message().contains("required forbid"),
+        "unsafe_code finding must name the forbid requirement: {}",
+        report.findings()[0].message(),
+    );
+    Ok(())
+}
+
+#[test]
+fn stricter_extra_entries_do_not_trip_guard() -> TestResult {
+    let dir = TempDir::new()?;
+    write_manifest(
+        &dir,
+        "Cargo.toml",
+        "[lints.rust]\nunexpected_cfgs = \"deny\"\nwarnings = \"deny\"\nunsafe_code = \"forbid\"\n\n[lints.clippy]\nlet_underscore_must_use = \"deny\"\nfloat_arithmetic = \"deny\"\n",
+    )?;
+    let mut report = LaneReport::new();
+    let found = scan_cargo_lints_weakening(dir.path(), Path::new("Cargo.toml"), &mut report)?;
+    assert!(!found, "stricter extra entries must stay clean, got: {}", report.render());
+    assert!(report.is_clean());
+    Ok(())
+}
+
 #[test]
 fn subdirectory_manifest_uses_manifest_path_in_finding() -> TestResult {
     let dir = TempDir::new()?;
@@ -333,7 +388,7 @@ fn policy_lint_override_only_weakens_never_strengthens() -> TestResult {
     Ok(())
 }
 
-const CANONICAL_LINT_COUNT: usize = 17;
+const CANONICAL_LINT_COUNT: usize = 70;
 
 #[test]
 fn empty_workspace_lints_table_enumerates_every_canonical_omission() -> TestResult {
@@ -358,7 +413,12 @@ fn empty_workspace_lints_table_enumerates_every_canonical_omission() -> TestResu
         assert_eq!(finding.rule().as_str(), "BYPASS_CARGO_LINTS_WEAKENING");
         assert_eq!(finding.path(), "Cargo.toml");
         assert!(finding.message().contains("does not pin"));
-        assert!(finding.message().contains("required deny"));
+        assert!(
+            finding.message().contains("required deny")
+                || finding.message().contains("required forbid"),
+            "canonical finding must name its required level: {}",
+            finding.message(),
+        );
     }
     Ok(())
 }

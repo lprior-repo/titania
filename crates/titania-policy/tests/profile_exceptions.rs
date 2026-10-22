@@ -44,8 +44,8 @@ fn checked_in_strict_ai_exceptions_parse_audit_exception() {
 
     assert_eq!(
         exceptions.len(),
-        4,
-        "expected exactly four audited exceptions in strict-ai/exceptions.toml"
+        5,
+        "expected exactly five audited exceptions in strict-ai/exceptions.toml"
     );
 
     let by_rule: std::collections::BTreeMap<&str, &_> =

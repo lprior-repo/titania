@@ -100,10 +100,9 @@ ignores:
 rule:
   any:
     - pattern: "use rand::thread_rng;"
-    - pattern: "use rand::Rng;"
-    - regex: "\\buse\\s+rand::(thread_rng|Rng)\\b"
-    - regex: "\\buse\\s+rand::\\{[^}]*\\b(thread_rng|Rng)\\b"
-    - regex: "\\brand::(thread_rng|Rng)\\b"
+    - regex: "\\buse\\s+rand::thread_rng\\b"
+    - regex: "\\buse\\s+rand::\\{[^}]*\\bthread_rng\\b"
+    - regex: "\\brand::thread_rng\\b"
 metadata:
   effect: Reject
   repair_hint: RequiresHumanReview
