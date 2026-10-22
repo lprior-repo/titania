@@ -49,6 +49,12 @@ const FIXTURE_WEAKEN_WARNINGS: &str = r#"
 pub fn kept() {}
 "#;
 
+const FIXTURE_WEAKEN_BARE_URLS: &str = r#"
+#![allow(rustdoc::bare_urls)]
+
+pub fn kept() {}
+"#;
+
 const FIXTURE_WEAKEN_SELF_SUPPRESSED: &str = r#"
 #![allow(bypass_required_lint_weakening)]
 #![allow(warnings)]
@@ -298,6 +304,12 @@ fn bypass_required_lint_weakening_detects_let_underscore_removal() {
 fn bypass_required_lint_weakening_detects_allow_warnings() {
     let output = run_dylint_on_fixture("weaken_warnings", FIXTURE_WEAKEN_WARNINGS);
     assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "crate allowing warnings");
+}
+
+#[test]
+fn bypass_required_lint_weakening_detects_bare_urls_removal() {
+    let output = run_dylint_on_fixture("weaken_bare_urls", FIXTURE_WEAKEN_BARE_URLS);
+    assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "rustdoc::bare_urls allow");
 }
 
 #[test]

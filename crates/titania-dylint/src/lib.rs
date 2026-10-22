@@ -281,6 +281,7 @@ const REQUIRED_LINTS: &[&str] = &[
     "unused_extern_crates",
     "unused_import_braces",
     "keyword_idents_2024",
+    "rustdoc::bare_urls",
     "clippy::all",
     "clippy::cargo",
     "clippy::pedantic",
