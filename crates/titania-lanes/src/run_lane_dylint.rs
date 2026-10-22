@@ -176,7 +176,11 @@ fn quoted_path_names_expected_lib(quoted_path: &str, expected: &Path) -> bool {
 }
 
 fn canonical_path_text(path: &Path) -> Option<String> {
-    std::fs::canonicalize(path).ok()?.to_str().map(str::to_owned)
+    let canonical = match std::fs::canonicalize(path) {
+        Ok(canonical) => canonical,
+        Err(_) => return None,
+    };
+    canonical.to_str().map(str::to_owned)
 }
 
 fn dylint_report(
