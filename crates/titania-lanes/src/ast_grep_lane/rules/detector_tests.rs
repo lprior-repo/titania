@@ -214,6 +214,91 @@ fn audit6_crate_root_alias_infra_is_violation() {
 }
 
 #[test]
+fn bh2_state_nested_group_imports_are_violations() {
+    assert!(detect_core_state_effect(
+        "use std::{sync::Mutex};\nstatic HITS: Mutex<i32> = Mutex::new(0);"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::{sync::{Mutex, RwLock}};\nstatic HITS: Mutex<i32> = Mutex::new(0);"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::{cell::RefCell};\nthread_local! { static C: RefCell<i32> = const { RefCell::new(0) }; }"
+    ));
+    assert!(detect_core_state_effect(
+        "use std::{cell::{RefCell}};\nthread_local! { static C: RefCell<i32> = const { RefCell::new(0) }; }"
+    ));
+    assert!(detect_core_state_effect("use std::{thread::spawn};\npub fn bg() { spawn(|| 1); }"));
+    assert!(detect_core_state_effect("use std::{thread::{spawn}};\npub fn bg() { spawn(|| 1); }"));
+    assert!(detect_core_state_effect(
+        "use std::{sync::Mutex, time::Instant};\npub fn f(m: Mutex<i32>) -> Mutex<i32> { m }"
+    ));
+}
+
+#[test]
+fn bh2_time_nested_group_imports_are_violations() {
+    assert!(detect_core_time_import(
+        "use std::{time::Instant};\npub fn start() -> Instant { Instant::now() }"
+    ));
+    assert!(detect_core_time_import(
+        "use std::{time::{SystemTime, Instant}};\npub fn start() -> Instant { Instant::now() }"
+    ));
+}
+
+#[test]
+fn bh2_nested_group_neighbor_imports_stay_allowed() {
+    assert!(!detect_core_state_effect("use std::{sync::LazyLock};"));
+    assert!(!detect_core_state_effect("use std::{sync::MutexGuard};"));
+    assert!(!detect_core_state_effect("use std::{cell::Cell};"));
+    assert!(!detect_core_state_effect("use std::{collections::HashMap};"));
+    assert!(!detect_core_time_import("use std::{time::Duration};"));
+    assert!(!detect_core_time_import("use std::{time::Instantaneous};"));
+}
+
+#[test]
+fn bh2_alias_chain_is_violation() {
+    assert!(detect_core_infra_import(
+        "use tokio as tk;\nuse tk as t2;\npub fn go() { t2::spawn(async { 1 }); }"
+    ));
+    assert!(detect_core_async_effect(
+        "use tokio as tk;\nuse tk as t2;\npub fn go() { t2::spawn(async { 1 }); }"
+    ));
+    assert!(detect_core_infra_import(
+        "use tokio as tk; use tk as t2; pub fn go() { t2::spawn(async { 1 }); }"
+    ));
+    assert!(detect_core_infra_import(
+        "use tokio as a;\nuse a as b;\nuse b as c;\npub fn go() { c::task::spawn(async { 1 }); }"
+    ));
+    assert!(detect_core_infra_import(
+        "use tokio::{self as tk};\nuse tk as t2;\npub fn go() { t2::spawn(async { 1 }); }"
+    ));
+    assert!(detect_core_infra_import(
+        "use tokio as tk;\nuse tk::{self as t2};\npub fn go() { t2::spawn(async { 1 }); }"
+    ));
+    assert!(detect_core_infra_import(
+        "use tokio as tk;\nuse tk as t2;\nuse t2 as tk;\npub fn go() { t2::spawn(async { 1 }); }"
+    ));
+}
+
+#[test]
+fn bh2_alias_chain_requires_tokio_root() {
+    assert!(!detect_core_infra_import(
+        "use tokio_util as tk;\nuse tk as t2;\npub fn go() { t2::spawn(async { 1 }); }"
+    ));
+    assert!(!detect_core_infra_import("use tk as t2;\npub fn go() { t2::spawn(async { 1 }); }"));
+    assert!(!detect_core_async_effect("use tokio as tk;\nuse tk as t2;\npub fn go() -> i32 { 1 }"));
+}
+
+#[test]
+fn bh2_bare_task_import_spellings_are_not_async_effect() {
+    assert!(!detect_core_async_effect("use tokio::task::{\n    self,\n};\npub fn f() {}"));
+    assert!(!detect_core_async_effect("use tokio::task::{\n    self\n};\npub fn f() {}"));
+    assert!(!detect_core_async_effect("pub use tokio::task::{\n    self,\n};\npub fn f() {}"));
+    assert!(!detect_core_async_effect("use tokio::task; pub fn f() {}"));
+    assert!(detect_core_async_effect("use tokio::task::{\n    self,\n    spawn,\n};"));
+    assert!(detect_core_async_effect("use tokio::task::{\n    JoinSet,\n};"));
+}
+
+#[test]
 fn audit6_char_literal_quote_does_not_hide_following_code() {
     assert!(detect_core_fs_import(
         "pub const QUOTE: char = '\"';\npub fn load() -> String { std::fs::read_to_string(\"c\").unwrap_or_default() }"

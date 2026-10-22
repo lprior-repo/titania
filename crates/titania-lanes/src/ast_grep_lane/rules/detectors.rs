@@ -21,6 +21,7 @@ pub(super) fn detect_core_fs_import(source: &str) -> bool {
 pub(super) fn detect_core_time_import(source: &str) -> bool {
     direct_import_contains(source, "std::time::", &["SystemTime", "Instant"])
         || grouped_import_contains(source, "use std::time::", &["SystemTime", "Instant"])
+        || grouped_std_import_contains(source, &["time::SystemTime", "time::Instant"])
         || fully_qualified_uses_path(source, &["std::time::SystemTime", "std::time::Instant"])
 }
 
@@ -62,16 +63,47 @@ fn contains_await_expression(code: &str) -> bool {
 }
 
 fn tokio_task_used(code: &str) -> bool {
-    code.lines().any(|line| code_contains_token(line, "tokio::task") && !is_bare_task_import(line))
+    let statements = use_statement_ranges(code);
+    code.match_indices("tokio::task").any(|(start, _)| {
+        leading_boundary_ok(code, start)
+            && trailing_boundary_ok(code, start, "tokio::task")
+            && !is_bare_task_import_at(code, &statements, start)
+    })
 }
 
-fn is_bare_task_import(line: &str) -> bool {
-    let statement = line.trim().trim_start_matches("pub ").trim_start();
-    let statement = statement
-        .strip_prefix("pub(")
-        .and_then(|rest| rest.split_once(')'))
-        .map_or(statement, |(_, tail)| tail.trim_start());
-    statement == "use tokio::task;" || statement == "use tokio::task::{self};"
+fn use_statement_ranges(code: &str) -> Vec<(usize, usize)> {
+    code.match_indices("use ")
+        .filter(|(start, _)| use_item_prefix_allowed(code, *start))
+        .filter_map(|(start, _)| use_statement_end(code, start).map(|end| (start, end)))
+        .collect()
+}
+
+fn use_statement_end(code: &str, start: usize) -> Option<usize> {
+    let (_, from_use) = code.split_at_checked(start)?;
+    let semicolon = from_use.find(';')?;
+    start.checked_add(semicolon)?.checked_add(1)
+}
+
+fn is_bare_task_import_at(code: &str, statements: &[(usize, usize)], start: usize) -> bool {
+    statements
+        .iter()
+        .find(|(stmt_start, stmt_end)| start >= *stmt_start && start < *stmt_end)
+        .is_some_and(|(stmt_start, stmt_end)| {
+            statement_text(code, *stmt_start, *stmt_end).is_some_and(is_bare_task_statement)
+        })
+}
+
+fn statement_text(code: &str, start: usize, end: usize) -> Option<&str> {
+    let (_, from_start) = code.split_at_checked(start)?;
+    let (statement, _) = from_start.split_at_checked(end.checked_sub(start)?)?;
+    Some(statement)
+}
+
+fn is_bare_task_statement(statement: &str) -> bool {
+    let compact: String = statement.chars().filter(|ch| !ch.is_whitespace()).collect();
+    compact == "usetokio::task;"
+        || compact == "usetokio::task::{self};"
+        || compact == "usetokio::task::{self,};"
 }
 
 fn tokio_alias_effect_used(source: &str) -> bool {
@@ -95,9 +127,12 @@ pub(super) fn detect_core_state_effect(source: &str) -> bool {
         ],
     ) || direct_import_contains(source, "std::sync::", &["Mutex", "RwLock"])
         || grouped_import_contains(source, "use std::sync::", &["Mutex", "RwLock"])
+        || grouped_std_import_contains(source, &["sync::Mutex", "sync::RwLock"])
         || direct_import_contains(source, "std::cell::", &["RefCell"])
         || grouped_import_contains(source, "use std::cell::", &["RefCell"])
+        || grouped_std_import_contains(source, &["cell::RefCell"])
         || grouped_import_contains(source, "use std::thread::", &["spawn"])
+        || grouped_std_import_contains(source, &["thread::spawn"])
 }
 
 fn fully_qualified_uses_path(source: &str, needles: &[&str]) -> bool {
@@ -158,6 +193,9 @@ fn visibility_prefix_allows_use(prefix: &str) -> bool {
     prefix.is_empty()
         || prefix == "pub"
         || prefix.strip_prefix("pub(").is_some_and(|rest| rest.ends_with(')'))
+        || prefix.ends_with(';')
+        || prefix.ends_with('{')
+        || prefix.ends_with('}')
 }
 
 fn grouped_std_import_contains(source: &str, names: &[&str]) -> bool {
@@ -178,11 +216,88 @@ fn grouped_import_contains(source: &str, prefix: &str, names: &[&str]) -> bool {
 fn grouped_import_body<'a>(source: &'a str, start: usize, prefix: &str) -> Option<&'a str> {
     let (_, from_prefix) = source.split_at_checked(start)?;
     use_item_prefix_allowed(source, start).then_some(())?;
-    Some(from_prefix.strip_prefix(prefix)?.trim_start().strip_prefix('{')?.split_once('}')?.0)
+    let after_open = from_prefix.strip_prefix(prefix)?.trim_start().strip_prefix('{')?;
+    let close = matching_close_brace(after_open)?;
+    after_open.split_at_checked(close).map(|(body, _)| body)
+}
+
+fn matching_close_brace(source: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    source.char_indices().find_map(|(index, ch)| {
+        depth = brace_depth_after(depth, ch)?;
+        (depth == 0).then_some(index)
+    })
+}
+
+const fn brace_depth_after(depth: usize, ch: char) -> Option<usize> {
+    match ch {
+        '{' => depth.checked_add(1),
+        '}' => depth.checked_sub(1),
+        _ => Some(depth),
+    }
 }
 
 fn grouped_body_contains_name(body: &str, name: &str) -> bool {
-    body.split(',').map(str::trim).any(|member| grouped_member_matches(member, name))
+    flattened_member_paths(body).iter().any(|path| grouped_member_matches(path, name))
+}
+
+fn flattened_member_paths(body: &str) -> Vec<String> {
+    top_level_members(body).iter().flat_map(|member| flatten_member(member)).collect()
+}
+
+fn top_level_members(body: &str) -> Vec<&str> {
+    let (members, _, member_start) =
+        body.char_indices().fold((Vec::new(), 0usize, 0usize), |state, (index, ch)| {
+            advance_member_scan(body, state, index, ch)
+        });
+    members
+        .into_iter()
+        .chain(member_slice(body, member_start, body.len()))
+        .map(str::trim)
+        .filter(|member| !member.is_empty())
+        .collect()
+}
+
+fn advance_member_scan<'a>(
+    body: &'a str,
+    state: (Vec<&'a str>, usize, usize),
+    index: usize,
+    ch: char,
+) -> (Vec<&'a str>, usize, usize) {
+    let (mut members, depth, member_start) = state;
+    match ch {
+        '{' => (members, depth.saturating_add(1), member_start),
+        '}' => (members, depth.saturating_sub(1), member_start),
+        ',' if depth == 0 => {
+            members.extend(member_slice(body, member_start, index));
+            (members, depth, index.saturating_add(1))
+        }
+        _ => (members, depth, member_start),
+    }
+}
+
+fn member_slice(body: &str, start: usize, end: usize) -> Option<&str> {
+    let (_, from_start) = body.split_at_checked(start)?;
+    let (member, _) = from_start.split_at_checked(end.checked_sub(start)?)?;
+    Some(member)
+}
+
+fn flatten_member(member: &str) -> Vec<String> {
+    let Some(open) = member.find('{') else {
+        return vec![member.trim().to_owned()];
+    };
+    let Some((head, inner)) = member_head_and_group(member, open) else {
+        return vec![member.trim().to_owned()];
+    };
+    flattened_member_paths(inner).iter().map(|path| format!("{head}::{path}")).collect()
+}
+
+fn member_head_and_group(member: &str, open: usize) -> Option<(&str, &str)> {
+    let (head, from_open) = member.split_at_checked(open)?;
+    let inner = from_open.strip_prefix('{')?;
+    let close = matching_close_brace(inner)?;
+    let (body, _) = inner.split_at_checked(close)?;
+    Some((head.trim().trim_end_matches("::").trim_end(), body))
 }
 
 fn grouped_member_matches(member: &str, name: &str) -> bool {
@@ -201,28 +316,53 @@ fn crate_alias_path_used(source: &str, crates: &[&str]) -> bool {
 }
 
 pub(super) fn crate_root_aliases(code: &str, krate: &str) -> Vec<String> {
-    code.match_indices("use ")
-        .filter_map(|(start, _)| crate_root_alias_at(code, start, krate))
-        .collect()
+    let definitions = alias_definitions(code);
+    let resolved = (0..definitions.len())
+        .fold(vec![krate.to_owned()], |current, _| extend_resolved_aliases(&definitions, &current));
+    resolved.into_iter().filter(|alias| alias != krate).collect()
 }
 
-fn crate_root_alias_at(source: &str, start: usize, krate: &str) -> Option<String> {
+fn alias_definitions(code: &str) -> Vec<(String, String)> {
+    code.match_indices("use ").filter_map(|(start, _)| alias_definition_at(code, start)).collect()
+}
+
+fn alias_definition_at(source: &str, start: usize) -> Option<(String, String)> {
     use_item_prefix_allowed(source, start).then_some(())?;
     let statement =
         source.split_at_checked(start)?.1.strip_prefix("use ")?.split_once(';')?.0.trim();
-    statement.strip_prefix(krate).and_then(alias_from_use_rest)
+    plain_alias_definition(statement).or_else(|| grouped_alias_definition(statement))
 }
 
-fn alias_from_use_rest(rest: &str) -> Option<String> {
-    if let Some(alias) = rest.trim().strip_prefix("as ") {
-        return valid_alias(alias.trim());
-    }
-    let grouped = rest.trim().strip_prefix("::{")?.strip_suffix('}')?;
+fn plain_alias_definition(statement: &str) -> Option<(String, String)> {
+    let (head, alias) = statement.split_once(" as ")?;
+    let head = valid_alias(head.trim())?;
+    valid_alias(alias.trim()).map(|alias| (head, alias))
+}
+
+fn grouped_alias_definition(statement: &str) -> Option<(String, String)> {
+    let (head, grouped) = statement.split_once("::{")?;
+    let head = valid_alias(head.trim())?;
+    let grouped = grouped.trim().strip_suffix('}')?;
     grouped
         .split(',')
         .map(str::trim)
         .find_map(|member| member.strip_prefix("self as "))
         .and_then(|alias| valid_alias(alias.trim()))
+        .map(|alias| (head, alias))
+}
+
+fn extend_resolved_aliases(definitions: &[(String, String)], resolved: &[String]) -> Vec<String> {
+    definitions
+        .iter()
+        .filter(|(head, _)| resolved.iter().any(|name| name == head))
+        .fold(resolved.to_vec(), |acc, (_, alias)| push_alias_once(acc, alias))
+}
+
+fn push_alias_once(mut acc: Vec<String>, alias: &String) -> Vec<String> {
+    if !acc.contains(alias) {
+        acc.push(alias.clone());
+    }
+    acc
 }
 
 fn valid_alias(alias: &str) -> Option<String> {

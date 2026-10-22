@@ -434,23 +434,27 @@ fn parse_literal(source: &str) -> Option<LiteralParts<'_>> {
     Some((content, tail, true))
 }
 
+const STD_RESULT_SPELLINGS: &[&str] = &["Result", "std::result::Result", "core::result::Result"];
+const STD_STRING_SPELLINGS: &[&str] = &["String", "std::string::String", "core::string::String"];
+
 fn is_result_with_string_error(node: &Node<'_, StrDoc<Rust>>) -> Option<()> {
     (node.kind() == "generic_type").then_some(())?;
     let mut named = node.children().filter(Node::is_named);
-    let head_is_result = named.next().is_some_and(|t| type_path_is(&t, "Result"));
+    let head_is_result = named.next().is_some_and(|t| type_path_is_std(&t, STD_RESULT_SPELLINGS));
     let args = named.next()?;
     (args.kind() == "type_arguments").then_some(())?;
     let mut arg_children = args.children().filter(Node::is_named);
     let _first_arg = arg_children.next();
-    let second_is_string = arg_children.next().is_some_and(|t| type_path_is(&t, "String"));
+    let second_is_string =
+        arg_children.next().is_some_and(|t| type_path_is_std(&t, STD_STRING_SPELLINGS));
     let no_more_args = arg_children.next().is_none();
     (head_is_result && second_is_string && no_more_args).then_some(())
 }
 
-fn type_path_is(node: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
+fn type_path_is_std(node: &Node<'_, StrDoc<Rust>>, spellings: &[&str]) -> bool {
     let text = node.text();
     let compact: String = text.chars().filter(|ch| !ch.is_whitespace()).collect();
-    compact == name || compact.ends_with(&format!("::{name}"))
+    spellings.iter().any(|spelling| compact == *spelling)
 }
 
 fn function_has_excess_nesting(func: &Node<'_, StrDoc<Rust>>) -> Option<usize> {
@@ -519,16 +523,45 @@ fn is_call_to(node: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
 }
 
 fn is_callee_kind(kind: &str) -> bool {
-    matches!(kind, "identifier" | "field_expression" | "scoped_identifier")
+    matches!(kind, "identifier" | "field_expression" | "scoped_identifier" | "generic_function")
 }
 
 fn callee_resolves_to(callee: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
     match callee.kind().as_ref() {
+        "generic_function" => callee
+            .children()
+            .find(Node::is_named)
+            .is_some_and(|inner| callee_resolves_to(&inner, name)),
         "identifier" => callee.text().trim() == name,
         "field_expression" => is_self_field_call(callee, name),
-        "scoped_identifier" => is_scoped_call(callee, "Self", name),
+        "scoped_identifier" => {
+            is_scoped_call(callee, "Self", name) || is_qualified_self_call(callee, name)
+        }
         _ => false,
     }
+}
+
+fn is_qualified_self_call(callee: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
+    let mut named = callee.children().filter(Node::is_named);
+    let head_is_self = named.next().is_some_and(|head| bracketed_self_type(&head));
+    let name_matches = named.next().is_some_and(|leaf| leaf.text().trim() == name);
+    head_is_self && name_matches
+}
+
+fn bracketed_self_type(head: &Node<'_, StrDoc<Rust>>) -> bool {
+    (head.kind() == "bracketed_type")
+        && head
+            .children()
+            .find(Node::is_named)
+            .is_some_and(|qualified| qualified_self_type(&qualified))
+}
+
+fn qualified_self_type(qualified: &Node<'_, StrDoc<Rust>>) -> bool {
+    (qualified.kind() == "qualified_type")
+        && qualified
+            .children()
+            .find(Node::is_named)
+            .is_some_and(|self_type| self_type.text().trim() == "Self")
 }
 
 fn is_self_field_call(callee: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
