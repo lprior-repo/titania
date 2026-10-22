@@ -14,10 +14,13 @@ pub mod panic_surface;
 
 use rustc_ast::{AttrStyle, Crate, MetaItem, MetaItemInner};
 use rustc_errors::DiagDecorator;
-use rustc_hir::{ImplItem, Item, TraitItem};
+use rustc_hir::{ImplItem, Item, TraitItem, def_id::CrateNum};
 use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintContext, LintStore};
-use rustc_session::{declare_lint, impl_lint_pass};
+use rustc_middle::ty::TyCtxt;
+use rustc_session::{cstore::CrateSource, declare_lint, impl_lint_pass};
 use rustc_span::{Span, sym};
+
+use std::path::{Path, PathBuf};
 
 #[expect(
     unsafe_code,
@@ -189,9 +192,32 @@ const fn is_derive_expn(kind: &rustc_span::hygiene::ExpnKind) -> bool {
 
 fn is_compiler_lint_scaffolding(cx: &LateContext<'_>, span: Span) -> bool {
     let expn = span.ctxt().outer_expn_data();
-    expn.macro_def_id.map(|def_id| cx.tcx.def_path_str(def_id)).is_some_and(|path| {
-        matches!(path.as_str(), "rustc_session::declare_lint" | "rustc_session::impl_lint_pass")
+    expn.macro_def_id.is_some_and(|def_id| {
+        let path = cx.tcx.def_path_str(def_id);
+        let scaffolding_path = matches!(
+            path.as_str(),
+            "rustc_session::declare_lint" | "rustc_session::impl_lint_pass"
+        );
+        scaffolding_path && is_crate_loaded_with_core(cx.tcx, def_id.krate)
     })
+}
+
+fn is_crate_loaded_with_core(tcx: TyCtxt<'_>, krate: CrateNum) -> bool {
+    let Some(core_dir) = core_library_dir(tcx) else {
+        return false;
+    };
+    crate_source_paths(tcx.used_crate_source(krate))
+        .any(|path| path.parent() == Some(core_dir.as_path()))
+}
+
+fn core_library_dir(tcx: TyCtxt<'_>) -> Option<PathBuf> {
+    let core = tcx.crates(()).iter().find(|&&cnum| tcx.crate_name(cnum).as_str() == "core")?;
+    crate_source_paths(tcx.used_crate_source(*core))
+        .find_map(|path| path.parent().map(Path::to_path_buf))
+}
+
+fn crate_source_paths(source: &CrateSource) -> impl Iterator<Item = &Path> {
+    [source.rmeta.as_deref(), source.rlib.as_deref(), source.dylib.as_deref()].into_iter().flatten()
 }
 
 fn emit_pub_allow(cx: &LateContext<'_>, span: Span) {

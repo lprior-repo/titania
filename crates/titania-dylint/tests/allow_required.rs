@@ -690,6 +690,137 @@ fn bypass_attr_context_detects_spoofed_scaffolding_macro() {
     );
 }
 
+const FAKE_RUSTC_SESSION_MANIFEST: &str = r#"[package]
+name = "rustc_session"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+"#;
+
+const FIXTURE_FAKE_RUSTC_SESSION_HELPER: &str = r#"
+#[macro_export]
+macro_rules! impl_lint_pass {
+    ($item:item) => {
+        #[allow(dead_code)]
+        $item
+    };
+}
+
+#[macro_export]
+macro_rules! declare_lint {
+    () => {
+        #[allow(dead_code)]
+        pub fn concealed_by_declare() {}
+    };
+}
+"#;
+
+const FAKE_RUSTC_SESSION_CONSUMER_MANIFEST: &str = r#"[package]
+name = "fixture"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+rustc_session = { path = "../rustc_session" }
+"#;
+
+const FIXTURE_FAKE_SESSION_CONSUMER_IMPL: &str = r#"
+rustc_session::impl_lint_pass! {
+    pub fn concealed() {}
+}
+"#;
+
+const FIXTURE_FAKE_SESSION_CONSUMER_DECLARE: &str = r#"
+rustc_session::declare_lint!();
+"#;
+
+fn run_dylint_on_named_macro_fixture(
+    test_name: &str,
+    helper_dir_name: &str,
+    helper_manifest: &str,
+    helper_code: &str,
+    consumer_manifest: &str,
+    consumer_code: &str,
+) -> std::process::Output {
+    let tmp_dir =
+        std::env::temp_dir().join(format!("titania_dylint_{test_name}_{}", std::process::id()));
+    let helper_dir = tmp_dir.join(helper_dir_name);
+    let helper_src = helper_dir.join("src");
+    std::fs::create_dir_all(&helper_src).expect("create macro helper src directory");
+    std::fs::write(helper_src.join("lib.rs"), helper_code).expect("write macro helper source");
+    std::fs::write(helper_dir.join("Cargo.toml"), helper_manifest)
+        .expect("write macro helper manifest");
+    let consumer_dir = tmp_dir.join("fixture");
+    let consumer_src = consumer_dir.join("src");
+    std::fs::create_dir_all(&consumer_src).expect("create macro consumer src directory");
+    std::fs::write(consumer_src.join("lib.rs"), consumer_code)
+        .expect("write macro consumer source");
+    let manifest = consumer_dir.join("Cargo.toml");
+    std::fs::write(&manifest, consumer_manifest).expect("write macro consumer manifest");
+
+    let output = Command::new("cargo")
+        .current_dir(workspace_root())
+        .arg("dylint")
+        .arg("--lib-path")
+        .arg(dylint_library_path())
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .output()
+        .expect("cargo-dylint must run against macro fixture manifest");
+
+    drop(std::fs::remove_dir_all(&tmp_dir));
+    output
+}
+
+#[test]
+fn bypass_attr_context_detects_fake_rustc_session_impl_lint_pass() {
+    let output = run_dylint_on_named_macro_fixture(
+        "fake_rustc_session_impl",
+        "rustc_session",
+        FAKE_RUSTC_SESSION_MANIFEST,
+        FIXTURE_FAKE_RUSTC_SESSION_HELPER,
+        FAKE_RUSTC_SESSION_CONSUMER_MANIFEST,
+        FIXTURE_FAKE_SESSION_CONSUMER_IMPL,
+    );
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow]` injected by a path-dependency crate named rustc_session through an impl_lint_pass-shaped macro",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow] comes from macro expansion:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bypass_attr_context_detects_fake_rustc_session_declare_lint() {
+    let output = run_dylint_on_named_macro_fixture(
+        "fake_rustc_session_declare",
+        "rustc_session",
+        FAKE_RUSTC_SESSION_MANIFEST,
+        FIXTURE_FAKE_RUSTC_SESSION_HELPER,
+        FAKE_RUSTC_SESSION_CONSUMER_MANIFEST,
+        FIXTURE_FAKE_SESSION_CONSUMER_DECLARE,
+    );
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow]` injected by a path-dependency crate named rustc_session through a declare_lint-shaped macro",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow] comes from macro expansion:\n{}",
+        combined_output(&output)
+    );
+}
+
 const FIXTURE_PROC_MACRO_HELPER_DERIVE_INJECT_ALLOW: &str = r#"
 extern crate proc_macro;
 
