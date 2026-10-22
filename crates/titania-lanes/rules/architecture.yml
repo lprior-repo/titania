@@ -16,6 +16,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "use tokio::*;"
@@ -43,6 +44,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "use std::fs::*;"
@@ -71,6 +73,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "use std::time::SystemTime;"
@@ -97,6 +100,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "use rand::thread_rng;"
@@ -122,6 +126,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "use std::process::Command;"
@@ -149,6 +154,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "tokio::spawn($$$ARGS)"
@@ -174,6 +180,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "static mut $NAME: $TYPE = $INIT;"

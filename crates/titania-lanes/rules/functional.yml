@@ -14,6 +14,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "loop { $$$BODY }"
@@ -34,6 +35,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "$ITER.cycle()"
@@ -57,6 +59,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "print!($$$ARGS)"
@@ -77,6 +80,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "eprint!($$$ARGS)"
@@ -97,6 +101,8 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
+  - "**/verification/verus/**"
 rule:
   pattern: "use $PATH::*;"
 metadata:
@@ -114,6 +120,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - pattern: "$VALUE.unwrap_or($DEFAULT)"
@@ -135,6 +142,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   pattern: "Result<$T, String>"
 metadata:
@@ -153,6 +161,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   # ast-grep cannot express AST depth directly; the runtime walks function bodies
   # and computes max nesting of nested block/if/loop/match/for/while statements.
@@ -173,6 +182,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   # ast-grep pattern: a function whose body contains a call_expression whose
   # callee identifier is the function's own name. The runtime walks function
