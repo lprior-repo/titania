@@ -472,3 +472,99 @@ fn bypass_attr_context_detects_macro_generated_associated_method() {
         combined_output(&output)
     );
 }
+
+const PROC_MACRO_HELPER_MANIFEST: &str = r#"[package]
+name = "allow_shim"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+path = "src/lib.rs"
+"#;
+
+const PROC_MACRO_CONSUMER_MANIFEST: &str = r#"[package]
+name = "fixture"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+allow_shim = { path = "../allow_shim" }
+"#;
+
+const FIXTURE_PROC_MACRO_HELPER_PASS_THROUGH: &str = r#"
+extern crate proc_macro;
+
+use proc_macro::TokenStream;
+
+#[proc_macro_attribute]
+pub fn pass_through(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+"#;
+
+const FIXTURE_PROC_MACRO_CONSUMER_BENIGN: &str = r#"
+#[allow_shim::pass_through]
+pub fn plain_api() {}
+"#;
+
+fn run_dylint_on_proc_macro_fixture(
+    test_name: &str,
+    helper_code: &str,
+    consumer_code: &str,
+) -> std::process::Output {
+    let tmp_dir =
+        std::env::temp_dir().join(format!("titania_dylint_{test_name}_{}", std::process::id()));
+    let helper_dir = tmp_dir.join("allow_shim");
+    let helper_src = helper_dir.join("src");
+    std::fs::create_dir_all(&helper_src).expect("create proc-macro helper src directory");
+    std::fs::write(helper_src.join("lib.rs"), helper_code).expect("write proc-macro helper source");
+    std::fs::write(helper_dir.join("Cargo.toml"), PROC_MACRO_HELPER_MANIFEST)
+        .expect("write proc-macro helper manifest");
+    let consumer_dir = tmp_dir.join("fixture");
+    let consumer_src = consumer_dir.join("src");
+    std::fs::create_dir_all(&consumer_src).expect("create proc-macro consumer src directory");
+    std::fs::write(consumer_src.join("lib.rs"), consumer_code).expect("write consumer source");
+    let manifest = consumer_dir.join("Cargo.toml");
+    std::fs::write(&manifest, PROC_MACRO_CONSUMER_MANIFEST).expect("write consumer manifest");
+
+    let output = Command::new("cargo")
+        .current_dir(workspace_root())
+        .arg("dylint")
+        .arg("--lib-path")
+        .arg(dylint_library_path())
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .output()
+        .expect("cargo-dylint must run against proc-macro fixture manifest");
+
+    drop(std::fs::remove_dir_all(&tmp_dir));
+    output
+}
+
+#[test]
+fn bypass_attr_context_ignores_benign_proc_macro() {
+    let output = run_dylint_on_proc_macro_fixture(
+        "proc_macro_benign",
+        FIXTURE_PROC_MACRO_HELPER_PASS_THROUGH,
+        FIXTURE_PROC_MACRO_CONSUMER_BENIGN,
+    );
+    assert!(
+        output.status.success(),
+        "benign proc-macro fixture should pass dylint execution:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_ATTR_CONTEXT"),
+        "BYPASS_ATTR_CONTEXT must not fire when a proc-macro injects nothing:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when a proc-macro injects nothing:\n{}",
+        combined_output(&output)
+    );
+}
