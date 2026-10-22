@@ -70,7 +70,7 @@ impl<'tcx> LateLintPass<'tcx> for PubAllow {
             .local_visibility(item.owner_id.def_id)
             .is_public()
             .then(|| cx.tcx.hir_attrs(item.hir_id()));
-        emit_pub_allow_attrs(cx, attrs.into_iter().flatten());
+        emit_pub_allow_attrs(cx, item.span, attrs.into_iter().flatten());
     }
 
     fn check_impl_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx ImplItem<'tcx>) {
@@ -79,7 +79,7 @@ impl<'tcx> LateLintPass<'tcx> for PubAllow {
             .local_visibility(item.owner_id.def_id)
             .is_public()
             .then(|| cx.tcx.hir_attrs(item.hir_id()));
-        emit_pub_allow_attrs(cx, attrs.into_iter().flatten());
+        emit_pub_allow_attrs(cx, item.span, attrs.into_iter().flatten());
     }
 
     fn check_trait_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx TraitItem<'tcx>) {
@@ -88,16 +88,17 @@ impl<'tcx> LateLintPass<'tcx> for PubAllow {
             .local_visibility(item.owner_id.def_id)
             .is_public()
             .then(|| cx.tcx.hir_attrs(item.hir_id()));
-        emit_pub_allow_attrs(cx, attrs.into_iter().flatten());
+        emit_pub_allow_attrs(cx, item.span, attrs.into_iter().flatten());
     }
 }
 
 fn emit_pub_allow_attrs<'a>(
     cx: &LateContext<'_>,
+    item_span: Span,
     attrs: impl IntoIterator<Item = &'a rustc_hir::Attribute>,
 ) {
     attrs.into_iter().filter(|attr| attr.has_name(sym::allow)).for_each(|attr| {
-        emit_pub_allow_attr(cx, attr.span());
+        emit_pub_allow_attr(cx, item_span, attr.span());
     });
 }
 
@@ -152,8 +153,11 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(PubAllow));
 }
 
-fn emit_pub_allow_attr(cx: &LateContext<'_>, span: Span) {
+fn emit_pub_allow_attr(cx: &LateContext<'_>, item_span: Span, span: Span) {
     if is_compiler_lint_scaffolding(cx, span) {
+        return;
+    }
+    if is_external_derive_generated(item_span, span) {
         return;
     }
     if span.from_expansion() {
@@ -161,6 +165,26 @@ fn emit_pub_allow_attr(cx: &LateContext<'_>, span: Span) {
     } else {
         emit_pub_allow(cx, span);
     }
+}
+
+fn is_external_derive_generated(item_span: Span, attr_span: Span) -> bool {
+    let generated = item_span.from_expansion() && attr_span.from_expansion();
+    generated && shares_external_derive(item_span, attr_span)
+}
+
+fn shares_external_derive(item_span: Span, attr_span: Span) -> bool {
+    let item_expn = item_span.ctxt().outer_expn_data();
+    let attr_expn = attr_span.ctxt().outer_expn_data();
+    let derive = is_derive_expn(&item_expn.kind) && is_derive_expn(&attr_expn.kind);
+    let shared = item_expn
+        .macro_def_id
+        .zip(attr_expn.macro_def_id)
+        .is_some_and(|(item_def, attr_def)| item_def == attr_def && !item_def.is_local());
+    derive && shared
+}
+
+const fn is_derive_expn(kind: &rustc_span::hygiene::ExpnKind) -> bool {
+    matches!(kind, rustc_span::hygiene::ExpnKind::Macro(rustc_span::hygiene::MacroKind::Derive, _))
 }
 
 fn is_compiler_lint_scaffolding(cx: &LateContext<'_>, span: Span) -> bool {
