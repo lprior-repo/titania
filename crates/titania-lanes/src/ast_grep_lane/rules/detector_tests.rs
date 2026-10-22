@@ -762,3 +762,108 @@ fn architecture_sites_stay_aligned_with_crlf_line_endings() {
     assert_eq!(sites.len(), 1);
     assert_eq!(&source[sites[0].start_byte..sites[0].end_byte], "std::fs::");
 }
+
+#[test]
+fn bh4_whitespace_inside_use_paths_still_fires() {
+    assert!(!detect_core_fs_import("use\n    std::fs;").is_empty());
+    assert!(!detect_core_fs_import("use std :: fs;").is_empty());
+    assert!(
+        !detect_core_fs_import(
+            "use\n    std::fs;\npub fn load() { let _c = fs::read_to_string(\"c\"); }"
+        )
+        .is_empty()
+    );
+    assert!(!detect_core_fs_import("use std :: env :: var;").is_empty());
+    assert!(!detect_core_time_import("use\n    std::time::Instant;").is_empty());
+    assert!(!detect_core_infra_import("use\n    tokio::task;").is_empty());
+    assert!(!detect_core_random_import("use rand :: thread_rng;").is_empty());
+    assert!(!detect_core_process_import("use std :: process :: Command;").is_empty());
+}
+
+#[test]
+fn bh4_whitespace_grouped_import_sites_keep_member_spans() {
+    let source = "use std :: { fs, env };";
+    let sites = detect_core_fs_import(source);
+    let texts: Vec<&str> =
+        sites.iter().map(|site| &source[site.start_byte..site.end_byte]).collect();
+    assert_eq!(texts, ["fs", "env"]);
+}
+
+#[test]
+fn bh4_whitespace_inside_fq_paths_still_fires() {
+    let source = "pub fn load() { std :: fs :: read_to_string(\"c\"); }";
+    let sites = detect_core_fs_import(source);
+    assert_eq!(sites.len(), 1);
+    assert_eq!(&source[sites[0].start_byte..sites[0].end_byte], "std :: fs ::");
+    assert!(
+        !detect_core_fs_import("pub fn load() { std\n::\nfs::read_to_string(\"c\"); }").is_empty()
+    );
+    assert!(!detect_core_state_effect("pub fn f() { std :: sync :: Mutex::new(0); }").is_empty());
+}
+
+#[test]
+fn bh4_whitespace_module_binding_still_fires() {
+    assert!(
+        !detect_core_state_effect(
+            "use std :: sync :: { self };\npub fn f() { let _m = sync::Mutex::new(0); }"
+        )
+        .is_empty()
+    );
+    assert!(
+        !detect_core_state_effect(
+            "use std::sync::{self};\npub fn f() { let _m = sync :: Mutex::new(0); }"
+        )
+        .is_empty()
+    );
+    assert!(
+        !detect_core_time_import(
+            "use std :: time;\npub fn f() { let _t = time :: Instant::now(); }"
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn bh4_whitespace_alias_definition_still_fires() {
+    assert!(
+        !detect_core_infra_import("use tokio\nas tk;\npub fn go() { tk::spawn(async { 1 }); }")
+            .is_empty()
+    );
+    assert!(
+        !detect_core_infra_import("use tokio as tk;\npub fn go() { tk :: spawn(async { 1 }); }")
+            .is_empty()
+    );
+}
+
+#[test]
+fn bh4_whitespace_bare_task_import_is_not_async_effect() {
+    assert!(detect_core_async_effect("use\ntokio::task;").is_empty());
+    assert!(detect_core_async_effect("use tokio :: task;").is_empty());
+    assert!(!detect_core_async_effect("use tokio :: { task :: spawn };").is_empty());
+}
+
+#[test]
+fn bh4_user_module_named_std_is_not_flagged() {
+    assert!(detect_core_fs_import("pub fn load() { foo::std::fs::read(); }").is_empty());
+    assert!(detect_core_state_effect("pub fn f() { foo::std::sync::Mutex::new(0); }").is_empty());
+    assert!(detect_core_time_import("pub fn f() { foo::std::time::Instant::now(); }").is_empty());
+    assert!(
+        detect_core_process_import("pub fn f() { foo::std::process::Command::new(\"ls\"); }")
+            .is_empty()
+    );
+    assert!(detect_core_infra_import("pub fn f() { foo::tokio::spawn(async { 1 }); }").is_empty());
+    assert!(detect_core_fs_import("pub fn load() { self::std::fs::read(); }").is_empty());
+}
+
+#[test]
+fn bh4_absolute_and_root_fq_paths_still_fire() {
+    assert!(!detect_core_fs_import("pub fn load() { ::std::fs::read(\"c\"); }").is_empty());
+    assert!(
+        !detect_core_fs_import("pub fn load() { let _v = :: std :: env :: var(\"H\"); }")
+            .is_empty()
+    );
+    assert!(
+        !detect_core_fs_import("pub fn load() -> String { std::fs::read_to_string(\"c\") }")
+            .is_empty()
+    );
+}
