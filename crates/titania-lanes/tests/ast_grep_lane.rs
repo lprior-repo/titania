@@ -404,6 +404,34 @@ fn ast_grep_lane_emits_one_finding_per_occurrence() -> TestResult {
 }
 
 #[test]
+fn ast_grep_lane_wildcard_import_finding_has_no_repair_hint() -> TestResult {
+    use titania_core::{FindingEffect, RepairHint};
+
+    let rules_yaml = [include_str!("../rules/functional.yml")];
+    let fixture_paths = ["functional/func_wildcard_import_violation.rs"]
+        .map(|path| fixture_root("ast_grep", path))
+        .to_vec();
+
+    let outcome = titania_lanes::ast_grep_lane::run(&rules_yaml, &fixture_paths, &[])?;
+    let LaneOutcome::Findings { findings } = outcome else {
+        panic!("expected findings for the wildcard fixture, got {outcome:?}");
+    };
+    let wildcard: Vec<_> =
+        findings.iter().filter(|f| f.rule_id().as_str() == "FUNC_WILDCARD_IMPORT").collect();
+    assert!(!wildcard.is_empty(), "wildcard fixture must emit FUNC_WILDCARD_IMPORT findings");
+    for finding in wildcard {
+        assert_eq!(finding.effect(), FindingEffect::Informational);
+        assert_eq!(
+            finding.repair(),
+            &RepairHint::none(),
+            "FUNC_WILDCARD_IMPORT carries no repair hint per the v1-spec section 6 catalog"
+        );
+        assert!(!finding.has_auto_repair());
+    }
+    Ok(())
+}
+
+#[test]
 fn ast_grep_lane_inline_suppression_ignores_string_literals() -> TestResult {
     let rules_yaml = [include_str!("../rules/bypass.yml")];
     let allowed_paths = ["bypass/allowed_inline_suppression_in_string_literal.rs"]

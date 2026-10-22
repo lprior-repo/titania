@@ -39,6 +39,7 @@ impl Detector {
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum RepairKind {
+    None,
     RemoveAllowAttribute,
     ReplaceDependency,
     RequiresHumanReview,
@@ -57,6 +58,7 @@ pub(super) fn rule_applies(rule: &RuleDef, workspace_path: &WorkspacePath) -> bo
 
 pub(super) fn repair_hint(kind: RepairKind) -> RepairHint {
     match kind {
+        RepairKind::None => RepairHint::none(),
         RepairKind::RemoveAllowAttribute => RepairHint::remove_allow_attribute("allow".to_owned()),
         RepairKind::ReplaceDependency => RepairHint::replace_dependency(
             "tokio/axum/sqlx/reqwest".to_owned(),
@@ -124,7 +126,7 @@ pub(super) const RULES: &[RuleDef] = &[
         id: "FUNC_WILDCARD_IMPORT",
         message: "FUNC_WILDCARD_IMPORT: replace wildcard imports with explicit imports",
         effect: FindingEffect::Informational,
-        repair: RepairKind::RequiresHumanReview,
+        repair: RepairKind::None,
         detect: Detector::Engine(AstEngine::detect_wildcard_import),
         scope: RuleScope::ProductionRust,
     },

@@ -84,6 +84,33 @@ fn explain_known_rule_prints_examples() {
 }
 
 #[test]
+fn explain_wildcard_import_omits_repair_content() {
+    let (code, stdout, stderr) = run(&["explain", "FUNC_WILDCARD_IMPORT"]);
+    assert_eq!(
+        code, 0,
+        "explain for FUNC_WILDCARD_IMPORT must exit 0, got {code}. stderr: {stderr}"
+    );
+    assert!(stderr.is_empty(), "explain must not write stderr: {stderr}");
+    let output = stdout.trim();
+    assert!(output.starts_with("FUNC_WILDCARD_IMPORT"), "stdout must start with rule id: {output}");
+    assert!(output.contains("Pattern: use $PATH::*"), "stdout must include pattern: {output}");
+    assert!(output.contains("Effect: Informational"), "stdout must include effect: {output}");
+    assert!(
+        !output.contains("Repair:"),
+        "a rule with no repair hint must not render a Repair line: {output}"
+    );
+    assert!(
+        !output.contains("RequiresHumanReview"),
+        "stdout must not claim a repair hint the catalog does not carry: {output}"
+    );
+    assert!(
+        !output.contains("Example repair:"),
+        "a rule with no repair hint must not render an example repair: {output}"
+    );
+    assert!(output.contains("Example violation:"), "missing violation heading: {output}");
+}
+
+#[test]
 fn explain_catalog_covers_non_clippy_lane_edge_ids() {
     [
         "DENY_MULTIPLE_VERSIONS",

@@ -57,9 +57,8 @@ pub(super) fn row_to_repair_hint(row: &CatalogRow) -> RepairHint {
         "UseCheckedArithmetic" => RepairHint::use_checked_arithmetic(row.description.to_owned()),
         "RemoveAllowAttribute" => RepairHint::remove_allow_attribute(row.description.to_owned()),
         "ReplaceDependency" => replace_dependency_hint(row),
-        "RequiresHumanReview" | "—" => {
-            RepairHint::requires_human_review(row.description.to_owned())
-        }
+        "RequiresHumanReview" => RepairHint::requires_human_review(row.description.to_owned()),
+        "—" => RepairHint::none(),
         unknown => RepairHint::requires_human_review(format!(
             "unknown repair class {unknown:?} for {}",
             row.rule_id
@@ -103,7 +102,8 @@ mod tests {
                 "UseCheckedArithmetic" => RepairHintClass::UseCheckedArithmetic,
                 "RemoveAllowAttribute" => RepairHintClass::RemoveAllowAttribute,
                 "ReplaceDependency" => RepairHintClass::ReplaceDependency,
-                "RequiresHumanReview" | "—" => RepairHintClass::RequiresHumanReview,
+                "RequiresHumanReview" => RepairHintClass::RequiresHumanReview,
+                "—" => RepairHintClass::None,
                 _other => RepairHintClass::RequiresHumanReview,
             };
             assert_eq!(
@@ -144,9 +144,24 @@ mod tests {
     }
 
     #[test]
-    fn func_wildcard_import_informational_marker_collapses_to_human_review() {
+    fn func_wildcard_import_informational_marker_means_no_repair_hint() {
         let hint = for_rule("FUNC_WILDCARD_IMPORT");
-        assert_eq!(hint.class(), RepairHintClass::RequiresHumanReview);
+        assert_eq!(hint, RepairHint::none());
+        assert_eq!(hint.class(), RepairHintClass::None);
+        assert!(!hint.is_auto_applicable());
+    }
+
+    #[test]
+    fn every_informational_marker_row_has_no_repair_hint() {
+        for row in catalog_rows().iter().filter(|row| row.repair_class == "—") {
+            let hint = for_rule(row.rule_id);
+            assert_eq!(
+                hint,
+                RepairHint::none(),
+                "row {} carries the informational marker and must have no repair hint",
+                row.rule_id,
+            );
+        }
     }
 
     #[test]
