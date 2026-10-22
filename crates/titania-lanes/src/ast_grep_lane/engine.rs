@@ -527,15 +527,21 @@ fn is_callee_kind(kind: &str) -> bool {
 }
 
 fn callee_resolves_to(callee: &Node<'_, StrDoc<Rust>>, name: &str) -> bool {
-    match callee.kind().as_ref() {
-        "generic_function" => callee
-            .children()
-            .find(Node::is_named)
-            .is_some_and(|inner| callee_resolves_to(&inner, name)),
-        "identifier" => callee.text().trim() == name,
-        "field_expression" => is_self_field_call(callee, name),
+    let mut current = callee.clone();
+    while current.kind().as_ref() == "generic_function" {
+        let next = current.children().find(Node::is_named);
+        match next {
+            Some(inner) => {
+                current = inner;
+            }
+            None => return false,
+        }
+    }
+    match current.kind().as_ref() {
+        "identifier" => current.text().trim() == name,
+        "field_expression" => is_self_field_call(&current, name),
         "scoped_identifier" => {
-            is_scoped_call(callee, "Self", name) || is_qualified_self_call(callee, name)
+            is_scoped_call(&current, "Self", name) || is_qualified_self_call(&current, name)
         }
         _ => false,
     }
