@@ -336,18 +336,49 @@ fn use_statement_body(statement: &Node<'_, StrDoc<Rust>>) -> Option<String> {
     Some(body.trim().to_owned())
 }
 
+type UseSegmentQueue<'s> = Vec<(Option<String>, &'s str)>;
+
 fn flattened_use_paths(body: &str) -> Vec<String> {
-    let Some(open) = body.find('{') else {
-        return vec![body.trim().to_owned()];
-    };
-    let Some((head, inner)) = use_group_head_and_body(body, open) else {
-        return vec![body.trim().to_owned()];
-    };
-    top_level_use_members(inner)
-        .iter()
-        .flat_map(|member| flattened_use_paths(member))
-        .map(|path| format!("{head}::{path}"))
-        .collect()
+    let mut pending = vec![(None, body)];
+    let mut flattened = Vec::new();
+    while let Some((prefix, segment)) = pending.pop() {
+        expand_use_segment(&mut pending, &mut flattened, prefix.as_deref(), segment);
+    }
+    flattened
+}
+
+fn expand_use_segment<'s>(
+    pending: &mut UseSegmentQueue<'s>,
+    flattened: &mut Vec<String>,
+    prefix: Option<&str>,
+    segment: &'s str,
+) {
+    match segment_group(segment) {
+        Some((head, inner)) => queue_group_members(pending, prefix, head, inner),
+        None => flattened.push(join_use_path(prefix, segment.trim())),
+    }
+}
+
+fn segment_group(segment: &str) -> Option<(&str, &str)> {
+    let open = segment.find('{')?;
+    use_group_head_and_body(segment, open)
+}
+
+fn queue_group_members<'s>(
+    pending: &mut UseSegmentQueue<'s>,
+    prefix: Option<&str>,
+    head: &str,
+    inner: &'s str,
+) {
+    let group_prefix = Some(join_use_path(prefix, head));
+    let members = top_level_use_members(inner);
+    for member in members.into_iter().rev() {
+        pending.push((group_prefix.clone(), member));
+    }
+}
+
+fn join_use_path(prefix: Option<&str>, segment: &str) -> String {
+    prefix.map_or_else(|| segment.to_owned(), |head| format!("{head}::{segment}"))
 }
 
 fn use_group_head_and_body(member: &str, open: usize) -> Option<(&str, &str)> {
@@ -441,18 +472,38 @@ fn scoped_callee_is_unbounded(
 }
 
 fn scoped_path_segments(node: &Node<'_, StrDoc<Rust>>) -> Vec<String> {
+    let mut leaves = Vec::new();
+    let mut current = node.clone();
+    while let Some(step) = scoped_step(&current) {
+        current = apply_scoped_step(&mut leaves, step);
+    }
+    leaves.push(current.text().trim().to_owned());
+    leaves.reverse();
+    leaves
+}
+
+enum ScopedStep<'r> {
+    HeadLeaf(Node<'r, StrDoc<Rust>>, Node<'r, StrDoc<Rust>>),
+    Only(Node<'r, StrDoc<Rust>>),
+}
+
+fn scoped_step<'r>(node: &Node<'r, StrDoc<Rust>>) -> Option<ScopedStep<'r>> {
     let mut named = node.children().filter(Node::is_named);
     match (node.kind().as_ref(), named.next(), named.next()) {
-        ("scoped_identifier", Some(head), Some(leaf)) => segments_with_leaf(&head, &leaf),
-        ("scoped_identifier", Some(only), None) => scoped_path_segments(&only),
-        _ => vec![node.text().trim().to_owned()],
+        ("scoped_identifier", Some(head), Some(leaf)) => Some(ScopedStep::HeadLeaf(head, leaf)),
+        ("scoped_identifier", Some(only), None) => Some(ScopedStep::Only(only)),
+        _ => None,
     }
 }
 
-fn segments_with_leaf(head: &Node<'_, StrDoc<Rust>>, leaf: &Node<'_, StrDoc<Rust>>) -> Vec<String> {
-    let mut segments = scoped_path_segments(head);
-    segments.push(leaf.text().trim().to_owned());
-    segments
+fn apply_scoped_step<'r>(leaves: &mut Vec<String>, step: ScopedStep<'r>) -> Node<'r, StrDoc<Rust>> {
+    match step {
+        ScopedStep::HeadLeaf(head, leaf) => {
+            leaves.push(leaf.text().trim().to_owned());
+            head
+        }
+        ScopedStep::Only(only) => only,
+    }
 }
 
 fn contains_inline_suppression_marker(comment: &str) -> bool {
