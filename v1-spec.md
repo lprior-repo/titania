@@ -209,7 +209,11 @@ Each lane is a Moon task. Moon handles:
 - Per-lane `CARGO_TARGET_DIR` isolation (breaks cargo lock contention)
 - 3-layer caching (sccache + bazel-remote + Cargo)
 - Affected-file detection (`moon ci` skips lanes whose inputs are unchanged)
-- CI integration via `moonrepo/setup-toolchain@v0` + `moonrepo/run-report-action@v1`
+- CI integration via Moon itself: CI runs `moon ci` (equivalently, the
+  `gate-*` composite tasks for a single scope). The lane artifacts under
+  `.titania/out/` and the aggregate Report are the CI evidence; the hosting
+  environment retains them as build artifacts. No CI-vendor-specific
+  mechanism is part of this contract.
 
 **sccache requirement:** sccache is **strongly recommended** but not hard-required.
 Without sccache, per-lane `CARGO_TARGET_DIR` means each cargo-invoking lane
@@ -228,7 +232,7 @@ previous cannot:
 | 0 | `cargo fmt --check` | formatting drift | — |
 | 1 | `cargo check` + rustc lints | compile errors, `unsafe_code=forbid` | — |
 | 2 | `cargo clippy` with `-F` critical lints | unwrap/expect/panic/todo/indexing/arithmetic | third-party panics, macro-expanded panics |
-| 3 | `ast-grep` embedded rules | structural patterns, bypass attributes, architecture imports | type-aware context |
+| 3 | ast-grep catalog + native detectors (embedded) | structural patterns, bypass attributes, architecture imports | type-aware context |
 | 4 | `dylint` library | type-aware bypass detection plus Rust `FUNC_*` and `HOLZMAN_PANIC_*` policy | — |
 | 5 | `panic-scan` compatibility artifact | clean evidence for legacy reports; Rust panic policy is Dylint-owned | — |
 | 6 | `policy-scan` (native) | Cargo.toml `[lints]` weakening, `.cargo/config.toml` overrides, env violations | — |
@@ -245,7 +249,7 @@ normalizes their output into typed `Finding` values:
 |---|---|---|---|
 | clippy | `CLIPPY_*` | `CLIPPY_UNWRAP_USED`, `CLIPPY_INDEXING_SLICING` | Parse `--message-format=json`, map lint name to uppercase rule ID |
 | cargo-deny | `DENY_*` | `DENY_ADVISORY`, `DENY_LICENSE`, `DENY_BANNED_CRATE` | Parse cargo-deny JSON output, map check type to rule ID |
-| ast-grep | (as defined in §6) | `BOUNDED_EXECUTION_UNBOUNDED_LOOP`, `BYPASS_ALLOW_ATTR` | Parse ast-grep JSON output directly |
+| ast-grep | (as defined in §6) | `BOUNDED_EXECUTION_UNBOUNDED_LOOP`, `BYPASS_ALLOW_ATTR` | Native detectors construct typed findings directly; no external ast-grep process or JSON output is involved |
 | dylint | (as defined in §7) | `BYPASS_PUB_ALLOW`, `FUNC_UNWRAP_USED`, `HOLZMAN_PANIC_ASSERT` | Parse Dylint/rustc diagnostics and construct typed findings |
 | panic-scan | compatibility artifact | — | Emit clean evidence; no Rust text policy scan |
 | policy-scan | `BYPASS_*` | `BYPASS_CARGO_LINTS_WEAKENING` | Native scan, construct Finding per violation |
@@ -254,8 +258,18 @@ normalizes their output into typed `Finding` values:
 
 ## 6. ast-grep Rule Catalog
 
-Rules embedded in the binary via `include_str!("rules/*.yml")`. Each rule
-produces a `Finding` with `FindingEffect::Reject` unless noted.
+The rule catalog is embedded in the binary via `include_str!("rules/*.yml")`.
+The YAML files are the catalog of record: each file lists the rule IDs the
+lane enables, grouped by family. Rule semantics are implemented by native
+detectors in `titania-lanes` — an ast-grep-core engine for the structural
+and bypass rules, and native source detectors for the architecture rules —
+which construct typed `Finding` values directly. Every rule ID, construct
+description, effect, and repair hint in this section is normative: an
+implementation must produce a finding for exactly the constructs specified
+here, and the catalog's pattern text is the reference description of each
+construct. A catalog ID with no corresponding detector, or a detector with
+no catalog ID, is a lane configuration error and the lane fails closed.
+Each rule produces a `Finding` with `FindingEffect::Reject` unless noted.
 
 ### Structural rules (functional-style enforcement)
 
@@ -775,8 +789,13 @@ Location: `.titania/profiles/strict-ai/policy.toml`
 # too_many_lines = 40
 
 [architecture]
-# Define which directories are "core" for architecture import rules
-core_dirs = ["src/core", "src/domain", "crates/*-core/src"]
+# Directories treated as "core" for architecture import rules (§6).
+# In v1 the scope matcher is the fixed §6 rule — src/core/, src/domain/,
+# crates/*-core/src/, crates/*-domain/src/ — and this list is the
+# canonical statement of that rule: it is validated and folded into the
+# policy digest. Editing core_dirs alone does not change which files
+# the architecture rules scan in v1.
+core_dirs = ["src/core", "src/domain", "crates/*-core/src", "crates/*-domain/src"]
 infra_crates = ["tokio", "axum", "sqlx", "reqwest"]
 
 [supply_chain]
@@ -902,24 +921,25 @@ cargo clippy \
 EOF
 )
 
-cargo nextest run --workspace --all-features
-
-RUSTDOCFLAGS="-D warnings" cargo doc \
-  --workspace \
-  --all-features \
-  --no-deps
+cargo test --workspace --frozen -- --test-threads=1
 
 # Extra Rust source syntax guardrails Clippy alone should not own are enforced
 # by Titania's Dylint `FUNC_*` and `HOLZMAN_PANIC_*` rules.
 cargo dylint --workspace --all -- --lib --bins --examples
 
 cargo deny check
-cargo audit
-cargo vet
-cargo geiger
-cargo machete
-cargo hack check --workspace --feature-powerset
 ```
+
+**Post-v1 hardening (not part of the v1 gate).** The following commands are
+recorded here so consumers can adopt them voluntarily; they are not v1 gate
+steps, no lane invokes them, and `doctor` does not require them. Supply-chain
+depth (`cargo audit`, `cargo vet`, `cargo geiger`, `cargo machete`) is
+deferred per §2 and §16 (post-v3.0); in v1, `cargo deny check` is the
+supply-chain gate. `cargo nextest run --workspace --all-features`, the
+`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps`
+build, and `cargo hack check --workspace --feature-powerset` are candidate
+future lanes; until a roadmap item in §16 adopts one, the §4 lane table is
+the whole gate.
 
 **Source/test split discipline.** Source-only strictness is enforced by source
 Clippy targets plus Titania's Dylint and native lanes. Tests may use `unwrap`,
@@ -930,10 +950,9 @@ cite a named bound for retries. Dylint owns the macro-aware
 `HOLZMAN_PANIC_*` and functional `FUNC_*` checks that raw text scans used to
 approximate.
 
-**Required tools for step 1.** `cargo-fmt`, `cargo-clippy`, `cargo-nextest`,
-`cargo-dylint`, `cargo-deny`, `cargo-audit`, `cargo-vet`, `cargo-geiger`,
-`cargo-machete`, `cargo-hack`. `titania-check doctor --scope prepush` (§12)
-verifies presence and reports missing tools.
+**Required tools for step 1.** `cargo-fmt`, `cargo-clippy`, `cargo-dylint`,
+`cargo-deny`. `titania-check doctor --scope prepush` (§12) verifies presence
+of the scope's required tools and reports missing tools.
 
 ### 9.11 Literal max-pain Clippy audit (occasional, not default CI)
 
@@ -964,6 +983,9 @@ finding here must be triaged against §9.13 (float-arithmetic policy) and
 the project's domain profile. Do not gate `moon ci` on this run.
 
 ### 9.12 Nightly zero-slippage variant
+
+*Informative — this section is not a v1 gate and no v1 tooling enforces it.
+It records the sanctioned-feature policy for workspaces that pin nightly.*
 
 When the workspace pins `rust-toolchain.toml` to nightly and explicitly
 allows only intended nightly features, run the strict-ai gate under
@@ -1023,21 +1045,19 @@ cargo +nightly -Zallow-features=portable_simd,try_blocks clippy \
 EOF
 )
 
-cargo +nightly nextest run --workspace --all-features
-cargo +nightly doc --workspace --all-features --no-deps
+cargo +nightly test --workspace --frozen -- --test-threads=1
 
 cargo deny check
-cargo audit
-cargo vet
-cargo geiger
-cargo machete
-cargo hack check --workspace --feature-powerset
-cargo mutants
 ```
 
-The only sanctioned nightly features are `portable_simd` and `try_blocks`;
-any other nightly feature requires explicit unsafe-waiver approval (§6.4
-of the project's runtime architecture policy) and a row in
+The post-v1 hardening commands listed in §9.10 are equally non-gating under this variant; `cargo mutants` belongs to v1.5 (§16).
+
+The only sanctioned nightly features are `portable_simd` and `try_blocks`.
+One standing exception: the `titania-dylint` library crate declares
+`#![feature(rustc_private)]`, which the dylint ABI requires; that feature is
+sanctioned for that crate only and confers no general unstable-Rust
+allowance. Any other nightly feature requires explicit unsafe-waiver
+approval (§6.4 of the project's runtime architecture policy) and a row in
 `.titania/profiles/strict-ai/exceptions.toml` (§9.8).
 
 ### 9.13 Float-arithmetic policy (SIMD/numeric carve-out)
@@ -1084,9 +1104,13 @@ which is the discipline `allow` cannot provide. The bead `BYPASS_EXPECT_ATTR`
 the typed finding contract, not free-form prose.
 
 For crates that opt into the SIMD carve-out wholesale (e.g., a graphics
-shading crate), the `policy.toml` `[architecture]` section (§9.7) may
-declare a crate-level allow with `reason = "v1-spec §9.13 numeric carve-out"`
-and `expires_on` per §9.8.
+shading crate), register a crate-level exception in `exceptions.toml`
+(§9.8): `rule_id = "clippy::float_arithmetic"`, `path` set to the crate's
+manifest directory, with `owner`, `reason = "v1-spec §9.13 numeric
+carve-out"`, `expires_on`, and `review`. There is no second registry: the
+`[architecture]` section of `policy.toml` (§9.7) defines core directories
+and infrastructure crates only, and every suppression lives in
+`exceptions.toml`.
 
 ---
 
@@ -1435,6 +1459,15 @@ titania-check setup-hermetic
     Unix-only (symlink creation). Invoked by the setup-hermetic Moon task.
 ```
 
+Aggregate considers only `*.json` files in `.titania/out/<scope>/`. A
+JSON file that does not identify a lane of the scope's gate — an
+unknown filename stem, a lane belonging to a different scope, a
+duplicate file for one lane, or a non-UTF-8 filename — is an
+InputError (exit 3) and no Report is produced; non-JSON files are
+ignored. The output directory is written exclusively by lane tasks, so
+any other JSON there means the evidence set was touched outside the
+pipeline; aggregation fails closed rather than guess.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -1451,16 +1484,27 @@ titania-check setup-hermetic
 titania-check doctor — scope: edit
 
 Tool           Required   Installed   Version        Path
+moon           yes        yes         2.6.2          /home/user/.moon/bin/moon
 cargo          yes        yes         1.84.0         /home/user/.cargo/bin/cargo
 rustfmt        yes        yes         1.84.0         /home/user/.cargo/bin/rustfmt
 clippy         yes        yes         0.1.84         /home/user/.cargo/bin/clippy-driver
 ast-grep       embedded   —           —              —
-dylint         yes        yes         0.1.0          /home/user/.cargo/bin/cargo-dylint
+dylint         yes        yes         6.0.1          /home/user/.cargo/bin/cargo-dylint
+dylint-link    no         yes         —              /home/user/.cargo/bin/dylint-link
+dylint-lib     yes        yes         abi:verified   —
 cargo-deny     no (edit)  yes         0.18.0         /home/user/.cargo/bin/cargo-deny
 sccache        optional   yes         0.8.0          /home/user/.cargo/bin/sccache
 
 Status: OK
 ```
+
+`moon` is required in every scope: Moon orchestrates all gate tasks (§13),
+so its absence is a missing required tool. The dylint family is three rows
+because its parts fail independently: the `cargo-dylint` runner (`dylint`),
+the linker needed to build the lint library from source (`dylint-link`,
+required only when no usable library is present), and the library itself
+(`dylint-lib`, whose Version field carries the ABI verdict `abi:verified` /
+`abi:unverified` / `abi:mismatch`).
 
 ### doctor output format (--emit json)
 
@@ -1663,7 +1707,7 @@ The template provides:
 - `.moon/tasks/all.yml` (from §13)
 - `.titania/profiles/strict-ai/policy.toml`
 - `.titania/profiles/strict-ai/exceptions.toml`
-- `.cargo/config.toml` (sccache wrapper hook)
+- `.cargo/config.toml` (sccache wrapper hook, shipped commented as an opt-in — uncomment `rustc-wrapper = "sccache"` on machines with sccache installed; §4 makes sccache strongly recommended, not hard-required, so the template does not activate the wrapper by default)
 - `clippy.toml`
 - `rustfmt.toml`
 - `deny.toml`
@@ -1744,6 +1788,23 @@ These items are explicitly out of scope for v1. Listed to prevent scope creep.
 - `cargo mutants` lane — mutation testing with checked-in baseline
 - Panic-freedom proofs replace lint heuristics on critical paths
 - `PROOF_KANI_*` and `MUTANT_SURVIVED` rule families
+
+**Forward declarations (v1 erratum).** The v1 codebase contains the
+type-level surface of this roadmap item ahead of the features themselves:
+`Lane` carries `Kani` and `Mutants` variants beyond the ten lanes listed
+in §4; `SkipReason` carries a fifth variant, `ToolUnavailable(ToolKind)`;
+the repair catalog carries the `PROOF_KANI_*` and `MUTANT_*` rule rows; and
+`explain` synthesizes answers for those rule families, including per-harness
+`PROOF_KANI_*` identifiers. These are forward declarations, not v1 features.
+No v1 scope (`Edit`, `Prepush`, `Release`) selects the `Kani` or `Mutants`
+lanes; no v1 gate outcome, report, or receipt can contain them; they execute
+only when a lane is invoked individually through `run-lane`. They are
+retained so that v1.5 can activate the lanes without a breaking change to
+the `Lane` or `SkipReason` types or to the schema_version 1 wire format —
+the same forward-compatibility posture §4 takes for future `GateScope`
+variants. Their presence in the v1 codebase is intentional and is not a
+conformance defect; §4's lane table and skip-reason list remain the
+normative description of the v1 gate surface.
 
 ### v2.0 — Flux refinement types + architecture crate-graph enforcement
 
@@ -1964,9 +2025,10 @@ GitHub Actions is an execution environment. It is not a Rust QA policy, not a
 typed finding model, not a local-first evidence system, and not a deterministic
 repair loop for AI agents.
 
-Titania can run inside GitHub Actions, but GitHub Actions is not the source of
-truth. Moon and Titania define the quality contract; GitHub Actions merely hosts
-it.
+Titania does not use GitHub Actions. Moon and Titania define the quality
+contract, and the same Moon tasks run on a developer machine and in CI;
+whatever schedules the CI run invokes Moon and retains the Report and lane
+artifacts as its evidence.
 
 ### Why not just clippy, cargo-deny, cargo-nextest, ast-grep, and friends?
 
