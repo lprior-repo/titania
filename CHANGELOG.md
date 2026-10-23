@@ -16,9 +16,9 @@ and all three Moon-orchestrated gate scopes emit typed Pass reports.
 ### Added
 
 - **v1.0.0 release packaging**: every first-party crate bumped 0.1.0 →
-  1.0.0; README install section updated from "coming with v1.0"; a
-  `.github/workflows/release.yml` workflow added so version tags produce
-  Moon-built release binaries.
+  1.0.0; README install section updated from "coming with v1.0". Releases
+  are Moon-built (`moon run :titania-build`); Moon is the only CI/release
+  substrate — no GitHub Actions workflow ships with v1.0.0.
 - **Release-scope dogfood evidence**: `titania:gate-edit`, `gate-prepush`,
   and `gate-release` each emit a typed Pass `Report` JSON plus a
   `QualityReceipt` with `schema_version=1` and source/lock/policy/
