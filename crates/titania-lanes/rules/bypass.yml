@@ -13,6 +13,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   pattern: "#[allow($$$LINTS)]"
 metadata:
@@ -31,6 +32,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   pattern: "#[expect($$$LINTS)]"
 metadata:
@@ -49,6 +51,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   pattern: "#[cfg_attr($COND, allow($$$LINTS))]"
 metadata:
@@ -67,6 +70,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   pattern: "#![allow($$$LINTS)]"
 metadata:
@@ -85,6 +89,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   pattern: "#![expect($$$LINTS)]"
 metadata:
@@ -103,6 +108,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   any:
     - regex: "ast-grep-ignore"
@@ -123,6 +129,7 @@ ignores:
   - "**/benches/**"
   - "**/examples/**"
   - "**/build.rs"
+  - "**/ast_grep_lane/rules/**"
 rule:
   pattern: "include!(concat!(env!(\"OUT_DIR\"), $PATH))"
 metadata:

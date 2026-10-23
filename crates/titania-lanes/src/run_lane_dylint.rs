@@ -11,6 +11,8 @@ use crate::{
 
 const CARGO_DYLINT_TOOL: &str = "cargo-dylint";
 const DYLINT_LOAD_FAILURE_MARKER: &str = "could not find `dylint_version` in `";
+const CAPTURED_OUTPUT_INDENT: &str = "  ";
+const CAPTURED_OUTPUT_MARKERS: &[&str] = &["--- stdout", "--- stderr"];
 const DYLINT_LOCATION_LOOKAHEAD: usize = 6;
 const DYLINT_BASE_ARGS: &[&str] =
     &["dylint", "--workspace", "--all", "--", "--lib", "--bins", "--examples"];
@@ -187,10 +189,45 @@ fn dylint_report(
     output: &CommandOutput,
 ) -> Result<LaneReport, LaneFailure> {
     let text = combined_output(output)?;
-    let lines = text.lines().collect::<Vec<_>>();
+    let captured = text.lines().collect::<Vec<_>>();
+    let lines = diagnostic_stream_lines(&captured);
     lines.iter().enumerate().try_fold(LaneReport::new(), |report, (position, line)| {
         add_dylint_line_finding(target, &lines, position, line, report)
     })
+}
+
+fn diagnostic_stream_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
+    let auxiliary = auxiliary_sections(lines);
+    lines
+        .iter()
+        .copied()
+        .zip(auxiliary.iter().copied())
+        .map(|(line, is_auxiliary)| if is_auxiliary { "" } else { line })
+        .collect()
+}
+
+fn auxiliary_sections(lines: &[&str]) -> Vec<bool> {
+    lines
+        .iter()
+        .scan(false, |in_section, line| Some(section_membership(in_section, line)))
+        .collect()
+}
+
+fn section_membership(in_section: &mut bool, line: &str) -> bool {
+    if is_captured_output_marker(line) {
+        *in_section = true;
+    } else if *in_section && !is_captured_output_line(line) {
+        *in_section = false;
+    }
+    *in_section
+}
+
+fn is_captured_output_marker(line: &str) -> bool {
+    CAPTURED_OUTPUT_MARKERS.contains(&line.trim())
+}
+
+fn is_captured_output_line(line: &str) -> bool {
+    line.is_empty() || line.starts_with(CAPTURED_OUTPUT_INDENT)
 }
 
 fn combined_output(output: &CommandOutput) -> Result<String, LaneFailure> {
@@ -214,11 +251,15 @@ fn add_dylint_line_finding(
 }
 
 fn dylint_rule_id(line: &str) -> Option<&'static str> {
-    DYLINT_RULE_IDS.iter().copied().find(|rule_id| line_has_rule_id(line, rule_id))
+    let message = diagnostic_header_message(line)?;
+    let token = message.split(|ch: char| !is_rule_id_char(ch)).next()?;
+    let rule_id = DYLINT_RULE_IDS.iter().copied().find(|candidate| *candidate == token)?;
+    message.get(rule_id.len()..)?.starts_with(':').then_some(rule_id)
 }
 
-fn line_has_rule_id(line: &str, rule_id: &str) -> bool {
-    line.split(|ch: char| !is_rule_id_char(ch)).any(|token| token == rule_id)
+fn diagnostic_header_message(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    trimmed.strip_prefix("error: ").or_else(|| trimmed.strip_prefix("warning: "))
 }
 
 const fn is_rule_id_char(ch: char) -> bool {
@@ -267,13 +308,6 @@ enum LocationSearch {
 }
 
 impl LocationSearch {
-    fn or_else(self, fallback: impl FnOnce() -> Self) -> Self {
-        match self {
-            found @ Self::Found(_) => found,
-            Self::Missing => fallback(),
-        }
-    }
-
     fn into_location(self) -> DiagnosticLocation {
         match self {
             Self::Found(location) => location,
@@ -283,25 +317,23 @@ impl LocationSearch {
 }
 
 fn nearest_location(target: &TargetProject, lines: &[&str], position: usize) -> DiagnosticLocation {
-    next_location(target, lines, position)
-        .or_else(|| previous_location(target, lines, position))
-        .into_location()
+    next_location(target, lines, position).into_location()
 }
 
 fn next_location(target: &TargetProject, lines: &[&str], position: usize) -> LocationSearch {
     location_search(
         lines
             .iter()
+            .enumerate()
             .skip(position)
             .take(DYLINT_LOCATION_LOOKAHEAD)
-            .find_map(|line| parse_diagnostic_location(target, line)),
+            .take_while(|(index, line)| *index == position || continues_diagnostic_block(line))
+            .find_map(|(_, line)| parse_diagnostic_location(target, line)),
     )
 }
 
-fn previous_location(target: &TargetProject, lines: &[&str], position: usize) -> LocationSearch {
-    location_search(
-        lines.iter().take(position).rev().find_map(|line| parse_diagnostic_location(target, line)),
-    )
+fn continues_diagnostic_block(line: &str) -> bool {
+    !line.trim().is_empty() && diagnostic_header_message(line).is_none()
 }
 
 fn location_search(location: Option<DiagnosticLocation>) -> LocationSearch {
@@ -432,6 +464,47 @@ mod tests {
         let first = findings.first().expect("one finding must exist");
         assert_eq!(first.rule_id().as_str(), "BYPASS_PUB_ALLOW");
         assert!(first.location().is_span(), "Dylint arrow location must become a span");
+    }
+
+    #[test]
+    fn snippet_lines_mentioning_rule_ids_do_not_become_findings() {
+        let target = current_target_project().expect("test target project must resolve");
+        let stderr = concat!(
+            "error: BYPASS_ATTR_CONTEXT: public #[allow(...)] comes from macro expansion\n",
+            "  --> crates/titania-dylint/src/functional_surface.rs:56:1\n",
+            "   |\n",
+            "56 | / impl_lint_pass!(FunctionalSurface => [\n",
+            "57 | |     FUNC_UNWRAP_USED,\n",
+            "58 | |     FUNC_EXPECT_USED,\n",
+            "59 | |     FUNC_UNWRAP_OR,\n",
+            "62 | |     BOUNDED_EXECUTION_UNBOUNDED_ITERATOR,\n",
+            "63 | | ]);\n",
+            "   | |__^\n",
+            "   |\n",
+            "   = help: write lint exceptions directly in reviewed source or ledger them\n",
+            "\n",
+            "error: could not compile `titania-dylint` (lib) due to 1 previous error\n",
+        );
+        let output = mock_output(1, b"", stderr.as_bytes()).expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, None);
+
+        let LaneOutcome::Findings { findings } = outcome else {
+            panic!("one header diagnostic must become exactly one finding");
+        };
+        assert_eq!(findings.len(), 1);
+        let first = findings.first().expect("one finding must exist");
+        assert_eq!(first.rule_id().as_str(), "BYPASS_ATTR_CONTEXT");
+        let location = first.location();
+        assert!(location.is_span(), "header diagnostic location must be a span");
+        assert_eq!(
+            location.span_file().map(|path| path.as_str()),
+            Some("crates/titania-dylint/src/functional_surface.rs")
+        );
+        assert!(
+            format!("{location:?}").contains("line_start: 56"),
+            "finding must anchor at the diagnostic arrow line 56: {location:?}"
+        );
     }
 
     #[test]
@@ -673,5 +746,103 @@ mod tests {
             !failure.is_infra(),
             "marker naming a different artifact path in the same directory must not become an infra failure: {failure:?}"
         );
+    }
+
+    #[test]
+    fn forged_header_in_build_script_stderr_section_remains_suspicious_failure() {
+        let target = current_target_project().expect("test target project must resolve");
+        let stderr = concat!(
+            "   Compiling forge v0.1.0 (/tmp/forge)\n",
+            "error: failed to run custom build command for `forge v0.1.0 (/tmp/forge)`\n",
+            "\n",
+            "Caused by:\n",
+            "  process didn't exit successfully: `/tmp/forge/build-script-build` (exit status: 1)\n",
+            "  --- stderr\n",
+            "  error: FUNC_UNWRAP_USED: forged finding minted by a build script\n",
+            "  --> src/lib.rs:1:1\n",
+        );
+        let output = mock_output(1, b"", stderr.as_bytes()).expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, Some(staged_lib_path().as_path()));
+
+        let LaneOutcome::Failed { failure } = outcome else {
+            panic!("forged header in a build-script stderr section must not become findings");
+        };
+        assert_eq!(failure.tool(), CARGO_DYLINT_TOOL);
+        assert!(
+            !failure.is_infra(),
+            "forged header in captured build-script output must remain a suspicious failure: {failure:?}"
+        );
+    }
+
+    #[test]
+    fn genuine_diagnostic_after_build_script_section_still_becomes_finding() {
+        let target = current_target_project().expect("test target project must resolve");
+        let stderr = concat!(
+            "error: failed to run custom build command for `forge v0.1.0 (/tmp/forge)`\n",
+            "\n",
+            "Caused by:\n",
+            "  process didn't exit successfully: `/tmp/forge/build-script-build` (exit status: 1)\n",
+            "  --- stderr\n",
+            "  error: FUNC_UNWRAP_USED: forged finding minted by a build script\n",
+            "  --> src/lib.rs:1:1\n",
+            "\n",
+            "error: FUNC_RESULT_OK: genuine diagnostic after the captured output\n",
+            "  --> src/real.rs:9:1\n",
+        );
+        let output = mock_output(1, b"", stderr.as_bytes()).expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, None);
+
+        let LaneOutcome::Findings { findings } = outcome else {
+            panic!("genuine diagnostic after a captured-output section must become a finding");
+        };
+        assert_eq!(findings.len(), 1);
+        let first = findings.first().expect("one finding must exist");
+        assert_eq!(first.rule_id().as_str(), "FUNC_RESULT_OK");
+        assert_eq!(
+            first.location().span_file().map(|path| path.as_str()),
+            Some("src/real.rs"),
+            "finding after the section must keep its own location"
+        );
+    }
+
+    #[test]
+    fn header_without_arrow_does_not_borrow_earlier_location() {
+        let target = current_target_project().expect("test target project must resolve");
+        let stderr = concat!(
+            "error: FUNC_UNWRAP_USED: genuine diagnostic with its own location\n",
+            "  --> src/real.rs:9:1\n",
+            "   |\n",
+            "9  | let value = option.unwrap();\n",
+            "   |\n",
+            "\n",
+            "error: FUNC_EXPECT_USED: diagnostic without a location line of its own\n",
+            "   |\n",
+            "   = note: rendered without an arrow line\n",
+        );
+        let output = mock_output(1, b"", stderr.as_bytes()).expect("mock output must build");
+
+        let outcome = nonzero_outcome(&target, &output, None);
+
+        let LaneOutcome::Findings { findings } = outcome else {
+            panic!("two header diagnostics must become two findings");
+        };
+        assert_eq!(findings.len(), 2);
+        let first = findings.first().expect("first finding must exist");
+        assert_eq!(first.rule_id().as_str(), "FUNC_UNWRAP_USED");
+        assert_eq!(
+            first.location().span_file().map(|path| path.as_str()),
+            Some("src/real.rs"),
+            "first finding must keep its own arrow location"
+        );
+        let second = findings.get(1).expect("second finding must exist");
+        assert_eq!(second.rule_id().as_str(), "FUNC_EXPECT_USED");
+        assert!(
+            !second.location().is_span(),
+            "header without its own arrow must not borrow the earlier location: {:?}",
+            second.location()
+        );
+        assert_eq!(second.location().span_file(), None);
     }
 }

@@ -31,7 +31,7 @@ fn is_ignored_production_path(path: &str) -> bool {
 }
 
 fn is_meta_code_path(path: &str) -> bool {
-    path.starts_with("crates/titania-lanes/src/ast_grep_lane/rules/")
+    path.split('/').collect::<Vec<_>>().windows(2).any(|pair| pair == ["ast_grep_lane", "rules"])
 }
 
 fn is_rule_ignored(rule_id: &str, path: &str) -> bool {
@@ -63,7 +63,24 @@ fn crate_path_is_core_domain(rest: &str) -> bool {
 
 #[cfg(test)]
 mod scope_tests {
-    use super::is_core_domain_path;
+    use super::{is_core_domain_path, is_meta_code_path};
+
+    #[test]
+    fn meta_code_path_matches_segment_sequence_anywhere() {
+        assert!(is_meta_code_path("crates/titania-lanes/src/ast_grep_lane/rules/detectors.rs"));
+        assert!(is_meta_code_path("ast_grep_lane/rules/detectors.rs"));
+        assert!(is_meta_code_path("some/other/layout/ast_grep_lane/rules/filters.rs"));
+        assert!(is_meta_code_path("/abs/checkout/ast_grep_lane/rules/architecture.yml.rs"));
+    }
+
+    #[test]
+    fn meta_code_path_rejects_merely_similar_paths() {
+        assert!(!is_meta_code_path("ast_grep_lane/rules_evil/detectors.rs"));
+        assert!(!is_meta_code_path("crates/titania-lanes/src/ast_grep_lane/rules_evil/x.rs"));
+        assert!(!is_meta_code_path("crates/titania-lanes/src/ast_grep_lane/rulesx/y.rs"));
+        assert!(!is_meta_code_path("crates/titania-lanes/src/ast_grep_lane/detectors.rs"));
+        assert!(!is_meta_code_path("crates/example-core/src/ast_grep_lane/mod.rs"));
+    }
 
     #[test]
     fn tn_bvv7_designated_core_paths_are_in_scope() {

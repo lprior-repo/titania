@@ -24,6 +24,15 @@ hasher:
   optimization: 'accuracy'
   walkStrategy: 'vcs'
 
+# bazel-remote cache hook (v1-spec §13 cache layer 2; §14): Moon
+# task-output remote caching (AC+CAS) ships unconfigured because §14
+# makes bazel-remote optional — a team cache, never a gate input: all
+# scopes pass without it, and it returns compile wall-time only. An
+# endpoint configured here would break caching on machines that cannot
+# reach it. To enable, run a bazel-remote endpoint reachable by every
+# machine sharing the cache and configure Moon remote caching against
+# it in this file, beside the local pipeline cacheLifetime below.
+
 # Auto-install dependencies and sync workspace state on every `moon ci`.
 pipeline:
   installDependencies: true

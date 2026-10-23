@@ -29,13 +29,14 @@ impl LineScan {
 
     pub(super) fn accept_raw_start(self, ch: char) -> Self {
         match ch {
-            '#' => self.add_raw_hash(),
-            '"' => self.enter_raw_text(),
+            '#' => self.blanked(ch).add_raw_hash(),
+            '"' => self.blanked(ch).enter_raw_text(),
             _ => self.cancel_raw_start().accept_visible_code(ch),
         }
     }
 
-    pub(super) const fn accept_raw_text(self, ch: char) -> Self {
+    pub(super) fn accept_raw_text(mut self, ch: char) -> Self {
+        self.blank(ch);
         match (ch, self.raw_hashes) {
             ('"', 0) => self.exit_raw_text(),
             ('"', _) => self.enter_raw_end(),
@@ -43,7 +44,8 @@ impl LineScan {
         }
     }
 
-    pub(super) fn accept_raw_end(self, ch: char) -> Self {
+    pub(super) fn accept_raw_end(mut self, ch: char) -> Self {
+        self.blank(ch);
         match ch {
             '#' => self.accept_raw_end_hash(),
             _ => self.return_to_raw_text(),
@@ -92,6 +94,8 @@ impl LineScan {
 
     fn cancel_raw_start(mut self) -> Self {
         self.mode = ScanMode::Code;
+        let prefix_len = 1 + usize::from(self.raw_hashes);
+        self.code.truncate(self.code.len().saturating_sub(prefix_len));
         self.code.push('r');
         self.code.extend(std::iter::repeat_n('#', usize::from(self.raw_hashes)));
         self.raw_hashes = 0;

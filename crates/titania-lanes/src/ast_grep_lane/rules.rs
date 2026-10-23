@@ -5,12 +5,11 @@ mod filters;
 
 use titania_core::{FindingEffect, RepairHint, WorkspacePath};
 
-use super::{
-    engine::AstEngine,
-    span::{FILE_LEVEL_SITE, MatchSite},
-};
+use super::{engine::AstEngine, span::MatchSite};
 
 type EngineDetector = fn(&AstEngine) -> Vec<MatchSite>;
+
+type TextDetector = fn(&str) -> Vec<MatchSite>;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct RuleDef {
@@ -25,14 +24,14 @@ pub(super) struct RuleDef {
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Detector {
     Engine(EngineDetector),
-    String(fn(&str) -> bool),
+    String(TextDetector),
 }
 
 impl Detector {
     pub(super) fn run(self, engine: &AstEngine, source: &str) -> Vec<MatchSite> {
         match self {
             Self::Engine(detect) => detect(engine),
-            Self::String(detect) => detect(source).then_some(FILE_LEVEL_SITE).into_iter().collect(),
+            Self::String(detect) => detect(source),
         }
     }
 }

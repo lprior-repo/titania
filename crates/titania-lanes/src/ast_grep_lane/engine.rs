@@ -5,6 +5,37 @@ use super::span::{MatchSite, line_offsets};
 
 const MAX_NESTING_DEPTH: usize = 2;
 
+const UNBOUNDED_ITERATOR_SPELLINGS: &[&str] = &[
+    "$ITER.cycle()",
+    "repeat($$$ARGS)",
+    "repeat_with($$$ARGS)",
+    "successors($$$ARGS)",
+    "from_fn($$$ARGS)",
+    "std::iter::repeat($$$ARGS)",
+    "std::iter::repeat_with($$$ARGS)",
+    "std::iter::successors($$$ARGS)",
+    "std::iter::from_fn($$$ARGS)",
+    "core::iter::repeat($$$ARGS)",
+    "core::iter::repeat_with($$$ARGS)",
+    "core::iter::successors($$$ARGS)",
+    "core::iter::from_fn($$$ARGS)",
+    "::std::iter::repeat($$$ARGS)",
+    "::std::iter::repeat_with($$$ARGS)",
+    "::std::iter::successors($$$ARGS)",
+    "::std::iter::from_fn($$$ARGS)",
+    "::core::iter::repeat($$$ARGS)",
+    "::core::iter::repeat_with($$$ARGS)",
+    "::core::iter::successors($$$ARGS)",
+    "::core::iter::from_fn($$$ARGS)",
+];
+
+fn unbounded_iterator_patterns() -> Vec<Pattern> {
+    UNBOUNDED_ITERATOR_SPELLINGS.iter().map(|text| Pattern::new(text, Rust)).collect()
+}
+
+const UNBOUNDED_ITERATOR_FNS: &[&str] = &["repeat", "repeat_with", "successors", "from_fn"];
+const ITER_MODULE_ROOTS: &[&str] = &["std", "core"];
+
 pub(super) struct AstEngine {
     grep: AstGrep<StrDoc<Rust>>,
     line_offsets: Vec<usize>,
@@ -68,12 +99,22 @@ impl AstEngine {
     }
 
     pub(super) fn detect_unbounded_iterator(&self) -> Vec<MatchSite> {
-        let cycle = Pattern::new("$ITER.cycle()", Rust);
-        let repeat = Pattern::new("repeat($$$ARGS)", Rust);
-        let repeat_with = Pattern::new("repeat_with($$$ARGS)", Rust);
-        let successors = Pattern::new("successors($$$ARGS)", Rust);
-        let from_fn = Pattern::new("from_fn($$$ARGS)", Rust);
-        self.match_sites_any_skipping_tests([&cycle, &repeat, &repeat_with, &successors, &from_fn])
+        let patterns = unbounded_iterator_patterns();
+        let pattern_sites = self.match_sites_any_skipping_tests(patterns.iter());
+        let resolved_sites = self.resolved_iterator_sites();
+        sorted_sites(pattern_sites.into_iter().chain(resolved_sites).collect())
+    }
+
+    fn resolved_iterator_sites(&self) -> Vec<MatchSite> {
+        let resolution = IteratorResolution::collect(&self.grep.root());
+        self.grep
+            .root()
+            .dfs()
+            .filter(|node| node.kind() == "call_expression")
+            .filter(|node| !self.is_in_test_code(node.range().start))
+            .filter(|node| call_is_unbounded_iterator(node, &resolution))
+            .map(|node| MatchSite::from_range(node.range()))
+            .collect()
     }
 
     pub(super) fn detect_print_stdout(&self) -> Vec<MatchSite> {
@@ -190,6 +231,279 @@ fn sorted_sites(mut sites: Vec<MatchSite>) -> Vec<MatchSite> {
     sites.sort_by_key(|site| (site.start_byte, site.end_byte));
     sites.dedup_by_key(|site| (site.start_byte, site.end_byte));
     sites
+}
+
+struct IteratorResolution {
+    module_bindings: Vec<String>,
+    fn_aliases: Vec<String>,
+}
+
+impl IteratorResolution {
+    fn collect(root: &Node<'_, StrDoc<Rust>>) -> Self {
+        collect_iterator_resolution(root)
+    }
+}
+
+fn collect_iterator_resolution(root: &Node<'_, StrDoc<Rust>>) -> IteratorResolution {
+    root.dfs().filter(|node| node.kind() == "use_declaration").fold(
+        IteratorResolution { module_bindings: Vec::new(), fn_aliases: Vec::new() },
+        |resolution, statement| absorb_use_statement(resolution, &statement),
+    )
+}
+
+fn absorb_use_statement(
+    mut resolution: IteratorResolution,
+    statement: &Node<'_, StrDoc<Rust>>,
+) -> IteratorResolution {
+    let Some(body) = use_statement_body(statement) else {
+        return resolution;
+    };
+    for path in flattened_use_paths(&body) {
+        apply_use_classification(&mut resolution, &path);
+    }
+    resolution
+}
+
+fn apply_use_classification(resolution: &mut IteratorResolution, path: &str) {
+    match classify_use_path(path) {
+        UseClassification::ModuleBinding(name) => {
+            push_binding_once(&mut resolution.module_bindings, &name);
+        }
+        UseClassification::FnAlias(name) => push_binding_once(&mut resolution.fn_aliases, &name),
+        UseClassification::Ignored => {}
+    }
+}
+
+enum UseClassification {
+    ModuleBinding(String),
+    FnAlias(String),
+    Ignored,
+}
+
+fn classify_use_path(path: &str) -> UseClassification {
+    let (path_part, alias) = split_use_alias(path);
+    let segments: Vec<&str> =
+        path_part.split("::").map(str::trim).filter(|seg| !seg.is_empty()).collect();
+    match segments.as_slice() {
+        [root, "iter"] | [root, "iter", "self"] if is_iter_module_root(root) => {
+            UseClassification::ModuleBinding(module_binding_name(alias).to_owned())
+        }
+        [root, "iter", func] if is_iter_module_root(root) && is_unbounded_iterator_fn(func) => {
+            alias.map_or(UseClassification::Ignored, fn_alias_classification)
+        }
+        _ => UseClassification::Ignored,
+    }
+}
+
+fn module_binding_name(alias: Option<&str>) -> &str {
+    alias.map_or("iter", |name| name)
+}
+
+fn fn_alias_classification(name: &str) -> UseClassification {
+    UseClassification::FnAlias(name.to_owned())
+}
+
+fn push_binding_once(bindings: &mut Vec<String>, name: &str) {
+    if !bindings.iter().any(|bound| bound == name) {
+        bindings.push(name.to_owned());
+    }
+}
+
+fn is_iter_module_root(segment: &str) -> bool {
+    ITER_MODULE_ROOTS.contains(&segment)
+}
+
+fn is_unbounded_iterator_fn(name: &str) -> bool {
+    UNBOUNDED_ITERATOR_FNS.contains(&name)
+}
+
+fn split_use_alias(path: &str) -> (&str, Option<&str>) {
+    match path.split_once(" as ") {
+        Some((head, alias)) => (head.trim(), valid_use_alias(alias.trim())),
+        None => (path.trim(), None),
+    }
+}
+
+fn valid_use_alias(alias: &str) -> Option<&str> {
+    (!alias.is_empty() && alias.chars().all(|ch| ch.is_alphanumeric() || ch == '_'))
+        .then_some(alias)
+}
+
+fn use_statement_body(statement: &Node<'_, StrDoc<Rust>>) -> Option<String> {
+    let text = statement.text();
+    let after_use = text.split_once("use ")?.1;
+    let body = after_use.split_once(';')?.0;
+    Some(body.trim().to_owned())
+}
+
+type UseSegmentQueue<'s> = Vec<(Option<String>, &'s str)>;
+
+fn flattened_use_paths(body: &str) -> Vec<String> {
+    let mut pending = vec![(None, body)];
+    let mut flattened = Vec::new();
+    while let Some((prefix, segment)) = pending.pop() {
+        expand_use_segment(&mut pending, &mut flattened, prefix.as_deref(), segment);
+    }
+    flattened
+}
+
+fn expand_use_segment<'s>(
+    pending: &mut UseSegmentQueue<'s>,
+    flattened: &mut Vec<String>,
+    prefix: Option<&str>,
+    segment: &'s str,
+) {
+    match segment_group(segment) {
+        Some((head, inner)) => queue_group_members(pending, prefix, head, inner),
+        None => flattened.push(join_use_path(prefix, segment.trim())),
+    }
+}
+
+fn segment_group(segment: &str) -> Option<(&str, &str)> {
+    let open = segment.find('{')?;
+    use_group_head_and_body(segment, open)
+}
+
+fn queue_group_members<'s>(
+    pending: &mut UseSegmentQueue<'s>,
+    prefix: Option<&str>,
+    head: &str,
+    inner: &'s str,
+) {
+    let group_prefix = Some(join_use_path(prefix, head));
+    let members = top_level_use_members(inner);
+    for member in members.into_iter().rev() {
+        pending.push((group_prefix.clone(), member));
+    }
+}
+
+fn join_use_path(prefix: Option<&str>, segment: &str) -> String {
+    prefix.map_or_else(|| segment.to_owned(), |head| format!("{head}::{segment}"))
+}
+
+fn use_group_head_and_body(member: &str, open: usize) -> Option<(&str, &str)> {
+    let (head, from_open) = member.split_at_checked(open)?;
+    let inner = from_open.strip_prefix('{')?;
+    let close = matching_use_close_brace(inner)?;
+    let (body, _) = inner.split_at_checked(close)?;
+    Some((head.trim().trim_end_matches("::").trim_end(), body))
+}
+
+fn matching_use_close_brace(source: &str) -> Option<usize> {
+    let mut depth = 1usize;
+    source.char_indices().find_map(|(index, ch)| {
+        depth = use_brace_depth_after(depth, ch)?;
+        (depth == 0).then_some(index)
+    })
+}
+
+const fn use_brace_depth_after(depth: usize, ch: char) -> Option<usize> {
+    match ch {
+        '{' => depth.checked_add(1),
+        '}' => depth.checked_sub(1),
+        _ => Some(depth),
+    }
+}
+
+type UseMemberScan = (Vec<(usize, usize)>, usize, usize);
+
+fn top_level_use_members(body: &str) -> Vec<&str> {
+    let (spans, _, member_start) =
+        body.char_indices().fold((Vec::new(), 0usize, 0usize), advance_use_member_scan);
+    spans
+        .into_iter()
+        .chain((member_start < body.len()).then_some((member_start, body.len())))
+        .filter_map(|(start, end)| body.get(start..end))
+        .map(str::trim)
+        .filter(|member| !member.is_empty())
+        .collect()
+}
+
+fn advance_use_member_scan(state: UseMemberScan, (index, ch): (usize, char)) -> UseMemberScan {
+    let (mut spans, depth, member_start) = state;
+    match ch {
+        '{' => (spans, depth.saturating_add(1), member_start),
+        '}' => (spans, depth.saturating_sub(1), member_start),
+        ',' if depth == 0 => {
+            spans.push((member_start, index));
+            (spans, depth, index.saturating_add(1))
+        }
+        _ => (spans, depth, member_start),
+    }
+}
+
+fn call_is_unbounded_iterator(
+    call: &Node<'_, StrDoc<Rust>>,
+    resolution: &IteratorResolution,
+) -> bool {
+    let Some(callee) = call.children().find(|child| is_callee_kind(&child.kind())) else {
+        return false;
+    };
+    let peeled = peel_generic_function(&callee);
+    match peeled.kind().as_ref() {
+        "identifier" => identifier_is_unbounded(&peeled, resolution),
+        "scoped_identifier" => scoped_callee_is_unbounded(&peeled, resolution),
+        _ => false,
+    }
+}
+
+fn identifier_is_unbounded(node: &Node<'_, StrDoc<Rust>>, resolution: &IteratorResolution) -> bool {
+    let text = node.text();
+    let name = text.trim();
+    is_unbounded_iterator_fn(name)
+        || resolution.fn_aliases.iter().any(|alias| alias.as_str() == name)
+}
+
+fn scoped_callee_is_unbounded(
+    callee: &Node<'_, StrDoc<Rust>>,
+    resolution: &IteratorResolution,
+) -> bool {
+    let segments = scoped_path_segments(callee);
+    match segments.as_slice() {
+        [root, module, func] => {
+            is_iter_module_root(root) && module.as_str() == "iter" && is_unbounded_iterator_fn(func)
+        }
+        [binding, func] => {
+            resolution.module_bindings.iter().any(|bound| bound == binding)
+                && is_unbounded_iterator_fn(func)
+        }
+        _ => false,
+    }
+}
+
+fn scoped_path_segments(node: &Node<'_, StrDoc<Rust>>) -> Vec<String> {
+    let mut leaves = Vec::new();
+    let mut current = node.clone();
+    while let Some(step) = scoped_step(&current) {
+        current = apply_scoped_step(&mut leaves, step);
+    }
+    leaves.push(current.text().trim().to_owned());
+    leaves.reverse();
+    leaves
+}
+
+enum ScopedStep<'r> {
+    HeadLeaf(Node<'r, StrDoc<Rust>>, Node<'r, StrDoc<Rust>>),
+    Only(Node<'r, StrDoc<Rust>>),
+}
+
+fn scoped_step<'r>(node: &Node<'r, StrDoc<Rust>>) -> Option<ScopedStep<'r>> {
+    let mut named = node.children().filter(Node::is_named);
+    match (node.kind().as_ref(), named.next(), named.next()) {
+        ("scoped_identifier", Some(head), Some(leaf)) => Some(ScopedStep::HeadLeaf(head, leaf)),
+        ("scoped_identifier", Some(only), None) => Some(ScopedStep::Only(only)),
+        _ => None,
+    }
+}
+
+fn apply_scoped_step<'r>(leaves: &mut Vec<String>, step: ScopedStep<'r>) -> Node<'r, StrDoc<Rust>> {
+    match step {
+        ScopedStep::HeadLeaf(head, leaf) => {
+            leaves.push(leaf.text().trim().to_owned());
+            head
+        }
+        ScopedStep::Only(only) => only,
+    }
 }
 
 fn contains_inline_suppression_marker(comment: &str) -> bool {

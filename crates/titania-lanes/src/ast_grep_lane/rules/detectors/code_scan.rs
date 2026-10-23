@@ -4,15 +4,8 @@ mod state;
 
 use state::{BlockMark, CodePending, ScanMode, TextEscape};
 
-pub(super) fn detect_code_line(source: &str, predicate: fn(&str) -> bool) -> bool {
-    source
-        .lines()
-        .try_fold(CodeScan::default(), |state, line| state.accept(line, predicate))
-        .is_break()
-}
-
 pub(super) fn code_only_source(source: &str) -> String {
-    source.lines().fold(CodeOnly::default(), CodeOnly::accept).code
+    source.split('\n').fold(CodeOnly::default(), CodeOnly::accept).code
 }
 
 #[derive(Default)]
@@ -38,15 +31,6 @@ impl CodeOnly {
         self.code.push_str(&stripped.code);
         self.code.push('\n');
         self
-    }
-}
-
-impl CodeScan {
-    fn accept(self, line: &str, predicate: fn(&str) -> bool) -> std::ops::ControlFlow<(), Self> {
-        let stripped = LineScan::from(self).scan(line).finish();
-        predicate(&stripped.code)
-            .then_some(std::ops::ControlFlow::Break(()))
-            .map_or(std::ops::ControlFlow::Continue(stripped.next), |flow| flow)
     }
 }
 
@@ -94,9 +78,18 @@ impl LineScan {
             ScanMode::RawStart => self.accept_raw_start(ch),
             ScanMode::RawText => self.accept_raw_text(ch),
             ScanMode::RawEnd => self.accept_raw_end(ch),
-            ScanMode::LineComment => self,
+            ScanMode::LineComment => self.blanked(ch),
             ScanMode::BlockComment => self.accept_block_comment(ch),
         }
+    }
+
+    fn blank(&mut self, ch: char) {
+        self.code.extend(std::iter::repeat_n(' ', ch.len_utf8()));
+    }
+
+    fn blanked(mut self, ch: char) -> Self {
+        self.blank(ch);
+        self
     }
 
     fn accept_code(self, ch: char) -> Self {
@@ -112,8 +105,8 @@ impl LineScan {
     fn accept_after_slash(mut self, ch: char) -> Self {
         self.pending = CodePending::None;
         match ch {
-            '/' => self.enter_line_comment(),
-            '*' => self.enter_block_comment(),
+            '/' => self.blanked('/').blanked(ch).enter_line_comment(),
+            '*' => self.blanked('/').blanked(ch).enter_block_comment(),
             _ => self.emit_pending_slash_then(ch),
         }
     }
@@ -121,8 +114,8 @@ impl LineScan {
     fn accept_after_raw_prefix(mut self, ch: char) -> Self {
         self.pending = CodePending::None;
         match ch {
-            '"' => self.enter_raw_text(),
-            '#' => self.enter_raw_start(),
+            '"' => self.blanked('r').blanked(ch).enter_raw_text(),
+            '#' => self.blanked('r').blanked(ch).enter_raw_start(),
             _ => self.emit_pending_raw_prefix_then(ch),
         }
     }
@@ -130,7 +123,7 @@ impl LineScan {
     pub(super) fn accept_visible_code(mut self, ch: char) -> Self {
         match ch {
             '/' => self.pending = CodePending::Slash,
-            '"' => self.enter_text(),
+            '"' => self.enter_text_blanked(ch),
             'r' => self.pending = CodePending::RawPrefix,
             '\'' => self.pending = CodePending::QuoteStart,
             _ => self.code.push(ch),
@@ -138,11 +131,11 @@ impl LineScan {
         self
     }
 
-    const fn accept_after_quote_start(mut self, ch: char) -> Self {
+    fn accept_after_quote_start(mut self, ch: char) -> Self {
         self.pending = CodePending::None;
         match ch {
-            '\\' => self.enter_char_literal(TextEscape::Escaped),
-            '\'' => self,
+            '\\' => self.blanked('\'').blanked(ch).enter_char_literal(TextEscape::Escaped),
+            '\'' => self.blanked('\'').blanked(ch),
             _ => self.defer_quote_char(ch),
         }
     }
@@ -155,7 +148,7 @@ impl LineScan {
     fn accept_after_quote_char(mut self, first: char, ch: char) -> Self {
         self.pending = CodePending::None;
         match ch {
-            '\'' => self,
+            '\'' => self.blanked('\'').blanked(first).blanked(ch),
             _ => self.emit_lifetime_then(first, ch),
         }
     }
@@ -172,7 +165,8 @@ impl LineScan {
         self
     }
 
-    const fn accept_char_literal(self, ch: char) -> Self {
+    fn accept_char_literal(mut self, ch: char) -> Self {
+        self.blank(ch);
         match (self.escape, ch) {
             (TextEscape::Escaped, _) => self.consume_escaped_char(),
             (TextEscape::Normal, '\\') => self.enter_char_literal(TextEscape::Escaped),
@@ -196,7 +190,13 @@ impl LineScan {
         self.escape = TextEscape::Normal;
     }
 
-    const fn accept_text(mut self, ch: char) -> Self {
+    fn enter_text_blanked(&mut self, ch: char) {
+        self.blank(ch);
+        self.enter_text();
+    }
+
+    fn accept_text(mut self, ch: char) -> Self {
+        self.blank(ch);
         self.mode = match (self.escape, ch) {
             (TextEscape::Normal, '"') => ScanMode::Code,
             _ => ScanMode::Text,

@@ -49,6 +49,12 @@ const FIXTURE_WEAKEN_WARNINGS: &str = r#"
 pub fn kept() {}
 "#;
 
+const FIXTURE_WEAKEN_BARE_URLS: &str = r#"
+#![allow(rustdoc::bare_urls)]
+
+pub fn kept() {}
+"#;
+
 const FIXTURE_WEAKEN_SELF_SUPPRESSED: &str = r#"
 #![allow(bypass_required_lint_weakening)]
 #![allow(warnings)]
@@ -301,6 +307,12 @@ fn bypass_required_lint_weakening_detects_allow_warnings() {
 }
 
 #[test]
+fn bypass_required_lint_weakening_detects_bare_urls_removal() {
+    let output = run_dylint_on_fixture("weaken_bare_urls", FIXTURE_WEAKEN_BARE_URLS);
+    assert_dylint_rejects(&output, "BYPASS_REQUIRED_LINT_WEAKENING", "rustdoc::bare_urls allow");
+}
+
+#[test]
 fn bypass_required_lint_weakening_rejects_self_suppression() {
     let output = run_dylint_on_fixture("weaken_self_suppressed", FIXTURE_WEAKEN_SELF_SUPPRESSED);
     assert_self_suppression_rejected(
@@ -457,6 +469,449 @@ fn bypass_attr_context_detects_macro_generated_associated_method() {
     assert!(
         !output_contains(&output, "BYPASS_PUB_ALLOW"),
         "BYPASS_PUB_ALLOW must not fire when #[allow] comes from macro expansion:\n{}",
+        combined_output(&output)
+    );
+}
+
+const PROC_MACRO_HELPER_MANIFEST: &str = r#"[package]
+name = "allow_shim"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+path = "src/lib.rs"
+"#;
+
+const PROC_MACRO_CONSUMER_MANIFEST: &str = r#"[package]
+name = "fixture"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+allow_shim = { path = "../allow_shim" }
+"#;
+
+const FIXTURE_PROC_MACRO_HELPER_PASS_THROUGH: &str = r#"
+extern crate proc_macro;
+
+use proc_macro::TokenStream;
+
+#[proc_macro_attribute]
+pub fn pass_through(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+"#;
+
+const FIXTURE_PROC_MACRO_CONSUMER_BENIGN: &str = r#"
+#[allow_shim::pass_through]
+pub fn plain_api() {}
+"#;
+
+const FIXTURE_PROC_MACRO_HELPER_CONCEAL_ALLOW: &str = r##"
+extern crate proc_macro;
+
+use proc_macro::TokenStream;
+use std::str::FromStr;
+
+#[proc_macro_attribute]
+pub fn conceal_allow(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let concealed =
+        TokenStream::from_str("#[allow(dead_code)]").unwrap_or_else(|_| TokenStream::new());
+    let mut output = concealed;
+    output.extend(item);
+    output
+}
+"##;
+
+const FIXTURE_PROC_MACRO_CONSUMER_CONCEALED_FN: &str = r#"
+#[allow_shim::conceal_allow]
+pub fn concealed_api() {}
+"#;
+
+const FIXTURE_PROC_MACRO_CONSUMER_CONCEALED_ASSOC_FN: &str = r#"
+pub struct Api;
+
+impl Api {
+    #[allow_shim::conceal_allow]
+    pub fn concealed_method(&self) {}
+}
+"#;
+
+fn run_dylint_on_proc_macro_fixture(
+    test_name: &str,
+    helper_code: &str,
+    consumer_code: &str,
+) -> std::process::Output {
+    let tmp_dir =
+        std::env::temp_dir().join(format!("titania_dylint_{test_name}_{}", std::process::id()));
+    let helper_dir = tmp_dir.join("allow_shim");
+    let helper_src = helper_dir.join("src");
+    std::fs::create_dir_all(&helper_src).expect("create proc-macro helper src directory");
+    std::fs::write(helper_src.join("lib.rs"), helper_code).expect("write proc-macro helper source");
+    std::fs::write(helper_dir.join("Cargo.toml"), PROC_MACRO_HELPER_MANIFEST)
+        .expect("write proc-macro helper manifest");
+    let consumer_dir = tmp_dir.join("fixture");
+    let consumer_src = consumer_dir.join("src");
+    std::fs::create_dir_all(&consumer_src).expect("create proc-macro consumer src directory");
+    std::fs::write(consumer_src.join("lib.rs"), consumer_code).expect("write consumer source");
+    let manifest = consumer_dir.join("Cargo.toml");
+    std::fs::write(&manifest, PROC_MACRO_CONSUMER_MANIFEST).expect("write consumer manifest");
+
+    let output = Command::new("cargo")
+        .current_dir(workspace_root())
+        .arg("dylint")
+        .arg("--lib-path")
+        .arg(dylint_library_path())
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .output()
+        .expect("cargo-dylint must run against proc-macro fixture manifest");
+
+    drop(std::fs::remove_dir_all(&tmp_dir));
+    output
+}
+
+#[test]
+fn bypass_attr_context_ignores_benign_proc_macro() {
+    let output = run_dylint_on_proc_macro_fixture(
+        "proc_macro_benign",
+        FIXTURE_PROC_MACRO_HELPER_PASS_THROUGH,
+        FIXTURE_PROC_MACRO_CONSUMER_BENIGN,
+    );
+    assert!(
+        output.status.success(),
+        "benign proc-macro fixture should pass dylint execution:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_ATTR_CONTEXT"),
+        "BYPASS_ATTR_CONTEXT must not fire when a proc-macro injects nothing:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when a proc-macro injects nothing:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bypass_attr_context_detects_proc_macro_injected_allow() {
+    let output = run_dylint_on_proc_macro_fixture(
+        "proc_macro_concealed_fn",
+        FIXTURE_PROC_MACRO_HELPER_CONCEAL_ALLOW,
+        FIXTURE_PROC_MACRO_CONSUMER_CONCEALED_FN,
+    );
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow(...)]` injected by proc-macro on pub fn",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow(...)] is injected by a proc-macro:\n{}",
+        combined_output(&output)
+    );
+}
+
+const FIXTURE_COMPILER_SCAFFOLDING: &str = r#"
+#![feature(rustc_private)]
+
+extern crate rustc_lint;
+extern crate rustc_session;
+
+use rustc_lint::LateLintPass;
+use rustc_session::{declare_lint, impl_lint_pass};
+
+declare_lint! {
+    pub FIXTURE_SCAFFOLD_LINT,
+    Allow,
+    "FIXTURE_SCAFFOLD_LINT: fixture lint declared through compiler scaffolding"
+}
+
+struct FixturePass;
+
+impl_lint_pass!(FixturePass => [FIXTURE_SCAFFOLD_LINT]);
+
+impl<'tcx> LateLintPass<'tcx> for FixturePass {}
+"#;
+
+const FIXTURE_SPOOFED_SCAFFOLDING_MACRO: &str = r#"
+macro_rules! impl_lint_pass {
+    () => {
+        pub struct SpoofedPass;
+
+        impl SpoofedPass {
+            #[allow(unused)]
+            pub fn lint_vec(&self) {}
+        }
+    };
+}
+
+impl_lint_pass!();
+"#;
+
+#[test]
+fn bypass_attr_context_ignores_compiler_lint_scaffolding() {
+    let output = run_dylint_on_fixture("compiler_scaffolding", FIXTURE_COMPILER_SCAFFOLDING);
+    assert!(
+        output.status.success(),
+        "compiler scaffolding fixture should pass dylint execution:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_ATTR_CONTEXT"),
+        "BYPASS_ATTR_CONTEXT must not fire on rustc declare_lint!/impl_lint_pass! scaffolding:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire on rustc declare_lint!/impl_lint_pass! scaffolding:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bypass_attr_context_detects_spoofed_scaffolding_macro() {
+    let output = run_dylint_on_fixture("spoofed_scaffolding", FIXTURE_SPOOFED_SCAFFOLDING_MACRO);
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow]` hidden by a local macro merely named impl_lint_pass",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow] comes from macro expansion:\n{}",
+        combined_output(&output)
+    );
+}
+
+const FAKE_RUSTC_SESSION_MANIFEST: &str = r#"[package]
+name = "rustc_session"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+"#;
+
+const FIXTURE_FAKE_RUSTC_SESSION_HELPER: &str = r#"
+#[macro_export]
+macro_rules! impl_lint_pass {
+    ($item:item) => {
+        #[allow(dead_code)]
+        $item
+    };
+}
+
+#[macro_export]
+macro_rules! declare_lint {
+    () => {
+        #[allow(dead_code)]
+        pub fn concealed_by_declare() {}
+    };
+}
+"#;
+
+const FAKE_RUSTC_SESSION_CONSUMER_MANIFEST: &str = r#"[package]
+name = "fixture"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+rustc_session = { path = "../rustc_session" }
+"#;
+
+const FIXTURE_FAKE_SESSION_CONSUMER_IMPL: &str = r#"
+rustc_session::impl_lint_pass! {
+    pub fn concealed() {}
+}
+"#;
+
+const FIXTURE_FAKE_SESSION_CONSUMER_DECLARE: &str = r#"
+rustc_session::declare_lint!();
+"#;
+
+fn run_dylint_on_named_macro_fixture(
+    test_name: &str,
+    helper_dir_name: &str,
+    helper_manifest: &str,
+    helper_code: &str,
+    consumer_manifest: &str,
+    consumer_code: &str,
+) -> std::process::Output {
+    let tmp_dir =
+        std::env::temp_dir().join(format!("titania_dylint_{test_name}_{}", std::process::id()));
+    let helper_dir = tmp_dir.join(helper_dir_name);
+    let helper_src = helper_dir.join("src");
+    std::fs::create_dir_all(&helper_src).expect("create macro helper src directory");
+    std::fs::write(helper_src.join("lib.rs"), helper_code).expect("write macro helper source");
+    std::fs::write(helper_dir.join("Cargo.toml"), helper_manifest)
+        .expect("write macro helper manifest");
+    let consumer_dir = tmp_dir.join("fixture");
+    let consumer_src = consumer_dir.join("src");
+    std::fs::create_dir_all(&consumer_src).expect("create macro consumer src directory");
+    std::fs::write(consumer_src.join("lib.rs"), consumer_code)
+        .expect("write macro consumer source");
+    let manifest = consumer_dir.join("Cargo.toml");
+    std::fs::write(&manifest, consumer_manifest).expect("write macro consumer manifest");
+
+    let output = Command::new("cargo")
+        .current_dir(workspace_root())
+        .arg("dylint")
+        .arg("--lib-path")
+        .arg(dylint_library_path())
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .output()
+        .expect("cargo-dylint must run against macro fixture manifest");
+
+    drop(std::fs::remove_dir_all(&tmp_dir));
+    output
+}
+
+#[test]
+fn bypass_attr_context_detects_fake_rustc_session_impl_lint_pass() {
+    let output = run_dylint_on_named_macro_fixture(
+        "fake_rustc_session_impl",
+        "rustc_session",
+        FAKE_RUSTC_SESSION_MANIFEST,
+        FIXTURE_FAKE_RUSTC_SESSION_HELPER,
+        FAKE_RUSTC_SESSION_CONSUMER_MANIFEST,
+        FIXTURE_FAKE_SESSION_CONSUMER_IMPL,
+    );
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow]` injected by a path-dependency crate named rustc_session through an impl_lint_pass-shaped macro",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow] comes from macro expansion:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bypass_attr_context_detects_fake_rustc_session_declare_lint() {
+    let output = run_dylint_on_named_macro_fixture(
+        "fake_rustc_session_declare",
+        "rustc_session",
+        FAKE_RUSTC_SESSION_MANIFEST,
+        FIXTURE_FAKE_RUSTC_SESSION_HELPER,
+        FAKE_RUSTC_SESSION_CONSUMER_MANIFEST,
+        FIXTURE_FAKE_SESSION_CONSUMER_DECLARE,
+    );
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow]` injected by a path-dependency crate named rustc_session through a declare_lint-shaped macro",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow] comes from macro expansion:\n{}",
+        combined_output(&output)
+    );
+}
+
+const FIXTURE_PROC_MACRO_HELPER_DERIVE_INJECT_ALLOW: &str = r#"
+extern crate proc_macro;
+
+use proc_macro::TokenStream;
+use std::str::FromStr;
+
+#[proc_macro_derive(InjectAllow)]
+pub fn derive_inject_allow(_item: TokenStream) -> TokenStream {
+    TokenStream::from_str(
+        "pub struct GeneratedHelper; \
+         impl GeneratedHelper { #[allow(dead_code)] pub fn generated_method(&self) {} } \
+         pub trait GeneratedTrait { #[allow(dead_code)] fn generated_trait_method(&self) {} }",
+    )
+    .unwrap_or_else(|_| TokenStream::new())
+}
+"#;
+
+const FIXTURE_PROC_MACRO_CONSUMER_EXTERNAL_DERIVE: &str = r#"
+#[derive(allow_shim::InjectAllow)]
+pub struct DerivedThing;
+"#;
+
+const FIXTURE_LOCAL_GENERATED_ITEM_ALLOW: &str = r#"
+macro_rules! generate_api {
+    () => {
+        pub struct GeneratedApi;
+
+        impl GeneratedApi {
+            #[allow(dead_code)]
+            pub fn generated_method(&self) {}
+        }
+    };
+}
+
+generate_api!();
+"#;
+
+#[test]
+fn bypass_attr_context_ignores_external_derive_generated_allow() {
+    let output = run_dylint_on_proc_macro_fixture(
+        "proc_macro_external_derive",
+        FIXTURE_PROC_MACRO_HELPER_DERIVE_INJECT_ALLOW,
+        FIXTURE_PROC_MACRO_CONSUMER_EXTERNAL_DERIVE,
+    );
+    assert!(
+        output.status.success(),
+        "external derive fixture should pass dylint execution:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_ATTR_CONTEXT"),
+        "BYPASS_ATTR_CONTEXT must not fire on items wholly generated by an external derive:\n{}",
+        combined_output(&output)
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire on items wholly generated by an external derive:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bypass_attr_context_detects_locally_generated_item_allow() {
+    let output = run_dylint_on_fixture("local_generated_item", FIXTURE_LOCAL_GENERATED_ITEM_ALLOW);
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow]` on an item generated by a locally defined macro",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow] comes from macro expansion:\n{}",
+        combined_output(&output)
+    );
+}
+
+#[test]
+fn bypass_attr_context_detects_proc_macro_injected_associated_allow() {
+    let output = run_dylint_on_proc_macro_fixture(
+        "proc_macro_concealed_assoc_fn",
+        FIXTURE_PROC_MACRO_HELPER_CONCEAL_ALLOW,
+        FIXTURE_PROC_MACRO_CONSUMER_CONCEALED_ASSOC_FN,
+    );
+    assert_dylint_rejects(
+        &output,
+        "BYPASS_ATTR_CONTEXT",
+        "`#[allow(...)]` injected by proc-macro on pub associated fn",
+    );
+    assert!(
+        !output_contains(&output, "BYPASS_PUB_ALLOW"),
+        "BYPASS_PUB_ALLOW must not fire when #[allow(...)] is injected by a proc-macro:\n{}",
         combined_output(&output)
     );
 }

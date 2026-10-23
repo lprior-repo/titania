@@ -14,10 +14,13 @@ pub mod panic_surface;
 
 use rustc_ast::{AttrStyle, Crate, MetaItem, MetaItemInner};
 use rustc_errors::DiagDecorator;
-use rustc_hir::{ImplItem, Item, TraitItem};
+use rustc_hir::{ImplItem, Item, TraitItem, def_id::CrateNum};
 use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintContext, LintStore};
-use rustc_session::{declare_lint, impl_lint_pass};
+use rustc_middle::ty::TyCtxt;
+use rustc_session::{cstore::CrateSource, declare_lint, impl_lint_pass};
 use rustc_span::{Span, sym};
+
+use std::path::{Path, PathBuf};
 
 #[expect(
     unsafe_code,
@@ -70,7 +73,7 @@ impl<'tcx> LateLintPass<'tcx> for PubAllow {
             .local_visibility(item.owner_id.def_id)
             .is_public()
             .then(|| cx.tcx.hir_attrs(item.hir_id()));
-        emit_pub_allow_attrs(cx, attrs.into_iter().flatten());
+        emit_pub_allow_attrs(cx, item.span, attrs.into_iter().flatten());
     }
 
     fn check_impl_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx ImplItem<'tcx>) {
@@ -79,7 +82,7 @@ impl<'tcx> LateLintPass<'tcx> for PubAllow {
             .local_visibility(item.owner_id.def_id)
             .is_public()
             .then(|| cx.tcx.hir_attrs(item.hir_id()));
-        emit_pub_allow_attrs(cx, attrs.into_iter().flatten());
+        emit_pub_allow_attrs(cx, item.span, attrs.into_iter().flatten());
     }
 
     fn check_trait_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx TraitItem<'tcx>) {
@@ -88,16 +91,17 @@ impl<'tcx> LateLintPass<'tcx> for PubAllow {
             .local_visibility(item.owner_id.def_id)
             .is_public()
             .then(|| cx.tcx.hir_attrs(item.hir_id()));
-        emit_pub_allow_attrs(cx, attrs.into_iter().flatten());
+        emit_pub_allow_attrs(cx, item.span, attrs.into_iter().flatten());
     }
 }
 
 fn emit_pub_allow_attrs<'a>(
     cx: &LateContext<'_>,
+    item_span: Span,
     attrs: impl IntoIterator<Item = &'a rustc_hir::Attribute>,
 ) {
     attrs.into_iter().filter(|attr| attr.has_name(sym::allow)).for_each(|attr| {
-        emit_pub_allow_attr(cx, attr.span());
+        emit_pub_allow_attr(cx, item_span, attr.span());
     });
 }
 
@@ -152,12 +156,68 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| Box::new(PubAllow));
 }
 
-fn emit_pub_allow_attr(cx: &LateContext<'_>, span: Span) {
+fn emit_pub_allow_attr(cx: &LateContext<'_>, item_span: Span, span: Span) {
+    if is_compiler_lint_scaffolding(cx, span) {
+        return;
+    }
+    if is_external_derive_generated(item_span, span) {
+        return;
+    }
     if span.from_expansion() {
-        emit_attr_context(cx, span);
+        emit_attr_context(cx, span.source_callsite());
     } else {
         emit_pub_allow(cx, span);
     }
+}
+
+fn is_external_derive_generated(item_span: Span, attr_span: Span) -> bool {
+    let generated = item_span.from_expansion() && attr_span.from_expansion();
+    generated && shares_external_derive(item_span, attr_span)
+}
+
+fn shares_external_derive(item_span: Span, attr_span: Span) -> bool {
+    let item_expn = item_span.ctxt().outer_expn_data();
+    let attr_expn = attr_span.ctxt().outer_expn_data();
+    let derive = is_derive_expn(&item_expn.kind) && is_derive_expn(&attr_expn.kind);
+    let shared = item_expn
+        .macro_def_id
+        .zip(attr_expn.macro_def_id)
+        .is_some_and(|(item_def, attr_def)| item_def == attr_def && !item_def.is_local());
+    derive && shared
+}
+
+const fn is_derive_expn(kind: &rustc_span::hygiene::ExpnKind) -> bool {
+    matches!(kind, rustc_span::hygiene::ExpnKind::Macro(rustc_span::hygiene::MacroKind::Derive, _))
+}
+
+fn is_compiler_lint_scaffolding(cx: &LateContext<'_>, span: Span) -> bool {
+    let expn = span.ctxt().outer_expn_data();
+    expn.macro_def_id.is_some_and(|def_id| {
+        let path = cx.tcx.def_path_str(def_id);
+        let scaffolding_path = matches!(
+            path.as_str(),
+            "rustc_session::declare_lint" | "rustc_session::impl_lint_pass"
+        );
+        scaffolding_path && is_crate_loaded_with_core(cx.tcx, def_id.krate)
+    })
+}
+
+fn is_crate_loaded_with_core(tcx: TyCtxt<'_>, krate: CrateNum) -> bool {
+    let Some(core_dir) = core_library_dir(tcx) else {
+        return false;
+    };
+    crate_source_paths(tcx.used_crate_source(krate))
+        .any(|path| path.parent() == Some(core_dir.as_path()))
+}
+
+fn core_library_dir(tcx: TyCtxt<'_>) -> Option<PathBuf> {
+    let core = tcx.crates(()).iter().find(|&&cnum| tcx.crate_name(cnum).as_str() == "core")?;
+    crate_source_paths(tcx.used_crate_source(*core))
+        .find_map(|path| path.parent().map(Path::to_path_buf))
+}
+
+fn crate_source_paths(source: &CrateSource) -> impl Iterator<Item = &Path> {
+    [source.rmeta.as_deref(), source.rlib.as_deref(), source.dylib.as_deref()].into_iter().flatten()
 }
 
 fn emit_pub_allow(cx: &LateContext<'_>, span: Span) {
@@ -281,6 +341,7 @@ const REQUIRED_LINTS: &[&str] = &[
     "unused_extern_crates",
     "unused_import_braces",
     "keyword_idents_2024",
+    "rustdoc::bare_urls",
     "clippy::all",
     "clippy::cargo",
     "clippy::pedantic",
